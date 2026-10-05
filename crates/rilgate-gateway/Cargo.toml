@@ -1,0 +1,41 @@
+[package]
+name = "rilgate-gateway"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+http.workspace = true
+tokio.workspace = true
+axum.workspace = true
+hyper.workspace = true
+http-body-util.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+hex.workspace = true
+rilgate-config.workspace = true
+rilgate-core.workspace = true
+rilgate-protocol.workspace = true
+rilgate-crypto.workspace = true
+rilgate-challenge.workspace = true
+rilgate-policy.workspace = true
+rilgate-pool.workspace = true
+rilgate-pow.workspace = true
+rilgate-web.workspace = true
+rilgate-telemetry.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+tokio-tungstenite.workspace = true
+rilgate-test-utils.workspace = true
+rilgate-pow-hash.workspace = true

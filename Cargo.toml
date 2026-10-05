@@ -1,0 +1,97 @@
+[workspace]
+members = [
+  "crates/rilgate",
+  "crates/rilgate-core",
+  "crates/rilgate-gateway",
+  "crates/rilgate-challenge",
+  "crates/rilgate-pow-randomx",
+  "crates/rilgate-pow-hash",
+  "crates/rilgate-pool",
+  "crates/rilgate-stratum",
+  "crates/rilgate-policy",
+  "crates/rilgate-protocol",
+  "crates/rilgate-crypto",
+  "crates/rilgate-telemetry",
+  "crates/rilgate-test-utils",
+  "crates/rilgate-config",
+  "crates/rilgate-pow",
+  "crates/rilgate-web",
+  "crates/randomx-core",
+  "crates/randomx-wasm",
+  "crates/xtask",
+]
+default-members = ["crates/rilgate"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+rilgate-core = { path = "crates/rilgate-core" }
+rilgate-gateway = { path = "crates/rilgate-gateway" }
+rilgate-challenge = { path = "crates/rilgate-challenge" }
+rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx" }
+rilgate-pow-hash = { path = "crates/rilgate-pow-hash" }
+rilgate-pool = { path = "crates/rilgate-pool" }
+rilgate-stratum = { path = "crates/rilgate-stratum" }
+rilgate-policy = { path = "crates/rilgate-policy" }
+rilgate-protocol = { path = "crates/rilgate-protocol" }
+rilgate-crypto = { path = "crates/rilgate-crypto" }
+rilgate-telemetry = { path = "crates/rilgate-telemetry" }
+rilgate-test-utils = { path = "crates/rilgate-test-utils" }
+
+randomx-core = { path = "crates/randomx-core" }
+
+rilgate-config = { path = "crates/rilgate-config" }
+rilgate-pow = { path = "crates/rilgate-pow" }
+rilgate-web = { path = "crates/rilgate-web" }
+
+tokio = { version = "1.53.1", features = ["full"] }
+axum = { version = "0.8.9", features = ["ws"] }
+hyper = "1.11.0"
+http-body-util = "0.1.5"
+tower = "0.5.3"
+tower-http = { version = "0.7.0", features = [
+  "trace",
+  "timeout",
+  "request-id",
+] }
+
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_yaml_ng = "0.10.0"
+clap = { version = "4.6.4", features = ["derive"] }
+dotenvy = "0.15.7"
+uuid = { version = "1.24.0", features = ["v4", "v7", "serde"] }
+
+anyhow = "1.0.104"
+thiserror = "2.0.19"
+futures-util = "0.3.31"
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "stream"] }
+
+hmac = "0.12.1"
+sha2 = "0.10.9"
+base64 = "0.22.1"
+hex = "0.4.3"
+regex = "1.12.2"
+
+humantime = "2"
+
+http = "1"
+url = "2"
+
+arc-swap = "1"
+humantime-serde = "1"
+include_dir = "0.7"
+minijinja = { version = "2", features = ["loader", "json", "fuel"] }
+mime_guess = "2"
+notify = "8"
+tempfile = "3"
+tokio-util = { version = "0.7", features = ["io"] }
+cap-std = "4"
+language-tags = "0.3"
+tokio-tungstenite = "0.29.0"

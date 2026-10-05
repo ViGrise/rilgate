@@ -1,0 +1,21 @@
+services:
+  rilgate:
+    container_name: rilgate
+    image: rilgate:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    volumes:
+      - ../../config:/app/config:ro
+    environment:
+      UPSTREAM_URL: "http://host.docker.internal:3000"
+      POW_P2POOL_HOST: "host.docker.internal"
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"

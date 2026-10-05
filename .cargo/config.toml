@@ -1,0 +1,7 @@
+[alias]
+xtask = "run -p xtask --"
+build-randomx-wasm = "run -p xtask -- build-wasm"
+test-randomx = "test -p randomx-core --release --test vectors -- --ignored --nocapture"
+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

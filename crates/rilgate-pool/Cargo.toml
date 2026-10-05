@@ -1,0 +1,15 @@
+[package]
+name = "rilgate-pool"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+rilgate-core.workspace = true
+rilgate-protocol.workspace = true
+rilgate-stratum.workspace = true
+rilgate-crypto.workspace = true

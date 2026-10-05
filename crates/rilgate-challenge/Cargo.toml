@@ -1,0 +1,17 @@
+[package]
+name = "rilgate-challenge"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+http.workspace = true
+uuid.workspace = true
+serde.workspace = true
+rilgate-core.workspace = true
+rilgate-protocol.workspace = true
+rilgate-pow.workspace = true
+rilgate-policy.workspace = true
+rilgate-crypto.workspace = true

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>{{ page.title }} - {{ rilgate.name }}</title>
+  <link rel="stylesheet" href="{{ rilgate.stylesheet_url }}">
+</head>
+<body>
+  {% block content %}{% endblock %}
+  {% include "partials/footer.html" %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

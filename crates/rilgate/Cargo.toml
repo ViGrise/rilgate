@@ -1,0 +1,32 @@
+[package]
+name = "rilgate"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+dotenvy.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tracing.workspace = true
+rilgate-config.workspace = true
+rilgate-gateway.workspace = true
+rilgate-challenge.workspace = true
+rilgate-pool.workspace = true
+rilgate-pow.workspace = true
+rilgate-pow-hash.workspace = true
+rilgate-pow-randomx.workspace = true
+rilgate-web.workspace = true
+rilgate-telemetry.workspace = true
+
+[dev-dependencies]
+rilgate-test-utils.workspace = true
+tower.workspace = true
+tempfile.workspace = true
+
+[[bin]]
+name = "rilgate"
+path = "src/main.rs"

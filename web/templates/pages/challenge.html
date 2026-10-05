@@ -1,0 +1,23 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<main>
+  <h1>{{ t("challenge.title") }}</h1>
+  <p id="description">{{ t("challenge.description") }}</p>
+  {% include "partials/pow-info.html" %}
+  <button id="randomx-start" type="button" hidden>{{ t("pow.disclosure.start") }}</button>
+  <progress id="progress" aria-label="{{ t('pow.progress_label') }}"></progress>
+  <p id="status" role="status" aria-live="polite">{{ t("challenge.status.preparing") }}</p>
+  <button id="retry" type="button" hidden>{{ t("common.retry") }}</button>
+  <p class="muted">{{ t("challenge.explanation", name=rilgate.name) }}</p>
+</main>
+{% endblock %}
+{% block scripts %}
+<script type="application/json" id="pow-i18n">{{ client_i18n | tojson }}</script>
+<script>
+  window.POW_INTERNAL_PREFIX = {{ rilgate.base_path | tojson }};
+  window.POW_SOLVER_MODULE_URL = {{ challenge.solver_module_url | tojson }};
+  window.POW_PRESENTATION_TOKEN = {{ challenge.token | tojson }};
+  window.POW_ALGORITHM = {{ challenge.algorithm | tojson }};
+</script>
+<script type="module" src="{{ rilgate.static_url }}/js/challenge.js"></script>
+{% endblock %}

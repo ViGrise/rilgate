@@ -1,0 +1,26 @@
+[package]
+name = "randomx-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Portable pure-Rust RandomX v1 Light mode implementation for native and wasm32"
+
+[dependencies]
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc"] }
+blake2 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+aes = { version = "0.9.1", default-features = false, features = ["hazmat"] }
+rustc_apfloat = "0.2.3"
+ieee-apsqrt = "0.1.1"
+thiserror = { version = "2.0.19", default-features = false }
+
+[dev-dependencies]
+blake2 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+
+[features]
+default = ["std"]
+validation = []
+std = [
+  "argon2/alloc",
+  "blake2/alloc",
+  "thiserror/std",
+]

@@ -1,0 +1,4 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<main><h1>{{ t("error.title") }}</h1><p>{{ t("error.description") }}</p><button type="button" onclick="location.reload()">{{ t("common.retry") }}</button></main>
+{% endblock %}

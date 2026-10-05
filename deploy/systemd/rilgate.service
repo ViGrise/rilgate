@@ -1,0 +1,22 @@
+[Unit]
+Description=Rilgate proof-of-work gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rilgate
+Group=rilgate
+WorkingDirectory=/opt/rilgate
+EnvironmentFile=/etc/rilgate/environment
+ExecStart=/opt/rilgate/rilgate --config /etc/rilgate/rilgate.yml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rilgate
+
+[Install]
+WantedBy=multi-user.target

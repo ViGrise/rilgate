@@ -1,0 +1,219 @@
+env: development
+
+web:
+  name: "Rilgate"
+  website_url: "https://rilgate.com"
+  base_path: "/.well-known/rilgate"
+  stylesheet_path: "css/rilgate.css"
+  # Omit root to use only embedded web resources.
+  # root: /etc/rilgate/web
+  seed:
+    empty_directory: true
+  watch:
+    enabled: false
+    debounce: 300ms
+  templates:
+    cache: true
+    strict: true
+    recursion_limit: 64
+    fuel: 50000
+  i18n:
+    default_locale: en
+    supported_locales:
+      - en
+    strict: false
+    language_cookie_name: "rilgate_lang"
+
+serve:
+  port: 8080
+
+upstream:
+  url: "http://127.0.0.1:3000"
+  preserve_host: true
+
+  # Request bodies are bounded; upstream responses are streamed.
+  max_body_bytes: 16777216
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 30
+
+pow:
+  # local_verify:
+  #   Stateless verification. Any gateway instance sharing the signing keys
+  #   can validate the signed P2Pool-derived challenge.
+  #
+  # p2pool_accepted:
+  #   The challenge stays on one WebSocket/gateway instance while that instance
+  #   retains its P2Pool Stratum session. Access is granted only after P2Pool
+  #   accepts the submitted share.
+  enforce: local_verify
+
+  # Used when a CHALLENGE rule omits challenge.algorithm.
+  # Supported: fast (SHA-256) or randomx.
+  default_algorithm: randomx
+
+  signing_key: "change-me-pow-signing-key"
+  auth_signing_key: "change-me-auth-signing-key"
+
+  challenge_ttl_seconds: 60
+  randomx_challenge_ttl_seconds: 3600
+  receipt_ttl_seconds: 30
+  auth_ttl_seconds: 21600
+  auth_cookie_name: "rilgate_auth"
+
+  # Monero block hashing blob nonce offset.
+  nonce_offset: 39
+
+  # One dedicated verifier thread processes this bounded queue.
+  verifier_queue_capacity: 8
+
+  # Proof APIs share per-socket-IP and per-instance quotas.
+  rate_limit:
+    enabled: true
+    client_burst: 10
+    client_refill_per_second: 0.1
+    global_burst: 64
+    global_refill_per_second: 16
+    max_clients: 4096
+
+  p2pool:
+    host: "127.0.0.1"
+    port: 3333
+    password: "x"
+    agent: "rilgate/0.1.0"
+    connect_timeout_seconds: 5
+    submit_timeout_seconds: 20
+    max_sessions: 64
+    session_ttl_seconds: 900
+
+  # RandomX fallback difficulty calculation for CHALLENGE rules that select
+  # randomx but don't set an explicit challenge.difficulty:
+  #
+  #   difficulty = base * 2^(weight / weight_step)
+  difficulty:
+    base: 1000
+    weight_step: 10
+    max: 32000
+
+  risk:
+    # Initial weight before matching bots rules.
+    default_weight: 0
+
+    # Development-only helper. When enabled, x-pow-weight replaces the initial
+    # weight before bots/thresholds are evaluated.
+    allow_debug_header: false
+    debug_header: "x-pow-weight"
+
+  # Request policy.
+  #
+  # Supported actions:
+  #   ALLOW      immediately allow the request
+  #   DENY       immediately deny the request
+  #   CHALLENGE  require PoW; choose fast or randomx per rule
+  #   WEIGH      add/subtract weight and continue evaluating later rules
+  #
+  # A rule may combine path_regex, user_agent_regex and headers_regex; when
+  # multiple matchers are present they must all match.
+  bots:
+    # Keep standard machine-readable endpoints accessible.
+    - name: well-known
+      path_regex: ^/\.well-known/.*$
+      action: ALLOW
+
+    - name: favicon
+      path_regex: ^/favicon\.ico$
+      action: ALLOW
+
+    - name: robots-txt
+      path_regex: ^/robots\.txt$
+      action: ALLOW
+
+    - name: feeds
+      path_regex: (?i)\.(?:rss|xml|atom)$
+      action: ALLOW
+
+    # Example direct deny rule:
+    #
+    # - name: blocked-scraper
+    #   user_agent_regex: (?i:badbot)
+    #   action: DENY
+
+    # Example header-based weight adjustment:
+    #
+    # - name: suspicious-header
+    #   headers_regex:
+    #     X-Suspicious: .+
+    #   action: WEIGH
+    #   weight:
+    #     adjust: 10
+
+    # Browser-like User-Agents start with +10 weight, then thresholds decide
+    # challenge difficulty.
+    - name: generic-browser
+      user_agent_regex: Mozilla|Opera
+      action: WEIGH
+      weight:
+        adjust: 10
+
+  # Weight thresholds. First matching threshold wins.
+  #
+  # Supported expressions:
+  #   expression: weight <= 0
+  #
+  # or:
+  #
+  #   expression:
+  #     all:
+  #       - weight >= 10
+  #       - weight < 20
+  #
+  # `any:` is also supported.
+
+  thresholds:
+    - name: minimal-suspicion
+      expression: weight <= 0
+      action: ALLOW
+
+    # Very light SHA-256 challenge.
+    - name: mild-suspicion
+      expression:
+        all:
+          - weight > 0
+          - weight < 10
+      action: CHALLENGE
+      challenge:
+        algorithm: fast
+        difficulty: 1
+
+    # Two leading zero hex digits, the usual `fast` difficulty setting.
+    - name: moderate-suspicion
+      expression:
+        all:
+          - weight >= 10
+          - weight < 20
+      action: CHALLENGE
+      challenge:
+        algorithm: fast
+        difficulty: 2
+
+    # Stronger lightweight hash challenge.
+    - name: high-suspicion
+      expression:
+        all:
+          - weight >= 20
+          - weight < 30
+      action: CHALLENGE
+      challenge:
+        algorithm: fast
+        difficulty: 4
+
+    # Escalate very suspicious clients to the expensive RandomX path.
+    - name: extreme-suspicion
+      expression: weight >= 30
+      action: CHALLENGE
+      challenge:
+        algorithm: randomx
+        difficulty: 8000
+
+  browser:
+    # Relative to web.base_path.
+    solver_module_path: "/static/js/solvers/randomx/solver.js"

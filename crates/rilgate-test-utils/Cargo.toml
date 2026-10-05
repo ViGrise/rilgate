@@ -1,0 +1,17 @@
+[package]
+name = "rilgate-test-utils"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+rilgate-config.workspace = true
+rilgate-gateway.workspace = true
+rilgate-challenge.workspace = true
+rilgate-pool.workspace = true
+rilgate-pow.workspace = true
+rilgate-pow-hash.workspace = true
+rilgate-pow-randomx.workspace = true

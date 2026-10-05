@@ -1,0 +1,102 @@
+use std::{
+  env, fs,
+  path::{Path, PathBuf},
+  process::{Command, ExitCode},
+};
+
+const WASM_TARGET: &str = "wasm32-unknown-unknown";
+const OUTPUT: &str = "web/static/js/solvers/randomx/randomx_wasm.wasm";
+
+fn main() -> ExitCode {
+  match env::args().nth(1).as_deref() {
+    Some("build-wasm") => build_wasm(),
+    Some("help" | "h" | "-h" | "--help") => {
+      eprintln!("cargo xtask build-wasm");
+      ExitCode::SUCCESS
+    }
+    other => {
+      eprintln!("unknown xtask command: {other:?}");
+      eprintln!("usage: cargo xtask build-wasm");
+      ExitCode::FAILURE
+    }
+  }
+}
+
+/// Builds `randomx-wasm` for wasm32 and stages the artifact where the server
+/// embeds it.
+///
+/// The release profile settings are passed as environment overrides so the
+/// native server build keeps its own panic and codegen behaviour.
+fn build_wasm() -> ExitCode {
+  let root = workspace_root();
+  let output = root.join(OUTPUT);
+
+  let status = Command::new(cargo())
+    .current_dir(&root)
+    .env("CARGO_PROFILE_RELEASE_LTO", "fat")
+    .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "1")
+    .env("CARGO_PROFILE_RELEASE_OPT_LEVEL", "3")
+    .env("CARGO_PROFILE_RELEASE_STRIP", "symbols")
+    .args([
+      "rustc",
+      "--package",
+      "randomx-wasm",
+      "--release",
+      "--target",
+      WASM_TARGET,
+      "--",
+      "-C",
+      "link-arg=--export-table",
+      "-C",
+      "link-arg=--growable-table",
+    ])
+    .status();
+
+  let Ok(status) = status else {
+    eprintln!("failed to run cargo");
+    return ExitCode::FAILURE;
+  };
+
+  if !status.success() {
+    return ExitCode::from(1);
+  }
+
+  let built = root
+    .join("target")
+    .join(WASM_TARGET)
+    .join("release")
+    .join("randomx_wasm.wasm");
+
+  if let Some(parent) = output.parent()
+    && !parent.exists()
+    && let Err(error) = fs::create_dir_all(parent)
+  {
+    eprintln!("failed to create {}: {error}", parent.display());
+    return ExitCode::FAILURE;
+  }
+
+  if let Err(error) = fs::copy(&built, &output) {
+    eprintln!(
+      "failed to copy {} to {}: {error}",
+      built.display(),
+      output.display()
+    );
+    return ExitCode::FAILURE;
+  }
+
+  let size = fs::metadata(&output).map(|meta| meta.len()).unwrap_or(0);
+  println!("wrote {} ({size} bytes)", output.display());
+
+  ExitCode::SUCCESS
+}
+
+fn cargo() -> PathBuf {
+  env::var_os("CARGO").map_or_else(|| PathBuf::from("cargo"), PathBuf::from)
+}
+
+fn workspace_root() -> PathBuf {
+  Path::new(env!("CARGO_MANIFEST_DIR"))
+    .join("../..")
+    .canonicalize()
+    .expect("workspace root")
+}
