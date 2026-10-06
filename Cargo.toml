@@ -95,3 +95,15 @@ tokio-util = { version = "0.7", features = ["io"] }
 cap-std = "4"
 language-tags = "0.3"
 tokio-tungstenite = "0.29.0"
+
+# The gateway is CPU-bound per request (token signing, template rendering, JSON),
+# so cross-crate inlining matters more here than build time. The wasm artifact
+# gets its own settings from crates/xtask via CARGO_PROFILE_RELEASE_* env
+# overrides, which take precedence over this table.
+#
+# panic stays on unwind: web snapshot builds and reloads run under
+# spawn_blocking, and under abort a panic in one of those would take down the
+# process rather than only its task.
+[profile.release]
+lto = "thin"
+codegen-units = 1
