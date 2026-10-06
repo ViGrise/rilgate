@@ -11,12 +11,19 @@ pub enum PolicyAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct WeightAdjustment {
   #[serde(default)]
   pub adjust: i32,
 }
 
+/// Challenge settings for a rule or threshold.
+///
+/// Unknown keys are rejected so `difficulty` written beside `challenge` instead
+/// of inside it fails to load, rather than being dropped and silently leaving
+/// the difficulty to be resolved some other way.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ChallengePolicy {
   #[serde(default)]
   pub algorithm: Option<PowAlgorithm>,
@@ -33,6 +40,7 @@ pub enum WeightExpression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BotRuleConfig {
   pub name: String,
 
@@ -55,6 +63,7 @@ pub struct BotRuleConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ThresholdConfig {
   pub name: String,
   pub expression: WeightExpression,

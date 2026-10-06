@@ -307,4 +307,39 @@ mod tests {
     assert!(threshold.expression.matches(19));
     assert!(!threshold.expression.matches(20));
   }
+
+  #[test]
+  fn a_threshold_difficulty_written_outside_challenge_is_rejected() {
+    // Writing `difficulty` beside `challenge` rather than inside it used to be
+    // accepted and then ignored, leaving the threshold to fall back to a
+    // difficulty derived from weight.
+    let misplaced = serde_yaml_ng::from_str::<ThresholdConfig>(
+      r#"
+name: moderate
+expression: weight >= 10
+action: CHALLENGE
+difficulty: 2
+challenge:
+  algorithm: fast
+"#,
+    )
+    .expect_err("difficulty beside challenge must be rejected");
+    assert!(
+      misplaced.to_string().contains("difficulty"),
+      "unexpected error: {misplaced}"
+    );
+
+    let correct: ThresholdConfig = serde_yaml_ng::from_str(
+      r#"
+name: moderate
+expression: weight >= 10
+action: CHALLENGE
+challenge:
+  algorithm: fast
+  difficulty: 2
+"#,
+    )
+    .expect("nested difficulty loads");
+    assert_eq!(correct.challenge.difficulty, Some(2));
+  }
 }

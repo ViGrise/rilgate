@@ -11,3 +11,6 @@ http.workspace = true
 regex.workspace = true
 serde.workspace = true
 rilgate-protocol.workspace = true
+
+[dev-dependencies]
+serde_yaml_ng.workspace = true
