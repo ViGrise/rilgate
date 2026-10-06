@@ -29,6 +29,25 @@ reader tests cover interrupted and oversized Stratum frames.
 Signatures bind tokens to presentation, challenge, receipt, or authentication
 purpose, even when signing keys are shared. Signatures from other token formats are rejected.
 
+## Performance
+
+`scripts/perf-gate.sh` guards against regressions that a correctness test cannot
+see. It starts the gateway with its shipping log filter, drives the health and
+challenge endpoints with `wrk`, and fails when the log output per request grows
+or when the challenge page becomes disproportionately slow relative to a static
+response. Absolute requests/second is reported but not gated, since a shared CI
+host makes it meaningless. The gate needs `wrk` and Node.js.
+
+```bash
+scripts/build.sh --release
+scripts/perf-gate.sh
+```
+
+Thresholds are overridable through `PERF_GATE_MAX_LOG_BYTES`,
+`PERF_GATE_MAX_CHALLENGE_PCT`, `PERF_GATE_CONNECTIONS` and
+`PERF_GATE_DURATION`. Setting `PERF_GATE_RUST_LOG` measures a non-default log
+filter instead of the shipping one.
+
 RandomX correctness is checked against the official reference vectors:
 
 ```bash
