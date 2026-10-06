@@ -197,3 +197,23 @@ removed without resetting an active quota. If the table is full of active
 entries, new identities are throttled until a slot becomes available. No
 background cleanup task or external store is required. Set `enabled: false`
 to disable this limiter explicitly.
+
+## Logging
+
+`RUST_LOG` accepts a `tracing` filter and defaults to `rilgate=info,tower_http=info`.
+
+Per-request diagnostics (the HTTP trace span and its request/response events,
+per-request policy decisions, presented challenges and missing translations)
+are `DEBUG`, so the default does not emit them. Enabling them per request is
+expensive: measured on a 12-core host, `rilgate=debug,tower_http=info` reduced
+the challenge path from 97,500 to 36,600 requests/second and wrote roughly 666MB
+of log output per 15 seconds of load. Raise them for a specific subsystem
+instead of globally:
+
+```bash
+RUST_LOG=rilgate=info,tower_http=debug   # per-request HTTP tracing only
+RUST_LOG=rilgate_gateway=debug           # per-request policy decisions only
+```
+
+Startup and reload events, upstream failures, capacity rejections and session
+loss are `INFO` or `WARN` and are unaffected.

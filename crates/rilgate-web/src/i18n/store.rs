@@ -59,7 +59,12 @@ impl TranslationStore {
       .filter_map(|tag| self.locales.get(&tag))
       .find_map(|map| map.get(key));
     let Some(message) = message else {
-      tracing::warn!(locale, key, "Missing translation");
+      // Rendering resolves every visible key on every request, so a missing
+      // translation would otherwise emit one line per key per render. A missing
+      // key is a content defect, and WebSnapshot::validate already resolves every
+      // key for every supported locale at load time, where web.i18n.strict
+      // decides whether it is fatal.
+      tracing::debug!(locale, key, "Missing translation");
       if self.strict {
         return Err(Error::new(
           ErrorKind::UndefinedError,

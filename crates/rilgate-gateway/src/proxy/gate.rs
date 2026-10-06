@@ -35,7 +35,7 @@ pub async fn gate(
     }
 
     PolicyAction::Deny => {
-      tracing::info!(
+      tracing::debug!(
         rule = %decision.rule,
         weight = decision.weight,
         path = %request.uri().path(),
@@ -95,7 +95,7 @@ pub async fn gate(
       .issue_presentation(host, request.uri().path().to_string(), &decision)
       .map_err(ApiError::Internal)?;
 
-    tracing::info!(
+    tracing::debug!(
       rule = %decision.rule,
       weight = decision.weight,
       algorithm = ?decision.algorithm,
