@@ -85,6 +85,17 @@ pow:
     max_sessions: 64
     session_ttl_seconds: 900
 
+    # Long-lived sessions reused for proof-of-work issuance. Challenge issuance
+    # opens one P2Pool connection, logs in, reads the job and keeps it open, so
+    # that issuing a challenge does not cost a TCP connection. Set to 0 to go
+    # back to connecting per challenge, which measured a ceiling of roughly 550
+    # challenges/second before the ephemeral port range ran out.
+    #
+    # These sessions draw permits from max_sessions, so the value must not
+    # exceed it; the remainder stays available to WebSocket sessions.
+    max_job_sessions: 16
+    job_session_idle_seconds: 60
+
   # RandomX fallback difficulty calculation for CHALLENGE rules that select
   # randomx but don't set an explicit challenge.difficulty:
   #

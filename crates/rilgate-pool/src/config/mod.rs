@@ -9,6 +9,15 @@ pub struct P2PoolConfig {
   pub submit_timeout_seconds: u64,
   pub max_sessions: usize,
   pub session_ttl_seconds: u64,
+  /// Long-lived sessions kept for proof-of-work issuance.
+  ///
+  /// Challenge issuance used to open a TCP connection, log in and drop the
+  /// socket for every challenge. That socket churn capped issuance at a few
+  /// hundred per second before the ephemeral port range ran out, so sessions are
+  /// pooled and their current job is reused. Zero restores connect-per-challenge.
+  pub max_job_sessions: usize,
+  /// How long a pooled session may sit unused before it is closed.
+  pub job_session_idle_seconds: u64,
 }
 
 impl P2PoolConfig {
@@ -18,9 +27,15 @@ impl P2PoolConfig {
       "pow.p2pool.max_sessions must be between 1 and 4096"
     );
     anyhow::ensure!(
+      self.max_job_sessions <= self.max_sessions,
+      "pow.p2pool.max_job_sessions must not exceed pow.p2pool.max_sessions, because \
+       pooled job sessions hold permits from the same budget as WebSocket sessions"
+    );
+    anyhow::ensure!(
       (1..=31_536_000).contains(&self.connect_timeout_seconds)
         && (1..=31_536_000).contains(&self.submit_timeout_seconds)
-        && (1..=31_536_000).contains(&self.session_ttl_seconds),
+        && (1..=31_536_000).contains(&self.session_ttl_seconds)
+        && (1..=31_536_000).contains(&self.job_session_idle_seconds),
       "P2Pool timeouts and session TTL must be between 1 second and 1 year"
     );
     Ok(())

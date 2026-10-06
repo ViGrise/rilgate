@@ -99,6 +99,14 @@ pub(super) fn load(file: &FileConfig, args: &Overrides) -> PowConfig {
       submit_timeout_seconds: resolve(file, "pow.p2pool.submit_timeout_seconds", &[], None, 20_u64),
       max_sessions: resolve(file, "pow.p2pool.max_sessions", &[], None, 64_usize),
       session_ttl_seconds: resolve(file, "pow.p2pool.session_ttl_seconds", &[], None, 900_u64),
+      max_job_sessions: resolve(file, "pow.p2pool.max_job_sessions", &[], None, 16_usize),
+      job_session_idle_seconds: resolve(
+        file,
+        "pow.p2pool.job_session_idle_seconds",
+        &[],
+        None,
+        60_u64,
+      ),
     },
     difficulty: DifficultyConfig {
       base: resolve(file, "pow.difficulty.base", &[], None, 1000_u64),

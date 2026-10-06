@@ -124,6 +124,21 @@ matching P2Pool acceptance. Gateway clients send the nonce as a numeric
 hexadecimal value; the Stratum adapter converts it to the little-endian byte
 encoding expected by P2Pool.
 
+Challenge issuance keeps its Stratum sessions open in a pool of at most
+`pow.p2pool.max_job_sessions`, each owned by a task that tracks job rotation
+while idle, so issuing a challenge reuses a connection instead of opening one.
+Those sessions take permits from `max_sessions`, so `max_job_sessions` must not
+exceed it and the remainder stays available to WebSocket sessions. A session
+unused for `pow.p2pool.job_session_idle_seconds` is closed. Setting
+`max_job_sessions` to `0` restores connecting per challenge.
+
+Pooling matters because the unpooled path exhausts the ephemeral port range well
+before it saturates a CPU: measured against a mock P2Pool on a 12-core host, a
+fresh connection per challenge failed at roughly 550 challenges/second with
+`Can't assign requested address`, while the pool sustained 5,000/second with no
+connection failures. Size `max_job_sessions` for the expected rate, since
+issuance returns `503` when more requests than that are in flight at once.
+
 ```yaml
 upstream:
   connect_timeout_seconds: 5
@@ -135,6 +150,8 @@ pow:
     max_sessions: 64
     session_ttl_seconds: 900
     submit_timeout_seconds: 20
+    max_job_sessions: 16
+    job_session_idle_seconds: 60
 ```
 
 Upstream connect/read failures produce `502`, and upstream timeouts produce

@@ -200,7 +200,11 @@ async fn a_silent_p2pool_submission_expires() {
 #[tokio::test]
 async fn session_capacity_returns_503_and_releases_when_a_permit_is_dropped() {
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().pow.p2pool.max_sessions = 1;
+  let p2pool = &mut Arc::get_mut(&mut cfg).unwrap().pow.p2pool;
+  p2pool.max_sessions = 1;
+  // Pooled job sessions draw from the same permit budget, so the cap has to
+  // follow max_sessions down or configuration validation rejects the pair.
+  p2pool.max_job_sessions = 1;
   let service = rilgate_pool::P2PoolProvider::new(cfg.pow.p2pool.clone()).unwrap();
   let permit = service.acquire_slot().unwrap();
   let error = service.acquire_slot().unwrap_err();

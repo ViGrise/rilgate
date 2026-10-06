@@ -46,6 +46,8 @@ pub fn config() -> Config {
         submit_timeout_seconds: 1,
         max_sessions: 4,
         session_ttl_seconds: 10,
+        max_job_sessions: 2,
+        job_session_idle_seconds: 5,
       },
       difficulty: DifficultyConfig {
         base: 1000,

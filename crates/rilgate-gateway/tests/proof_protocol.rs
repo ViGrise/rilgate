@@ -13,12 +13,15 @@ use rilgate_protocol::{
 };
 use serde_json::{Value, json};
 use std::{
-  sync::Arc,
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
   time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{
   io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-  net::TcpListener,
+  net::{TcpListener, TcpStream},
 };
 
 fn now() -> i64 {
@@ -172,32 +175,53 @@ fn request_authority_supports_http2_and_normalizes_case() {
 #[tokio::test]
 async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.p2pool.port = listener.local_addr().unwrap().port();
+  pow.p2pool.port = port;
   pow.bots[0].challenge.algorithm = Some(PowAlgorithm::RandomX);
   pow.bots[0].challenge.difficulty = Some(u64::MAX);
-  let pool = tokio::spawn(async move {
-    for index in 0..3 {
-      let (socket, _) = listener.accept().await.unwrap();
-      let mut reader = BufReader::new(socket);
-      let mut line = String::new();
-      reader.read_line(&mut line).await.unwrap();
-      let response = json!({"id": 1, "result": {"id": "miner", "job": {
-        "blob": "00".repeat(if index == 2 { 234 } else { 64 }), "seed_hash": "ab".repeat(32), "target": "ffffffff", "job_id": "same", "algo": "rx/0"
-      }}});
-      reader
-        .get_mut()
-        .write_all(format!("{response}\n").as_bytes())
-        .await
-        .unwrap();
-    }
-  });
+
+  // Issuance pools its Stratum sessions, so the mock has to behave like P2Pool
+  // and keep each connection open rather than closing it after the login reply.
+  // Every connection is retained so the count of accepted logins can be checked.
+  let accepted = Arc::new(AtomicUsize::new(0));
+  let sessions: Arc<tokio::sync::Mutex<Vec<BufReader<TcpStream>>>> =
+    Arc::new(tokio::sync::Mutex::new(Vec::new()));
+  let pool = {
+    let (accepted, sessions) = (accepted.clone(), sessions.clone());
+    tokio::spawn(async move {
+      while let Ok((socket, _)) = listener.accept().await {
+        accepted.fetch_add(1, Ordering::SeqCst);
+        let mut reader = BufReader::new(socket);
+        let mut line = String::new();
+        if reader.read_line(&mut line).await.is_err() {
+          continue;
+        }
+        let response = json!({"id": 1, "result": {"id": "miner", "job": {
+          "blob": "00".repeat(64), "seed_hash": "ab".repeat(32), "target": "ffffffff", "job_id": "same", "algo": "rx/0"
+        }}});
+        if reader
+          .get_mut()
+          .write_all(format!("{response}\n").as_bytes())
+          .await
+          .is_err()
+        {
+          continue;
+        }
+        // Retaining the reader keeps both halves of the socket alive, so the
+        // pooled session sees a connection that stays open.
+        sessions.lock().await.push(reader);
+      }
+    })
+  };
+
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = service
     .issue_presentation("example.test".into(), "/protected".into(), &decision)
     .unwrap();
+
   let mut blobs = vec![];
   for _ in 0..2 {
     let response = service
@@ -218,13 +242,41 @@ async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty()
     assert_eq!(job.seed_hash, "ab".repeat(32));
     blobs.push(job.blob);
   }
+
+  // The job id is identical across issuances, so distinct work can only come
+  // from the per-issuance challenge binding.
   assert_ne!(blobs[0], blobs[1]);
+
+  // Both issuances must have reused one pooled session, which is what keeps
+  // issuance from opening a connection per challenge.
+  assert_eq!(accepted.load(Ordering::SeqCst), 1);
+
+  pool.abort();
+}
+
+#[tokio::test]
+async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  drop(listener);
+
+  let mut cfg = common::config();
+  let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
+  pow.p2pool.port = port;
+  pow.bots[0].challenge.algorithm = Some(PowAlgorithm::RandomX);
+  pow.bots[0].challenge.difficulty = Some(1000);
+
+  let service = make_service(&cfg).unwrap();
+  let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
+  let presentation = service
+    .issue_presentation("example.test".into(), "/protected".into(), &decision)
+    .unwrap();
+
   let error = service
     .issue_challenge(&presentation, "example.test")
     .await
     .unwrap_err();
   assert!(error.is::<rilgate_gateway::transport::errors::PowBackendUnavailable>());
-  pool.await.unwrap();
 }
 
 #[test]
