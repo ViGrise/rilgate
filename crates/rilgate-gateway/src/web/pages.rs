@@ -25,22 +25,12 @@ pub fn render_page(
   headers: &HeaderMap,
   uri: &Uri,
 ) -> (String, String) {
-  use rilgate_web::templates::context::{
-    PageInfo, PublicChallengeInfo, PublicRilgateInfo, TemplateContext,
-  };
+  use rilgate_web::templates::context::{PageInfo, PublicChallengeInfo, TemplateContext};
   let snapshot = state.web.current();
-  let explicit = reqwest::Url::parse(&format!("http://localhost/?{}", uri.query().unwrap_or("")))
-    .ok()
-    .and_then(|url| {
-      url
-        .query_pairs()
-        .find(|(name, _)| name == "lang")
-        .map(|(_, value)| value.into_owned())
-    });
+  let explicit = uri.query().and_then(query_language);
   let cookie =
     crate::auth::cookies::cookie_value(headers, &snapshot.config.i18n.language_cookie_name);
-  let locale = rilgate_web::i18n::locale::negotiate(
-    &snapshot.config.i18n,
+  let locale = snapshot.supported.negotiate(
     explicit.as_deref(),
     cookie.as_deref(),
     headers
@@ -74,7 +64,7 @@ pub fn render_page(
     .translate(&locale, description_key, &Default::default())
     .unwrap_or_else(|_| description_key.into());
   let public = TemplateContext {
-    rilgate: PublicRilgateInfo::from(&snapshot.config),
+    rilgate: snapshot.public.clone(),
     page: PageInfo { title, description },
     challenge: PublicChallengeInfo {
       token: token.into(),
@@ -118,4 +108,15 @@ pub(crate) fn resolve_gateway_asset(prefix: &str, configured: &str) -> String {
       format!("/{configured}")
     }
   )
+}
+
+/// Reads the `lang` query parameter from a request URI.
+///
+/// The query is decoded as a form rather than by parsing the URI, because
+/// rendering a page needs this one parameter and not a URL.
+fn query_language(query: &str) -> Option<String> {
+  url::form_urlencoded::parse(query.as_bytes())
+    .find(|(name, _)| name == "lang")
+    .map(|(_, value)| value.into_owned())
+    .filter(|value| !value.is_empty())
 }

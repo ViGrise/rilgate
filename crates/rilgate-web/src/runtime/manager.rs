@@ -49,13 +49,7 @@ impl WebManager {
       generation: 1,
       last_successful_reload: Some(timestamp()),
       last_reload_error: startup_error,
-      active_locales: snapshot
-        .config
-        .i18n
-        .supported_locales
-        .iter()
-        .filter_map(|tag| crate::i18n::locale::normalize(tag).ok())
-        .collect(),
+      active_locales: snapshot.supported.tags().to_vec(),
       template_count: snapshot.templates.templates().count(),
       watch_enabled: false,
       reload_total: 0,
@@ -94,13 +88,7 @@ impl WebManager {
         diagnostics.generation = generation;
         diagnostics.last_successful_reload = Some(timestamp());
         diagnostics.last_reload_error = None;
-        diagnostics.active_locales = snapshot
-          .config
-          .i18n
-          .supported_locales
-          .iter()
-          .filter_map(|tag| crate::i18n::locale::normalize(tag).ok())
-          .collect();
+        diagnostics.active_locales = snapshot.supported.tags().to_vec();
         diagnostics.template_count = snapshot.templates.templates().count();
         diagnostics.reload_total += 1;
         self.current.store(Arc::new(snapshot));

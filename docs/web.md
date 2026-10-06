@@ -21,12 +21,25 @@ during simultaneous startup. Unwritable empty roots log a warning and use the
 embedded bundle. Symlinks within the override tree are rejected.
 
 Translations are flat-key JSON objects and overlay embedded translations per key.
+The locales Rilgate serves are the tags of the translation files present, so
+adding `web/i18n/vi.json` (or an override of the same name) is all that is needed
+to offer Vietnamese; no configuration change or restart of the decision is
+involved. Set `web.i18n.supported_locales` only to restrict that set to a subset
+of what has translations, which is how a translated locale stays unadvertised.
+The declared list must include `web.i18n.default_locale`, and startup fails if the
+default locale has no translations. Locale tags use BCP 47 casing.
+
 Locale priority is `?lang=`, the configured language cookie, `Accept-Language`,
-then `web.i18n.default_locale`. Locale tags use BCP 47 casing. Lookup tries the
-selected locale and its parents, the configured default and its parents, then
-English. Missing keys return the key and log a warning; `web.i18n.strict` makes
-them validation errors. Translation values are text and are HTML-escaped.
-Selected status strings are serialized safely into the page for JavaScript.
+then `web.i18n.default_locale`. Lookup tries the selected locale and its parents,
+the configured default and its parents, then English. Missing keys return the key
+and are reported when `web.i18n.strict` is enabled, which turns them into
+validation errors at load time. Translation values are text and are
+HTML-escaped. Selected status strings are serialized safely into the page for
+JavaScript.
+
+The served locale set, the visible translations for each locale, and public site
+details are all resolved once per snapshot rather than per request, so a reload is
+what changes them.
 
 Templates and translations are loaded and validated in memory. Static overrides
 are streamed from private snapshot backing files, keeping their bytes and ETags
@@ -67,6 +80,7 @@ services:
 ```
 
 Each scalar web setting has a corresponding uppercase environment override, such
-as `WEB_NAME`, `WEB_ROOT`, or `WEB_WATCH_ENABLED`. `WEB_I18N_SUPPORTED_LOCALES`
-accepts a comma-separated list. `web.base_path` takes precedence over the legacy
-`pow.internal_prefix` setting when explicitly configured.
+as `WEB_NAME`, `WEB_ROOT`, or `WEB_WATCH_ENABLED`.
+`WEB_I18N_SUPPORTED_LOCALES` accepts a comma-separated list and, when set,
+restricts the served locales to it. `web.base_path` takes precedence over the
+legacy `pow.internal_prefix` setting when explicitly configured.

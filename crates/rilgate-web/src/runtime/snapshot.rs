@@ -1,7 +1,11 @@
 use crate::{
   assets::{AssetIndex, AssetMetadata},
   config::WebConfig,
-  i18n::{loader as i18n_loader, locale, store::TranslationStore},
+  i18n::{
+    loader as i18n_loader,
+    locale::{self, SupportedLocales},
+    store::TranslationStore,
+  },
   resources::embedded::EmbeddedWeb,
   resources::loader,
   templates::context::{PageInfo, PublicChallengeInfo, PublicRilgateInfo, TemplateContext},
@@ -11,12 +15,23 @@ use anyhow::{Context, Result, ensure};
 use minijinja::{Environment, context};
 use std::{collections::BTreeMap, sync::Arc};
 
+/// Translations the browser is handed for one locale.
+///
+/// Resolved per locale when the snapshot is built, because rendering a page
+/// previously rebuilt this map from every visible key on every request.
+type ClientTranslations = Arc<BTreeMap<String, String>>;
+
 pub struct WebSnapshot {
   pub generation: u64,
   pub config: WebConfig,
   pub templates: Environment<'static>,
   pub translations: Arc<TranslationStore>,
   pub assets: AssetIndex,
+  /// Locales this deployment serves, resolved once.
+  pub supported: SupportedLocales,
+  /// Public site details, derived from config once.
+  pub public: Arc<PublicRilgateInfo>,
+  client_i18n: BTreeMap<String, ClientTranslations>,
 }
 impl WebSnapshot {
   pub fn build(config: &WebConfig, generation: u64, overrides: bool) -> Result<Self> {
@@ -113,12 +128,18 @@ impl WebSnapshot {
         );
       }
     }
+    let supported = SupportedLocales::resolve(&config.i18n, translations.locales.keys())?;
+    let client_i18n = client_translations(&translations, supported.tags())?;
+    let public = Arc::new(PublicRilgateInfo::from(config));
     let snapshot = Self {
       generation,
       config: config.clone(),
       templates,
       translations,
       assets,
+      supported,
+      public,
+      client_i18n,
     };
     snapshot.validate()?;
     Ok(snapshot)
@@ -138,7 +159,7 @@ impl WebSnapshot {
       ..Default::default()
     };
     let mut public = TemplateContext {
-      rilgate: PublicRilgateInfo::from(&self.config),
+      rilgate: self.public.clone(),
       page: PageInfo {
         title: "Validation".into(),
         description: String::new(),
@@ -152,11 +173,11 @@ impl WebSnapshot {
       .map(|(name, _)| name.to_string())
       .collect::<Vec<_>>();
     for name in names {
-      for locale in &self.config.i18n.supported_locales {
+      for locale in self.supported.tags() {
         for (algorithm, difficulty) in [("fast", 1), ("randomx", 1000)] {
           public.challenge.algorithm = algorithm.into();
           public.challenge.difficulty = Some(difficulty);
-          self.render(&name, &public, &locale::normalize(locale)?)?;
+          self.render(&name, &public, locale)?;
         }
       }
     }
@@ -192,30 +213,58 @@ impl WebSnapshot {
   }
 
   pub fn render(&self, name: &str, public: &TemplateContext, locale: &str) -> Result<String> {
-    let mut client_i18n = BTreeMap::new();
-    for key in self
-      .translations
-      .locales
-      .get("en")
-      .into_iter()
-      .flat_map(|map| map.keys())
-      .filter(|key| {
-        key.starts_with("challenge.") || key.starts_with("pow.") || key.starts_with("common.")
-      })
-    {
-      client_i18n.insert(
-        key.clone(),
-        self.translations.translate(locale, key, &BTreeMap::new())?,
-      );
-    }
+    let client_i18n = match self.client_i18n.get(locale) {
+      Some(entries) => entries.clone(),
+      None => {
+        // Rendering is only ever asked for a served locale, all of which are
+        // precomputed. Resolving here keeps an unexpected tag renderable.
+        let mut resolved = client_translations(&self.translations, &[locale.to_string()])?;
+        resolved
+          .remove(locale)
+          .unwrap_or_else(|| Arc::new(BTreeMap::new()))
+      }
+    };
     let html = self
       .templates
       .get_template(name)?
       .render(context! {
-        rilgate => &public.rilgate, page => &public.page, challenge => &public.challenge,
-        locale => locale, client_i18n => client_i18n,
+        rilgate => &*public.rilgate, page => &public.page, challenge => &public.challenge,
+        locale => locale, client_i18n => &*client_i18n,
       })
       .with_context(|| format!("Rendering template {name} for locale {locale}"))?;
     Ok(html)
   }
+}
+
+/// Resolves the translations the browser is handed, for each served locale.
+///
+/// The visible key set is taken from the `en` map so every locale exposes the
+/// same keys, which is what lets a page rely on a key existing.
+fn client_translations(
+  translations: &TranslationStore,
+  locales: &[String],
+) -> Result<BTreeMap<String, ClientTranslations>> {
+  let keys = translations
+    .locales
+    .get("en")
+    .into_iter()
+    .flat_map(|map| map.keys())
+    .filter(|key| {
+      key.starts_with("challenge.") || key.starts_with("pow.") || key.starts_with("common.")
+    })
+    .cloned()
+    .collect::<Vec<String>>();
+
+  let mut resolved = BTreeMap::new();
+  for locale in locales {
+    let mut entries = BTreeMap::new();
+    for key in &keys {
+      entries.insert(
+        key.clone(),
+        translations.translate(locale, key, &BTreeMap::new())?,
+      );
+    }
+    resolved.insert(locale.clone(), Arc::new(entries));
+  }
+  Ok(resolved)
 }

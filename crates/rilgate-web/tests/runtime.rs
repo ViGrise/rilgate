@@ -1,9 +1,9 @@
 use rilgate_web::{
   WebConfig, WebManager,
-  i18n::locale,
+  i18n::locale::{self, SupportedLocales},
   resources::{embedded::EmbeddedWeb, seed},
   runtime::snapshot::WebSnapshot,
-  templates::context::{PageInfo, PublicChallengeInfo, PublicRilgateInfo, TemplateContext},
+  templates::context::{PageInfo, PublicChallengeInfo, TemplateContext},
 };
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -22,7 +22,7 @@ fn config(root: &Path) -> WebConfig {
 }
 fn public(snapshot: &WebSnapshot) -> TemplateContext {
   TemplateContext {
-    rilgate: PublicRilgateInfo::from(&snapshot.config),
+    rilgate: snapshot.public.clone(),
     page: PageInfo {
       title: "Checking your browser".into(),
       description: String::new(),
@@ -129,10 +129,7 @@ fn partial_translations_overlay_keys_and_fall_back_through_parent_and_default_lo
     r#"{"challenge.status.preparing":"Đang chuẩn bị"}"#,
   );
   let mut config = config(root.path());
-  config
-    .i18n
-    .supported_locales
-    .extend(["vi".into(), "vi-VN".into()]);
+  config.i18n.supported_locales = ["en".into(), "vi".into(), "vi-VN".into()].to_vec();
   let manager = WebManager::new(config).unwrap();
   let snapshot = manager.current();
   let html = render(&snapshot, "vi-VN");
@@ -154,29 +151,52 @@ fn partial_translations_overlay_keys_and_fall_back_through_parent_and_default_lo
 fn locale_negotiation_respects_priority_weights_normalization_and_exclusion() {
   let mut config = WebConfig::default().i18n;
   config.supported_locales = vec!["en".into(), "vi".into(), "zh-CN".into()];
+  // The declared list stands in for the translation files available here.
+  let supported = SupportedLocales::resolve(&config, &config.supported_locales.clone()).unwrap();
   assert_eq!(locale::normalize("zh-cn").unwrap(), "zh-CN");
   assert_eq!(locale::normalize("en-latn-us").unwrap(), "en-Latn-US");
   assert!(locale::normalize("../vi").is_err());
   assert_eq!(
-    locale::negotiate(&config, Some("zh-cn"), Some("vi"), Some("en")),
+    supported.negotiate(Some("zh-cn"), Some("vi"), Some("en")),
     "zh-CN"
   );
   assert_eq!(
-    locale::negotiate(&config, None, Some("vi-VN"), Some("zh-CN")),
+    supported.negotiate(None, Some("vi-VN"), Some("zh-CN")),
     "vi"
   );
   assert_eq!(
-    locale::negotiate(&config, None, None, Some("en;q=0.2, vi-VN;q=0.9")),
+    supported.negotiate(None, None, Some("en;q=0.2, vi-VN;q=0.9")),
     "vi"
   );
   assert_eq!(
-    locale::negotiate(&config, None, None, Some("vi;q=0,en;q=0.5")),
+    supported.negotiate(None, None, Some("vi;q=0,en;q=0.5")),
     "en"
   );
   assert_eq!(
-    locale::negotiate(&config, Some("invalid"), None, Some("vi;q=bad")),
+    supported.negotiate(Some("invalid"), None, Some("vi;q=bad")),
     "en"
   );
+}
+
+#[test]
+fn locales_are_derived_from_translation_files_when_none_are_declared() {
+  let mut config = WebConfig::default().i18n;
+  config.supported_locales = vec![];
+  let available = vec!["vi".to_string(), "en".to_string()];
+  let supported = SupportedLocales::resolve(&config, &available).unwrap();
+  assert_eq!(supported.tags(), ["en".to_string(), "vi".to_string()]);
+  assert_eq!(supported.negotiate(None, None, Some("vi")), "vi");
+  assert_eq!(supported.negotiate(None, None, Some("de")), "en");
+
+  // A declared list restricts what the files provide.
+  config.supported_locales = vec!["en".into()];
+  let supported = SupportedLocales::resolve(&config, &available).unwrap();
+  assert_eq!(supported.tags(), ["en".to_string()]);
+  assert_eq!(supported.negotiate(None, None, Some("vi")), "en");
+
+  // A default locale with no translations is a configuration error.
+  config.supported_locales = vec!["vi".into()];
+  assert!(SupportedLocales::resolve(&config, &available).is_err());
 }
 
 #[test]

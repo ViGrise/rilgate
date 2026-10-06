@@ -1,5 +1,6 @@
 use crate::config::WebConfig;
 use serde::Serialize;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicRilgateInfo {
@@ -54,7 +55,8 @@ impl Default for PublicChallengeInfo {
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct TemplateContext {
-  pub rilgate: PublicRilgateInfo,
+  /// Shared, because it is derived from configuration once per snapshot.
+  pub rilgate: Arc<PublicRilgateInfo>,
   pub page: PageInfo,
   pub challenge: PublicChallengeInfo,
 }

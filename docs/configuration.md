@@ -47,7 +47,6 @@ web:
     fuel: 50000
   i18n:
     default_locale: en
-    supported_locales: [en]
     strict: false
     language_cookie_name: "rilgate_lang"
 

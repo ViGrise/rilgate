@@ -55,17 +55,12 @@ impl WebConfig {
       valid_cookie_name(&self.i18n.language_cookie_name),
       "web.i18n.language_cookie_name must be an HTTP token"
     );
-    let default = crate::i18n::locale::normalize(&self.i18n.default_locale)?;
-    let locales = self
-      .i18n
-      .supported_locales
-      .iter()
-      .map(|s| crate::i18n::locale::normalize(s))
-      .collect::<Result<Vec<_>>>()?;
-    ensure!(
-      locales.contains(&default),
-      "web.i18n.supported_locales must include the default locale"
-    );
+    crate::i18n::locale::normalize(&self.i18n.default_locale)?;
+    // Whether the default locale is actually served depends on the translation
+    // files, so WebSnapshot::build checks that once the loaded set is known.
+    for tag in &self.i18n.supported_locales {
+      crate::i18n::locale::normalize(tag)?;
+    }
     Ok(())
   }
 }

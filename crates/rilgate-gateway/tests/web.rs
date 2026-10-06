@@ -24,7 +24,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
   config.web.root = Some(root.path().into());
   config.web.stylesheet_path = "css/shield.css".into();
   config.web.i18n.language_cookie_name = "site_lang".into();
-  config.web.i18n.supported_locales.push("vi".into());
+  // Vietnamese needs no declaration: i18n/vi.json is enough to serve it.
   config.web.base_path = "/shield".into();
   config.pow.auth_cookie_name = "site_access".into();
   let router = app::router(cfg).await.unwrap();

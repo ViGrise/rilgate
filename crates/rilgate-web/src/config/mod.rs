@@ -85,6 +85,10 @@ impl Default for TemplateConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct I18nConfig {
   pub default_locale: String,
+  /// Locales to offer, restricting what the translation files provide.
+  ///
+  /// Empty means every locale that has a translation file, so adding
+  /// `web/i18n/vi.json` is enough to offer Vietnamese.
   pub supported_locales: Vec<String>,
   pub strict: bool,
   pub language_cookie_name: String,
@@ -93,7 +97,7 @@ impl Default for I18nConfig {
   fn default() -> Self {
     Self {
       default_locale: "en".into(),
-      supported_locales: vec!["en".into()],
+      supported_locales: vec![],
       strict: false,
       language_cookie_name: "rilgate_lang".into(),
     }

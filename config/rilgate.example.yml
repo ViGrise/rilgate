@@ -19,8 +19,15 @@ web:
     fuel: 50000
   i18n:
     default_locale: en
-    supported_locales:
-      - en
+
+    # Locales are discovered from the files in web/i18n, so adding i18n/vi.json
+    # is all it takes to offer Vietnamese. Declare supported_locales only to
+    # restrict that set to a subset of what has translations; the default
+    # locale must be part of it.
+    # supported_locales:
+    #   - en
+    #   - vi
+
     strict: false
     language_cookie_name: "rilgate_lang"
 
