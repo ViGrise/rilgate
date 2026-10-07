@@ -1,7 +1,8 @@
 use super::messages::{self, ClientWsMessage, ServerWsMessage};
 use crate::runtime::state::AppState;
 use anyhow::{Result, anyhow};
-use axum::extract::ws::{Message, WebSocket};
+use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
+type WebSocket = WebSocketStream<tokio::io::DuplexStream>;
 use futures_util::{SinkExt, StreamExt};
 use rilgate_pool::{StratumEvent, StratumSession};
 use rilgate_pow::target::hash_meets_difficulty;

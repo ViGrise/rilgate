@@ -7,39 +7,77 @@ use rilgate_core::{
 };
 use rilgate_protocol::StratumJob;
 use rilgate_stratum::{StratumConfig, StratumSession};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
+use std::{
+  collections::HashMap,
+  sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+  },
+  time::Duration,
+};
+use tokio::{
+  sync::{OwnedSemaphorePermit, Semaphore, watch},
+  time::Instant,
+};
 
-/// A job request travelling to the task that owns a pooled session.
-type JobRequest = oneshot::Sender<Result<StratumJob>>;
+struct SessionUsage {
+  last_requested: Instant,
+  active: bool,
+}
 
-/// Handle to a session owned by a background task.
-///
-/// The session itself is owned by that task so it can keep draining job
-/// notifications while idle, which is what keeps the cached job current. Dropping
-/// the handle closes the request channel and ends the task.
+struct SessionLifetime(Arc<Mutex<SessionUsage>>);
+
+impl Drop for SessionLifetime {
+  fn drop(&mut self) {
+    self
+      .0
+      .lock()
+      .unwrap_or_else(|error| error.into_inner())
+      .active = false;
+  }
+}
+
 #[derive(Clone)]
 struct PooledSession {
-  difficulty: u64,
-  jobs: mpsc::Sender<JobRequest>,
+  jobs: watch::Receiver<Option<StratumJob>>,
+  usage: Arc<Mutex<SessionUsage>>,
 }
 
 impl PooledSession {
-  /// Asks the owning task for its current job.
-  ///
-  /// Fails when the task has exited, which means the connection is gone and the
-  /// caller must connect a replacement.
-  async fn current_job(&self) -> Result<StratumJob> {
-    let (reply, answered) = oneshot::channel();
-    self
-      .jobs
-      .send(reply)
-      .await
-      .map_err(|_| anyhow::anyhow!("pooled P2Pool session is no longer running"))?;
-    answered
-      .await
-      .map_err(|_| anyhow::anyhow!("pooled P2Pool session did not answer"))?
+  fn is_closed(&self) -> bool {
+    self.jobs.has_changed().is_err()
+      || !self
+        .usage
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .active
+  }
+
+  fn touch(&self) -> bool {
+    let mut usage = self.usage.lock().unwrap_or_else(|error| error.into_inner());
+    if !usage.active {
+      return false;
+    }
+    usage.last_requested = Instant::now();
+    true
+  }
+
+  async fn current_job(mut self) -> Result<StratumJob> {
+    loop {
+      if self.is_closed() {
+        return Err(anyhow::anyhow!(
+          "pooled P2Pool session is no longer running"
+        ));
+      }
+      if let Some(job) = self.jobs.borrow_and_update().clone() {
+        return Ok(job);
+      }
+      self
+        .jobs
+        .changed()
+        .await
+        .map_err(|_| anyhow::anyhow!("pooled P2Pool session did not initialize"))?;
+    }
   }
 }
 
@@ -47,11 +85,13 @@ pub struct P2PoolProvider {
   config: P2PoolConfig,
   slots: Arc<Semaphore>,
   job_slots: Arc<Semaphore>,
-  idle: Mutex<Vec<PooledSession>>,
+  sessions: Mutex<HashMap<u64, PooledSession>>,
+  started: Instant,
+  failures: AtomicU64,
+  capacity_failures: AtomicU64,
+  last_warning_ms: AtomicU64,
 }
 
-/// Upper bound on connection attempts for one `fetch`, so a pool that keeps
-/// handing back dead sessions cannot spin.
 const CONNECT_ATTEMPTS: usize = 2;
 
 impl P2PoolProvider {
@@ -60,7 +100,11 @@ impl P2PoolProvider {
     Ok(Self {
       job_slots: Arc::new(Semaphore::new(config.max_job_sessions)),
       slots: Arc::new(Semaphore::new(config.max_sessions)),
-      idle: Mutex::new(Vec::new()),
+      sessions: Mutex::new(HashMap::new()),
+      started: Instant::now(),
+      failures: AtomicU64::new(0),
+      capacity_failures: AtomicU64::new(0),
+      last_warning_ms: AtomicU64::new(0),
       config,
     })
   }
@@ -73,44 +117,51 @@ impl P2PoolProvider {
       .map_err(|_| CapacityExceeded.into())
   }
 
-  /// Reuses an idle session logged in at `difficulty`, if one exists.
-  async fn take_idle(&self, difficulty: u64) -> Option<PooledSession> {
-    let mut idle = self.idle.lock().await;
-    idle.retain(|session| !session.jobs.is_closed());
-    let index = idle
-      .iter()
-      .position(|session| session.difficulty == difficulty)?;
-    Some(idle.swap_remove(index))
+  /// Cumulative failed fetches, including session capacity rejections.
+  pub fn failures(&self) -> (u64, u64) {
+    (
+      self.failures.load(Ordering::Relaxed),
+      self.capacity_failures.load(Ordering::Relaxed),
+    )
   }
 
-  async fn remember(&self, session: PooledSession) {
-    self.idle.lock().await.push(session);
-  }
-
-  /// Opens a session and hands ownership to a background task.
-  ///
-  /// Permits are taken here rather than per request, so a pooled session keeps
-  /// its slot while it waits to be reused.
-  async fn open(&self, difficulty: u64) -> Result<PooledSession> {
+  fn session(&self, difficulty: u64) -> Result<PooledSession> {
+    let mut sessions = self
+      .sessions
+      .lock()
+      .unwrap_or_else(|error| error.into_inner());
+    sessions.retain(|_, session| !session.is_closed());
+    if let Some(session) = sessions.get(&difficulty)
+      && session.touch()
+    {
+      return Ok(session.clone());
+    }
     let job_permit = self
       .job_slots
       .clone()
       .try_acquire_owned()
       .map_err(|_| CapacityExceeded)?;
     let slot = self.acquire_slot()?;
-
-    let (jobs, requests) = mpsc::channel(1);
-    let session = PooledSession { difficulty, jobs };
-
+    let (jobs, receiver) = watch::channel(None);
+    let usage = Arc::new(Mutex::new(SessionUsage {
+      last_requested: Instant::now(),
+      active: true,
+    }));
+    let session = PooledSession {
+      jobs: receiver,
+      usage: usage.clone(),
+    };
+    // Publishing the handle before connecting coalesces concurrent requests for one difficulty.
     tokio::spawn(run_session(
       self.config.stratum(),
       difficulty,
-      requests,
+      jobs,
+      SessionLifetime(usage),
       job_permit,
       slot,
       Duration::from_secs(self.config.job_session_idle_seconds),
     ));
-
+    sessions.insert(difficulty, session.clone());
     Ok(session)
   }
 
@@ -118,98 +169,102 @@ impl P2PoolProvider {
     if self.config.max_job_sessions == 0 {
       return self.open_ephemeral(difficulty).await;
     }
-
     let mut last_error = None;
     for _ in 0..CONNECT_ATTEMPTS {
-      let session = match self.take_idle(difficulty).await {
-        Some(session) => session,
-        None => match self.open(difficulty).await {
-          Ok(session) => session,
-          Err(error) => return Err(error),
-        },
-      };
-
-      match session.current_job().await {
-        Ok(job) => {
-          self.remember(session).await;
-          return Ok(job);
-        }
-        Err(error) => {
-          // Either the owning task has already exited, or it is still waiting on
-          // a request nobody will collect. Dropping the handle at the end of this
-          // arm covers both: a closed channel ends the task, which drops its
-          // permits.
-          tracing::warn!(?error, "Discarding unusable pooled P2Pool session");
-          last_error = Some(error);
-        }
+      match self.session(difficulty)?.current_job().await {
+        Ok(job) => return Ok(job),
+        Err(error) => last_error = Some(error),
       }
     }
-
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("unable to obtain a P2Pool job")))
   }
 
-  /// Fetches one job within the shared session budget without retaining a connection.
   async fn open_ephemeral(&self, difficulty: u64) -> Result<StratumJob> {
     let _slot = self.acquire_slot()?;
     let session = StratumSession::connect(&self.config.stratum(), difficulty).await?;
     Ok(session.current_job)
   }
+
+  fn record_failure(&self, error: &anyhow::Error) {
+    self.failures.fetch_add(1, Ordering::Relaxed);
+    if error.is::<CapacityExceeded>() {
+      self.capacity_failures.fetch_add(1, Ordering::Relaxed);
+    }
+    let now = self.started.elapsed().as_millis() as u64 + 1;
+    let last = self.last_warning_ms.load(Ordering::Relaxed);
+    if (last == 0 || now.saturating_sub(last) >= 10_000)
+      && self
+        .last_warning_ms
+        .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    {
+      let (failures, capacity_failures) = self.failures();
+      tracing::warn!(
+        ?error,
+        failures,
+        capacity_failures,
+        "P2Pool challenge unavailable"
+      );
+    }
+  }
 }
 
-/// Owns one pooled session until it is idle for too long or its connection dies.
 async fn run_session(
   config: StratumConfig,
   difficulty: u64,
-  mut requests: mpsc::Receiver<JobRequest>,
+  jobs: watch::Sender<Option<StratumJob>>,
+  lifetime: SessionLifetime,
   _job_permit: OwnedSemaphorePermit,
   _slot: OwnedSemaphorePermit,
   idle_timeout: Duration,
 ) {
-  let mut session = match StratumSession::connect(&config, difficulty).await {
+  let connected = tokio::select! {
+    result = StratumSession::connect(&config, difficulty) => result,
+    _ = jobs.closed() => return,
+  };
+  let mut session = match connected {
     Ok(session) => session,
     Err(error) => {
-      tracing::warn!(?error, "Unable to open pooled P2Pool session");
+      tracing::debug!(?error, "Unable to open pooled P2Pool session");
       return;
     }
   };
-
-  let mut idle_deadline = tokio::time::Instant::now() + idle_timeout;
-
+  // A connection becomes idle only after its initial job is available.
+  lifetime
+    .0
+    .lock()
+    .unwrap_or_else(|error| error.into_inner())
+    .last_requested = Instant::now();
+  jobs.send_replace(Some(session.current_job.clone()));
   loop {
+    let deadline = lifetime
+      .0
+      .lock()
+      .unwrap_or_else(|error| error.into_inner())
+      .last_requested
+      + idle_timeout;
     tokio::select! {
-      _ = tokio::time::sleep_until(idle_deadline) => {
-        tracing::debug!("Closing idle pooled P2Pool session");
-        return;
-      }
-
-      request = requests.recv() => {
-        let Some(reply) = request else {
-          // Every handle was dropped, so the provider is shutting down.
-          return;
-        };
-
-        // Apply any job rotation that arrived while this session sat idle, so
-        // the caller receives the job P2Pool currently considers valid. A zero
-        // timeout polls read_event once, which drains only already-buffered
-        // notifications and leaves the connection untouched.
-        while let Ok(Ok(_)) =
-          tokio::time::timeout(Duration::ZERO, session.read_event()).await
-        {}
-
-        let job = session.current_job.clone();
-        if reply.send(Ok(job)).is_err() {
-          // The caller gave up waiting.
+      _ = jobs.closed() => return,
+      _ = tokio::time::sleep_until(deadline) => {
+        let mut usage = lifetime.0.lock().unwrap_or_else(|error| error.into_inner());
+        if Instant::now() >= usage.last_requested + idle_timeout {
+          usage.active = false;
           return;
         }
-
-        idle_deadline = tokio::time::Instant::now() + idle_timeout;
       }
-
       event = session.read_event() => {
         if event.is_err() {
-          tracing::warn!("Pooled P2Pool session connection lost");
+          tracing::debug!("Pooled P2Pool session connection lost");
           return;
         }
+        jobs.send_if_modified(|current| {
+          if current.as_ref() == Some(&session.current_job) {
+            false
+          } else {
+            *current = Some(session.current_job.clone());
+            true
+          }
+        });
       }
     }
   }
@@ -220,7 +275,7 @@ impl WorkProvider for P2PoolProvider {
   fn fetch(&self, difficulty: u64) -> BoxFuture<'_, StratumJob> {
     Box::pin(async move {
       self.job(difficulty).await.map_err(|error| {
-        tracing::warn!(?error, "P2Pool challenge unavailable");
+        self.record_failure(&error);
         PowBackendUnavailable.into()
       })
     })

@@ -167,7 +167,8 @@ and nginx integration.
 ## Project status
 
 Rilgate is experimental. Fast and RandomX are implemented; GhostRider and BLAKE3
-are potential extensions. Upstream WebSocket proxying, distributed rate limiting,
+are potential extensions. HTTP serving and upstream forwarding use Pingora, including
+application WebSocket proxying. Distributed rate limiting,
 key rotation and metrics exporters are not implemented.
 
 Local proofs and access tokens are reusable within their signed lifetime.

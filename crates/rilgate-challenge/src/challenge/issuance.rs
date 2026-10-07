@@ -1,7 +1,6 @@
 use super::work;
 use crate::{ChallengeService, tokens::validation::validate_lifetime};
 use anyhow::{Context, Result, ensure};
-use rilgate_crypto::token::{self as crypto, TokenPurpose};
 use rilgate_pow::{Proof, WorkRequest};
 use rilgate_protocol::{ChallengeResponse, claims::ChallengeClaims};
 impl ChallengeService {
@@ -24,11 +23,7 @@ impl ChallengeService {
       "Work algorithm does not match presentation"
     );
     let claims = work::claims(&prepared, presentation.host, presentation.enforce);
-    let token = crypto::sign_json(
-      &claims,
-      self.cfg.signing_key.expose().as_bytes(),
-      TokenPurpose::Challenge,
-    )?;
+    let token = self.tokens.challenge.sign_json(&claims)?;
     Ok(work::response(prepared, token))
   }
   pub async fn verify_challenge(
@@ -37,12 +32,11 @@ impl ChallengeService {
     nonce: &str,
     request_host: &str,
   ) -> Result<String> {
-    let claims: ChallengeClaims = crypto::verify_json(
-      challenge_token,
-      self.cfg.signing_key.expose().as_bytes(),
-      TokenPurpose::Challenge,
-    )
-    .context("Challenge signature validation failed")?;
+    let claims: ChallengeClaims = self
+      .tokens
+      .challenge
+      .verify_json(challenge_token)
+      .context("Challenge signature validation failed")?;
     let metadata = claims.metadata();
     let backend = self.algorithms.get(metadata.algorithm)?;
     validate_lifetime(

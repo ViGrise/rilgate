@@ -8,6 +8,14 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+http.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http-body-util.workspace = true
+http-body.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower.workspace = true
 rilgate-config.workspace = true
 rilgate-gateway.workspace = true
 rilgate-challenge.workspace = true

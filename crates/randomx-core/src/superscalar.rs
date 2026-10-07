@@ -783,3 +783,107 @@ pub fn execute_superscalar(registers: &mut [u64; 8], program: &SuperscalarProgra
     }
   }
 }
+
+#[derive(Debug)]
+pub(crate) struct CompiledSuperscalarProgram {
+  instructions: Vec<CompiledInstruction>,
+  pub(crate) address_register: usize,
+}
+
+#[derive(Debug)]
+struct CompiledInstruction {
+  opcode: SuperscalarType,
+  dst: u8,
+  src: u8,
+  operand: u64,
+}
+
+impl CompiledSuperscalarProgram {
+  pub(crate) fn new(program: &SuperscalarProgram) -> Self {
+    let instructions = program
+      .instructions
+      .iter()
+      .map(|instruction| {
+        let (opcode, operand) = match instruction.opcode {
+          0 => (SuperscalarType::ISubR, 0),
+          1 => (SuperscalarType::IXorR, 0),
+          2 => (SuperscalarType::IAddRs, instruction.mod_shift() as u64),
+          3 => (SuperscalarType::IMulR, 0),
+          4 => (SuperscalarType::IRorC, (instruction.imm32 & 63) as u64),
+          5 | 7 | 9 => (SuperscalarType::IAddC7, sign_extend_u32(instruction.imm32)),
+          6 | 8 | 10 => (SuperscalarType::IXorC7, sign_extend_u32(instruction.imm32)),
+          11 => (SuperscalarType::IMulhR, 0),
+          12 => (SuperscalarType::ISMulhR, 0),
+          13 => (SuperscalarType::IMulRcp, reciprocal(instruction.imm32)),
+          opcode => unreachable!("invalid superscalar opcode {opcode}"),
+        };
+        CompiledInstruction {
+          opcode,
+          dst: instruction.dst,
+          src: instruction.src,
+          operand,
+        }
+      })
+      .collect();
+    Self {
+      instructions,
+      address_register: program.address_register,
+    }
+  }
+
+  pub(crate) fn execute(&self, registers: &mut [u64; 8]) {
+    for instruction in &self.instructions {
+      let dst = (instruction.dst & 7) as usize;
+      let src = (instruction.src & 7) as usize;
+      // Seed-bound operands, including reciprocals, are resolved once when the cache is built.
+      match instruction.opcode {
+        SuperscalarType::ISubR => registers[dst] = registers[dst].wrapping_sub(registers[src]),
+        SuperscalarType::IXorR => registers[dst] ^= registers[src],
+        SuperscalarType::IAddRs => {
+          registers[dst] = registers[dst].wrapping_add(registers[src] << instruction.operand)
+        }
+        SuperscalarType::IMulR => registers[dst] = registers[dst].wrapping_mul(registers[src]),
+        SuperscalarType::IRorC => {
+          registers[dst] = registers[dst].rotate_right(instruction.operand as u32)
+        }
+        SuperscalarType::IAddC7 => {
+          registers[dst] = registers[dst].wrapping_add(instruction.operand)
+        }
+        SuperscalarType::IXorC7 => registers[dst] ^= instruction.operand,
+        SuperscalarType::IMulhR => registers[dst] = mulh(registers[dst], registers[src]),
+        SuperscalarType::ISMulhR => registers[dst] = smulh(registers[dst], registers[src]),
+        SuperscalarType::IMulRcp => {
+          registers[dst] = registers[dst].wrapping_mul(instruction.operand)
+        }
+        _ => unreachable!("invalid compiled superscalar opcode"),
+      }
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn compiled_programs_match_interpreted_execution() {
+    for seed in [
+      b"test key 000".as_slice(),
+      b"test key 001",
+      b"rilgate dataset",
+    ] {
+      let mut generator = Blake2Generator::new(seed, 0);
+      for _ in 0..16 {
+        let program = generate_superscalar(&mut generator);
+        let compiled = CompiledSuperscalarProgram::new(&program);
+        for input in [0u64, 1, u64::MAX, 0x1234_5678_abcd_ef90] {
+          let mut interpreted = core::array::from_fn(|index| input.wrapping_mul(index as u64 + 1));
+          let mut actual = interpreted;
+          execute_superscalar(&mut interpreted, &program);
+          compiled.execute(&mut actual);
+          assert_eq!(actual, interpreted);
+        }
+      }
+    }
+  }
+}

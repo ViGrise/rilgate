@@ -12,12 +12,7 @@
 </main>
 {% endblock %}
 {% block scripts %}
-<script type="application/json" id="pow-i18n">{{ client_i18n | tojson }}</script>
-<script>
-  window.POW_INTERNAL_PREFIX = {{ rilgate.base_path | tojson }};
-  window.POW_SOLVER_MODULE_URL = {{ challenge.solver_module_url | tojson }};
-  window.POW_PRESENTATION_TOKEN = {{ challenge.token | tojson }};
-  window.POW_ALGORITHM = {{ challenge.algorithm | tojson }};
-</script>
+<script type="application/json" id="pow-i18n">{{ client_i18n_json }}</script>
+{{ challenge_bootstrap }}
 <script type="module" src="{{ rilgate.static_url }}/js/challenge.js"></script>
 {% endblock %}

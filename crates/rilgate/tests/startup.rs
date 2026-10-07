@@ -8,7 +8,10 @@ use tower::ServiceExt;
 async fn application_composes_backends_and_serves_configured_namespace() {
   let config = rilgate_test_utils::config::config();
   let path = format!("{}/api/client-config", config.web.base_path);
-  let router = rilgate::app::router(config).await.unwrap();
+  let router =
+    rilgate_test_utils::gateway::TestGateway::start(rilgate::app::build(config).await.unwrap())
+      .await
+      .unwrap();
   let response = router
     .oneshot(
       Request::builder()

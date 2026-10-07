@@ -10,13 +10,14 @@ use crate::{
     ARGON_ITERATIONS, ARGON_LANES, ARGON_MEMORY, ARGON_SALT, CACHE_ACCESSES, CACHE_LINE_SIZE,
     CACHE_SIZE, DATASET_ADD, DATASET_MUL,
   },
-  superscalar::{SuperscalarProgram, execute_superscalar, generate_superscalar},
+  superscalar::{CompiledSuperscalarProgram, SuperscalarProgram, generate_superscalar},
 };
 
 #[derive(Debug)]
 pub struct RandomXCache {
   memory: Vec<Block>,
   programs: Vec<SuperscalarProgram>,
+  compiled_programs: Vec<CompiledSuperscalarProgram>,
   #[cfg(target_arch = "wasm32")]
   dataset_function: Option<unsafe extern "C" fn(u64, *mut u64)>,
   #[cfg(target_arch = "wasm32")]
@@ -45,8 +46,13 @@ impl RandomXCache {
       programs.push(generate_superscalar(&mut generator));
     }
 
+    let compiled_programs = programs
+      .iter()
+      .map(CompiledSuperscalarProgram::new)
+      .collect();
     Ok(Self {
       memory,
+      compiled_programs,
       programs,
       #[cfg(target_arch = "wasm32")]
       dataset_function: None,
@@ -153,12 +159,12 @@ impl RandomXCache {
 
     let mut register_value = item_number;
 
-    for program in &self.programs {
+    for program in &self.compiled_programs {
       let line_mask = CACHE_SIZE / CACHE_LINE_SIZE - 1;
       let line_index = register_value as usize & line_mask;
 
       let mix = self.cache_line(line_index);
-      execute_superscalar(&mut registers, program);
+      program.execute(&mut registers);
 
       for i in 0..8 {
         registers[i] ^= mix[i];

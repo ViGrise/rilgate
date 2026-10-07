@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use axum::http::{HeaderMap, HeaderValue};
+use http::{HeaderMap, HeaderValue};
 use rilgate_challenge::ChallengeService;
 use rilgate_config::{Config, Environment};
 pub fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -21,6 +21,14 @@ pub fn auth_cookie_header(
   host: &str,
 ) -> Result<HeaderValue> {
   let claims = service.verify_auth_token(token, host)?;
+  issued_cookie_header(cfg, token, claims.expires_at)
+}
+
+pub(crate) fn issued_cookie_header(
+  cfg: &Config,
+  token: &str,
+  expires_at: i64,
+) -> Result<HeaderValue> {
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)?
     .as_secs() as i64;
@@ -32,7 +40,7 @@ pub fn auth_cookie_header(
   HeaderValue::from_str(&format!(
     "{}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
     cfg.pow.auth_cookie_name,
-    (claims.expires_at - now).max(0),
+    (expires_at - now).max(0),
     secure
   ))
   .context("Unable to build authentication cookie")

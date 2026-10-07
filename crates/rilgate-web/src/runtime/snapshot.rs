@@ -1,3 +1,4 @@
+use super::shell::{self, BOOTSTRAP_SLOT, ChallengeShell};
 use crate::{
   assets::{AssetIndex, AssetMetadata},
   config::WebConfig,
@@ -17,8 +18,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 /// Translations the browser is handed for one locale.
 ///
-/// Resolved per locale when the snapshot is built, because rendering a page
-/// previously rebuilt this map from every visible key on every request.
+/// Resolved per locale when the snapshot is built, so rendering reuses the same visible key set.
 type ClientTranslations = Arc<BTreeMap<String, String>>;
 
 pub struct WebSnapshot {
@@ -32,6 +32,8 @@ pub struct WebSnapshot {
   /// Public site details, derived from config once.
   pub public: Arc<PublicRilgateInfo>,
   client_i18n: BTreeMap<String, ClientTranslations>,
+  client_i18n_json: BTreeMap<String, minijinja::Value>,
+  challenge_shells: BTreeMap<String, ChallengeShell>,
 }
 impl WebSnapshot {
   pub fn build(config: &WebConfig, generation: u64, overrides: bool) -> Result<Self> {
@@ -51,6 +53,7 @@ impl WebSnapshot {
       })
       .collect::<AssetIndex>();
     let mut custom_i18n = BTreeMap::new();
+    let mut custom_templates = false;
     if !assets.contains_key(&config.stylesheet_path) {
       assets.insert(
         config.stylesheet_path.clone(),
@@ -74,7 +77,9 @@ impl WebSnapshot {
             AssetMetadata::file(&root, canonical, path)?,
           );
         } else if name.starts_with("templates/") {
-          sources.insert(name.clone(), loader::read_checked(&root, path)?);
+          let bytes = loader::read_checked(&root, path)?;
+          custom_templates |= sources.get(name) != Some(&bytes);
+          sources.insert(name.clone(), bytes);
         } else if name.starts_with("i18n/") {
           custom_i18n.insert(name.clone(), loader::read_checked(&root, path)?);
         }
@@ -130,8 +135,17 @@ impl WebSnapshot {
     }
     let supported = SupportedLocales::resolve(&config.i18n, translations.locales.keys())?;
     let client_i18n = client_translations(&translations, supported.tags())?;
+    let client_i18n_json = client_i18n
+      .iter()
+      .map(|(locale, entries)| {
+        Ok((
+          locale.clone(),
+          minijinja::Value::from_safe_string(shell::script_json(&**entries)?),
+        ))
+      })
+      .collect::<Result<_>>()?;
     let public = Arc::new(PublicRilgateInfo::from(config));
-    let snapshot = Self {
+    let mut snapshot = Self {
       generation,
       config: config.clone(),
       templates,
@@ -140,8 +154,24 @@ impl WebSnapshot {
       supported,
       public,
       client_i18n,
+      client_i18n_json,
+      challenge_shells: BTreeMap::new(),
     };
     snapshot.validate()?;
+    if !custom_templates {
+      for locale in snapshot.supported.tags() {
+        let public = snapshot.challenge_context(PublicChallengeInfo::default(), locale)?;
+        let html = snapshot.render_with_bootstrap(
+          "pages/challenge.html",
+          &public,
+          locale,
+          BOOTSTRAP_SLOT.into(),
+        )?;
+        snapshot
+          .challenge_shells
+          .insert(locale.clone(), ChallengeShell::new(html)?);
+      }
+    }
     Ok(snapshot)
   }
 
@@ -212,7 +242,51 @@ impl WebSnapshot {
     Ok(())
   }
 
+  fn challenge_context(
+    &self,
+    challenge: PublicChallengeInfo,
+    locale: &str,
+  ) -> Result<TemplateContext> {
+    Ok(TemplateContext {
+      rilgate: self.public.clone(),
+      page: PageInfo {
+        title: self
+          .translations
+          .translate(locale, "challenge.title", &BTreeMap::new())?,
+        description: self.translations.translate(
+          locale,
+          "challenge.description",
+          &BTreeMap::new(),
+        )?,
+      },
+      challenge,
+    })
+  }
+
+  pub fn render_challenge(&self, challenge: &PublicChallengeInfo, locale: &str) -> Result<String> {
+    if let Some(shell) = self.challenge_shells.get(locale) {
+      return shell.render(&self.public.base_path, challenge);
+    }
+    let public = self.challenge_context(challenge.clone(), locale)?;
+    self.render("pages/challenge.html", &public, locale)
+  }
+
   pub fn render(&self, name: &str, public: &TemplateContext, locale: &str) -> Result<String> {
+    self.render_with_bootstrap(
+      name,
+      public,
+      locale,
+      shell::bootstrap(&public.rilgate.base_path, &public.challenge)?,
+    )
+  }
+
+  fn render_with_bootstrap(
+    &self,
+    name: &str,
+    public: &TemplateContext,
+    locale: &str,
+    bootstrap: String,
+  ) -> Result<String> {
     let client_i18n = match self.client_i18n.get(locale) {
       Some(entries) => entries.clone(),
       None => {
@@ -224,12 +298,17 @@ impl WebSnapshot {
           .unwrap_or_else(|| Arc::new(BTreeMap::new()))
       }
     };
+    let client_i18n_json = match self.client_i18n_json.get(locale) {
+      Some(json) => json.clone(),
+      None => minijinja::Value::from_safe_string(shell::script_json(&*client_i18n)?),
+    };
     let html = self
       .templates
       .get_template(name)?
       .render(context! {
         rilgate => &*public.rilgate, page => &public.page, challenge => &public.challenge,
         locale => locale, client_i18n => &*client_i18n,
+        client_i18n_json => client_i18n_json, challenge_bootstrap => minijinja::Value::from_safe_string(bootstrap),
       })
       .with_context(|| format!("Rendering template {name} for locale {locale}"))?;
     Ok(html)

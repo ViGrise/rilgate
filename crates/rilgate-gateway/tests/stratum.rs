@@ -3,7 +3,6 @@ use rilgate_test_utils::gateway as app;
 use rilgate_test_utils::gateway::service as make_service;
 mod common;
 
-use axum::response::IntoResponse;
 use axum::{
   body::Body,
   http::{Request, StatusCode},
@@ -73,9 +72,12 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
   let presentation = service
     .issue_presentation(host.clone(), "/protected".into(), &decision)
     .unwrap();
-  let router = app::router(cfg.clone()).await.unwrap();
+  let gateway = app::build(cfg.clone()).await.unwrap();
   let server = tokio::spawn(async move {
-    axum::serve(listener, router).await.unwrap();
+    gateway
+      .serve(listener, std::future::pending())
+      .await
+      .unwrap();
   });
   let url = format!(
     "ws://{host}{}/api/ws?presentation_token={presentation}",

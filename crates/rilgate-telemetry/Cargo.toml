@@ -6,6 +6,5 @@ license.workspace = true
 publish = false
 
 [dependencies]
-tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

@@ -7,6 +7,8 @@ pub struct AppState {
   pub cfg: Config,
   pub pow: Arc<ChallengeService>,
   pub pool: Arc<rilgate_pool::P2PoolProvider>,
+  pub shutdown: tokio_util::sync::CancellationToken,
+  pub limiter: Arc<crate::transport::rate_limit::RateLimiter>,
   pub proxy: Arc<ProxyService>,
   pub web: Arc<rilgate_web::WebManager>,
   pub web_runtime: Arc<rilgate_web::runtime::watcher::RuntimeHandle>,

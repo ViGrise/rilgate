@@ -1,8 +1,5 @@
-use axum::{
-  Json,
-  http::StatusCode,
-  response::{IntoResponse, Response},
-};
+use super::response::{Response, json};
+use http::StatusCode;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -41,8 +38,8 @@ struct ApiErrorResponse {
   message: String,
 }
 
-impl IntoResponse for ApiError {
-  fn into_response(self) -> Response {
+impl ApiError {
+  pub fn into_response(self) -> Response {
     let status = match self {
       Self::InvalidRequest(_) => StatusCode::BAD_REQUEST,
       Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
@@ -63,17 +60,16 @@ impl IntoResponse for ApiError {
     } else {
       None
     };
-    let mut response = (
+    let mut response = json(
       status,
-      Json(ApiErrorResponse {
+      &ApiErrorResponse {
         status: status.as_u16(),
         message: self.to_string(),
-      }),
-    )
-      .into_response();
+      },
+    );
     if let Some(seconds) = retry_after {
       response.headers_mut().insert(
-        axum::http::header::RETRY_AFTER,
+        http::header::RETRY_AFTER,
         seconds
           .to_string()
           .parse()

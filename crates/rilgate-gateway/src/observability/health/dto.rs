@@ -4,6 +4,7 @@ use serde::Serialize;
 pub struct HealthResponse {
   pub status: &'static str,
   pub web: WebHealth,
+  pub pool: PoolHealth,
 }
 #[derive(Serialize)]
 pub struct WebHealth {
@@ -15,4 +16,10 @@ pub struct WebHealth {
   pub watch_enabled: bool,
   pub reload_total: u64,
   pub reload_failures_total: u64,
+}
+
+#[derive(Serialize)]
+pub struct PoolHealth {
+  pub fetch_failures_total: u64,
+  pub capacity_failures_total: u64,
 }

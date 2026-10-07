@@ -46,6 +46,11 @@ protected application.
 
 ## Reverse proxy
 
+Pingora serves API endpoints, static assets, proof WebSockets, challenge pages,
+and application forwarding on one listener. No internal HTTP service or Unix
+socket is required. Plaintext HTTP/1.1 and HTTP/2 prior knowledge are supported;
+public TLS can continue to terminate at the deployment reverse proxy.
+
 Configure the protected application:
 
 ```yaml
@@ -108,9 +113,17 @@ For a `CHALLENGE` policy decision, unauthenticated `GET`/`HEAD` requests receive
 the challenge page in-place. All other methods, including `POST`, `PUT`, and
 `OPTIONS`, return `401` instead of being buffered and replayed automatically.
 
+Application WebSocket upgrades pass through the same policy and cookie checks
+as ordinary requests. The dedicated proof WebSocket is handled locally.
+
 The proxy streams request and response bodies. Requests are limited by
 `upstream.max_body_bytes`. It removes standard hop-by-hop headers and headers named
-by `Connection` on both sides.
+by `Connection` on both sides, while retaining the protocol fields required for
+accepted WebSocket upgrades. Redirects are returned to the client. Upstream
+HTTP requests are never replayed. Connection failures can try another resolved
+address before sending the request. DNS results are refreshed after 60 seconds;
+HTTPS upstreams use certificate and hostname verification with upstream-host SNI,
+independently of `preserve_host`.
 
 ## Resource limits and failure handling
 
@@ -135,14 +148,23 @@ while idle, so issuing a challenge reuses a connection instead of opening one.
 Those sessions take permits from `max_sessions`, so `max_job_sessions` must not
 exceed it and the remainder stays available to WebSocket sessions. A session
 unused for `pow.p2pool.job_session_idle_seconds` is closed; incoming job
-notifications do not extend that deadline. Setting `max_job_sessions` to `0`
+notifications do not extend that deadline. The idle clock starts when the initial
+job becomes available, so connection/login time does not consume it.
+Setting `max_job_sessions` to `0`
 uses one connection per challenge within the shared `max_sessions` budget.
 
-Pooling reduces TCP connection and login churn. Pooled sessions are matched by
-difficulty, so idle sessions for one difficulty still occupy capacity that
-another difficulty may need. Size `max_job_sessions` for concurrent issuance
-and the mix of configured difficulties; requests that cannot reuse a matching
-session or open another one return `503`.
+One pooled session per difficulty publishes its latest job to all matching
+issuance requests. Concurrent requests share the initial connection and login;
+reading an initialized job does not reserve a session or require a task message.
+The background task continuously tracks job rotation and reconnects on demand
+after a connection fails. WebSocket acceptance sessions remain independent.
+
+Size `max_job_sessions` for the number of active difficulties. Idle sessions for
+one difficulty still occupy capacity that another difficulty may need; requests
+that cannot reuse a matching session or open another one return `503`.
+The health endpoint exposes `pool.fetch_failures_total` and
+`pool.capacity_failures_total`. HTTP job-fetch warnings include these cumulative
+counters and are emitted at most once per ten seconds per provider.
 
 ```yaml
 upstream:
@@ -169,10 +191,12 @@ A read timeout after streaming begins closes the body, since the status has
 already been sent. PoW JSON requests are limited to 16 KiB and their responses
 use `Cache-Control: no-store`; Stratum messages are limited to 64 KiB.
 
-A separate, fixed 30-second HTTP handler timeout returns `408` if response
-headers are not ready in time. It can expire before a longer configured
-upstream timeout. It does not bound an already streaming response or an
-upgraded WebSocket session.
+Local HTTP endpoints have a fixed 30-second deadline and return `408` on
+expiry. Proxy connection attempts share a 30-second budget, and uploads have
+a 30-second budget with a 30-second downstream read timeout. Upstream reads
+and writes use `upstream.read_timeout_seconds`; this is an inactivity limit,
+not a deadline for the complete response. Streaming responses and upgraded
+WebSocket sessions can outlive these request budgets.
 
 Startup validates policy difficulties, paths, timeouts, and queue/session
 capacities. Production rejects placeholder or shorter-than-32-byte signing
@@ -227,17 +251,24 @@ to disable this limiter explicitly.
 
 ## Logging
 
-`RUST_LOG` accepts a `tracing` filter and defaults to `rilgate=info,tower_http=info`.
+`RUST_LOG` accepts a `tracing` filter and defaults to `rilgate=info,pingora=error`.
 
-Per-request diagnostics (the HTTP trace span and its request/response events,
+Generated request IDs are UUIDv7 with ordering within each worker. A valid
+client-provided `x-request-id` is propagated through the gateway.
+
+Per-request diagnostics (the HTTP completion event,
 per-request policy decisions, presented challenges and missing translations)
 are `DEBUG`, so the default does not emit them. Enabling them adds log output
 for each request and can affect throughput. Raise them for a specific subsystem:
 
 ```bash
-RUST_LOG=rilgate=info,tower_http=debug   # per-request HTTP tracing only
-RUST_LOG=rilgate_gateway=debug           # per-request policy decisions only
+RUST_LOG=rilgate_gateway::transport::server=debug   # HTTP completion events
+RUST_LOG=rilgate_gateway::proxy::gate=debug          # policy decisions
 ```
 
-Startup and successful reload events use `INFO`. Upstream failures and P2Pool
-session loss use `WARN`; failed web snapshot builds and reloads use `ERROR`.
+Startup and successful reload events use `INFO`. WebSocket P2Pool session loss
+uses `WARN`. Upstream errors are included in HTTP completion events. HTTP job-fetch failures use rate-limited `WARN`
+events with cumulative counters; pooled connection details use `DEBUG`.
+HTTP completion events, including individual 5xx responses, use `DEBUG`; internal
+application errors retain their explicit `ERROR` logs.
+Failed web snapshot builds and reloads use `ERROR`.

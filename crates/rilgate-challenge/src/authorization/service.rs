@@ -3,7 +3,6 @@ use crate::{
   tokens::validation::{unix_now, validate_lifetime},
 };
 use anyhow::{Context, Result, anyhow};
-use rilgate_crypto::token::{self as crypto, TokenPurpose};
 use rilgate_protocol::{PowAlgorithm, PowEnforcement, claims::*};
 use uuid::Uuid;
 impl ChallengeService {
@@ -37,20 +36,27 @@ impl ChallengeService {
       expires_at: now + self.cfg.receipt_ttl_seconds as i64,
     };
 
-    crypto::sign_json(
-      &claims,
-      self.cfg.signing_key.expose().as_bytes(),
-      TokenPurpose::Receipt,
-    )
+    self.tokens.receipt.sign_json(&claims)
   }
 
   pub fn exchange_receipt(&self, receipt: &str, request_host: &str) -> Result<String> {
-    let receipt: ReceiptClaims = crypto::verify_json(
-      receipt,
-      self.cfg.signing_key.expose().as_bytes(),
-      TokenPurpose::Receipt,
+    Ok(
+      self
+        .exchange_receipt_with_claims(receipt, request_host)?
+        .token,
     )
-    .context("Receipt signature validation failed")?;
+  }
+
+  pub fn exchange_receipt_with_claims(
+    &self,
+    receipt: &str,
+    request_host: &str,
+  ) -> Result<crate::IssuedToken<AuthClaims>> {
+    let receipt: ReceiptClaims = self
+      .tokens
+      .receipt
+      .verify_json(receipt)
+      .context("Receipt signature validation failed")?;
 
     validate_lifetime(
       receipt.v,
@@ -87,19 +93,12 @@ impl ChallengeService {
       claims.expires_at,
       self.cfg.auth_ttl_seconds,
     )?;
-    crypto::sign_json(
-      &claims,
-      self.cfg.auth_signing_key.expose().as_bytes(),
-      TokenPurpose::Auth,
-    )
+    let token = self.tokens.auth.sign_json(&claims)?;
+    Ok(crate::IssuedToken { token, claims })
   }
 
   pub fn verify_auth_token(&self, token: &str, request_host: &str) -> Result<AuthClaims> {
-    let claims: AuthClaims = crypto::verify_json(
-      token,
-      self.cfg.auth_signing_key.expose().as_bytes(),
-      TokenPurpose::Auth,
-    )?;
+    let claims: AuthClaims = self.tokens.auth.verify_json(token)?;
 
     validate_lifetime(
       claims.v,

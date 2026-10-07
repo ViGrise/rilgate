@@ -34,13 +34,13 @@ async fn client_limits_use_socket_ips_and_ignore_forwarded_headers() {
   let path = "/.well-known/test-pow/api/verify";
   let first = router
     .clone()
-    .oneshot(request(path, Some("192.0.2.1"), "203.0.113.1"))
+    .oneshot(request(path, Some("127.0.0.1"), "203.0.113.1"))
     .await
     .unwrap();
   assert_eq!(first.status(), StatusCode::UNPROCESSABLE_ENTITY);
   let blocked = router
     .clone()
-    .oneshot(request(path, Some("192.0.2.1"), "203.0.113.2"))
+    .oneshot(request(path, Some("127.0.0.1"), "203.0.113.2"))
     .await
     .unwrap();
   assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -52,7 +52,7 @@ async fn client_limits_use_socket_ips_and_ignore_forwarded_headers() {
     .unwrap();
   assert!((1..=10).contains(&retry));
   let other = router
-    .oneshot(request(path, Some("192.0.2.2"), "203.0.113.1"))
+    .oneshot(request(path, Some("::1"), "203.0.113.1"))
     .await
     .unwrap();
   assert_eq!(other.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -68,7 +68,7 @@ async fn proof_endpoints_share_quota_but_assets_and_health_remain_available() {
     .oneshot(request(
       "/.well-known/test-pow/api/challenge",
       None,
-      "192.0.2.1",
+      "127.0.0.1",
     ))
     .await
     .unwrap();
@@ -78,7 +78,7 @@ async fn proof_endpoints_share_quota_but_assets_and_health_remain_available() {
       .oneshot(request(
         &format!("/.well-known/test-pow/{path}"),
         None,
-        "192.0.2.2",
+        "::1",
       ))
       .await
       .unwrap();
@@ -107,12 +107,12 @@ async fn a_global_limit_cannot_be_bypassed_by_rotating_client_ips() {
   let path = "/.well-known/test-pow/api/verify";
   router
     .clone()
-    .oneshot(request(path, Some("192.0.2.1"), ""))
+    .oneshot(request(path, Some("127.0.0.1"), ""))
     .await
     .unwrap();
   assert_eq!(
     router
-      .oneshot(request(path, Some("192.0.2.2"), ""))
+      .oneshot(request(path, Some("::1"), ""))
       .await
       .unwrap()
       .status(),
@@ -147,14 +147,12 @@ async fn server_connection_info_populates_the_client_bucket() {
   let address = listener.local_addr().unwrap();
   let mut cfg = common::config();
   Arc::get_mut(&mut cfg).unwrap().pow.rate_limit.client_burst = 1;
-  let router = app::router(cfg).await.unwrap();
+  let gateway = app::build(cfg).await.unwrap();
   let server = tokio::spawn(async move {
-    axum::serve(
-      listener,
-      router.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .unwrap();
+    gateway
+      .serve(listener, std::future::pending())
+      .await
+      .unwrap();
   });
   let client = reqwest::Client::new();
   let url = format!("http://{address}/.well-known/test-pow/api/verify");

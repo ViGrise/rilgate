@@ -49,14 +49,14 @@ rilgate-web = { path = "crates/rilgate-web" }
 
 tokio = { version = "1.53.1", features = ["full"] }
 axum = { version = "0.8.9", features = ["ws"] }
-hyper = "1.11.0"
+hyper = { version = "1.11.0", features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+bytes = "1"
+async-trait = "0.1"
+pingora = { version = "0.9.0", features = ["proxy", "openssl"] }
+http-body = "1"
 http-body-util = "0.1.5"
 tower = "0.5.3"
-tower-http = { version = "0.7.0", features = [
-  "trace",
-  "timeout",
-  "request-id",
-] }
 
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }

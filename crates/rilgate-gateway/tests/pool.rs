@@ -120,3 +120,150 @@ async fn job_notifications_do_not_keep_unused_sessions_alive() {
     .unwrap()
     .unwrap();
 }
+
+#[tokio::test]
+async fn concurrent_fetches_share_one_initializing_session_and_follow_job_rotation() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config().pow.p2pool.clone();
+  cfg.port = listener.local_addr().unwrap().port();
+  cfg.max_sessions = 1;
+  cfg.max_job_sessions = 1;
+  let (rotate, rotation) = tokio::sync::oneshot::channel();
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let mut socket = login(socket, 1000).await;
+    rotation.await.unwrap();
+    let notification = format!("{}\n", json!({"method":"job", "params":job("new")}));
+    socket
+      .get_mut()
+      .write_all(notification.as_bytes())
+      .await
+      .unwrap();
+    assert!(
+      tokio::time::timeout(Duration::from_millis(150), listener.accept())
+        .await
+        .is_err()
+    );
+    assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
+  });
+  let pool = std::sync::Arc::new(P2PoolProvider::new(cfg).unwrap());
+  let mut requests = tokio::task::JoinSet::new();
+  for _ in 0..128 {
+    let pool = pool.clone();
+    requests.spawn(async move { pool.fetch(1000).await.unwrap().job_id });
+  }
+  while let Some(result) = requests.join_next().await {
+    assert_eq!(result.unwrap(), "first");
+  }
+  rotate.send(()).unwrap();
+  tokio::time::timeout(Duration::from_secs(2), async {
+    while pool.fetch(1000).await.unwrap().job_id != "new" {
+      tokio::task::yield_now().await;
+    }
+  })
+  .await
+  .unwrap();
+  assert!(pool.fetch(2000).await.is_err());
+  assert_eq!(pool.failures(), (1, 1));
+  assert!(!pool.acquire_slot().is_ok());
+  drop(pool);
+  tokio::time::timeout(Duration::from_secs(3), server)
+    .await
+    .unwrap()
+    .unwrap();
+}
+
+#[tokio::test]
+async fn disconnected_shared_sessions_are_replaced() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config().pow.p2pool.clone();
+  cfg.port = listener.local_addr().unwrap().port();
+  cfg.max_sessions = 1;
+  cfg.max_job_sessions = 1;
+  let (disconnect, disconnected) = tokio::sync::oneshot::channel();
+  let (closed, closure) = tokio::sync::oneshot::channel();
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let socket = login(socket, 1000).await;
+    disconnected.await.unwrap();
+    drop(socket);
+    closed.send(()).unwrap();
+    let (socket, _) = listener.accept().await.unwrap();
+    let mut socket = login(socket, 1000).await;
+    let notification = format!("{}\n", json!({"method":"job", "params":job("replacement")}));
+    socket
+      .get_mut()
+      .write_all(notification.as_bytes())
+      .await
+      .unwrap();
+    assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
+  });
+  let pool = P2PoolProvider::new(cfg).unwrap();
+  assert_eq!(pool.fetch(1000).await.unwrap().job_id, "first");
+  disconnect.send(()).unwrap();
+  closure.await.unwrap();
+  tokio::time::timeout(Duration::from_secs(3), async {
+    loop {
+      if pool
+        .fetch(1000)
+        .await
+        .is_ok_and(|job| job.job_id == "replacement")
+      {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+  })
+  .await
+  .unwrap();
+  drop(pool);
+  tokio::time::timeout(Duration::from_secs(3), server)
+    .await
+    .unwrap()
+    .unwrap();
+}
+
+#[tokio::test]
+async fn canceling_a_fetch_does_not_cancel_the_shared_connection() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config().pow.p2pool.clone();
+  cfg.port = listener.local_addr().unwrap().port();
+  cfg.max_sessions = 1;
+  cfg.max_job_sessions = 1;
+  cfg.job_session_idle_seconds = 1;
+  cfg.connect_timeout_seconds = 3;
+  let (accepted, acceptance) = tokio::sync::oneshot::channel();
+  let (release, released) = tokio::sync::oneshot::channel();
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    accepted.send(()).unwrap();
+    released.await.unwrap();
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let mut socket = login(socket, 1000).await;
+    assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
+  });
+  let pool = std::sync::Arc::new(P2PoolProvider::new(cfg).unwrap());
+  let canceled = {
+    let pool = pool.clone();
+    tokio::spawn(async move { pool.fetch(1000).await })
+  };
+  acceptance.await.unwrap();
+  canceled.abort();
+  assert!(canceled.await.unwrap_err().is_cancelled());
+  release.send(()).unwrap();
+  assert_eq!(
+    tokio::time::timeout(Duration::from_secs(2), pool.fetch(1000))
+      .await
+      .unwrap()
+      .unwrap()
+      .job_id,
+    "first"
+  );
+  assert_eq!(pool.failures(), (0, 0));
+  drop(pool);
+  tokio::time::timeout(Duration::from_secs(3), server)
+    .await
+    .unwrap()
+    .unwrap();
+}

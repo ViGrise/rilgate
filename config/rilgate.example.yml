@@ -91,7 +91,8 @@ pow:
     max_sessions: 64
     session_ttl_seconds: 900
 
-    # Pooled issuance sessions share max_sessions with WebSocket sessions.
+    # One pooled issuance session per active difficulty shares max_sessions
+    # with WebSocket sessions. Concurrent fetches reuse its latest job.
     # Zero uses a new connection per challenge within that shared budget.
     max_job_sessions: 16
     # Time since the last job request, regardless of incoming pool notifications.

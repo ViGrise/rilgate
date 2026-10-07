@@ -119,6 +119,7 @@ rilgate/
 │   │   │   │   └── mod.rs
 │   │   │   ├── model/
 │   │   │   │   ├── gateway.rs
+│   │   │   ├── pingora.rs
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── pow.rs
 │   │   │   │   └── pow_validation.rs
@@ -151,7 +152,6 @@ rilgate/
 │   │   │   ├── observability/
 │   │   │   │   ├── health/
 │   │   │   │   │   ├── dto.rs
-│   │   │   │   │   ├── handlers.rs
 │   │   │   │   │   ├── mod.rs
 │   │   │   │   │   └── service.rs
 │   │   │   │   └── mod.rs
@@ -163,7 +163,6 @@ rilgate/
 │   │   │   │   ├── dto.rs
 │   │   │   │   ├── handlers.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   └── routes.rs
 │   │   │   ├── proxy/
 │   │   │   │   ├── client.rs
 │   │   │   │   ├── gate.rs
@@ -173,15 +172,12 @@ rilgate/
 │   │   │   │   ├── mod.rs
 │   │   │   │   └── state.rs
 │   │   │   ├── transport/
-│   │   │   │   ├── middleware/
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   ├── rate_limit.rs
-│   │   │   │   │   ├── request_id.rs
-│   │   │   │   │   └── timeout.rs
 │   │   │   │   ├── rate_limit/
 │   │   │   │   │   └── mod.rs
 │   │   │   │   ├── context.rs
 │   │   │   │   ├── errors.rs
+│   │   │   │   ├── response.rs
+│   │   │   │   ├── server.rs
 │   │   │   │   └── mod.rs
 │   │   │   ├── web/
 │   │   │   │   ├── assets.rs
@@ -193,6 +189,7 @@ rilgate/
 │   │   │   │   └── mod.rs
 │   │   │   ├── algorithms.rs
 │   │   │   ├── gateway.rs
+│   │   │   ├── pingora.rs
 │   │   │   ├── pool.rs
 │   │   │   ├── proof_protocol.rs
 │   │   │   ├── rate_limits.rs
@@ -321,6 +318,7 @@ rilgate/
 │   │   │   ├── runtime/
 │   │   │   │   ├── manager.rs
 │   │   │   │   ├── mod.rs
+│   │   │   │   ├── shell.rs
 │   │   │   │   ├── snapshot.rs
 │   │   │   │   └── watcher.rs
 │   │   │   ├── templates/
@@ -362,6 +360,8 @@ rilgate/
 ├── scripts/
 │   ├── build.sh
 │   ├── perf-gate.sh
+│   ├── perf/
+│   │   └── upstream.mjs
 │   ├── test.sh
 │   └── validate-randomx-wasm.mjs
 ├── tests/
@@ -445,6 +445,36 @@ and compatible configuration. P2Pool acceptance remains attached to one browser
 WebSocket and its retained gateway Stratum session. RandomX work requires the
 configured disclosure and explicit browser consent.
 
+Each challenge service prepares keyed HMAC states for presentation, challenge,
+receipt and access tokens. Requests clone these states and use separate token
+buffers; signatures retain the purpose-bound HMAC-SHA256 wire format and
+constant-time verification. Prepared states belong to the service configuration
+and are never shared across signing keys.
+
 Native and browser RandomX share `randomx-core` and reference vectors. Light mode
 uses a 256 MiB cache and derives dataset items on demand. Native verification
 reuses the seed cache on a dedicated thread, keeping hashing off Tokio workers.
+
+Embedded challenge HTML is rendered once per locale and snapshot, with a small
+JSON-safe bootstrap inserted per response. Custom templates retain dynamic
+rendering. Pooled HTTP RandomX issuance shares one rotating job snapshot per
+difficulty; session budgets and idle deadlines remain bounded. Native dataset
+execution precomputes seed-bound superscalar operands, including reciprocals,
+when constructing the cache; original programs remain available to the WASM
+kernel generator and reference checks.
+
+## HTTP transport
+
+`rilgate-gateway::transport::server::Gateway` runs Pingora's HTTP proxy application
+on the existing Tokio runtime and TCP accept loop. Pingora handles HTTP/1.1,
+HTTP/2, upstream pooling, TLS, streaming, and application WebSocket tunnels.
+Local API, health, assets, and policy-generated pages write directly to the
+downstream session. The proof WebSocket uses a bounded in-memory duplex adapter
+with tungstenite framing and the shared Stratum session logic. There is no
+internal HTTP listener or Unix socket.
+
+Application state owns the policy/challenge services, P2Pool provider, limiter,
+web snapshot manager, and reload watcher handles. Shutdown stops acceptance,
+cancels proof WebSockets, notifies Pingora, and drains connections for up to
+30 seconds. The socket digest supplies peer addresses for rate limiting;
+forwarded headers do not replace the socket identity.

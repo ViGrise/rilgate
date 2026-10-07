@@ -12,6 +12,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install native proxy dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
       - name: Prepare Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown

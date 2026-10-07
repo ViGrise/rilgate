@@ -1,6 +1,10 @@
 # Deployment examples
 
 Build a native binary from the repository root with `scripts/build.sh --release`.
+The Pingora transport requires OpenSSL at build time and runtime. On Debian or
+Ubuntu, install `pkg-config` and `libssl-dev` to build, and `libssl3` plus
+`ca-certificates` to run. The Docker image includes these dependencies.
+
 For Docker Compose, create the configuration before starting the service:
 
 ```bash
@@ -31,7 +35,7 @@ keys. If filesystem web overrides are enabled, set `web.root` to
 `/var/lib/rilgate/web`. `systemctl reload rilgate` requests a web snapshot reload.
 
 The Caddy and nginx examples forward the host and support the gateway's P2Pool
-WebSocket API. Rilgate does not proxy upstream application WebSockets. Set the
+WebSocket API and upstream application WebSockets. Set the
 public hostname and configure TLS at the edge; the nginx example only contains
 an HTTP listener. Client rate limits use socket addresses, so clients behind
 the edge proxy share its quota. Tune the gateway limits or enforce client

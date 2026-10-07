@@ -1,26 +1,28 @@
-use crate::{runtime::state::AppState, transport::errors::ApiError};
-use axum::{
-  extract::State,
-  http::{HeaderMap, StatusCode},
-  response::{IntoResponse, Response},
+use crate::{
+  runtime::state::AppState,
+  transport::{
+    errors::ApiError,
+    response::{Response, response},
+  },
 };
-pub async fn static_asset(
-  State(state): State<AppState>,
-  axum::extract::Path(path): axum::extract::Path<String>,
-  headers: HeaderMap,
-  method: axum::http::Method,
+use http::{HeaderMap, Method, StatusCode};
+pub fn static_asset(
+  state: &AppState,
+  path: &str,
+  headers: &HeaderMap,
+  method: &Method,
 ) -> Result<Response, ApiError> {
-  if rilgate_web::resources::loader::logical_path(&path).is_err() {
-    return Ok(StatusCode::NOT_FOUND.into_response());
+  if rilgate_web::resources::loader::logical_path(path).is_err() {
+    return Ok(response(StatusCode::NOT_FOUND, ""));
   }
   let snapshot = state.web.current();
   let Some(asset) = snapshot
     .assets
-    .get(rilgate_web::assets::canonical_asset(&path))
+    .get(rilgate_web::assets::canonical_asset(path))
   else {
-    return Ok(StatusCode::NOT_FOUND.into_response());
+    return Ok(response(StatusCode::NOT_FOUND, ""));
   };
   asset
-    .response(&headers, method == axum::http::Method::HEAD)
+    .response(headers, method == Method::HEAD)
     .map_err(ApiError::Internal)
 }

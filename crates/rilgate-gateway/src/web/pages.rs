@@ -1,19 +1,61 @@
 use crate::{runtime::state::AppState, transport::context::request_host};
-use axum::http::{HeaderMap, Uri};
+use http::{HeaderMap, Uri};
 pub fn render_challenge_page(
   state: &AppState,
-  presentation_token: &str,
-  algorithm: &str,
+  issued: rilgate_challenge::IssuedToken<rilgate_protocol::claims::PresentationClaims>,
   headers: &HeaderMap,
   uri: &Uri,
 ) -> (String, String) {
-  render_page(
-    state,
-    "pages/challenge.html",
-    presentation_token,
-    algorithm,
-    headers,
-    uri,
+  use rilgate_web::templates::context::PublicChallengeInfo;
+  let snapshot = state.web.current();
+  let locale = negotiate_locale(&snapshot, headers, uri);
+  let now = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_secs() as i64;
+  let challenge = PublicChallengeInfo {
+    token: issued.token,
+    algorithm: match issued.claims.algorithm {
+      rilgate_protocol::PowAlgorithm::Fast => "fast",
+      rilgate_protocol::PowAlgorithm::RandomX => "randomx",
+    }
+    .into(),
+    difficulty: Some(issued.claims.difficulty),
+    expires_at: Some(issued.claims.expires_at),
+    expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
+    solver_module_url: resolve_gateway_asset(
+      &snapshot.config.base_path,
+      &state.cfg.pow.browser.solver_module_path,
+    ),
+    ..Default::default()
+  };
+  let html = snapshot
+    .render_challenge(&challenge, &locale)
+    .unwrap_or_else(|error| {
+      tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
+      state
+        .web
+        .fallback()
+        .render_challenge(&challenge, &locale)
+        .unwrap_or_else(|_| "Unable to continue".into())
+    });
+  (html, locale)
+}
+
+fn negotiate_locale(
+  snapshot: &rilgate_web::runtime::snapshot::WebSnapshot,
+  headers: &HeaderMap,
+  uri: &Uri,
+) -> String {
+  let explicit = uri.query().and_then(query_language);
+  let cookie =
+    crate::auth::cookies::cookie_value(headers, &snapshot.config.i18n.language_cookie_name);
+  snapshot.supported.negotiate(
+    explicit.as_deref(),
+    cookie.as_deref(),
+    headers
+      .get("accept-language")
+      .and_then(|value| value.to_str().ok()),
   )
 }
 
@@ -27,16 +69,7 @@ pub fn render_page(
 ) -> (String, String) {
   use rilgate_web::templates::context::{PageInfo, PublicChallengeInfo, TemplateContext};
   let snapshot = state.web.current();
-  let explicit = uri.query().and_then(query_language);
-  let cookie =
-    crate::auth::cookies::cookie_value(headers, &snapshot.config.i18n.language_cookie_name);
-  let locale = snapshot.supported.negotiate(
-    explicit.as_deref(),
-    cookie.as_deref(),
-    headers
-      .get("accept-language")
-      .and_then(|value| value.to_str().ok()),
-  );
+  let locale = negotiate_locale(&snapshot, headers, uri);
   let title_key = match template {
     "pages/denied.html" => "denied.title",
     "pages/error.html" => "error.title",

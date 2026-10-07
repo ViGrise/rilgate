@@ -10,7 +10,6 @@ anyhow.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true
-axum.workspace = true
 tracing.workspace = true
 rilgate-config.workspace = true
 rilgate-gateway.workspace = true
@@ -23,6 +22,9 @@ rilgate-web.workspace = true
 rilgate-telemetry.workspace = true
 
 [dev-dependencies]
+axum.workspace = true
+http.workspace = true
+http-body-util.workspace = true
 rilgate-test-utils.workspace = true
 tower.workspace = true
 tempfile.workspace = true

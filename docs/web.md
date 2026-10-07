@@ -75,6 +75,16 @@ generation, reload counters, active locales, template count, and watch status;
 parser errors and resource contents remain in local diagnostics only.
 
 Templates are always memory-backed: `web.templates.cache` must remain `true`.
+The embedded challenge templates are also rendered into an HTML shell per locale
+when a snapshot is built. Each request inserts only its JSON-escaped token and
+solver bootstrap. Client translation JSON is serialized once per snapshot and
+locale. Challenge responses remain `no-store`; the cache is internal to the
+server and never shares tokens between requests.
+
+Changing any template selects dynamic rendering, preserving conditions on
+`challenge.difficulty`, expiry, and other request data. Translation, branding,
+and static-asset overrides can still use the embedded shell. Reloading publishes
+new shells atomically with the templates and translations.
 Use watch mode to load template edits during development.
 
 For development, mount a writable web directory and enable watch. For production,

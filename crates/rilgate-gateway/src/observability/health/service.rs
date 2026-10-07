@@ -1,8 +1,15 @@
-use super::dto::{HealthResponse, WebHealth};
+use super::dto::{HealthResponse, PoolHealth, WebHealth};
 
-pub fn status(web: rilgate_web::runtime::manager::WebDiagnostics) -> HealthResponse {
+pub fn status(
+  web: rilgate_web::runtime::manager::WebDiagnostics,
+  pool_failures: (u64, u64),
+) -> HealthResponse {
   HealthResponse {
     status: "ok",
+    pool: PoolHealth {
+      fetch_failures_total: pool_failures.0,
+      capacity_failures_total: pool_failures.1,
+    },
     web: WebHealth {
       generation: web.generation,
       last_successful_reload: web.last_successful_reload,

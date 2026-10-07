@@ -3,7 +3,6 @@ use crate::{
   tokens::validation::{unix_now, validate_lifetime},
 };
 use anyhow::{Context, Result, anyhow};
-use rilgate_crypto::token::{self as crypto, TokenPurpose};
 use rilgate_policy::{PolicyAction, PolicyDecision};
 use rilgate_protocol::claims::*;
 impl ChallengeService {
@@ -13,6 +12,19 @@ impl ChallengeService {
     path: String,
     decision: &PolicyDecision,
   ) -> Result<String> {
+    Ok(
+      self
+        .issue_presentation_with_claims(host, path, decision)?
+        .token,
+    )
+  }
+
+  pub fn issue_presentation_with_claims(
+    &self,
+    host: String,
+    path: String,
+    decision: &PolicyDecision,
+  ) -> Result<crate::IssuedToken<PresentationClaims>> {
     if decision.action != PolicyAction::Challenge {
       return Err(anyhow!(
         "Presentation tokens are only valid for CHALLENGE decisions"
@@ -46,20 +58,16 @@ impl ChallengeService {
       expires_at: now + self.cfg.challenge_ttl_seconds as i64,
     };
 
-    crypto::sign_json(
-      &claims,
-      self.cfg.signing_key.expose().as_bytes(),
-      TokenPurpose::Presentation,
-    )
+    let token = self.tokens.presentation.sign_json(&claims)?;
+    Ok(crate::IssuedToken { token, claims })
   }
 
   pub fn verify_presentation(&self, token: &str, request_host: &str) -> Result<PresentationClaims> {
-    let claims: PresentationClaims = crypto::verify_json(
-      token,
-      self.cfg.signing_key.expose().as_bytes(),
-      TokenPurpose::Presentation,
-    )
-    .context("Presentation signature validation failed")?;
+    let claims: PresentationClaims = self
+      .tokens
+      .presentation
+      .verify_json(token)
+      .context("Presentation signature validation failed")?;
 
     validate_lifetime(
       claims.v,

@@ -9,6 +9,7 @@ pub struct ChallengeService {
   pub(crate) cfg: Arc<ChallengeConfig>,
   pub(crate) algorithms: AlgorithmRegistry,
   policy: PolicyEngine,
+  pub(crate) tokens: crate::tokens::TokenSigners,
 }
 
 impl ChallengeService {
@@ -42,7 +43,9 @@ impl ChallengeService {
           .with_context(|| format!("Invalid challenge policy in {name}"))?;
       }
     }
+    let tokens = crate::tokens::TokenSigners::new(&cfg)?;
     Ok(Self {
+      tokens,
       cfg,
       algorithms,
       policy,

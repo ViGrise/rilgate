@@ -1,4 +1,4 @@
-use axum::http::HeaderMap;
+use http::HeaderMap;
 pub fn request_host(headers: &HeaderMap, uri: &http::Uri) -> String {
   headers
     .get(http::header::HOST)

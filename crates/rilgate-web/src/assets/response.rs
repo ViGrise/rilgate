@@ -1,16 +1,21 @@
 use super::{AssetMetadata, AssetSource};
 use anyhow::Result;
-use axum::{
-  body::Body,
-  http::{
-    HeaderMap, StatusCode,
-    header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
-  },
-  response::{IntoResponse, Response},
+use bytes::Bytes;
+use futures_util::TryStreamExt;
+use http::{
+  HeaderMap, Response, StatusCode,
+  header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
 };
+use http_body_util::{BodyExt, Full, StreamBody};
+pub type Body = http_body_util::combinators::UnsyncBoxBody<Bytes, std::io::Error>;
+pub fn body(bytes: impl Into<Bytes>) -> Body {
+  Full::new(bytes.into())
+    .map_err(|never| match never {})
+    .boxed_unsync()
+}
 use tokio_util::io::ReaderStream;
 impl AssetMetadata {
-  pub fn response(&self, headers: &HeaderMap, head: bool) -> Result<Response> {
+  pub fn response(&self, headers: &HeaderMap, head: bool) -> Result<Response<Body>> {
     let unchanged = headers
       .get(IF_NONE_MATCH)
       .and_then(|h| h.to_str().ok())
@@ -20,25 +25,25 @@ impl AssetMetadata {
         })
       });
     let body = if head || unchanged {
-      Body::empty()
+      body(Bytes::new())
     } else {
       match &self.source {
-        AssetSource::Embedded(bytes) => Body::from(*bytes),
-        AssetSource::Memory(bytes) => Body::from(bytes.clone()),
-        AssetSource::File(file) => {
-          Body::from_stream(ReaderStream::new(tokio::fs::File::from_std(file.reopen()?)))
-        }
+        AssetSource::Embedded(bytes) => body(*bytes),
+        AssetSource::Memory(bytes) => body(Bytes::copy_from_slice(bytes)),
+        AssetSource::File(file) => StreamBody::new(
+          ReaderStream::new(tokio::fs::File::from_std(file.reopen()?))
+            .map_ok(http_body::Frame::data),
+        )
+        .boxed_unsync(),
       }
     };
-    let mut response = (
-      if unchanged {
+    let mut response = Response::builder()
+      .status(if unchanged {
         StatusCode::NOT_MODIFIED
       } else {
         StatusCode::OK
-      },
-      body,
-    )
-      .into_response();
+      })
+      .body(body)?;
     let out = response.headers_mut();
     out.insert(ETAG, self.etag.parse()?);
     out.insert(CACHE_CONTROL, "public, max-age=0, must-revalidate".parse()?);

@@ -320,7 +320,7 @@ fn undefined_variables_recursion_and_fuel_are_checked_before_publication() {
 
 #[test]
 fn static_overrides_have_immutable_bytes_and_matching_cache_metadata() {
-  use axum::http::{HeaderMap, StatusCode};
+  use http::{HeaderMap, StatusCode};
   let root = tempfile::tempdir().unwrap();
   write(root.path(), "static/images/logo.svg", "first");
   let manager = WebManager::new(config(root.path())).unwrap();
@@ -498,5 +498,111 @@ fn legacy_asset_overrides_are_shared_by_aliases_and_canonical_paths() {
   assert_eq!(
     snapshot.assets[canonical].bytes().unwrap(),
     b"canonical worker"
+  );
+}
+
+#[test]
+fn cached_challenge_shell_preserves_locales_and_isolates_bootstrap_data() {
+  let root = tempfile::tempdir().unwrap();
+  write(
+    root.path(),
+    "i18n/vi.json",
+    r#"{"challenge.title":"Kiểm tra"}"#,
+  );
+  let snapshot = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
+  for locale in ["en", "vi"] {
+    let mut context = public(&snapshot);
+    context.page.title = snapshot
+      .translations
+      .translate(locale, "challenge.title", &BTreeMap::new())
+      .unwrap();
+    for (token, algorithm) in [
+      ("first", "fast"),
+      ("</script><script>alert(1)</script>&\u{2028}", "randomx"),
+    ] {
+      context.challenge.token = token.into();
+      context.challenge.algorithm = algorithm.into();
+      let cached = snapshot
+        .render_challenge(&context.challenge, locale)
+        .unwrap();
+      assert_eq!(
+        cached,
+        snapshot
+          .render("pages/challenge.html", &context, locale)
+          .unwrap()
+      );
+      assert!(!cached.contains("</script><script>alert("));
+      assert!(!cached.contains("data-rilgate-bootstrap"));
+      let json = cached
+        .split("window.POW_PRESENTATION_TOKEN = ")
+        .nth(1)
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+      assert_eq!(serde_json::from_str::<String>(json).unwrap(), token);
+    }
+    let fresh = snapshot
+      .render_challenge(
+        &PublicChallengeInfo {
+          token: "fresh".into(),
+          ..context.challenge
+        },
+        locale,
+      )
+      .unwrap();
+    assert!(!fresh.contains("alert(1)"));
+  }
+}
+
+#[test]
+fn customized_templates_keep_dynamic_challenge_branches() {
+  let root = tempfile::tempdir().unwrap();
+  write(
+    root.path(),
+    "templates/partials/pow-info.html",
+    "{% if challenge.difficulty >= 1000 %}RX {{ challenge.expires_in }}{% else %}FAST{% endif %}",
+  );
+  let snapshot = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
+  let mut challenge = public(&snapshot).challenge;
+  challenge.difficulty = Some(1);
+  assert!(
+    snapshot
+      .render_challenge(&challenge, "en")
+      .unwrap()
+      .contains("FAST")
+  );
+  challenge.difficulty = Some(1000);
+  challenge.expires_in = Some(45);
+  assert!(
+    snapshot
+      .render_challenge(&challenge, "en")
+      .unwrap()
+      .contains("RX 45")
+  );
+}
+
+#[test]
+fn challenge_shells_and_i18n_json_follow_snapshot_generations() {
+  let root = tempfile::tempdir().unwrap();
+  let manager = WebManager::new(config(root.path())).unwrap();
+  let first = manager.current();
+  write(
+    root.path(),
+    "i18n/en.json",
+    r#"{"challenge.title":"New title", "challenge.status.preparing":"New status </script>"}"#,
+  );
+  manager.reload().unwrap();
+  let second = manager.current();
+  let html = second
+    .render_challenge(&public(&second).challenge, "en")
+    .unwrap();
+  assert!(html.contains("New title"));
+  assert!(html.contains("New status \\u003c/script\\u003e"));
+  assert!(
+    !first
+      .render_challenge(&public(&first).challenge, "en")
+      .unwrap()
+      .contains("New title")
   );
 }

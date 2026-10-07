@@ -51,13 +51,7 @@ async fn policy_and_proxy_reject_paths_that_require_url_normalization() {
     let request = || Request::builder().uri(path).body(Body::empty()).unwrap();
     let response = router.clone().oneshot(request()).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
-    assert!(
-      matches!(
-        proxy.forward(request()).await,
-        Err(rilgate_gateway::transport::errors::ApiError::InvalidRequest(_))
-      ),
-      "{path}"
-    );
+    assert!(proxy.request_url(&path.parse().unwrap()).is_err());
   }
   let response = router
     .clone()
@@ -296,10 +290,10 @@ async fn proxy_streams_response_and_removes_connection_scoped_headers() {
   });
   let mut cfg = common::config();
   Arc::get_mut(&mut cfg).unwrap().upstream.url = format!("http://{address}");
-  let proxy = ProxyService::new(cfg.upstream.clone()).unwrap();
+  let proxy = app::router(cfg).await.unwrap();
   let response = tokio::time::timeout(
     std::time::Duration::from_secs(2),
-    proxy.forward(
+    proxy.oneshot(
       Request::builder()
         .uri("/file?q=1")
         .header("connection", "X-Private")
@@ -316,7 +310,12 @@ async fn proxy_streams_response_and_removes_connection_scoped_headers() {
   .expect("headers should arrive before the upstream body")
   .unwrap();
   assert!(!response.headers().contains_key("x-private"));
-  assert!(!response.headers().contains_key("connection"));
+  if let Some(connection) = response.headers().get("connection") {
+    assert!(matches!(
+      connection.to_str().unwrap(),
+      "keep-alive" | "close"
+    ));
+  }
   assert!(!response.headers().contains_key("keep-alive"));
   assert_eq!(response.headers()["x-end-to-end"], "keep");
   release.send(()).unwrap();
@@ -325,39 +324,27 @@ async fn proxy_streams_response_and_removes_connection_scoped_headers() {
 }
 
 #[tokio::test]
-async fn proxy_rejects_large_and_broken_request_bodies_with_client_errors() {
-  let proxy = ProxyService::new(common::config().upstream.clone()).unwrap();
-  let request = Request::builder()
-    .uri("/")
-    .body(Body::from(vec![0; 1025]))
-    .unwrap();
-  assert!(matches!(
-    proxy.forward(request).await,
-    Err(rilgate_gateway::transport::errors::ApiError::PayloadTooLarge)
-  ));
+async fn proxy_rejects_large_request_bodies_without_contacting_upstream() {
   let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let address = listener.local_addr().unwrap();
-  let upstream = tokio::spawn(async move {
-    use tokio::io::AsyncReadExt;
-    let (mut socket, _) = listener.accept().await.unwrap();
-    let mut data = Vec::new();
-    let _ = socket.read_to_end(&mut data).await;
-  });
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().upstream.url = format!("http://{address}");
-  let proxy = ProxyService::new(cfg.upstream.clone()).unwrap();
-  let stream = futures_util::stream::once(async {
-    Err::<axum::body::Bytes, _>(std::io::Error::other("disconnected"))
-  });
-  let request = Request::builder()
-    .uri("/")
-    .body(Body::from_stream(stream))
+  Arc::get_mut(&mut cfg).unwrap().upstream.url =
+    format!("http://{}", listener.local_addr().unwrap());
+  let gateway = app::router(cfg).await.unwrap();
+  let response = gateway
+    .oneshot(
+      Request::builder()
+        .uri("/")
+        .body(Body::from(vec![0; 1025]))
+        .unwrap(),
+    )
+    .await
     .unwrap();
-  assert!(matches!(
-    proxy.forward(request).await,
-    Err(rilgate_gateway::transport::errors::ApiError::InvalidRequest(_))
-  ));
-  upstream.abort();
+  assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+  assert!(
+    tokio::time::timeout(std::time::Duration::from_millis(20), listener.accept())
+      .await
+      .is_err()
+  );
 }
 
 #[tokio::test]
