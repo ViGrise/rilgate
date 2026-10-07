@@ -23,6 +23,71 @@ use std::{
 use tower::ServiceExt;
 
 #[tokio::test]
+async fn policy_and_proxy_reject_paths_that_require_url_normalization() {
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let address = listener.local_addr().unwrap();
+  let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+  let upstream_calls = calls.clone();
+  let upstream = tokio::spawn(async move {
+    let router = axum::Router::new().fallback(move |uri: axum::http::Uri| {
+      upstream_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+      async move { uri.to_string() }
+    });
+    axum::serve(listener, router).await.unwrap();
+  });
+  let mut cfg = common::config();
+  Arc::get_mut(&mut cfg).unwrap().upstream.url = format!("http://{address}/base/");
+  let proxy = ProxyService::new(cfg.upstream.clone()).unwrap();
+  let router = app::router(cfg).await.unwrap();
+  for path in [
+    "/public/../protected",
+    "/./protected",
+    "/public/%2e%2e/protected",
+    "/public/.%2E/protected",
+    "/public/%2E./protected",
+    "/%2e/protected",
+    "/public\\..\\protected",
+  ] {
+    let request = || Request::builder().uri(path).body(Body::empty()).unwrap();
+    let response = router.clone().oneshot(request()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+    assert!(
+      matches!(
+        proxy.forward(request()).await,
+        Err(rilgate_gateway::transport::errors::ApiError::InvalidRequest(_))
+      ),
+      "{path}"
+    );
+  }
+  let response = router
+    .clone()
+    .oneshot(
+      Request::builder()
+        .uri("/protected")
+        .header("host", "example.test")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+  assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+  let path = "/public/a%2Eb//file?next=/../protected&encoded=%2F";
+  let response = router
+    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+  assert_eq!(
+    to_bytes(response.into_body(), 1024).await.unwrap(),
+    format!("/base{path}")
+  );
+  assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+  upstream.abort();
+}
+
+#[tokio::test]
 async fn fast_proof_is_portable_between_gateway_instances() {
   let cfg = common::config();
   let issuer = make_service(&cfg).unwrap();

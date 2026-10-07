@@ -53,16 +53,19 @@ printf '%s\n' '<h1>Hello from the upstream</h1>' > "$demo_dir/protected/index.ht
 python3 -m http.server 3000 --bind 127.0.0.1 --directory "$demo_dir"
 ```
 
-In another terminal, start Rilgate with the development configuration:
+In another terminal, copy the example to your configuration file and start Rilgate:
 
 ```bash
-./target/debug/rilgate --config config/development.yml
+cp config/rilgate.example.yml config/rilgate.yml
+./target/debug/rilgate --config config/rilgate.yml
 ```
 
 Open **<http://localhost:8080/protected/>**. The browser solves a Fast challenge,
 receives an access cookie and reloads the same URL to reach the upstream page.
-This configuration does not require P2Pool. Existing `POW_*` and `UPSTREAM_*`
-environment variables or a local `.env` file can override the demo configuration.
+The example assigns Fast challenges to browser-like User-Agents, so this demo
+does not require P2Pool. Policies that select RandomX require a P2Pool endpoint.
+Existing `POW_*` and `UPSTREAM_*` environment variables or a local `.env` file
+can override the copied configuration.
 
 Check gateway health:
 
@@ -100,9 +103,12 @@ protocol, host binding, lifetime and enforcement details.
 
 ## Configuration
 
-The default file is [config/rilgate.example.yml](config/rilgate.example.yml).
-Choose your own file with `--config` or `CONFIG`. Settings resolve in this order:
-CLI flags, environment variables, YAML, then defaults.
+Rilgate looks for `config/rilgate.yml` by default. This operator-owned file is
+not included in the repository; copy [the full example](config/rilgate.example.yml)
+or choose another file with `--config` or `CONFIG`. Settings resolve in this
+order: CLI flags, environment variables, YAML, then defaults. Without a default
+file, Rilgate uses environment variables and built-in defaults, which allow
+requests at the default risk weight.
 
 ```yaml
 upstream:
@@ -135,10 +141,13 @@ Docker and Compose examples are included:
 
 ```bash
 docker build -f deploy/docker/Dockerfile -t rilgate:local .
+cp config/rilgate.example.yml config/rilgate.yml
 docker compose -f deploy/docker/compose.yml up --build
 ```
 
-The Compose example expects an upstream application and P2Pool on the host.
+The Compose example mounts `config/` and expects an upstream application and
+P2Pool on the host. The copied example uses development mode; configure
+production mode and strong signing keys for a public deployment.
 See [deployment examples](deploy/README.md) for configuration, systemd, Caddy
 and nginx integration.
 

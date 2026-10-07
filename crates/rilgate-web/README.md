@@ -6,8 +6,8 @@ immutable snapshots, optional watching, manual reloads, and web CLI commands.
 See the [web resource guide](../../docs/web.md)
 for configuration and deployment instructions.
 
-All gateway-owned pages, APIs and assets live below the configurable
-`web.base_path`.
+Gateway APIs and assets live below the configurable `web.base_path`.
+Challenge, denied, and upstream error pages are rendered at the application URL.
 
 Default:
 
@@ -43,9 +43,10 @@ static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32
 `solver.js` resolves the worker and the WASM module relative to its own URL, so
 the trio stays together regardless of `web.base_path`.
 
-`randomx_wasm.wasm` is produced by `cargo xtask build-wasm` and embedded into
-the server binary with `include_bytes!`, keeping deployment to a single file.
-Rebuild the module after touching `crates/randomx-core`:
+`randomx_wasm.wasm` is produced by `cargo xtask build-wasm` and embedded with
+the rest of `web/` through `include_dir!`, keeping deployment to a single
+binary. Rebuild the module and gateway after changing `crates/randomx-core`
+or `crates/randomx-wasm`:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -61,6 +62,7 @@ export async function solve(job) {
   // job.seedHash    : RandomX seed, hex
   // job.difficulty  : selected fixed difficulty
   // job.nonceOffset : normally 39
+  // job.expiresAt   : local challenge expiry, Unix seconds
   // job.onProgress  : optional progress callback
   return {
     nonce: "00000000", // Numeric hexadecimal nonce.
@@ -117,9 +119,10 @@ scratchpad memory relative to a single VM. The final nonce is hashed singly,
 keeping every nonce within the 32-bit range. Failed kernel installation retains single-hash execution.
 The built WASM artifact requires SIMD128 support.
 
-The module is `no_std`-hostile on purpose: it uses `std` only for `Vec`,
-`thread_local!` and slices, which keeps the ABI surface identical to what a
-`wasm-bindgen` wrapper would expose without the glue code.
+The wrapper uses Rust's wasm32 standard library and exposes a raw C-style ABI.
+Callers pass pointers into the exported linear memory; no `wasm-bindgen`
+JavaScript glue is required. Fallible status exports return `0` on success
+and `-1` on failure.
 
 `cancel()` terminates the worker, releases its WASM memory, and rejects pending
 work with `AbortError`. The challenge page calls it when work finishes or the
@@ -134,5 +137,5 @@ include a unique challenge suffix and are not valid P2Pool mining submissions.
 
 The Rust WASM core uses exact directed SIMD rounding, public-state AES lookup
 tables and inlined SuperscalarHash kernels. Browser throughput depends on the
-device, browser and workload. See the main README for arithmetic validation
-and native throughput commands.
+device, browser and workload. See [RandomX throughput](../../docs/pow.md#randomx-throughput)
+for arithmetic validation and native throughput commands.

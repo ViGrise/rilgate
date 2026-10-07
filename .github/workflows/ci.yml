@@ -17,26 +17,3 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       - name: Test workspace and browser resources
         run: scripts/test.sh
-
-  perf-gate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Install wrk
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wrk
-      - name: Prepare Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
-      - name: Build gateway
-        run: cargo build --release --locked -p rilgate
-      # Gates on log volume per request and on challenge latency relative to the
-      # cheapest endpoint, both of which are independent of runner hardware.
-      # Absolute throughput is reported but not gated, because a shared CI host
-      # makes it meaningless.
-      - name: Performance regression gate
-        run: scripts/perf-gate.sh

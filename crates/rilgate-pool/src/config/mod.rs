@@ -9,12 +9,7 @@ pub struct P2PoolConfig {
   pub submit_timeout_seconds: u64,
   pub max_sessions: usize,
   pub session_ttl_seconds: u64,
-  /// Long-lived sessions kept for proof-of-work issuance.
-  ///
-  /// Challenge issuance used to open a TCP connection, log in and drop the
-  /// socket for every challenge. That socket churn capped issuance at a few
-  /// hundred per second before the ephemeral port range ran out, so sessions are
-  /// pooled and their current job is reused. Zero restores connect-per-challenge.
+  /// Maximum pooled issuance sessions; zero uses one connection per challenge.
   pub max_job_sessions: usize,
   /// How long a pooled session may sit unused before it is closed.
   pub job_session_idle_seconds: u64,

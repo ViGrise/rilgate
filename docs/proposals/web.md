@@ -1,5 +1,19 @@
 # Rilgate Web Template & i18n Architecture
 
+See [Web resources](../web.md), [Configuration](../configuration.md), and
+[Workspace architecture](../architecture.md) for current behavior and paths.
+
+Implementation differences from this proposal:
+
+- HTTP serving belongs to `rilgate-gateway`; `rilgate-server` is not a workspace crate.
+- Web modules are grouped under `resources`, `runtime`, `templates`, `assets`, and `i18n`.
+- The embedded bundle is the repository's root `web/` directory.
+- SIGHUP reloads web resource files on Unix; it does not reload application configuration.
+- `rilgate web init`, `validate`, and `diff` are implemented CLI commands.
+- Locales are discovered from translation files unless an explicit served list is configured.
+- Static overrides use private snapshot backing files rather than the live operator files.
+- Health exposes web counters and status; the illustrative Prometheus metrics below are not exported.
+
 ## 1. Goals
 
 Rilgate's web layer should provide:

@@ -21,6 +21,7 @@ pub async fn gate(
   State(state): State<AppState>,
   request: Request<Body>,
 ) -> Result<Response, ApiError> {
+  state.proxy.request_url(request.uri())?;
   if is_gateway_internal_path(request.uri().path(), &state.cfg.web.base_path) {
     return Ok(StatusCode::NOT_FOUND.into_response());
   }

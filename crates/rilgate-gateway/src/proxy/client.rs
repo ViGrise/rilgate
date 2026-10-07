@@ -25,11 +25,13 @@ use rilgate_config::UpstreamConfig;
 pub struct ProxyService {
   cfg: UpstreamConfig,
   client: Client,
+  upstream: url::Url,
 }
 
 impl ProxyService {
   pub fn new(cfg: UpstreamConfig) -> Result<Self> {
     cfg.validate()?;
+    let upstream = url::Url::parse(&cfg.url)?;
     let client = Client::builder()
       .connect_timeout(Duration::from_secs(cfg.connect_timeout_seconds))
       .read_timeout(Duration::from_secs(cfg.read_timeout_seconds))
@@ -37,10 +39,29 @@ impl ProxyService {
       .build()
       .context("Failed to build upstream HTTP client")?;
 
-    Ok(Self { cfg, client })
+    Ok(Self {
+      cfg,
+      client,
+      upstream,
+    })
+  }
+
+  pub(crate) fn request_url(&self, uri: &http::Uri) -> Result<url::Url, ApiError> {
+    let mut url = self.upstream.clone();
+    let path = format!("{}{}", url.path().trim_end_matches('/'), uri.path());
+    url.set_path(&path);
+    // Policy matching and forwarding must use the same path representation.
+    if url.path() != path {
+      return Err(ApiError::InvalidRequest(
+        "Request path must not require URL normalization".into(),
+      ));
+    }
+    url.set_query(uri.query());
+    Ok(url)
   }
 
   pub async fn forward(&self, request: Request<Body>) -> Result<Response<Body>, ApiError> {
+    let url = self.request_url(request.uri())?;
     let (parts, body) = request.into_parts();
 
     let limit = self.cfg.max_body_bytes;
@@ -80,16 +101,7 @@ impl ProxyService {
       reqwest::Body::wrap_stream(stream)
     };
 
-    let path_and_query = parts
-      .uri
-      .path_and_query()
-      .map(|value| value.as_str())
-      .unwrap_or("/");
-
-    let upstream = self.cfg.url.trim_end_matches('/');
-    let url = format!("{upstream}{path_and_query}");
-
-    let mut builder = self.client.request(parts.method.clone(), &url);
+    let mut builder = self.client.request(parts.method.clone(), url);
     let request_connection_headers = connection_headers(&parts.headers);
 
     for (name, value) in &parts.headers {

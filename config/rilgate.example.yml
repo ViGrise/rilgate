@@ -20,10 +20,9 @@ web:
   i18n:
     default_locale: en
 
-    # Locales are discovered from the files in web/i18n, so adding i18n/vi.json
-    # is all it takes to offer Vietnamese. Declare supported_locales only to
-    # restrict that set to a subset of what has translations; the default
-    # locale must be part of it.
+    # Locales are discovered from loaded translation files on snapshot builds.
+    # Declare supported_locales to select the served tags explicitly; the
+    # default locale must be part of that list.
     # supported_locales:
     #   - en
     #   - vi
@@ -92,15 +91,10 @@ pow:
     max_sessions: 64
     session_ttl_seconds: 900
 
-    # Long-lived sessions reused for proof-of-work issuance. Challenge issuance
-    # opens one P2Pool connection, logs in, reads the job and keeps it open, so
-    # that issuing a challenge does not cost a TCP connection. Set to 0 to go
-    # back to connecting per challenge, which measured a ceiling of roughly 550
-    # challenges/second before the ephemeral port range ran out.
-    #
-    # These sessions draw permits from max_sessions, so the value must not
-    # exceed it; the remainder stays available to WebSocket sessions.
+    # Pooled issuance sessions share max_sessions with WebSocket sessions.
+    # Zero uses a new connection per challenge within that shared budget.
     max_job_sessions: 16
+    # Time since the last job request, regardless of incoming pool notifications.
     job_session_idle_seconds: 60
 
   # RandomX fallback difficulty calculation for CHALLENGE rules that select

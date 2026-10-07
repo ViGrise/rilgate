@@ -2,8 +2,8 @@
 
 ## Policy and request weight
 
-The gateway evaluates a `bots` + `thresholds` policy directly from
-`config/rilgate.yml`.
+The gateway evaluates `pow.bots` and `pow.thresholds` from the selected YAML
+configuration, which defaults to `config/rilgate.yml` when present.
 
 A `WEIGH` rule adds or subtracts points and policy evaluation continues.
 `ALLOW`, `DENY`, and `CHALLENGE` are terminal bot-rule actions.
@@ -155,6 +155,11 @@ difficulty = base * 2^(weight / weight_step)
 
 and clamps it at `pow.difficulty.max`.
 
+The exponent uses integer division for positive weights and is capped at 63;
+nonpositive weights use `pow.difficulty.base`. RandomX difficulty is at least
+1000. The maximum applies to this derived fallback; an explicit
+`challenge.difficulty` may exceed it.
+
 For `fast`, the fallback follows the lightweight scale approximately used by
 the default policy (`1`, `2`, `4`, `6`, ... leading zero hex digits).
 
@@ -168,9 +173,10 @@ For local testing only, `pow.risk.allow_debug_header` can enable the configured
 debug header:
 
 ```yaml
-risk:
-  allow_debug_header: true
-  debug_header: "x-pow-weight"
+pow:
+  risk:
+    allow_debug_header: true
+    debug_header: "x-pow-weight"
 ```
 
 Then:
@@ -180,4 +186,4 @@ curl -H 'x-pow-weight: 20' http://localhost:8080/
 ```
 
 sets the initial weight to `20` before `bots` rules run. This is disabled by
-default because it must not be client-controlled in production.
+default and is rejected in production mode.

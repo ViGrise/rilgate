@@ -76,6 +76,7 @@ impl P2PoolProvider {
   /// Reuses an idle session logged in at `difficulty`, if one exists.
   async fn take_idle(&self, difficulty: u64) -> Option<PooledSession> {
     let mut idle = self.idle.lock().await;
+    idle.retain(|session| !session.jobs.is_closed());
     let index = idle
       .iter()
       .position(|session| session.difficulty == difficulty)?;
@@ -115,7 +116,6 @@ impl P2PoolProvider {
 
   async fn job(&self, difficulty: u64) -> Result<StratumJob> {
     if self.config.max_job_sessions == 0 {
-      // Pooling disabled: one connection per challenge, as before.
       return self.open_ephemeral(difficulty).await;
     }
 
@@ -148,16 +148,11 @@ impl P2PoolProvider {
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("unable to obtain a P2Pool job")))
   }
 
-  /// Connect-and-drop path used when pooling is turned off.
-  ///
-  /// Dropping the handle closes the request channel, which ends the owning task
-  /// and releases its permits, so the socket lives only for this one job.
+  /// Fetches one job within the shared session budget without retaining a connection.
   async fn open_ephemeral(&self, difficulty: u64) -> Result<StratumJob> {
-    let session = self.open(difficulty).await?;
-    session.current_job().await.map_err(|error| {
-      tracing::warn!(?error, "P2Pool challenge unavailable");
-      anyhow::Error::from(PowBackendUnavailable)
-    })
+    let _slot = self.acquire_slot()?;
+    let session = StratumSession::connect(&self.config.stratum(), difficulty).await?;
+    Ok(session.current_job)
   }
 }
 
@@ -215,9 +210,6 @@ async fn run_session(
           tracing::warn!("Pooled P2Pool session connection lost");
           return;
         }
-        // A rotation while idle still resets the idle deadline: the session is
-        // demonstrably alive and holding a current job.
-        idle_deadline = tokio::time::Instant::now() + idle_timeout;
       }
     }
   }

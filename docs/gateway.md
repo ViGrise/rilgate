@@ -2,8 +2,9 @@
 
 ## Internal namespace
 
-All pages, APIs and static assets owned by the gateway live below one reserved
-path configured in YAML:
+Gateway APIs and static assets live below one reserved path configured in YAML.
+Challenge, denied, and upstream error pages are rendered at the requested
+application URL:
 
 ```yaml
 web:
@@ -13,7 +14,6 @@ web:
 With the default prefix:
 
 ```text
-/.well-known/rilgate
 /.well-known/rilgate/api/health
 /.well-known/rilgate/api/client-config
 /.well-known/rilgate/api/challenge
@@ -27,7 +27,8 @@ With the default prefix:
 /.well-known/rilgate/static/js/solvers/randomx/randomx_wasm.wasm
 ```
 
-Changing `web.base_path` moves the entire gateway-owned namespace.
+Changing `web.base_path` moves the APIs and assets. The prefix itself has no
+index page and returns `404`.
 
 Only the configured subtree is reserved. With the default configuration,
 paths such as:
@@ -55,6 +56,10 @@ upstream:
 ```
 
 Normal application URLs stay unchanged.
+
+Paths that require URL normalization, including `.` or `..` segments and their
+percent-encoded forms, return `400`. Policy matching and upstream forwarding
+use the same path representation. Query strings do not affect this check.
 
 For example:
 
@@ -99,9 +104,9 @@ upstream /articles/123
 The protected application does not need to know about the challenge URLs, and
 the browser never navigates away from the originally requested path.
 
-Unauthenticated `GET`/`HEAD` requests receive the challenge page
-in-place. Unauthenticated non-idempotent requests such as `POST` return `401`
-instead of being buffered and replayed automatically.
+For a `CHALLENGE` policy decision, unauthenticated `GET`/`HEAD` requests receive
+the challenge page in-place. All other methods, including `POST`, `PUT`, and
+`OPTIONS`, return `401` instead of being buffered and replayed automatically.
 
 The proxy streams request and response bodies. Requests are limited by
 `upstream.max_body_bytes`. It removes standard hop-by-hop headers and headers named
@@ -109,7 +114,7 @@ by `Connection` on both sides.
 
 ## Resource limits and failure handling
 
-The verifier uses one dedicated thread and a bounded queue. Requests beyond
+The native RandomX verifier uses one dedicated thread and a bounded queue. Requests beyond
 `pow.verifier_queue_capacity` receive `503`; queued work whose caller disconnects
 or times out is skipped. Seed changes release the old cache before allocating
 another one.
@@ -129,15 +134,15 @@ Challenge issuance keeps its Stratum sessions open in a pool of at most
 while idle, so issuing a challenge reuses a connection instead of opening one.
 Those sessions take permits from `max_sessions`, so `max_job_sessions` must not
 exceed it and the remainder stays available to WebSocket sessions. A session
-unused for `pow.p2pool.job_session_idle_seconds` is closed. Setting
-`max_job_sessions` to `0` restores connecting per challenge.
+unused for `pow.p2pool.job_session_idle_seconds` is closed; incoming job
+notifications do not extend that deadline. Setting `max_job_sessions` to `0`
+uses one connection per challenge within the shared `max_sessions` budget.
 
-Pooling matters because the unpooled path exhausts the ephemeral port range well
-before it saturates a CPU: measured against a mock P2Pool on a 12-core host, a
-fresh connection per challenge failed at roughly 550 challenges/second with
-`Can't assign requested address`, while the pool sustained 5,000/second with no
-connection failures. Size `max_job_sessions` for the expected rate, since
-issuance returns `503` when more requests than that are in flight at once.
+Pooling reduces TCP connection and login churn. Pooled sessions are matched by
+difficulty, so idle sessions for one difficulty still occupy capacity that
+another difficulty may need. Size `max_job_sessions` for concurrent issuance
+and the mix of configured difficulties; requests that cannot reuse a matching
+session or open another one return `503`.
 
 ```yaml
 upstream:
@@ -163,6 +168,11 @@ requests. Uploads are never retried automatically.
 A read timeout after streaming begins closes the body, since the status has
 already been sent. PoW JSON requests are limited to 16 KiB and their responses
 use `Cache-Control: no-store`; Stratum messages are limited to 64 KiB.
+
+A separate, fixed 30-second HTTP handler timeout returns `408` if response
+headers are not ready in time. It can expire before a longer configured
+upstream timeout. It does not bound an already streaming response or an
+upgraded WebSocket session.
 
 Startup validates policy difficulties, paths, timeouts, and queue/session
 capacities. Production rejects placeholder or shorter-than-32-byte signing
@@ -221,16 +231,13 @@ to disable this limiter explicitly.
 
 Per-request diagnostics (the HTTP trace span and its request/response events,
 per-request policy decisions, presented challenges and missing translations)
-are `DEBUG`, so the default does not emit them. Enabling them per request is
-expensive: measured on a 12-core host, `rilgate=debug,tower_http=info` reduced
-the challenge path from 97,500 to 36,600 requests/second and wrote roughly 666MB
-of log output per 15 seconds of load. Raise them for a specific subsystem
-instead of globally:
+are `DEBUG`, so the default does not emit them. Enabling them adds log output
+for each request and can affect throughput. Raise them for a specific subsystem:
 
 ```bash
 RUST_LOG=rilgate=info,tower_http=debug   # per-request HTTP tracing only
 RUST_LOG=rilgate_gateway=debug           # per-request policy decisions only
 ```
 
-Startup and reload events, upstream failures, capacity rejections and session
-loss are `INFO` or `WARN` and are unaffected.
+Startup and successful reload events use `INFO`. Upstream failures and P2Pool
+session loss use `WARN`; failed web snapshot builds and reloads use `ERROR`.

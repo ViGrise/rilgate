@@ -53,8 +53,9 @@ solver.js    owns calculation and cancellation
 worker.js    performs expensive calculation off the page thread
 ```
 
-Register the adapter through `window.PowClient.register(id, adapter)` and include
-its script in the challenge bootstrap. The page entrypoint selects an adapter
+Register the adapter through `window.PowClient.register(id, adapter)` and import
+its module in `web/static/js/challenge.js` after the shared runtime and registry.
+The page entrypoint selects an adapter
 through the registry and checks the algorithm list returned by client-config.
 Shared fetch, translation, exchange, and status helpers belong to the challenge
 runtime. Mining transport belongs to the P2Pool browser module. Keep resource
@@ -73,8 +74,5 @@ capacity. `crates/rilgate-gateway/tests/algorithms.rs` demonstrates an injected 
 with its own policy validation and shared lifecycle checks.
 
 ```sh
-cargo xtask build-wasm
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-node --test tests/*.test.mjs
+scripts/test.sh
 ```

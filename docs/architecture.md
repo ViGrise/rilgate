@@ -28,6 +28,8 @@ so existing YAML and environment variables retain their behavior.
 
 ## Detailed source tree
 
+Generated build artifacts, including the staged RandomX WASM module, are omitted.
+
 ```text
 rilgate/
 ├── .cargo/
@@ -191,6 +193,7 @@ rilgate/
 │   │   │   │   └── mod.rs
 │   │   │   ├── algorithms.rs
 │   │   │   ├── gateway.rs
+│   │   │   ├── pool.rs
 │   │   │   ├── proof_protocol.rs
 │   │   │   ├── rate_limits.rs
 │   │   │   ├── stratum.rs
@@ -358,6 +361,7 @@ rilgate/
 │   └── web.md
 ├── scripts/
 │   ├── build.sh
+│   ├── perf-gate.sh
 │   ├── test.sh
 │   └── validate-randomx-wasm.mjs
 ├── tests/
@@ -420,9 +424,10 @@ are available. See [algorithm development](algorithms.md). Unimplemented algorit
 replay storage, vardiff, Prometheus exporters, fuzz targets and benchmark harnesses
 are not represented by empty crates or placeholder modules.
 
-Canonical embedded resources are in root `web/`. The original
-[web subsystem proposal](proposals/web.md) describes the resource model; the
-tree above gives the implemented paths. Operator resources are seeded and loaded
+Canonical embedded resources are in root `web/`. The archived
+[web subsystem proposal](proposals/web.md) records the original design goals;
+[web resources](web.md) describes the implemented behavior and the tree above
+gives the implemented paths. Operator resources are seeded and loaded
 from the configured runtime root, independently of repository source paths.
 
 Rust integration tests belong to their owning crate. Node browser tests remain

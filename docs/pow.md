@@ -50,7 +50,9 @@ challenge:
   difficulty: 8000
 ```
 
-RandomX keeps the existing P2Pool-derived flow.
+Both RandomX modes obtain work from a configured P2Pool Stratum endpoint.
+Difficulty is a positive integer of at least 1000; a result must be no greater
+than `floor((2^256 - 1) / difficulty)` when interpreted as a little-endian integer.
 
 With:
 
@@ -79,33 +81,34 @@ A useful default is to make normal browser traffic cheap and reserve RandomX
 for highly suspicious traffic:
 
 ```yaml
-thresholds:
-  - name: moderate-suspicion
-    expression:
-      all:
-        - weight >= 10
-        - weight < 20
-    action: CHALLENGE
-    challenge:
-      algorithm: fast
-      difficulty: 2
+pow:
+  thresholds:
+    - name: moderate-suspicion
+      expression:
+        all:
+          - weight >= 10
+          - weight < 20
+      action: CHALLENGE
+      challenge:
+        algorithm: fast
+        difficulty: 2
 
-  - name: high-suspicion
-    expression:
-      all:
-        - weight >= 20
-        - weight < 30
-    action: CHALLENGE
-    challenge:
-      algorithm: fast
-      difficulty: 4
+    - name: high-suspicion
+      expression:
+        all:
+          - weight >= 20
+          - weight < 30
+      action: CHALLENGE
+      challenge:
+        algorithm: fast
+        difficulty: 4
 
-  - name: extreme-suspicion
-    expression: weight >= 30
-    action: CHALLENGE
-    challenge:
-      algorithm: randomx
-      difficulty: 8000
+    - name: extreme-suspicion
+      expression: weight >= 30
+      action: CHALLENGE
+      challenge:
+        algorithm: randomx
+        difficulty: 8000
 ```
 
 If a `CHALLENGE` omits `algorithm`, `pow.default_algorithm` is used:
@@ -117,7 +120,7 @@ pow:
 
 ## Enforcement modes
 
-Configured in `config/rilgate.yml`.
+Configured through `pow.enforce` in the selected YAML file or `POW_ENFORCE`.
 
 ### Stateless local verification
 
@@ -165,7 +168,8 @@ gateway
 ```
 
 The challenge is self-contained and signed, so a challenge created by gateway A
-can be verified by gateway B as long as both instances use the same keys.
+can be verified by gateway B when both instances share signing keys,
+enforcement mode, and compatible token lifetimes and algorithms.
 
 No Redis, coordinator, sticky session or special load-balancer configuration is
 required.
@@ -258,8 +262,9 @@ export async function solve(job) {
 }
 ```
 
-The module is embedded into the server binary, so deployment stays a single
-file. Rebuild it after changing `crates/randomx-core`:
+The module is embedded with the rest of the web bundle into the server binary,
+so deployment stays a single file. Rebuild it and the gateway after changing
+`crates/randomx-core` or `crates/randomx-wasm`:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -280,6 +285,11 @@ challenges also retain their enforcement mode and cannot cross mode changes;
 older fast challenge tokens without that claim require a new challenge.
 All token validators reject unsupported versions, future issue times, invalid
 lifetimes, and expiration at the current second.
+
+Access cookies apply across paths on their bound host. A `CHALLENGE` policy
+accepts a cookie only when its algorithm and enforcement mode match and its
+difficulty is at least the policy's requirement. `DENY` rules still deny access
+with a valid cookie.
 
 Local RandomX work appends a domain marker and a random 16-byte challenge ID to
 the P2Pool-derived blob. Identical pool jobs therefore yield distinct proofs
