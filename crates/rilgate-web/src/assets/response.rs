@@ -29,10 +29,14 @@ impl AssetMetadata {
     } else {
       match &self.source {
         AssetSource::Embedded(bytes) => body(*bytes),
-        AssetSource::Memory(bytes) => body(Bytes::copy_from_slice(bytes)),
+        AssetSource::Memory(bytes) => body(bytes.clone()),
         AssetSource::File(file) => StreamBody::new(
-          ReaderStream::new(tokio::fs::File::from_std(file.reopen()?))
-            .map_ok(http_body::Frame::data),
+          // Larger chunks amortize blocking file reads while bounding memory per response.
+          ReaderStream::with_capacity(
+            tokio::fs::File::from_std(file.reopen()?),
+            self.size.clamp(1, 64 * 1024) as usize,
+          )
+          .map_ok(http_body::Frame::data),
         )
         .boxed_unsync(),
       }

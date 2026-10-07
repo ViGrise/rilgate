@@ -121,7 +121,8 @@ The proxy streams request and response bodies. Requests are limited by
 by `Connection` on both sides, while retaining the protocol fields required for
 accepted WebSocket upgrades. Redirects are returned to the client. Upstream
 HTTP requests are never replayed. Connection failures can try another resolved
-address before sending the request. DNS results are refreshed after 60 seconds;
+address before sending the request. Literal IPv4 and IPv6 upstreams use their
+configured address directly. Hostname DNS results are refreshed after 60 seconds;
 HTTPS upstreams use certificate and hostname verification with upstream-host SNI,
 independently of `preserve_host`.
 

@@ -457,7 +457,7 @@ fn authentication_cookie_can_arrive_in_a_later_cookie_header() {
   );
   assert_eq!(
     rilgate_gateway::auth::cookies::cookie_value(&headers, "rilgate_auth"),
-    Some("token".into())
+    Some("token")
   );
 }
 

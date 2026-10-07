@@ -7,12 +7,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct PolicyDecision {
+pub struct PolicyDecision<'a> {
   pub action: PolicyAction,
   pub weight: i32,
   pub algorithm: Option<PowAlgorithm>,
   pub difficulty: Option<u64>,
-  pub rule: String,
+  pub rule: &'a str,
 }
 
 #[derive(Debug)]
@@ -77,7 +77,12 @@ impl PolicyEngine {
     Ok(Self { rules, thresholds })
   }
 
-  pub fn evaluate(&self, headers: &HeaderMap, path: &str, initial_weight: i32) -> PolicyDecision {
+  pub fn evaluate(
+    &self,
+    headers: &HeaderMap,
+    path: &str,
+    initial_weight: i32,
+  ) -> PolicyDecision<'_> {
     let mut weight = initial_weight;
 
     for rule in &self.rules {
@@ -96,7 +101,7 @@ impl PolicyEngine {
             weight,
             algorithm: rule.config.challenge.algorithm,
             difficulty: rule.config.challenge.difficulty,
-            rule: rule.config.name.clone(),
+            rule: &rule.config.name,
           };
         }
       }
@@ -109,7 +114,7 @@ impl PolicyEngine {
           weight,
           algorithm: threshold.config.challenge.algorithm,
           difficulty: threshold.config.challenge.difficulty,
-          rule: threshold.config.name.clone(),
+          rule: &threshold.config.name,
         };
       }
     }
@@ -120,7 +125,7 @@ impl PolicyEngine {
       weight,
       algorithm: None,
       difficulty: None,
-      rule: "default-allow".to_string(),
+      rule: "default-allow",
     }
   }
 }
@@ -287,6 +292,47 @@ impl WeightComparison {
 mod tests {
   use super::*;
   use crate::{ChallengePolicy, PolicyAction, PowAlgorithm, ThresholdConfig, WeightExpression};
+
+  #[test]
+  fn decisions_preserve_rule_names_weights_and_challenge_settings() {
+    let cfg = PolicyConfig {
+      bots: vec![
+        serde_yaml_ng::from_str("name: weigh\naction: WEIGH\nweight:\n  adjust: 10").unwrap(),
+        serde_yaml_ng::from_str(
+          "name: terminal\npath_regex: ^/terminal$\naction: CHALLENGE\nchallenge:\n  algorithm: fast\n  difficulty: 2",
+        ).unwrap(),
+      ],
+      thresholds: vec![ThresholdConfig {
+        name: "threshold".into(),
+        expression: WeightExpression::Single("weight >= 20".into()),
+        action: PolicyAction::Deny,
+        challenge: ChallengePolicy::default(),
+      }],
+    };
+    let engine = PolicyEngine::new(&cfg).unwrap();
+    drop(cfg);
+    for (path, initial, name, action, weight) in [
+      ("/terminal", 10, "terminal", PolicyAction::Challenge, 20),
+      ("/other", 10, "threshold", PolicyAction::Deny, 20),
+      ("/other", 0, "default-allow", PolicyAction::Allow, 10),
+      (
+        "/other",
+        i32::MAX,
+        "threshold",
+        PolicyAction::Deny,
+        i32::MAX,
+      ),
+    ] {
+      let decision = engine.evaluate(&HeaderMap::new(), path, initial);
+      assert_eq!(decision.rule, name);
+      assert_eq!(decision.action, action);
+      assert_eq!(decision.weight, weight);
+      if action == PolicyAction::Challenge {
+        assert_eq!(decision.algorithm, Some(PowAlgorithm::Fast));
+        assert_eq!(decision.difficulty, Some(2));
+      }
+    }
+  }
 
   #[test]
   fn parses_all_weight_expression() {

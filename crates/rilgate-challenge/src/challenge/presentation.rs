@@ -10,7 +10,7 @@ impl ChallengeService {
     &self,
     host: String,
     path: String,
-    decision: &PolicyDecision,
+    decision: &PolicyDecision<'_>,
   ) -> Result<String> {
     Ok(
       self
@@ -23,7 +23,7 @@ impl ChallengeService {
     &self,
     host: String,
     path: String,
-    decision: &PolicyDecision,
+    decision: &PolicyDecision<'_>,
   ) -> Result<crate::IssuedToken<PresentationClaims>> {
     if decision.action != PolicyAction::Challenge {
       return Err(anyhow!(
@@ -49,7 +49,7 @@ impl ChallengeService {
       v: 1,
       host,
       path,
-      rule: decision.rule.clone(),
+      rule: decision.rule.to_owned(),
       weight: decision.weight,
       algorithm,
       difficulty,

@@ -3,8 +3,8 @@
 #
 #   scripts/perf-gate.sh
 #
-# Reports throughput and checks successful responses, log volume, and challenge
-# latency relative to health. Requires a release binary, wrk, Node.js, and curl.
+# Reports health, challenge, and proxy throughput; checks responses, log volume,
+# and challenge latency relative to health. Requires a release binary, wrk, Node.js, and curl.
 
 set -euo pipefail
 
@@ -59,10 +59,12 @@ wait_for_http() {
 # p50 in microseconds, from a wrk --latency run.
 measure_latency() {
   local path="$1" ua="$2" out p50
-  wrk -t"$THREADS" -c"$CONNECTIONS" -d"$WARMUP" -H "User-Agent: $ua" \
+  local request_headers=(-H "User-Agent: $ua")
+  if [[ -n "${3:-}" ]]; then request_headers+=(-H "Cookie: $3"); fi
+  wrk -t"$THREADS" -c"$CONNECTIONS" -d"$WARMUP" "${request_headers[@]}" \
     "http://127.0.0.1:$PORT$path" >/dev/null 2>&1
   out="$(wrk -t"$THREADS" -c"$CONNECTIONS" -d"$DURATION" --latency \
-    -H "User-Agent: $ua" "http://127.0.0.1:$PORT$path")"
+    "${request_headers[@]}" "http://127.0.0.1:$PORT$path")"
   if [[ "$out" == *"Non-2xx or 3xx responses:"* || "$out" == *"Socket errors:"* ]]; then
     echo "perf-gate: unsuccessful load run for $path" >&2
     echo "$out" >&2
@@ -129,12 +131,29 @@ if [[ "$challenge_body" != *"window.POW_PRESENTATION_TOKEN = "* ]]; then
   exit 1
 fi
 
+auth_cookie="$(node scripts/perf/auth-cookie.mjs "http://127.0.0.1:$PORT")"
+authenticated_body="$(curl -fsS -H "Cookie: $auth_cookie" "http://127.0.0.1:$PORT/protected")"
+upstream_body="$(curl -fsS "http://127.0.0.1:$UPSTREAM_PORT/protected")"
+if [[ "$authenticated_body" != "$upstream_body" ]]; then
+  echo "perf-gate: authenticated request did not reach the upstream" >&2
+  exit 1
+fi
+
 log_bytes_before="$(stat -c%s "$RUNDIR/gateway.log" 2>/dev/null || stat -f%z "$RUNDIR/gateway.log" 2>/dev/null || echo 0)"
 
 health_result="$(measure_latency /.well-known/rilgate/api/health rilgate-perf-gate/1.0)"
 challenge_result="$(measure_latency /protected "$BROWSER_UA")"
+authenticated_result="$(measure_latency /protected "$BROWSER_UA" "$auth_cookie")"
+allowed_result="$(measure_latency /public rilgate-perf-gate/1.0)"
+authenticated_body="$(curl -fsS -H "Cookie: $auth_cookie" "http://127.0.0.1:$PORT/protected")"
+if [[ "$authenticated_body" != "$upstream_body" ]]; then
+  echo "perf-gate: authentication expired or failed during the load run" >&2
+  exit 1
+fi
 read -r health_rps health_p50 <<<"$health_result"
 read -r challenge_rps challenge_p50 <<<"$challenge_result"
+read -r authenticated_rps authenticated_p50 <<<"$authenticated_result"
+read -r allowed_rps allowed_p50 <<<"$allowed_result"
 
 log_bytes_after="$(stat -c%s "$RUNDIR/gateway.log" 2>/dev/null || stat -f%z "$RUNDIR/gateway.log" 2>/dev/null || echo 0)"
 log_bytes=$((log_bytes_after - log_bytes_before))
@@ -142,6 +161,8 @@ log_bytes=$((log_bytes_after - log_bytes_before))
 printf 'perf-gate: conns=%s duration=%s\n' "$CONNECTIONS" "$DURATION"
 printf '  %-22s %12s req/s  p50 %sus\n' "health" "$health_rps" "$health_p50"
 printf '  %-22s %12s req/s  p50 %sus\n' "challenge page" "$challenge_rps" "$challenge_p50"
+printf '  %-22s %12s req/s  p50 %sus\n' "authenticated proxy" "$authenticated_rps" "$authenticated_p50"
+printf '  %-22s %12s req/s  p50 %sus\n' "allowed proxy" "$allowed_rps" "$allowed_p50"
 printf '  %-22s %12s bytes\n' "log written" "$log_bytes"
 
 status=0

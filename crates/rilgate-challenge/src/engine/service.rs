@@ -64,7 +64,7 @@ impl ChallengeService {
     self.cfg.enforce
   }
 
-  pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision {
+  pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision<'_> {
     let initial_weight = self.initial_weight(headers);
     let mut decision = self.policy.evaluate(headers, path, initial_weight);
 

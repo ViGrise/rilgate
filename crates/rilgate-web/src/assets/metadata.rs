@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use bytes::Bytes;
 use sha2::{Digest, Sha256};
 use std::{
   io::{Read, Write},
@@ -8,7 +9,7 @@ use std::{
 use tempfile::NamedTempFile;
 pub enum AssetSource {
   Embedded(&'static [u8]),
-  Memory(Vec<u8>),
+  Memory(Bytes),
   File(Arc<NamedTempFile>),
 }
 pub struct AssetMetadata {
@@ -32,6 +33,7 @@ impl AssetMetadata {
     Self::from_bytes(name, bytes, AssetSource::Embedded(bytes))
   }
   pub fn memory(name: &str, bytes: Vec<u8>) -> Self {
+    let bytes = Bytes::from(bytes);
     Self::from_bytes(name, &bytes, AssetSource::Memory(bytes.clone()))
   }
   pub fn file(root: &Path, name: &str, path: &Path) -> Result<Self> {
@@ -65,7 +67,7 @@ impl AssetMetadata {
   pub fn bytes(&self) -> Result<Vec<u8>> {
     match &self.source {
       AssetSource::Embedded(bytes) => Ok(bytes.to_vec()),
-      AssetSource::Memory(bytes) => Ok(bytes.clone()),
+      AssetSource::Memory(bytes) => Ok(bytes.to_vec()),
       AssetSource::File(file) => {
         let mut bytes = Vec::new();
         file.reopen()?.read_to_end(&mut bytes)?;

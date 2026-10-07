@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use http::{HeaderMap, HeaderValue};
 use rilgate_challenge::ChallengeService;
 use rilgate_config::{Config, Environment};
-pub fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+pub fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
   headers
     .get_all(http::header::COOKIE)
     .iter()
@@ -10,7 +10,7 @@ pub fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
     .flat_map(|raw| raw.split(';'))
     .find_map(|pair| {
       let (key, value) = pair.trim().split_once('=')?;
-      (key == name).then(|| value.to_string())
+      (key == name).then_some(value)
     })
 }
 

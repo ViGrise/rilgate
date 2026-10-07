@@ -52,7 +52,7 @@ fn negotiate_locale(
     crate::auth::cookies::cookie_value(headers, &snapshot.config.i18n.language_cookie_name);
   snapshot.supported.negotiate(
     explicit.as_deref(),
-    cookie.as_deref(),
+    cookie,
     headers
       .get("accept-language")
       .and_then(|value| value.to_str().ok()),

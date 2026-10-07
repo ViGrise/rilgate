@@ -61,7 +61,7 @@ pub fn gate(
 
   let host = request_host(headers, uri);
   let authenticated = cookie_value(headers, &state.cfg.pow.auth_cookie_name)
-    .and_then(|token| state.pow.verify_auth_token(&token, &host).ok())
+    .and_then(|token| state.pow.verify_auth_token(token, &host).ok())
     .is_some_and(|claims| {
       claims.enforce == state.pow.enforcement()
         && claims.algorithm == decision.algorithm.expect("challenge algorithm resolved")

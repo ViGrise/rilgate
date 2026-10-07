@@ -46,12 +46,36 @@ purpose, even when signing keys are shared. Signatures from other token formats 
 
 CI runs `scripts/test.sh`; it does not run performance tests.
 
+Static response construction and body streaming can be measured separately:
+
+```bash
+cargo run --release --locked -p rilgate-web --example asset-throughput -- 200
+```
+
+This checks received byte counts and reports the median of five samples for
+memory and immutable file assets at three sizes. See [asset performance](performance.md)
+for measurements, design tradeoffs, and the scope of this benchmark.
+
+The request policy and authentication gate has a separate benchmark:
+
+```bash
+cargo run --release --locked -p rilgate-gateway --example gate-throughput -- 200000
+```
+
+It reports median time for allowed and authenticated requests, plus allocation
+counts collected separately from timing. It exercises the real gate and token
+verification with test configuration and keys, without forwarding requests.
+Run benchmarks without simultaneous builds or other load.
+
 `scripts/perf-gate.sh` is an optional local check requiring `wrk`, Node.js,
 and `curl`. It starts the bundled `scripts/perf/upstream.mjs` and generates a
 lab configuration in `PERF_GATE_RUNDIR` (default `/tmp/rilgate-perf-gate`).
 Gateway and upstream ports default to 8080 and 3300; override them with
 `PERF_GATE_PORT` and `PERF_GATE_UPSTREAM_PORT`. The lab uses fixed test keys,
-Fast difficulty 1 at `/protected`, and disabled proof rate limits.
+Fast difficulty 1 at `/protected`, and disabled proof rate limits. It completes
+the proof and exchange protocol to obtain a real access cookie, then checks that
+authenticated requests reach the upstream before and after load. It measures
+health, challenge pages, authenticated proxy traffic, and allowed proxy traffic.
 
 The script validates endpoint responses, rejects HTTP/socket errors and zero
 throughput, then checks log volume and challenge p50 relative to health p50.
