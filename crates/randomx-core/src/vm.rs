@@ -251,10 +251,6 @@ impl VirtualMachine {
     &self.registers
   }
 
-  pub fn registers_mut(&mut self) -> &mut RegisterFile {
-    &mut self.registers
-  }
-
   pub fn reset_rounding(&mut self) {
     self.rounding = RoundingMode::default();
   }

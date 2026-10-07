@@ -37,8 +37,6 @@ pub const SCRATCHPAD_L2_MASK: u64 = ((SCRATCHPAD_L2 / 8 - 1) * 8) as u64;
 pub const SCRATCHPAD_L3_MASK: u64 = ((SCRATCHPAD_L3 / 8 - 1) * 8) as u64;
 pub const SCRATCHPAD_L3_MASK64: u64 = ((SCRATCHPAD_L3 / 64 - 1) * 64) as u64;
 
-pub const REGISTERS_COUNT: usize = 8;
-pub const REGISTER_COUNT_FLT: usize = 4;
 pub const REGISTER_NEEDS_DISPLACEMENT: usize = 5;
 
 pub const MANTISSA_SIZE: u32 = 52;

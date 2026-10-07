@@ -2333,7 +2333,6 @@ dependencies = [
  "clap",
  "dotenvy",
  "http",
- "http-body-util",
  "rilgate-challenge",
  "rilgate-config",
  "rilgate-gateway",
@@ -2361,7 +2360,6 @@ dependencies = [
  "rilgate-policy",
  "rilgate-pow",
  "rilgate-protocol",
- "serde",
  "uuid",
 ]
 
@@ -2380,7 +2378,6 @@ dependencies = [
  "rilgate-protocol",
  "rilgate-web",
  "serde",
- "serde_json",
  "serde_yaml_ng",
  "tracing",
  "url",
@@ -2488,10 +2485,8 @@ name = "rilgate-pow-hash"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "hex",
  "rilgate-core",
  "rilgate-pow",
- "rilgate-protocol",
  "sha2",
  "uuid",
 ]
@@ -2547,7 +2542,6 @@ dependencies = [
  "axum",
  "http",
  "http-body",
- "http-body-util",
  "hyper",
  "hyper-util",
  "rilgate-challenge",

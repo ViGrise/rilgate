@@ -198,8 +198,4 @@ impl RandomXCache {
   pub fn programs(&self) -> &[SuperscalarProgram] {
     &self.programs
   }
-
-  pub fn memory_blocks(&self) -> &[Block] {
-    &self.memory
-  }
 }

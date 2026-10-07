@@ -15,11 +15,6 @@ pub struct ChallengeRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PresentationQuery {
-  pub presentation_token: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct VerifyRequest {
   pub challenge_token: String,
   pub nonce: String,

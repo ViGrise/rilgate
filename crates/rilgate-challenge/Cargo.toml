@@ -9,7 +9,6 @@ publish = false
 anyhow.workspace = true
 http.workspace = true
 uuid.workspace = true
-serde.workspace = true
 rilgate-core.workspace = true
 rilgate-protocol.workspace = true
 rilgate-pow.workspace = true

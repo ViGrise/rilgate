@@ -9,7 +9,5 @@ publish = false
 anyhow.workspace = true
 uuid.workspace = true
 sha2.workspace = true
-hex.workspace = true
 rilgate-core.workspace = true
-rilgate-protocol.workspace = true
 rilgate-pow.workspace = true
