@@ -5,6 +5,7 @@ use crate::{
   transport::{
     errors::ApiError,
     response::{Response, json, response},
+    stream::DownstreamStream,
   },
   web::{assets, pages::render_page},
 };
@@ -95,6 +96,7 @@ impl Gateway {
           let digest = { use std::os::windows::io::AsRawSocket; SocketDigest::from_raw_socket(socket.as_raw_socket()) };
           let mut stream = Stream::from(socket);
           stream.set_socket_digest(digest);
+          let stream = DownstreamStream::new(stream);
           let proxy = self.proxy.clone();
           let stopped = stopped.clone();
           connections.spawn(async move { proxy.process_new(Box::new(stream), &stopped).await; });
@@ -135,6 +137,16 @@ fn new_request_id() -> http::HeaderValue {
     .expect("valid UUID")
 }
 async fn send(session: &mut Session, out: Response, ctx: &RequestContext) -> pingora::Result<()> {
+  DownstreamStream::set_coalescing(session.stream(), true);
+  let result = write_local(session, out, ctx).await;
+  DownstreamStream::set_coalescing(session.stream(), false);
+  result
+}
+async fn write_local(
+  session: &mut Session,
+  out: Response,
+  ctx: &RequestContext,
+) -> pingora::Result<()> {
   let (mut parts, mut body) = out.into_parts();
   parts.headers.insert("x-request-id", ctx.id.clone());
   if !parts.headers.contains_key(CONTENT_LENGTH)

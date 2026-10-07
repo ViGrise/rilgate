@@ -103,6 +103,40 @@ with p50 447 us; allowed proxy throughput was 70,389 req/s with p50 444 us.
 There were no HTTP/socket errors and no measured log growth. These numbers
 validate the load harness and are not a before/after throughput comparison.
 
+## Client connection writes
+
+The gateway accepts connections itself and hands Pingora streams with
+unbuffered writes, so a local response cost one `sendto` for its header and
+another for its body. `DownstreamStream` wraps each client connection and
+coalesces writes while `send` writes a local response: the header and a body of
+up to 8 KiB leave in one write when Pingora flushes at the end of the response.
+The buffer exists only during that write and is released on flush, so idle
+keep-alive connections hold no extra memory.
+
+Proxied responses are written through unchanged. Buffering them would hold a
+fixed-length response header until the upstream sends body bytes, which delays
+headers behind a slow upstream. Pingora's own listener accepts that delay; the
+gateway requires proxied headers to reach the client first.
+
+Request IDs use UUIDv7 random bits. The `uuid` crate's `fast-rng` feature draws
+them from `rand`'s thread-local CSPRNG, which removes a `getentropy` system
+call per request. Random UUIDs elsewhere, including SHA-256 challenge values,
+use the same generator.
+
+`scripts/perf-gate.sh`, 32 connections and eight-second windows, mean of
+two runs on macOS arm64 on 2026-10-07:
+
+| Path | Before, req/s | After, req/s | p50 before / after |
+| --- | ---: | ---: | ---: |
+| Health | 131,289 | 169,060 | 225 / 165 us |
+| Challenge page | 131,675 | 168,619 | 224 / 164 us |
+| Authenticated proxy | 69,784 | 69,853 | 448 / 445 us |
+| Allowed proxy | 70,556 | 70,884 | 443 / 441 us |
+
+Proxy throughput is bounded by the single-threaded mock upstream and the
+added hop's latency; gateway CPU per proxied request changed from 62.8 us to
+60.7 us, which is within run-to-run variation.
+
 ## Further investigation
 
 The authenticated path still allocates for the normalized request host, decoded
