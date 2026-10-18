@@ -13,8 +13,31 @@ Run commands from the repository root. Build with `scripts/build.sh` or
 `scripts/build.sh --release`. The script creates the browser WASM artifact
 before the gateway embeds it. Run `scripts/test.sh` for
 the complete default checks, including WASM generation, formatting, Rust tests,
-Clippy and Node tests. The native RandomX reference tests below are opt-in and
+Clippy and Node tests. Test artifacts use a temporary target directory that is
+removed on exit unless `CARGO_TARGET_DIR` is explicitly set. Browser E2E tests
+run with `scripts/test/browser.sh` or `npm --prefix tests/e2e run test:e2e`;
+dependencies and reports stay in temporary directories.
+The native RandomX reference tests below are opt-in and
 allocate substantial memory.
+
+## Code organization
+
+Token signing lives in `crates/rilgate-crypto/src/token/`: `keys.rs` owns key
+rotation configuration, `purpose.rs` defines protocol domains, and `signer.rs`
+owns token encoding and verification. `mod.rs` keeps the public API stable;
+unit tests live in `tests.rs`.
+
+Gateway operational endpoints live under
+`crates/rilgate-gateway/src/observability/`. Each endpoint has a `service.rs`;
+readiness response types live in `readiness/dto.rs`, while request counters and
+histograms live in `metrics/collector.rs`. The transport router dispatches to
+these services.
+
+Production verification runners live in `scripts/test/`. Browser scenarios and
+Playwright configuration and npm manifests live together in `tests/e2e/`;
+container proof helpers live in `tests/container/`. Dependency audit policy lives
+in `.config/deny.toml`. Deployment examples and monitoring configuration live
+under `deploy/`, with the operator guide in `docs/production.md`.
 
 ## Verification
 
@@ -44,7 +67,9 @@ purpose, even when signing keys are shared. Signatures from other token formats 
 
 ## Performance
 
-CI runs `scripts/test.sh`; it does not run performance tests.
+CI runs `scripts/test.sh`, real HTTPS browser E2E tests, native RandomX
+reference tests, dependency checks and production container checks. See
+[production operations](production.md) for the release gate and local commands.
 
 Static response construction and body streaming can be measured separately:
 

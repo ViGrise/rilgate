@@ -106,9 +106,10 @@ protocol, host binding, lifetime and enforcement details.
 Rilgate looks for `config/rilgate.yml` by default. This operator-owned file is
 not included in the repository; copy [the full example](config/rilgate.example.yml)
 or choose another file with `--config` or `CONFIG`. Settings resolve in this
-order: CLI flags, environment variables, YAML, then defaults. Without a default
-file, Rilgate uses environment variables and built-in defaults, which allow
-requests at the default risk weight.
+order: CLI flags, environment variables, YAML, then defaults. In development,
+without a default file, environment variables and built-in defaults allow
+requests at the default risk weight. Production requires an explicit policy
+in a configuration file.
 
 ```yaml
 upstream:
@@ -121,7 +122,8 @@ pow:
   auth_cookie_name: gate_auth
 ```
 
-Copy the full example when creating a deployment configuration. Production mode
+Use [the production configuration](config/rilgate.production.yml) for public deployments
+and follow [production operations](docs/production.md). Production mode
 requires strong signing keys and rejects the development placeholders. Public
 branding, auth and language cookie names, templates and locales are configurable.
 
@@ -141,13 +143,14 @@ Docker and Compose examples are included:
 
 ```bash
 docker build -f deploy/docker/Dockerfile -t rilgate:local .
-cp config/rilgate.example.yml config/rilgate.yml
+export POW_SIGNING_KEY="$(openssl rand -hex 32)"
+export POW_AUTH_SIGNING_KEY="$(openssl rand -hex 32)"
 docker compose -f deploy/docker/compose.yml up --build
 ```
 
-The Compose example mounts `config/` and expects an upstream application and
-P2Pool on the host. The copied example uses development mode; configure
-production mode and strong signing keys for a public deployment.
+The Compose example mounts `config/rilgate.production.yml`, requires signing
+secrets, and expects an upstream application on the host. It binds to loopback;
+configure TLS and client quotas at the edge before public use.
 See [deployment examples](deploy/README.md) for configuration, systemd, Caddy
 and nginx integration.
 
@@ -162,14 +165,18 @@ and nginx integration.
 | [Proof of work](docs/pow.md)              | Fast, RandomX, P2Pool modes and token lifecycle         |
 | [Web resources](docs/web.md)              | Branding, templates, translation fallback and reloads   |
 | [Adding an algorithm](docs/algorithms.md) | Backend, provider and browser contracts                 |
+| [Production operations](docs/production.md) | Deployment hardening, monitoring, rotation and rollback |
 | [Development](docs/development.md)        | Build, tests and RandomX reference validation           |
 
 ## Project status
 
 Rilgate is experimental. Fast and RandomX are implemented; GhostRider and BLAKE3
 are potential extensions. HTTP serving and upstream forwarding use Pingora, including
-application WebSocket proxying. Distributed rate limiting,
-key rotation and metrics exporters are not implemented.
+application WebSocket proxying. Key rotation, Prometheus metrics and production
+deployment defaults are available.
+Rate limits remain local to each gateway instance; shared quotas can be enforced
+at the edge. See [production operations](docs/production.md) for rollout and
+validation requirements.
 
 Local proofs and access tokens are reusable within their signed lifetime.
 Single-use verification across gateway instances would require shared state or a

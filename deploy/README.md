@@ -5,10 +5,12 @@ The Pingora transport requires OpenSSL at build time and runtime. On Debian or
 Ubuntu, install `pkg-config` and `libssl-dev` to build, and `libssl3` plus
 `ca-certificates` to run. The Docker image includes these dependencies.
 
-For Docker Compose, create the configuration before starting the service:
+For Docker Compose, review `config/rilgate.production.yml` and supply independent
+signing secrets through the deployment secret store:
 
 ```bash
-cp config/rilgate.example.yml config/rilgate.yml
+export POW_SIGNING_KEY="$(openssl rand -hex 32)"
+export POW_AUTH_SIGNING_KEY="$(openssl rand -hex 32)"
 docker compose -f deploy/docker/compose.yml up --build
 ```
 
@@ -18,18 +20,16 @@ To build the image separately:
 docker build -f deploy/docker/Dockerfile -t rilgate:local .
 ```
 
-The Compose file mounts root `config/` and connects to an upstream and P2Pool on
-the host. Edit those addresses for the deployment. `config/rilgate.yml` is the
-default configuration file; it is not included in Git. Without it, built-in
-defaults allow requests at weight zero. Use `--config` or `CONFIG` to select
-another file. The full example uses development mode; set `ENV=production`
-and strong `POW_SIGNING_KEY` and `POW_AUTH_SIGNING_KEY` values for a public
-deployment. See [configuration](../docs/configuration.md) for precedence and
-validation. The example assigns Fast challenges to browser-like User-Agents;
-only policies that select RandomX require P2Pool.
+The Compose file mounts `config/rilgate.production.yml`, runs as a non-root user
+with a read-only filesystem, and limits memory, CPU and process count. It binds
+port 8080 only to loopback. Edit upstream addresses for the deployment and
+configure HTTPS at the edge. The image also uses the production template by
+default and refuses to start without strong signing secrets. Its healthcheck
+uses the readiness route under the default web namespace; override the
+healthcheck if changing the port or namespace.
 
 For systemd, create a `rilgate` user, install the binary under `/opt/rilgate`,
-configuration under `/etc/rilgate`, and a writable `/var/lib/rilgate` directory.
+the production configuration under `/etc/rilgate`, and a writable `/var/lib/rilgate` directory.
 Provide `/etc/rilgate/environment` with production settings and strong signing
 keys. If filesystem web overrides are enabled, set `web.root` to
 `/var/lib/rilgate/web`. `systemctl reload rilgate` requests a web snapshot reload.
@@ -37,6 +37,11 @@ keys. If filesystem web overrides are enabled, set `web.root` to
 The Caddy and nginx examples forward the host and support the gateway's P2Pool
 WebSocket API and upstream application WebSockets. Set the
 public hostname and configure TLS at the edge; the nginx example only contains
-an HTTP listener. Client rate limits use socket addresses, so clients behind
-the edge proxy share its quota. Tune the gateway limits or enforce client
-quotas at the edge; forwarded IP headers are not trusted by the gateway.
+an HTTP listener. Configure `serve.trusted_proxies` with only the actual proxy
+addresses to obtain independent client proof quotas. The nginx example enforces
+per-client request and connection quotas at the edge; Caddy does not add a
+shared quota service. Both examples block public operational endpoints.
+
+See [production operations](../docs/production.md) for monitoring examples,
+capacity settings, key rotation, token replay semantics, release checks and
+rollback. Run `scripts/test/container.sh IMAGE` to check a built image.

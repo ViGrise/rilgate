@@ -15,6 +15,9 @@ With the default prefix:
 
 ```text
 /.well-known/rilgate/api/health
+/.well-known/rilgate/api/live
+/.well-known/rilgate/api/ready
+/.well-known/rilgate/api/metrics
 /.well-known/rilgate/api/client-config
 /.well-known/rilgate/api/challenge
 /.well-known/rilgate/api/verify
@@ -216,8 +219,9 @@ and expected browser throughput; RandomX solve times depend on the device and di
 Rate limiting is enabled by default for challenge issuance, verification,
 receipt exchange, and WebSocket upgrades. Each request uses one unit from its
 client bucket and the instance's global bucket. Rejected requests return `429`,
-`Retry-After`, and `Cache-Control: no-store`. Client configuration, health,
-assets, and application proxy traffic do not use this quota.
+`Retry-After`, and `Cache-Control: no-store`. Client configuration, operational endpoints,
+assets, and application proxy traffic do not use this proof quota. All requests
+remain subject to connection and request concurrency limits.
 
 ```yaml
 pow:
@@ -236,13 +240,14 @@ replenishes 16 requests per second. Limits are local to each gateway instance;
 multiple instances have separate quotas. They do not replace the verifier's
 queue or P2Pool connection limits.
 
-Client identity comes from the TCP peer address. `Forwarded` and
-`X-Forwarded-For` are ignored. IPv4-mapped IPv6 addresses share the same bucket
-as their IPv4 address. Clients behind a reverse proxy or NAT share that peer's
-quota; tune limits for this deployment or enforce client quotas at the trusted
-edge. Embedded servers must use
-`router.into_make_service_with_connect_info::<SocketAddr>()` to attach peer
-addresses. Requests without connection information share an anonymous bucket.
+Client identity defaults to the TCP peer address. `Forwarded` is ignored.
+When `serve.trusted_proxies` contains the peer, `X-Forwarded-For` is resolved
+from right to left through trusted hops. Untrusted peers cannot override their IP.
+IPv4-mapped IPv6 addresses share the same bucket as their IPv4 address. Clients
+behind an untrusted reverse proxy or NAT share that peer's quota; configure
+trusted proxies or enforce client quotas at the edge. `Gateway::serve` obtains
+peer addresses from accepted TCP sockets. Requests without connection
+information share an anonymous bucket.
 
 The client table is bounded by `max_clients`. Fully replenished entries can be
 removed without resetting an active quota. If the table is full of active
@@ -273,3 +278,6 @@ events with cumulative counters; pooled connection details use `DEBUG`.
 HTTP completion events, including individual 5xx responses, use `DEBUG`; internal
 application errors retain their explicit `ERROR` logs.
 Failed web snapshot builds and reloads use `ERROR`.
+
+See [production operations](production.md) for connection/request limits,
+readiness behavior, Prometheus metrics and deployment trust boundaries.

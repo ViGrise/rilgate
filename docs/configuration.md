@@ -10,8 +10,9 @@ for available fields.
 The repository includes `config/rilgate.example.yml` as a reference, but no
 `config/rilgate.yml`. Copy the example to `config/rilgate.yml` before running
 the quick start. When
-the default file is absent, environment variables and built-in defaults are
-used. Those defaults contain no bot rules and allow requests at weight zero.
+the default file is absent in development, environment variables and built-in
+defaults are used. Those defaults contain no bot rules and allow requests at
+weight zero. Production requires a configuration file with explicit policy.
 An explicitly selected configuration file must exist and be readable.
 
 Scalar environment names replace dots with underscores and use uppercase,
@@ -19,7 +20,12 @@ such as `SERVE_PORT`, `UPSTREAM_MAX_BODY_BYTES`, and `POW_P2POOL_MAX_SESSIONS`.
 `PORT` is an alias for `SERVE_PORT`; `APP_ENV` and `ENV` select the environment.
 `pow.bots` and `pow.thresholds` are YAML lists rather than scalar environment
 overrides. Unknown fields in policy rules and the `web` section are rejected;
-unrecognized scalar keys elsewhere produce a warning.
+unrecognized scalar and sequence keys elsewhere produce a warning in development
+and are rejected in production.
+
+See [production operations](production.md) for the production template, limits,
+trusted proxies, key rotation and monitoring. Production requires explicit,
+nonempty `pow.thresholds` in a configuration file and rejects unknown keys.
 
 Production mode requires signing keys of at least 32 bytes and rejects placeholder
 values. Store secrets outside committed configuration. Use `ENV=production` or
@@ -30,8 +36,7 @@ values. Store secrets outside committed configuration. Use `ENV=production` or
 Every gateway instance should have the same:
 
 ```text
-POW_SIGNING_KEY
-POW_AUTH_SIGNING_KEY
+compatible proof and authentication verification keyrings
 web.base_path
 pow.enforce
 pow.auth_cookie_name
