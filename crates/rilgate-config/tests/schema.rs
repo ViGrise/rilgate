@@ -199,3 +199,39 @@ fn response_selection_validates_modes_and_path_prefixes() {
     assert!(resolve(&format!("{BASE}{extra}\n")).is_err(), "{extra}");
   }
 }
+
+const FEED: &str = "policy:\n  mode: custom\n  ip_sets:\n    feed: {url: 'http://127.0.0.1:9/ips.json', format: ip_prefixes_json}\n  rules:\n    - {name: f, when: {client_ip: {in_sets: [feed]}}, action: allow}\n";
+
+#[test]
+fn remote_ip_sets_require_https_in_production() {
+  let error = format!("{:#}", resolve(&format!("{BASE}{FEED}")).unwrap_err());
+  assert!(
+    error.contains("policy.ip_sets.feed.url: production requires https"),
+    "{error}"
+  );
+  assert!(resolve(&format!("environment: development\n{BASE}{FEED}")).is_ok());
+  assert!(resolve(&format!("{BASE}{}", FEED.replace("http://", "https://"))).is_ok());
+  assert!(resolve(&format!("{BASE}{}", FEED.replace("http://", "HTTPS://"))).is_ok());
+}
+
+#[test]
+fn resolved_ip_sets_round_trip_through_serialization() {
+  let text = FEED.replace("http://", "https://").replace(
+    "format: ip_prefixes_json}",
+    "format: ip_prefixes_json, refresh: 36h, max_stale: 3d}",
+  );
+  let config = resolve(&format!("{BASE}{text}")).unwrap();
+  let shown = serde_yaml_ng::to_string(&config.pow.policy).unwrap();
+  assert!(shown.contains("ip_prefixes_json"), "{shown}");
+  let again: rilgate_config::schema::policy::Definition = serde_yaml_ng::from_str(&shown).unwrap();
+  assert_eq!(serde_yaml_ng::to_string(&again).unwrap(), shown);
+  let feed = &again.ip_sets["feed"];
+  assert_eq!(
+    feed.refresh,
+    Some(std::time::Duration::from_secs(36 * 3600))
+  );
+  assert_eq!(
+    feed.max_stale,
+    Some(std::time::Duration::from_secs(3 * 86_400))
+  );
+}

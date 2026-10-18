@@ -49,6 +49,18 @@ impl Configuration {
         "policy.score.debug_header.enabled: debug score headers are disabled in production"
       );
     }
+    if production {
+      for (name, set) in &self.pow.policy.ip_sets {
+        if let Some(url) = &set.url {
+          ensure!(
+            url
+              .get(..8)
+              .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://")),
+            "policy.ip_sets.{name}.url: production requires https"
+          );
+        }
+      }
+    }
     Ok(())
   }
   pub fn load(args: Overrides) -> Result<Config> {
