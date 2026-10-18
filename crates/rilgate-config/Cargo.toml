@@ -3,6 +3,7 @@ name = "rilgate-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 serde_path_to_error = "0.1"

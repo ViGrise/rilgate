@@ -3,6 +3,7 @@ name = "randomx-wasm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Raw wasm32 ABI for the workspace RandomX implementation"
 
 [lib]

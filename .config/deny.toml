@@ -18,6 +18,9 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace crates are private and share the [workspace.package] version, so their
+# path dependencies carry no version requirement.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
