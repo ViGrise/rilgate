@@ -75,7 +75,10 @@ else
 fi
 
 echo "Installed ${INSTALL_DIR}/${BIN_NAME}"
-"${INSTALL_DIR}/${BIN_NAME}" --version
-if [ "$os" = "linux" ]; then
-  echo "Linux binaries need glibc 2.36 or newer and OpenSSL 3 (libssl3)."
+if ! "${INSTALL_DIR}/${BIN_NAME}" --version; then
+  if [ "$os" = "linux" ]; then
+    fail "${BIN_NAME} is installed but cannot start; Linux binaries need glibc 2.36 or newer and OpenSSL 3 (libssl3)."
+  fi
+  fail "${BIN_NAME} is installed but cannot start."
 fi
+echo "Upgrade later with: ${BIN_NAME} upgrade"

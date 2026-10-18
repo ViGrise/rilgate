@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Packages a release binary with its license and production configuration as
-# rilgate-<platform>.tar.gz, or rilgate-<platform>.zip for Windows binaries.
+# rilgate-<platform>.tar.gz, or rilgate-<platform>.zip for Windows binaries, and
+# copies the bare binary as rilgate-<platform> (.exe on Windows) beside it.
 #
 # Usage: scripts/release/package.sh <binary> <platform> <output-dir>
 set -euo pipefail
@@ -23,7 +24,15 @@ cp "$root/LICENSE" "$root/config/rilgate.production.yml" "$stage/$name/"
 chmod +x "$stage/$name/$(basename "$binary")"
 
 case "$binary" in
-  *.exe) (cd "$stage" && 7z a -tzip -bso0 -bsp0 "$output/$name.zip" "$name") ;;
-  *) tar -czf "$output/$name.tar.gz" -C "$stage" "$name" ;;
+  *.exe)
+    (cd "$stage" && 7z a -tzip -bso0 -bsp0 "$output/$name.zip" "$name")
+    cp "$binary" "$output/$name.exe"
+    ;;
+  *)
+    tar -czf "$output/$name.tar.gz" -C "$stage" "$name"
+    cp "$binary" "$output/$name"
+    chmod +x "$output/$name"
+    ;;
 esac
-echo "Packaged $(ls "$output/$name".*)"
+echo "Packaged:"
+ls -1 "$output/$name"*

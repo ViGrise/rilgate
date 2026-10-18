@@ -191,8 +191,9 @@ after these checks pass. Pushing a `v*` tag releases that revision:
    and `latest` tags; a tag containing `-`, such as `v1.2.0-rc.1`, publishes a
    prerelease that never moves `latest`.
 4. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows),
-   each holding the binary, `LICENSE` and `rilgate.production.yml`, plus
-   `SHA256SUMS` and `install.sh`, with generated release notes.
+   each holding the binary, `LICENSE` and `rilgate.production.yml`; the bare
+   binary `rilgate-<os>-<arch>` (`.exe` on Windows) used by `rilgate upgrade`;
+   `SHA256SUMS` covering both; and `install.sh`, with generated release notes.
 
 Linux binaries come from the image builder stage, so they need glibc 2.36 or
 newer and OpenSSL 3 (`libssl3`). macOS and Windows binaries link OpenSSL
