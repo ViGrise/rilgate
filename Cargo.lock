@@ -2345,6 +2345,7 @@ dependencies = [
  "rilgate-challenge",
  "rilgate-config",
  "rilgate-gateway",
+ "rilgate-ip-feeds",
  "rilgate-pool",
  "rilgate-pow",
  "rilgate-pow-hash",
@@ -2473,6 +2474,7 @@ dependencies = [
  "rilgate-policy",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "tokio",
  "tracing",
 ]

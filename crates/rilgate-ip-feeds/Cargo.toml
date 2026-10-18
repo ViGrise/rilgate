@@ -21,4 +21,5 @@ rilgate-policy.workspace = true
 [dev-dependencies]
 axum.workspace = true
 futures-util.workspace = true
+serde_yaml_ng.workspace = true
 tokio.workspace = true

@@ -14,6 +14,7 @@ tracing.workspace = true
 rilgate-config.workspace = true
 rilgate-gateway.workspace = true
 rilgate-challenge.workspace = true
+rilgate-ip-feeds.workspace = true
 rilgate-pool.workspace = true
 rilgate-pow.workspace = true
 rilgate-pow-hash.workspace = true
