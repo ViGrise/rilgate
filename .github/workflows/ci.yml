@@ -8,13 +8,13 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Use a temporary Cargo target directory
         run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/rilgate-target" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -39,20 +39,20 @@ jobs:
           scripts/build.sh --release
           PERF_GATE_BINARY="$CARGO_TARGET_DIR/release/rilgate" PERF_GATE_DURATION=3s PERF_GATE_WARMUP=1s scripts/perf-gate.sh
   dependencies:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check advisories, licenses and dependency sources
         run: |
           cargo install cargo-deny --version 0.20.2 --locked
           cargo deny --locked --config .config/deny.toml check advisories licenses sources bans
   container:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Build production image

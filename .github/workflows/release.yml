@@ -10,10 +10,10 @@ jobs:
     uses: ./.github/workflows/ci.yml
   package:
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Use a temporary Cargo target directory
         run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/rilgate-target" >> "$GITHUB_ENV"
       - name: Install native dependencies
@@ -28,7 +28,7 @@ jobs:
           tar -czf /tmp/rilgate-linux-amd64.tar.gz -C "$package_dir" .
           cd /tmp
           sha256sum rilgate-linux-amd64.tar.gz > SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rilgate-linux-amd64
           path: |
