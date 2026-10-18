@@ -9,7 +9,7 @@ use rilgate_config::{
 pub fn config() -> Config {
   Arc::new(Configuration {
     env: Environment::Development,
-    listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
+    listen_addresses: vec![SocketAddr::from(([127, 0, 0, 1], 0))],
     app_port: 0,
     server: Default::default(),
     upstream: UpstreamConfig {

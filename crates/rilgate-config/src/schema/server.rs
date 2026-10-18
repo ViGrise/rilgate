@@ -1,10 +1,10 @@
 use super::value::{Size, Time};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Server {
-  pub listen: String,
+  pub listen: Listen,
   pub upstream: Upstream,
   pub max_connections: usize,
   pub max_requests: usize,
@@ -16,7 +16,7 @@ pub struct Server {
 impl Default for Server {
   fn default() -> Self {
     Self {
-      listen: ":8080".into(),
+      listen: Listen::single(":8080"),
       upstream: Upstream::default(),
       max_connections: 1024,
       max_requests: 512,
@@ -57,5 +57,36 @@ impl Default for Timeout {
       connect: Time::seconds(5),
       read: Time::seconds(30),
     }
+  }
+}
+
+/// One listen address or a list of them. A single address serializes as a plain string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listen(pub Vec<String>);
+impl Listen {
+  pub fn single(address: impl Into<String>) -> Self {
+    Self(vec![address.into()])
+  }
+}
+impl Serialize for Listen {
+  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    match self.0.as_slice() {
+      [only] => only.serialize(serializer),
+      many => many.serialize(serializer),
+    }
+  }
+}
+impl<'de> Deserialize<'de> for Listen {
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Form {
+      One(String),
+      Many(Vec<String>),
+    }
+    Ok(match Form::deserialize(deserializer)? {
+      Form::One(address) => Self(vec![address]),
+      Form::Many(addresses) => Self(addresses),
+    })
   }
 }

@@ -23,9 +23,14 @@ pub fn load(args: &Overrides) -> Result<Document> {
   };
   let mut document = parse_with(&text, &args.settings)?;
   if let Some(port) = args.port {
-    let mut address = super::assembly::listen_address(&document.server.listen)?;
-    address.set_port(port);
-    document.server.listen = address.to_string();
+    let addresses = super::assembly::parse_listen(&document.server.listen)?;
+    document.server.listen.0 = addresses
+      .into_iter()
+      .map(|mut address| {
+        address.set_port(port);
+        address.to_string()
+      })
+      .collect();
   }
   Ok(document)
 }

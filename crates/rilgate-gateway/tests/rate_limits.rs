@@ -150,7 +150,7 @@ async fn server_connection_info_populates_the_client_bucket() {
   let gateway = app::build(cfg).await.unwrap();
   let server = tokio::spawn(async move {
     gateway
-      .serve(listener, std::future::pending())
+      .serve(vec![listener], std::future::pending())
       .await
       .unwrap();
   });

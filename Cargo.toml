@@ -95,6 +95,7 @@ minijinja = { version = "2", features = ["loader", "json", "fuel"] }
 mime_guess = "2"
 notify = "8"
 tempfile = "3"
+socket2 = "0.6"
 tokio-util = { version = "0.7", features = ["io"] }
 cap-std = "4"
 language-tags = "0.3"

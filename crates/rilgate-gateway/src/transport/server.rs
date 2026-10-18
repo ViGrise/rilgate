@@ -84,16 +84,17 @@ impl Gateway {
   }
   pub async fn serve(
     self,
-    listener: TcpListener,
+    listeners: Vec<TcpListener>,
     shutdown: impl std::future::Future<Output = ()>,
   ) -> anyhow::Result<()> {
     let (stop, stopped) = watch::channel(false);
     let mut connections = JoinSet::new();
     tokio::pin!(shutdown);
+    let mut first = 0;
     let outcome = loop {
       tokio::select! {
         _ = &mut shutdown => break Ok(()),
-        accepted = listener.accept() => {
+        accepted = accept_any(&listeners, &mut first) => {
           let (socket, _) = match accepted { Ok(pair) => pair, Err(error) => break Err(error.into()) };
           let permit = match self.state.connections.clone().try_acquire_owned() {
             Ok(permit) => permit,
@@ -120,7 +121,7 @@ impl Gateway {
         }
       }
     };
-    drop(listener);
+    drop(listeners);
     self.state.shutdown.cancel();
     let _ = stop.send(true);
     self.proxy.cleanup().await;
@@ -137,6 +138,25 @@ impl Gateway {
   }
 }
 
+/// Accepts from whichever listener is ready first. The starting listener rotates per call so a
+/// busy listener cannot starve the others.
+async fn accept_any(
+  listeners: &[TcpListener],
+  first: &mut usize,
+) -> std::io::Result<(tokio::net::TcpStream, std::net::SocketAddr)> {
+  std::future::poll_fn(|cx| {
+    let count = listeners.len();
+    for offset in 0..count {
+      let index = (*first + offset) % count;
+      if let std::task::Poll::Ready(accepted) = listeners[index].poll_accept(cx) {
+        *first = (index + 1) % count;
+        return std::task::Poll::Ready(accepted);
+      }
+    }
+    std::task::Poll::Pending
+  })
+  .await
+}
 fn failure(status: StatusCode, message: &str) -> Box<Error> {
   Error::explain(ErrorType::HTTPStatus(status.as_u16()), message.to_owned())
 }

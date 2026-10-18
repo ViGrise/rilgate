@@ -28,7 +28,8 @@ These commands validate keys, limits, policies and algorithm selection without
 opening a listener or contacting upstream/P2Pool. Resolved output redacts all
 keys and pool passwords. Validate filesystem overrides with `web validate`.
 The template uses `server.listen: ":8080"`, an IPv4 wildcard listener. Use
-`127.0.0.1:8080` for a host-local edge; Compose publishes only on host loopback.
+`127.0.0.1:8080` for a host-local edge, or a list such as `[":8080", "[::]:8080"]`
+to add IPv6; Compose publishes only on host loopback.
 
 Terminate TLS at a trusted edge and restrict direct gateway access to the edge,
 load balancer and monitoring network. Restrict the application upstream so public

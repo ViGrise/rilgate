@@ -70,7 +70,14 @@ Policy rules, IP sets and signing key rotation (`security.keys`) are YAML only.
 Pass the secret through `RILGATE_SECURITY_SECRET` rather than
 `--security-secret`, because process arguments are visible to other local users.
 
-`--port` (`RILGATE_PORT`) replaces only the port of the resolved listen address.
+`server.listen` takes one address or a list of up to 16, such as
+`[":8080", "[::]:8443"]`; `--server-listen` and `RILGATE_SERVER_LISTEN` take a
+comma-separated list. `[::]:8080` accepts IPv4 and IPv6 on every operating
+system. When the list also holds `:8080` or `0.0.0.0:8080` with the same port,
+the IPv4 wildcard serves IPv4 and `[::]:8080` serves IPv6 only. Other IPv6
+addresses are IPv6 only. Duplicate addresses are rejected.
+
+`--port` (`RILGATE_PORT`) replaces the port of every listen address.
 `--log-level` (`RUST_LOG`) sets the log filter and `--log-format`
 (`RILGATE_LOG_FORMAT`) selects `text` or `json` output. Old automatic `POW_*`,
 `WEB_*`, `SERVE_*`, `ENV`, `PORT`, and `CONFIG` aliases are unsupported.
@@ -103,7 +110,7 @@ with `B`, `KiB`, `MiB`, or `GiB`, without rounding or overflow.
 | Setting | Default |
 | --- | --- |
 | `environment` | `production` |
-| `server.listen` | `:8080` |
+| `server.listen` | `:8080` (one address or a list) |
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |

@@ -19,6 +19,7 @@ anyhow.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true
+socket2.workspace = true
 tracing.workspace = true
 rilgate-config.workspace = true
 rilgate-gateway.workspace = true

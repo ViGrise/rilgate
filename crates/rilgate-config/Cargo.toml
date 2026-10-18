@@ -22,3 +22,6 @@ rilgate-policy.workspace = true
 rilgate-pool.workspace = true
 rilgate-protocol.workspace = true
 rilgate-crypto.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

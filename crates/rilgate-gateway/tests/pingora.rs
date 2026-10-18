@@ -88,7 +88,7 @@ async fn shutdown_closes_idle_connections_and_releases_the_listener() {
   let address = listener.local_addr().unwrap();
   let gateway = app::build(common::config()).await.unwrap();
   let (stop, stopped) = tokio::sync::oneshot::channel();
-  let server = tokio::spawn(gateway.serve(listener, async {
+  let server = tokio::spawn(gateway.serve(vec![listener], async {
     let _ = stopped.await;
   }));
   let mut socket = TcpStream::connect(address).await.unwrap();
@@ -166,4 +166,29 @@ async fn hostname_upstreams_can_connect_using_their_available_address_family() {
     "origin"
   );
   upstream.abort();
+}
+
+#[tokio::test]
+async fn serves_requests_from_every_listener() {
+  let mut listeners = vec![TcpListener::bind("127.0.0.1:0").await.unwrap()];
+  if let Ok(listener) = TcpListener::bind("[::1]:0").await {
+    listeners.push(listener);
+  }
+  let addresses: Vec<_> = listeners.iter().map(|l| l.local_addr().unwrap()).collect();
+  let gateway = app::build(common::config()).await.unwrap();
+  let (stop, stopped) = tokio::sync::oneshot::channel();
+  let server = tokio::spawn(gateway.serve(listeners, async {
+    let _ = stopped.await;
+  }));
+  let client = reqwest::Client::new();
+  for address in addresses {
+    let response = client
+      .get(format!("http://{address}/.well-known/test-pow/api/live"))
+      .send()
+      .await
+      .unwrap();
+    assert_eq!(response.status(), 200, "{address}");
+  }
+  stop.send(()).unwrap();
+  server.await.unwrap().unwrap();
 }

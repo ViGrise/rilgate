@@ -68,7 +68,7 @@ impl TestGateway {
     let stopped = stop.clone();
     tokio::spawn(async move {
       gateway
-        .serve(listener, stopped.cancelled())
+        .serve(vec![listener], stopped.cancelled())
         .await
         .expect("test listener");
     });

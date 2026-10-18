@@ -84,7 +84,7 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
   let gateway = app::build(cfg.clone()).await.unwrap();
   let server = tokio::spawn(async move {
     gateway
-      .serve(listener, std::future::pending())
+      .serve(vec![listener], std::future::pending())
       .await
       .unwrap();
   });

@@ -46,8 +46,14 @@
 #################################### SERVER ###################################
 
 server:
-  # Bind address. ':8080' listens on all IPv4 interfaces.
-  # Use '127.0.0.1:8080' behind a local edge or '[::]:8080' for IPv6.
+  # Bind address, or a list of up to 16 addresses. ':8080' listens on all IPv4
+  # interfaces. Use '127.0.0.1:8080' behind a local edge.
+  # '[::]:8080' accepts IPv4 and IPv6 on every operating system, unless the list
+  # also holds ':8080' or '0.0.0.0:8080' (same port), which then serves IPv4 and
+  # '[::]:8080' serves IPv6 only. Any other IPv6 address is IPv6 only.
+  # Example list: [":8080", "[::]:8443"]. --server-listen and
+  # RILGATE_SERVER_LISTEN take a comma-separated list.
+  # --port replaces the port of every address.
   # Hostnames are not supported here; use an IP address and port.
   #
   # listen: ":8080"

@@ -38,7 +38,7 @@ fn durations_sizes_ipv6_and_resource_settings_resolve_without_rounding() {
       "    max_body_size: 16MiB\n    timeout:\n      connect: 300ms\n      read: 5s\n    url:",
     );
   let cfg = resolve(&text).unwrap();
-  assert_eq!(cfg.listen_address.to_string(), "[::1]:9090");
+  assert_eq!(cfg.listen_addresses, ["[::1]:9090".parse().unwrap()]);
   assert_eq!(cfg.upstream.connect_timeout.as_millis(), 300);
   assert_eq!(cfg.server.readiness_timeout.as_millis(), 300);
   assert_eq!(cfg.upstream.max_body_bytes, 16 * 1024 * 1024);
@@ -296,4 +296,85 @@ fn auth_binding_round_trips_through_serialization() {
       .unwrap()
       .contains("client_ip")
   );
+}
+
+fn with_listen(listen: &str) -> String {
+  BASE.replace("  upstream:", &format!("  listen: {listen}\n  upstream:"))
+}
+fn resolve_with_port(listen: &str, port: u16) -> anyhow::Result<rilgate_config::Config> {
+  let file = tempfile::NamedTempFile::new().unwrap();
+  std::fs::write(file.path(), with_listen(listen)).unwrap();
+  rilgate_config::Configuration::load(rilgate_config::Overrides {
+    config: Some(file.path().to_owned()),
+    port: Some(port),
+    ..Default::default()
+  })
+}
+
+#[test]
+fn listen_accepts_a_string_or_a_list() {
+  let single = resolve(&with_listen("':8080'")).unwrap();
+  assert_eq!(single.listen_addresses, ["0.0.0.0:8080".parse().unwrap()]);
+  let many = resolve(&with_listen("[':8080', '[::]:8443', '127.0.0.1:9000']")).unwrap();
+  assert_eq!(
+    many.listen_addresses,
+    [
+      "0.0.0.0:8080".parse().unwrap(),
+      "[::]:8443".parse().unwrap(),
+      "127.0.0.1:9000".parse().unwrap()
+    ]
+  );
+}
+
+#[test]
+fn listen_rejects_duplicates_empty_and_oversized_lists() {
+  let error = resolve(&with_listen("[':8080', '0.0.0.0:8080']")).unwrap_err();
+  assert!(
+    error.to_string().contains("server.listen[1]: duplicate"),
+    "{error}"
+  );
+  assert!(resolve(&with_listen("[]")).is_err());
+  let many = (1..=17)
+    .map(|port| format!("'127.0.0.1:{port}'"))
+    .collect::<Vec<_>>();
+  assert!(resolve(&with_listen(&format!("[{}]", many[..16].join(",")))).is_ok());
+  let error = resolve(&with_listen(&format!("[{}]", many.join(",")))).unwrap_err();
+  assert!(error.to_string().contains("server.listen"), "{error}");
+}
+
+#[test]
+fn listen_errors_name_the_offending_entry() {
+  let error = resolve(&with_listen("[':8080', 'localhost:1']")).unwrap_err();
+  assert!(
+    format!("{error:#}").contains("server.listen[1]"),
+    "{error:#}"
+  );
+  let error = resolve(&with_listen("'localhost:1'")).unwrap_err();
+  assert!(format!("{error:#}").contains("server.listen:"), "{error:#}");
+}
+
+#[test]
+fn port_override_applies_to_every_listen_address() {
+  let cfg = resolve_with_port("['127.0.0.1:1', '[::1]:2']", 9).unwrap();
+  assert_eq!(
+    cfg.listen_addresses,
+    ["127.0.0.1:9".parse().unwrap(), "[::1]:9".parse().unwrap()]
+  );
+  let error = resolve_with_port("['127.0.0.1:1', '127.0.0.1:2']", 9).unwrap_err();
+  assert!(error.to_string().contains("duplicate"), "{error:#}");
+}
+
+#[test]
+fn listen_round_trips_with_a_single_address_as_a_string() {
+  let single = parse(&with_listen("':8080'")).unwrap();
+  let yaml = serde_yaml_ng::to_string(&single.server).unwrap();
+  assert!(
+    yaml.contains("listen: :8080") || yaml.contains("listen: ':8080'"),
+    "{yaml}"
+  );
+  let many = parse(&with_listen("[':8080', '[::]:8443']")).unwrap();
+  let yaml = serde_yaml_ng::to_string(&many.server).unwrap();
+  let back: rilgate_config::schema::server::Server = serde_yaml_ng::from_str(&yaml).unwrap();
+  assert_eq!(back.listen, many.server.listen);
+  assert!(yaml.contains("- "), "{yaml}");
 }

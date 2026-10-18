@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 impl Document {
   pub fn resolve(&self) -> Result<Config> {
-    let address = super::listen_address(&self.server.listen)?;
+    let addresses = super::listen_addresses(&self.server.listen)?;
     ensure!(
       !self.server.upstream.url.is_empty(),
       "server.upstream.url: required; expected an HTTP or HTTPS upstream URL"
@@ -57,8 +57,8 @@ impl Document {
     let site = &self.site;
     let config = Arc::new(Configuration {
       env: self.environment,
-      app_port: address.port(),
-      listen_address: address,
+      app_port: addresses[0].port(),
+      listen_addresses: addresses,
       server: ServerConfig {
         max_connections: self.server.max_connections,
         max_requests: self.server.max_requests,

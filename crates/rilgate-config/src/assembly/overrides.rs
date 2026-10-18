@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Default)]
 pub struct Overrides {
   pub config: Option<PathBuf>,
-  /// Replaces only the port of the resolved listen address.
+  /// Replaces the port of every listen address.
   pub port: Option<u16>,
   pub settings: Vec<Setting>,
 }
