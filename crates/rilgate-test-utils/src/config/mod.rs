@@ -11,6 +11,7 @@ pub fn config() -> Config {
     env: Environment::Development,
     listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
     app_port: 0,
+    server: Default::default(),
     upstream: UpstreamConfig {
       url: "http://127.0.0.1:3000".into(),
       preserve_host: false,
@@ -29,6 +30,8 @@ pub fn config() -> Config {
       default_algorithm: PowAlgorithm::Fast,
       signing_key: Secret("test-shared-signing-key".into()),
       auth_signing_key: Secret("test-auth-signing-key".into()),
+      signing_keys: Default::default(),
+      auth_signing_keys: Default::default(),
       challenge_ttl_seconds: 60,
       randomx_challenge_ttl_seconds: 3600,
       receipt_ttl_seconds: 30,

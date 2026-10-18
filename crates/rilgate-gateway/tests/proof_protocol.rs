@@ -518,3 +518,71 @@ async fn randomx_http_proofs_require_local_verification_even_with_signed_matchin
     "{error}"
   );
 }
+
+#[tokio::test]
+async fn rolling_key_rotation_preserves_the_full_cross_instance_proof_flow() {
+  let mut current = common::config();
+  let config = Arc::get_mut(&mut current).unwrap();
+  config.pow.signing_keys.active_id = Some("old-proof".into());
+  config.pow.auth_signing_keys.active_id = Some("old-auth".into());
+  config.pow.signing_keys.previous.insert(
+    "next-proof".into(),
+    rilgate_config::Secret("next-proof-secret".into()),
+  );
+  config.pow.auth_signing_keys.previous.insert(
+    "next-auth".into(),
+    rilgate_config::Secret("next-auth-secret".into()),
+  );
+  let old = make_service(&current).unwrap();
+  let mut next = common::config();
+  let config = Arc::get_mut(&mut next).unwrap();
+  config.pow.signing_keys.active_id = Some("next-proof".into());
+  config.pow.auth_signing_keys.active_id = Some("next-auth".into());
+  config
+    .pow
+    .signing_keys
+    .previous
+    .insert("old-proof".into(), current.pow.signing_key.clone());
+  config
+    .pow
+    .auth_signing_keys
+    .previous
+    .insert("old-auth".into(), current.pow.auth_signing_key.clone());
+  config.pow.signing_key = rilgate_config::Secret("next-proof-secret".into());
+  config.pow.auth_signing_key = rilgate_config::Secret("next-auth-secret".into());
+  let new = make_service(&next).unwrap();
+  let decision = old.evaluate_request(&HeaderMap::new(), "/protected");
+  let presentation = old
+    .issue_presentation("example.test".into(), "/protected".into(), &decision)
+    .unwrap();
+  let ChallengeResponse::Fast {
+    challenge_token,
+    challenge,
+    difficulty,
+  } = new
+    .issue_challenge(&presentation, "example.test")
+    .await
+    .unwrap()
+  else {
+    panic!("expected fast");
+  };
+  let nonce = (0..100_000)
+    .map(|n| n.to_string())
+    .find(|nonce| {
+      rilgate_pow_hash::sha256::verifier::verify_fast(&challenge, nonce, difficulty).unwrap()
+    })
+    .unwrap();
+  let receipt = old
+    .verify_challenge(&challenge_token, &nonce, "example.test")
+    .await
+    .unwrap();
+  let auth = new.exchange_receipt(&receipt, "example.test").unwrap();
+  assert!(old.verify_auth_token(&auth, "example.test").is_ok());
+  assert!(new.verify_auth_token(&auth, "other.test").is_err());
+  let mut retired = current;
+  let config = Arc::get_mut(&mut retired).unwrap();
+  config.pow.signing_keys.previous.clear();
+  config.pow.auth_signing_keys.previous.clear();
+  let retired = make_service(&retired).unwrap();
+  assert!(retired.verify_auth_token(&auth, "example.test").is_err());
+}

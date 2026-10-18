@@ -1,0 +1,48 @@
+env: production
+
+serve:
+  host: 127.0.0.1
+  port: 8080
+  max_connections: 1024
+  max_requests: 512
+  h2_max_streams: 64
+  readiness_timeout_seconds: 2
+  metrics_enabled: false
+  # Trust only the actual edge proxy addresses, never arbitrary client networks.
+  trusted_proxies: []
+
+upstream:
+  url: http://127.0.0.1:3000
+  preserve_host: true
+  max_body_bytes: 16777216
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 30
+
+pow:
+  enforce: local_verify
+  default_algorithm: fast
+  # Supply POW_SIGNING_KEY and POW_AUTH_SIGNING_KEY through the secret store.
+  signing_keys:
+    active_id: primary-1
+  auth_signing_keys:
+    active_id: primary-1
+  challenge_ttl_seconds: 60
+  receipt_ttl_seconds: 30
+  auth_ttl_seconds: 1800
+  risk:
+    default_weight: 10
+    allow_debug_header: false
+  bots:
+    - name: acme
+      path_regex: ^/\.well-known/acme-challenge/
+      action: ALLOW
+    - name: robots
+      path_regex: ^/robots\.txt$
+      action: ALLOW
+  thresholds:
+    - name: protected
+      expression: weight >= -2147483648
+      action: CHALLENGE
+      challenge:
+        algorithm: fast
+        difficulty: 4

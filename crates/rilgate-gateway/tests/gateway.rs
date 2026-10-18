@@ -402,6 +402,16 @@ fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
   assert!(config.validate().is_err());
   config.pow.signing_key.0 = "a".repeat(32);
   config.pow.auth_signing_key.0 = "b".repeat(32);
+  assert!(config.validate().is_err());
+  config.pow.thresholds.push(rilgate_config::ThresholdConfig {
+    name: "protected".into(),
+    expression: rilgate_config::WeightExpression::Single("weight >= -2147483648".into()),
+    action: rilgate_config::PolicyAction::Challenge,
+    challenge: rilgate_config::ChallengePolicy {
+      algorithm: Some(PowAlgorithm::Fast),
+      difficulty: Some(1),
+    },
+  });
   assert!(config.validate().is_ok());
   config.pow.risk.allow_debug_header = true;
   assert!(config.validate().is_err());

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+ipnet = "2"
 anyhow.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true

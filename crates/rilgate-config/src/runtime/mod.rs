@@ -1,4 +1,6 @@
+mod server;
 use serde::{Deserialize, Serialize};
+pub use server::ServerConfig;
 use std::str::FromStr;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Environment {

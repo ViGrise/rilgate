@@ -10,3 +10,5 @@ tmp/
 /web/static/js/solvers/randomx/randomx_wasm.wasm
 
 /web/randomx
+
+!config/rilgate.production.yml

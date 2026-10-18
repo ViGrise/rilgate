@@ -28,6 +28,8 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+  /// Validate configuration and policies without opening a listener.
+  CheckConfig,
   /// Initialize, validate, or compare operator web resources.
   Web {
     #[command(subcommand)]

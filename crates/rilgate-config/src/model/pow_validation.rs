@@ -3,6 +3,8 @@ impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::ensure;
     self.rate_limit.validate()?;
+    self.signing_keys.validate()?;
+    self.auth_signing_keys.validate()?;
     ensure!(
       !self.auth_cookie_name.is_empty()
         && self

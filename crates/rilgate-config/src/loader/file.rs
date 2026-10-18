@@ -86,11 +86,9 @@ impl FileConfig {
     )
   }
 
-  pub fn warn_unknown_keys(&self) {
-    // Sequence/mapping policy sections are tracked at their root path. Scalar
-    // descendants are still reported normally.
+  fn unknown_keys(&self) -> Vec<&str> {
     let read = self.read.borrow();
-    let unknown: Vec<&str> = self
+    self
       .values
       .keys()
       .map(String::as_str)
@@ -100,11 +98,22 @@ impl FileConfig {
             key.starts_with(prefix.as_str()) && key.as_bytes().get(prefix.len()) == Some(&b'.')
           })
       })
-      .collect();
+      .collect()
+  }
 
+  pub fn warn_unknown_keys(&self) {
+    let unknown = self.unknown_keys();
     if !unknown.is_empty() {
       warn!(keys = ?unknown, "Ignoring unknown configuration file keys");
     }
+  }
+
+  pub fn reject_unknown_keys(&self) {
+    let unknown = self.unknown_keys();
+    assert!(
+      unknown.is_empty(),
+      "Unknown production configuration keys: {unknown:?}"
+    );
   }
 }
 
@@ -133,6 +142,9 @@ fn flatten(value: &Value, prefix: String, out: &mut BTreeMap<String, String>) {
     Value::Number(n) => {
       out.insert(prefix, n.to_string());
     }
-    Value::Sequence(_) | Value::Tagged(_) => {}
+    Value::Sequence(_) => {
+      out.insert(prefix, String::new());
+    }
+    Value::Tagged(_) => {}
   }
 }

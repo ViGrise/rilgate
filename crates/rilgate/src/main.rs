@@ -9,6 +9,7 @@ async fn main() -> anyhow::Result<()> {
   let command = args.command.take();
   let config = rilgate::cli::config::load(args);
   match command {
+    Some(Command::CheckConfig) => rilgate::app::validate(&config),
     Some(Command::Web { command }) => rilgate::cli::web::run(&config.web, command),
     None => rilgate::cli::serve::run(config).await,
   }

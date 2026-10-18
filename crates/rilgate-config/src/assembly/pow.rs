@@ -33,6 +33,8 @@ pub(super) fn load(file: &FileConfig, args: &Overrides) -> PowConfig {
       None,
       "change-me-auth-signing-key".to_string(),
     )),
+    signing_keys: rotation(file, "pow.signing_keys"),
+    auth_signing_keys: rotation(file, "pow.auth_signing_keys"),
     challenge_ttl_seconds: resolve(file, "pow.challenge_ttl_seconds", &[], None, 60_u64),
     randomx_challenge_ttl_seconds: resolve(
       file,
@@ -137,5 +139,18 @@ pub(super) fn load(file: &FileConfig, args: &Overrides) -> PowConfig {
         "/static/js/solvers/randomx/solver.js".to_string(),
       ),
     },
+  }
+}
+
+fn rotation(file: &FileConfig, prefix: &str) -> rilgate_crypto::token::KeyRotation {
+  let previous: std::collections::BTreeMap<String, String> = file
+    .section(&format!("{prefix}.previous"))
+    .unwrap_or_default();
+  rilgate_crypto::token::KeyRotation {
+    active_id: crate::resolution::lookup(file, &format!("{prefix}.active_id"), &[], None),
+    previous: previous
+      .into_iter()
+      .map(|(id, key)| (id, Secret(key)))
+      .collect(),
   }
 }

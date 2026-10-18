@@ -2370,6 +2370,7 @@ dependencies = [
  "anyhow",
  "http",
  "humantime",
+ "ipnet",
  "rilgate-challenge",
  "rilgate-crypto",
  "rilgate-policy",

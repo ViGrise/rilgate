@@ -7,6 +7,8 @@ pub struct ChallengeConfig {
   pub default_algorithm: PowAlgorithm,
   pub signing_key: Secret,
   pub auth_signing_key: Secret,
+  pub signing_keys: rilgate_crypto::token::KeyRotation,
+  pub auth_signing_keys: rilgate_crypto::token::KeyRotation,
   pub challenge_ttl_seconds: u64,
   pub receipt_ttl_seconds: u64,
   pub auth_ttl_seconds: u64,
@@ -16,6 +18,8 @@ pub struct ChallengeConfig {
 }
 impl ChallengeConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
+    self.signing_keys.validate()?;
+    self.auth_signing_keys.validate()?;
     for ttl in [
       self.challenge_ttl_seconds,
       self.receipt_ttl_seconds,
