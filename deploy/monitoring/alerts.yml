@@ -1,0 +1,38 @@
+groups:
+  - name: rilgate
+    rules:
+      - alert: RilgateUnavailable
+        expr: up{job="rilgate"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Rilgate cannot be scraped
+      - alert: RilgateServerErrors
+        expr: sum by (instance) (rate(rilgate_http_requests_total{status_class="5xx"}[5m])) / clamp_min(sum by (instance) (rate(rilgate_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5 percent of Rilgate responses are server errors
+      - alert: RilgateCapacityExhausted
+        expr: increase(rilgate_connections_rejected_total[5m]) + increase(rilgate_requests_rejected_total[5m]) + increase(rilgate_pool_capacity_failures_total[5m]) + increase(rilgate_verifier_rejected_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rilgate is rejecting work because capacity is exhausted
+      - alert: RilgatePoolFailures
+        expr: increase(rilgate_pool_fetch_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rilgate cannot obtain RandomX work
+      - alert: RilgateHighLatency
+        expr: histogram_quantile(0.95, sum by (instance, le) (rate(rilgate_http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rilgate request p95 exceeds one second

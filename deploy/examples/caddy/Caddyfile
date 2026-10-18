@@ -1,3 +1,7 @@
 example.com {
-  reverse_proxy 127.0.0.1:8080
+  @operations path /.well-known/rilgate/api/metrics /.well-known/rilgate/api/health /.well-known/rilgate/api/ready /.well-known/rilgate/api/live
+  respond @operations 404
+  reverse_proxy 127.0.0.1:8080 {
+    header_up X-Forwarded-For {remote_host}
+  }
 }

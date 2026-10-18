@@ -1,4 +1,13 @@
-target
-.git
-.env
-.DS_Store
+**
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!LICENSE
+!.cargo/
+!.cargo/config.toml
+!crates/
+!crates/**
+!web/
+!web/**
+!config/
+!config/rilgate.production.yml
