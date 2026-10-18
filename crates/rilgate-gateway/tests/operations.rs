@@ -60,8 +60,16 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
   config.pow.p2pool.port = pool.local_addr().unwrap().port();
-  config.pow.bots[0].challenge.algorithm = Some(rilgate_config::PowAlgorithm::RandomX);
-  config.pow.bots[0].challenge.difficulty = Some(1000);
+  config.pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .algorithm = Some(rilgate_config::PowAlgorithm::RandomX);
+  config.pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .difficulty = Some(1000);
   let gateway = app::router(cfg).await.unwrap();
   let client = reqwest::Client::new();
   let base = format!("http://{}/.well-known/test-pow/api", gateway.address());

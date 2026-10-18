@@ -1,15 +1,12 @@
 pub mod assembly;
 pub mod loader;
-pub mod resolution;
 pub mod runtime;
 pub use assembly::{Config, Configuration, Overrides, WebConfig};
 pub mod model;
 pub use model::{BrowserConfig, PowConfig, RateLimitConfig};
 pub use rilgate_crypto::Secret;
-pub use rilgate_policy::{
-  BotRuleConfig, ChallengePolicy, PolicyAction, RiskConfig, ThresholdConfig, WeightAdjustment,
-  WeightExpression,
-};
+pub use rilgate_policy::{ChallengePolicy, PolicyAction};
+pub mod schema;
 pub use rilgate_pool::P2PoolConfig;
 pub use rilgate_pow::difficulty::DifficultyConfig;
 pub use rilgate_protocol::{PowAlgorithm, PowEnforcement};

@@ -36,8 +36,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
       return Err(error);
     }
   };
-  let session_deadline =
-    Instant::now() + Duration::from_secs(state.cfg.pow.p2pool.session_ttl_seconds);
+  let session_deadline = Instant::now() + state.cfg.pow.p2pool.session_ttl;
 
   send_ws(
     &mut ws_tx,
@@ -101,7 +100,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               continue;
             }
             let request_id = stratum.submit_share(&job_id, &nonce, &result).await?;
-            pending_submit = Some((request_id, Instant::now() + Duration::from_secs(state.cfg.pow.p2pool.submit_timeout_seconds)));
+            pending_submit = Some((request_id, Instant::now() + state.cfg.pow.p2pool.submit_timeout));
           }
         }
       }

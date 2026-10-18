@@ -2352,6 +2352,7 @@ dependencies = [
  "rilgate-telemetry",
  "rilgate-test-utils",
  "rilgate-web",
+ "serde_yaml_ng",
  "tempfile",
  "tokio",
  "tower",
@@ -2388,6 +2389,7 @@ dependencies = [
  "rilgate-protocol",
  "rilgate-web",
  "serde",
+ "serde_path_to_error",
  "serde_yaml_ng",
  "tracing",
  "url",
@@ -2462,6 +2464,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "http",
+ "ipnet",
  "regex",
  "rilgate-protocol",
  "serde",
@@ -2477,6 +2480,7 @@ dependencies = [
  "rilgate-crypto",
  "rilgate-protocol",
  "rilgate-stratum",
+ "serde",
  "tokio",
  "tracing",
 ]
@@ -3018,7 +3022,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

@@ -163,14 +163,14 @@ impl P2PoolProvider {
       SessionLifetime(usage),
       job_permit,
       slot,
-      Duration::from_secs(self.config.job_session_idle_seconds),
+      self.config.job_session_idle,
     ));
     sessions.insert(difficulty, session.clone());
     Ok(session)
   }
 
   async fn job(&self, difficulty: u64) -> Result<StratumJob> {
-    if self.config.max_job_sessions == 0 {
+    if self.config.job_session_mode == crate::JobSessionMode::PerChallenge {
       return self.open_ephemeral(difficulty).await;
     }
     let mut last_error = None;

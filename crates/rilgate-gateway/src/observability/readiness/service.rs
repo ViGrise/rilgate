@@ -4,8 +4,7 @@ use crate::{
   transport::response::{Response, json},
 };
 use http::StatusCode;
-use rilgate_config::{PolicyAction, PowAlgorithm};
-use std::time::Duration;
+use rilgate_config::PowAlgorithm;
 
 pub async fn check(state: &AppState) -> Response {
   let Ok(_permit) = state.probes.try_acquire() else {
@@ -18,25 +17,17 @@ pub async fn check(state: &AppState) -> Response {
   let needs_pool = state
     .cfg
     .pow
-    .bots
+    .policy
+    .challenges()
+    .expect("validated policy")
     .iter()
-    .map(|rule| (rule.action, &rule.challenge))
-    .chain(
-      state
-        .cfg
-        .pow
-        .thresholds
-        .iter()
-        .map(|rule| (rule.action, &rule.challenge)),
-    )
-    .any(|(action, challenge)| {
-      action == PolicyAction::Challenge
-        && challenge
-          .algorithm
-          .unwrap_or(state.cfg.pow.default_algorithm)
-          == PowAlgorithm::RandomX
+    .any(|(_, selection)| {
+      selection
+        .algorithm
+        .unwrap_or(state.cfg.pow.default_algorithm)
+        == PowAlgorithm::RandomX
     });
-  let timeout = Duration::from_secs(state.cfg.server.readiness_timeout_seconds);
+  let timeout = state.cfg.server.readiness_timeout;
   let connect = |host: String, port| async move {
     tokio::time::timeout(
       timeout,

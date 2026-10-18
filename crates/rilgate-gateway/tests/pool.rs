@@ -32,7 +32,7 @@ async fn unpooled_fetches_connect_per_job_and_share_the_session_budget() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config().pow.p2pool.clone();
   cfg.port = listener.local_addr().unwrap().port();
-  cfg.max_job_sessions = 0;
+  cfg.job_session_mode = rilgate_pool::JobSessionMode::PerChallenge;
   cfg.max_sessions = 1;
   let server = tokio::spawn(async move {
     for difficulty in [1000, 2000] {
@@ -66,7 +66,7 @@ async fn job_notifications_do_not_keep_unused_sessions_alive() {
   cfg.port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
-  cfg.job_session_idle_seconds = 1;
+  cfg.job_session_idle = std::time::Duration::from_secs(1);
   let (rotated, rotation) = tokio::sync::oneshot::channel();
   let server = tokio::spawn(async move {
     let (socket, _) = listener.accept().await.unwrap();
@@ -232,8 +232,8 @@ async fn canceling_a_fetch_does_not_cancel_the_shared_connection() {
   cfg.port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
-  cfg.job_session_idle_seconds = 1;
-  cfg.connect_timeout_seconds = 3;
+  cfg.job_session_idle = std::time::Duration::from_secs(1);
+  cfg.connect_timeout = std::time::Duration::from_secs(3);
   let (accepted, acceptance) = tokio::sync::oneshot::channel();
   let (release, released) = tokio::sync::oneshot::channel();
   let server = tokio::spawn(async move {

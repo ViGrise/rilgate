@@ -1,5 +1,5 @@
 use rilgate_crypto::Secret;
-use rilgate_policy::{BotRuleConfig, RiskConfig, ThresholdConfig};
+use rilgate_policy::policy::schema::Definition;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 #[derive(Debug, Clone)]
 pub struct ChallengeConfig {
@@ -12,9 +12,7 @@ pub struct ChallengeConfig {
   pub challenge_ttl_seconds: u64,
   pub receipt_ttl_seconds: u64,
   pub auth_ttl_seconds: u64,
-  pub risk: RiskConfig,
-  pub bots: Vec<BotRuleConfig>,
-  pub thresholds: Vec<ThresholdConfig>,
+  pub policy: Definition,
 }
 impl ChallengeConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
@@ -33,7 +31,7 @@ impl ChallengeConfig {
     for key in [&self.signing_key, &self.auth_signing_key] {
       anyhow::ensure!(!key.expose().is_empty(), "PoW signing keys cannot be empty");
     }
-    http::HeaderName::from_bytes(self.risk.debug_header.as_bytes())?;
+    rilgate_policy::PolicyEngine::from_definition(&self.policy)?;
     Ok(())
   }
 }

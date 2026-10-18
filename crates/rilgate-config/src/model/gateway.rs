@@ -10,29 +10,36 @@ pub struct RateLimitConfig {
 
 impl Default for RateLimitConfig {
   fn default() -> Self {
+    let defaults = crate::schema::pow::RateLimit::default();
     Self {
-      enabled: true,
-      client_burst: 10,
-      client_refill_per_second: 0.1,
-      global_burst: 64,
-      global_refill_per_second: 16.0,
-      max_clients: 4096,
+      enabled: defaults.enabled,
+      client_burst: defaults.client.burst,
+      client_refill_per_second: defaults.client.refill_per_second,
+      global_burst: defaults.global.burst,
+      global_refill_per_second: defaults.global.refill_per_second,
+      max_clients: defaults.max_clients,
     }
   }
 }
 
 impl RateLimitConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
-    for value in [self.client_burst, self.global_burst] {
+    for (path, value) in [
+      ("client.burst", self.client_burst),
+      ("global.burst", self.global_burst),
+    ] {
       anyhow::ensure!(
         (1..=1_000_000).contains(&value),
-        "Rate-limit bursts must be between 1 and 1000000"
+        "pow.rate_limit.{path}: expected a burst between 1 and 1000000"
       );
     }
-    for rate in [self.client_refill_per_second, self.global_refill_per_second] {
+    for (path, rate) in [
+      ("client.refill_per_second", self.client_refill_per_second),
+      ("global.refill_per_second", self.global_refill_per_second),
+    ] {
       anyhow::ensure!(
         rate.is_finite() && (0.001..=1_000_000.0).contains(&rate),
-        "Rate-limit refill rates must be between 0.001 and 1000000 requests per second"
+        "pow.rate_limit.{path}: expected a finite refill rate between 0.001 and 1000000 requests per second"
       );
     }
     anyhow::ensure!(

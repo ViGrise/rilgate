@@ -2,9 +2,11 @@ mod server;
 use serde::{Deserialize, Serialize};
 pub use server::ServerConfig;
 use std::str::FromStr;
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Environment {
   Development,
+  #[default]
   Production,
 }
 
@@ -27,8 +29,8 @@ pub struct UpstreamConfig {
   pub url: String,
   pub preserve_host: bool,
   pub max_body_bytes: usize,
-  pub connect_timeout_seconds: u64,
-  pub read_timeout_seconds: u64,
+  pub connect_timeout: std::time::Duration,
+  pub read_timeout: std::time::Duration,
 }
 
 impl UpstreamConfig {
@@ -37,19 +39,21 @@ impl UpstreamConfig {
     let url = url::Url::parse(&self.url)?;
     ensure!(
       matches!(url.scheme(), "http" | "https") && url.host_str().is_some(),
-      "upstream.url must be an HTTP or HTTPS URL with a host"
+      "server.upstream.url must be an HTTP or HTTPS URL with a host"
     );
     ensure!(
       url.query().is_none()
         && url.fragment().is_none()
         && url.username().is_empty()
         && url.password().is_none(),
-      "upstream.url cannot contain credentials, a query, or a fragment"
+      "server.upstream.url cannot contain credentials, a query, or a fragment"
     );
     ensure!(
-      (1..=31_536_000).contains(&self.connect_timeout_seconds)
-        && (1..=31_536_000).contains(&self.read_timeout_seconds),
-      "upstream timeouts must be between 1 second and 1 year"
+      (!self.connect_timeout.is_zero()
+        && self.connect_timeout <= std::time::Duration::from_secs(31_536_000))
+        && (!self.read_timeout.is_zero()
+          && self.read_timeout <= std::time::Duration::from_secs(31_536_000)),
+      "server.upstream.timeout: timeouts must be positive and at most one year"
     );
     Ok(())
   }

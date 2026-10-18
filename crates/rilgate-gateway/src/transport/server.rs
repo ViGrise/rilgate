@@ -1,6 +1,6 @@
 use crate::{
   proof::handlers,
-  proxy::gate::{gate, page_response},
+  proxy::gate::{gate_with_client, page_response},
   runtime::state::AppState,
   transport::{
     errors::ApiError,
@@ -534,7 +534,30 @@ impl ProxyHttp for Handler {
       }
     };
     let header = session.req_header();
-    match gate(&self.state, &header.headers, &header.uri, &header.method) {
+    let peer = session
+      .client_addr()
+      .and_then(|address| address.as_inet())
+      .map(|address| address.ip());
+    let client_ip =
+      match crate::transport::client_ip::client_ip(peer, &header.headers, &self.state.cfg.server) {
+        Ok(ip) => ip,
+        Err(message) => {
+          send(
+            session,
+            ApiError::InvalidRequest(message.into()).into_response(),
+            ctx,
+          )
+          .await?;
+          return Ok(true);
+        }
+      };
+    match gate_with_client(
+      &self.state,
+      &header.headers,
+      &header.uri,
+      &header.method,
+      client_ip,
+    ) {
       Ok(Some(out)) => {
         send(session, out, ctx).await?;
         Ok(true)

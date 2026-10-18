@@ -43,7 +43,7 @@ impl StratumSession {
     }
     let address = format!("{}:{}", cfg.host, cfg.port);
     let stream = timeout(
-      Duration::from_secs(cfg.connect_timeout_seconds),
+      cfg.connect_timeout,
       TcpStream::connect((cfg.host.as_str(), cfg.port)),
     )
     .await
@@ -65,7 +65,7 @@ impl StratumSession {
       }
     });
 
-    let response = timeout(Duration::from_secs(cfg.connect_timeout_seconds), async {
+    let response = timeout(cfg.connect_timeout, async {
       write_json_line(&mut writer, &login).await?;
       reader.next_json().await
     })
@@ -104,7 +104,7 @@ impl StratumSession {
       rpc_id,
       next_request_id: 2,
       current_job,
-      submit_timeout: Duration::from_secs(cfg.submit_timeout_seconds),
+      submit_timeout: cfg.submit_timeout,
     })
   }
 

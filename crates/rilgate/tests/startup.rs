@@ -31,22 +31,114 @@ async fn application_composes_backends_and_serves_configured_namespace() {
   assert!(body.contains("randomx"));
 }
 
+fn command(contents: &str, args: &[&str], variables: &[(&str, &str)]) -> std::process::Output {
+  let directory = tempfile::tempdir().unwrap();
+  let config = directory.path().join("config.yml");
+  std::fs::write(&config, contents).unwrap();
+  std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
+    .current_dir(directory.path())
+    .env_clear()
+    .envs(variables.iter().copied())
+    .args(["--config", config.to_str().unwrap()])
+    .args(args)
+    .output()
+    .unwrap()
+}
+const SECRET: &str = "startup-test-secret-with-at-least-32-bytes";
+
+#[test]
+fn every_distribution_template_validates_without_network_dependencies() {
+  for contents in [
+    include_str!("../../../config/rilgate.example.yml"),
+    include_str!("../../../config/rilgate.production.yml"),
+    include_str!("../../../config/rilgate.custom.example.yml"),
+    include_str!("../../../config/rilgate.randomx.example.yml"),
+  ] {
+    let result = command(
+      contents,
+      &["config", "check"],
+      &[("RILGATE_SECRET", SECRET)],
+    );
+    assert!(
+      result.status.success(),
+      "{}",
+      String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&result.stdout).contains(SECRET));
+    assert!(!String::from_utf8_lossy(&result.stderr).contains(SECRET));
+  }
+}
+
+#[test]
+fn configuration_show_is_valid_yaml_and_redacts_expanded_secrets() {
+  let template = include_str!("../../../config/rilgate.production.yml");
+  for args in [vec!["config", "show"], vec!["config", "show", "--defaults"]] {
+    let result = command(template, &args, &[("RILGATE_SECRET", SECRET)]);
+    assert!(
+      result.status.success(),
+      "{}",
+      String::from_utf8_lossy(&result.stderr)
+    );
+    let output = String::from_utf8(result.stdout).unwrap();
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&output).unwrap();
+    assert_eq!(value["security"]["secret"], "[redacted]");
+    assert!(!output.contains(SECRET));
+    if args.contains(&"--defaults") {
+      assert_eq!(value["pow"]["default_algorithm"], "fast");
+      assert_eq!(value["security"]["auth"]["ttl"], "6h");
+      assert_eq!(value["environment"], "production");
+    }
+  }
+}
+
+#[test]
+fn invalid_configuration_fails_without_revealing_keys() {
+  let template = include_str!("../../../config/rilgate.production.yml");
+  for (contents, expected) in [
+    (template.to_string(), "RILGATE_SECRET"),
+    (template.replace("mode: balanced", "mode: balanced\n  rules: []"), "policy"),
+    (template.replace("upstream:", "upsteam:"), "server"),
+    (template.replace("mode: balanced", "mode: custom\n  rules:\n    - name: bad-regex\n      when: {path: {regex: '['}}\n      action: deny"), "regex"),
+  ] {
+    let variables = if expected == "RILGATE_SECRET" { vec![] } else { vec![("RILGATE_SECRET", SECRET)] };
+    let result = command(&contents, &["config", "check"], &variables);
+    assert!(!result.status.success());
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(error.contains(expected), "{error}");
+    assert!(!error.contains(SECRET));
+    assert!(!error.contains("panicked"), "{error}");
+  }
+}
+
+#[test]
+fn environment_expansion_cannot_inject_yaml_structure() {
+  let template = include_str!("../../../config/rilgate.production.yml");
+  let secret = "secure-value-with-32-bytes\npolicy: {mode: off}";
+  let result = command(
+    template,
+    &["config", "show", "--defaults"],
+    &[("RILGATE_SECRET", secret)],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["policy"]["mode"], "balanced");
+}
+
 #[test]
 fn executable_dispatches_web_commands_without_binding_a_socket() {
   let directory = tempfile::tempdir().unwrap();
-  let config = directory.path().join("config.yml");
-  std::fs::write(&config, "web:\n  name: Startup Test\n").unwrap();
-  let resources = directory.path().join("web");
+  let resources = directory.path().join("resources");
+  let template = include_str!("../../../config/rilgate.production.yml");
   for operation in ["init", "validate", "diff"] {
-    let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
-      .env_clear()
-      .arg("--config")
-      .arg(&config)
-      .arg("web")
-      .arg(operation)
-      .arg(&resources)
-      .output()
-      .unwrap();
+    let result = command(
+      template,
+      &["web", operation, resources.to_str().unwrap()],
+      &[("RILGATE_SECRET", SECRET)],
+    );
     assert!(
       result.status.success(),
       "{operation}: {}",
@@ -55,107 +147,85 @@ fn executable_dispatches_web_commands_without_binding_a_socket() {
   }
 }
 
-fn check_production(contents: &str) -> std::process::Output {
+#[test]
+fn environment_only_configuration_and_overrides_work_without_a_file() {
   let directory = tempfile::tempdir().unwrap();
-  let path = directory.path().join("production.yml");
-  std::fs::write(&path, contents).unwrap();
-  std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
+  let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
     .current_dir(directory.path())
     .env_clear()
-    .env(
-      "POW_SIGNING_KEY",
-      "test-proof-secret-with-at-least-32-bytes",
-    )
-    .env(
-      "POW_AUTH_SIGNING_KEY",
-      "test-auth-secret-with-at-least-32-bytes",
-    )
-    .args(["--config", path.to_str().unwrap(), "check-config"])
+    .env("RILGATE_SECRET", SECRET)
+    .env("RILGATE_UPSTREAM_URL", "http://127.0.0.1:3000")
+    .env("RILGATE_LISTEN", "127.0.0.1:8081")
+    .args(["--port", "9090", "config", "show", "--defaults"])
     .output()
-    .unwrap()
-}
-
-#[test]
-fn production_template_validates_without_external_dependencies() {
-  let config = include_str!("../../../config/rilgate.production.yml");
-  let result = check_production(config);
+    .unwrap();
   assert!(
     result.status.success(),
     "{}",
     String::from_utf8_lossy(&result.stderr)
   );
-  let logs = format!(
-    "{}{}",
-    String::from_utf8_lossy(&result.stdout),
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["listen"], "127.0.0.1:9090");
+}
+
+#[test]
+fn environment_references_follow_schema_types_without_coercing_literal_yaml() {
+  let source = r#"
+server:
+  max_connections: "${CONNECTIONS}"
+  metrics_enabled: "${METRICS}"
+  upstream:
+    url: http://127.0.0.1:3000
+    timeout:
+      connect: "${CONNECT_TIMEOUT}"
+security:
+  secret: "${RILGATE_SECRET}"
+pow:
+  rate_limit:
+    client:
+      refill_per_second: "${REFILL}"
+policy:
+  mode: custom
+  score:
+    initial: "${SCORE}"
+    thresholds:
+      - min: 0
+        action: challenge
+        challenge:
+          difficulty: "${DIFFICULTY}"
+"#;
+  let variables = [
+    ("RILGATE_SECRET", "12345678901234567890123456789012"),
+    ("CONNECTIONS", "123"),
+    ("METRICS", "true"),
+    ("CONNECT_TIMEOUT", "300ms"),
+    ("REFILL", "0.2"),
+    ("SCORE", "-10"),
+    ("DIFFICULTY", "2"),
+  ];
+  let result = command(source, &["config", "show", "--defaults"], &variables);
+  assert!(
+    result.status.success(),
+    "{}",
     String::from_utf8_lossy(&result.stderr)
   );
-  assert!(!logs.contains("test-proof-secret"));
-  assert!(!logs.contains("test-auth-secret"));
-}
-
-#[test]
-fn production_rejects_missing_policy_typos_invalid_limits_and_debug_headers() {
-  let production = include_str!("../../../config/rilgate.production.yml");
-  for contents in [
-    "env: production\n".to_owned(),
-    "env: production\npow:\n  thresholds: []\n".to_owned(),
-    production.replace("max_connections: 1024", "max_connections: 0"),
-    production.replace("h2_max_streams: 64", "h2_max_streams: 0"),
-    production.replace("max_requests: 512", "max_requets: 512"),
-    production.replace("allow_debug_header: false", "allow_debug_header: true"),
-    production.replace("trusted_proxies: []", "trusted_proxies: [not-a-network]"),
-    production.replace("trusted_proxies: []", "trusted_proxys: []"),
-    production.replace("active_id: primary-1", "active_id: bad.id"),
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["max_connections"], 123);
+  assert_eq!(value["server"]["metrics_enabled"], true);
+  assert_eq!(value["server"]["upstream"]["timeout"]["connect"], "300ms");
+  assert_eq!(value["policy"]["score"]["initial"], -10);
+  for source in [
+    source.replace("${CONNECTIONS}", "123"),
+    source.replace("${METRICS}", "true"),
   ] {
-    let result = check_production(&contents);
-    assert!(
-      !result.status.success(),
-      "Unexpectedly accepted: {contents}"
-    );
-  }
-}
-
-#[test]
-fn production_requires_strong_secrets_and_a_policy_file() {
-  let directory = tempfile::tempdir().unwrap();
-  let path = directory.path().join("config.yml");
-  std::fs::write(
-    &path,
-    include_str!("../../../config/rilgate.production.yml"),
-  )
-  .unwrap();
-  for key in [
-    "short",
-    "change-me-placeholder-key-with-32-bytes",
-    "replace-me-placeholder-key-with-32-bytes",
-  ] {
-    let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
-      .current_dir(directory.path())
-      .env_clear()
-      .env("POW_SIGNING_KEY", key)
-      .env(
-        "POW_AUTH_SIGNING_KEY",
-        "test-auth-secret-with-at-least-32-bytes",
-      )
-      .args(["--config", path.to_str().unwrap(), "check-config"])
-      .output()
-      .unwrap();
+    let result = command(&source, &["config", "check"], &variables);
     assert!(!result.status.success());
   }
-  let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
-    .current_dir(directory.path())
-    .env_clear()
-    .env("ENV", "production")
-    .env(
-      "POW_SIGNING_KEY",
-      "test-proof-secret-with-at-least-32-bytes",
-    )
-    .env(
-      "POW_AUTH_SIGNING_KEY",
-      "test-auth-secret-with-at-least-32-bytes",
-    )
-    .arg("check-config")
-    .output()
-    .unwrap();
+  let mut invalid = variables;
+  invalid[1].1 = "not-a-number-sensitive-value";
+  let result = command(source, &["config", "check"], &invalid);
+  let error = String::from_utf8_lossy(&result.stderr);
   assert!(!result.status.success());
+  assert!(error.contains("server.max_connections"), "{error}");
+  assert!(!error.contains("not-a-number-sensitive-value"));
 }

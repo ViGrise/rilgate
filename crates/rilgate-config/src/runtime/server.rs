@@ -7,18 +7,19 @@ pub struct ServerConfig {
   pub h2_max_streams: u32,
   pub trusted_proxies: Vec<IpNet>,
   pub metrics_enabled: bool,
-  pub readiness_timeout_seconds: u64,
+  pub readiness_timeout: std::time::Duration,
 }
 
 impl Default for ServerConfig {
   fn default() -> Self {
+    let defaults = crate::schema::server::Server::default();
     Self {
-      max_connections: 1024,
-      max_requests: 512,
-      h2_max_streams: 64,
-      trusted_proxies: Vec::new(),
-      metrics_enabled: false,
-      readiness_timeout_seconds: 2,
+      max_connections: defaults.max_connections,
+      max_requests: defaults.max_requests,
+      h2_max_streams: defaults.h2_max_streams,
+      trusted_proxies: vec![],
+      metrics_enabled: defaults.metrics_enabled,
+      readiness_timeout: defaults.readiness_timeout.0,
     }
   }
 }
@@ -27,19 +28,20 @@ impl ServerConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     anyhow::ensure!(
       (1..=1_000_000).contains(&self.max_connections),
-      "serve.max_connections must be between 1 and 1000000"
+      "server.max_connections must be between 1 and 1000000"
     );
     anyhow::ensure!(
       (1..=1_000_000).contains(&self.max_requests),
-      "serve.max_requests must be between 1 and 1000000"
+      "server.max_requests must be between 1 and 1000000"
     );
     anyhow::ensure!(
       (1..=1024).contains(&self.h2_max_streams),
-      "serve.h2_max_streams must be between 1 and 1024"
+      "server.h2_max_streams must be between 1 and 1024"
     );
     anyhow::ensure!(
-      (1..=30).contains(&self.readiness_timeout_seconds),
-      "serve.readiness_timeout_seconds must be between 1 and 30"
+      (!self.readiness_timeout.is_zero()
+        && self.readiness_timeout <= std::time::Duration::from_secs(30)),
+      "server.readiness_timeout must be positive and at most 30s"
     );
     anyhow::ensure!(
       self.trusted_proxies.len() <= 64,

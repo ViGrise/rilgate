@@ -141,7 +141,7 @@ impl ProxyService {
               .port_or_known_default()
               .expect("HTTP upstream port");
             let addresses: Arc<[SocketAddr]> = tokio::time::timeout(
-              remaining.min(Duration::from_secs(self.cfg.connect_timeout_seconds)),
+              remaining.min(self.cfg.connect_timeout),
               tokio::net::lookup_host((host, port)),
             )
             .await
@@ -178,10 +178,9 @@ impl ProxyService {
       String::new()
     };
     let mut peer = pingora::upstreams::peer::HttpPeer::new(address, tls, sni);
-    peer.options.connection_timeout =
-      Some(remaining.min(Duration::from_secs(self.cfg.connect_timeout_seconds)));
-    peer.options.read_timeout = Some(Duration::from_secs(self.cfg.read_timeout_seconds));
-    peer.options.write_timeout = Some(Duration::from_secs(self.cfg.read_timeout_seconds));
+    peer.options.connection_timeout = Some(remaining.min(self.cfg.connect_timeout));
+    peer.options.read_timeout = Some(self.cfg.read_timeout);
+    peer.options.write_timeout = Some(self.cfg.read_timeout);
     peer.options.idle_timeout = Some(Duration::from_secs(90));
     Ok((Box::new(peer), address_count))
   }
@@ -201,8 +200,8 @@ mod tests {
         url: upstream.into(),
         preserve_host: true,
         max_body_bytes: 1024,
-        connect_timeout_seconds: 2,
-        read_timeout_seconds: 3,
+        connect_timeout: std::time::Duration::from_secs(2),
+        read_timeout: std::time::Duration::from_secs(3),
       })
       .unwrap();
       let mut paths: Vec<String> = [
@@ -272,8 +271,8 @@ mod tests {
         url: url.into(),
         preserve_host: true,
         max_body_bytes: 1024,
-        connect_timeout_seconds: 2,
-        read_timeout_seconds: 3,
+        connect_timeout: std::time::Duration::from_secs(2),
+        read_timeout: std::time::Duration::from_secs(3),
       })
       .unwrap();
       for remaining in [Duration::from_millis(100), Duration::from_secs(30)] {
@@ -299,8 +298,8 @@ mod tests {
       url: "https://localhost:8443/base".into(),
       preserve_host: true,
       max_body_bytes: 1024,
-      connect_timeout_seconds: 2,
-      read_timeout_seconds: 3,
+      connect_timeout: std::time::Duration::from_secs(2),
+      read_timeout: std::time::Duration::from_secs(3),
     })
     .unwrap();
     let (peer, _) = proxy.peer(0, Duration::from_secs(30)).await.unwrap();

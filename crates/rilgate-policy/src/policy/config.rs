@@ -1,87 +1,19 @@
 use rilgate_protocol::PowAlgorithm;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum PolicyAction {
-  Allow,
-  Deny,
-  Challenge,
-  Weigh,
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct WeightAdjustment {
-  #[serde(default)]
-  pub adjust: i32,
-}
-
-/// Challenge settings for a rule or threshold.
-///
-/// Unknown keys are rejected so `difficulty` written beside `challenge` instead
-/// of inside it fails to load, rather than being dropped and silently leaving
-/// the difficulty to be resolved some other way.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ChallengePolicy {
-  #[serde(default)]
+  #[serde(
+    default,
+    deserialize_with = "super::schema::present",
+    skip_serializing_if = "Option::is_none"
+  )]
   pub algorithm: Option<PowAlgorithm>,
-
+  #[serde(
+    default,
+    deserialize_with = "super::schema::present",
+    skip_serializing_if = "Option::is_none"
+  )]
   pub difficulty: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum WeightExpression {
-  Single(String),
-  All { all: Vec<String> },
-  Any { any: Vec<String> },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BotRuleConfig {
-  pub name: String,
-
-  #[serde(default)]
-  pub path_regex: Option<String>,
-
-  #[serde(default)]
-  pub user_agent_regex: Option<String>,
-
-  #[serde(default)]
-  pub headers_regex: BTreeMap<String, String>,
-
-  pub action: PolicyAction,
-
-  #[serde(default)]
-  pub weight: WeightAdjustment,
-
-  #[serde(default)]
-  pub challenge: ChallengePolicy,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ThresholdConfig {
-  pub name: String,
-  pub expression: WeightExpression,
-  pub action: PolicyAction,
-
-  #[serde(default)]
-  pub challenge: ChallengePolicy,
-}
-
-#[derive(Debug, Clone)]
-pub struct RiskConfig {
-  pub default_weight: i32,
-  pub allow_debug_header: bool,
-  pub debug_header: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct PolicyConfig {
-  pub bots: Vec<BotRuleConfig>,
-  pub thresholds: Vec<ThresholdConfig>,
 }

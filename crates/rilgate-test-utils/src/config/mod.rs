@@ -1,9 +1,9 @@
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
+use rilgate_config::schema::policy::{Action, Condition, Definition, Mode, Rule, StringMatch};
 use rilgate_config::{
-  BotRuleConfig, BrowserConfig, ChallengePolicy, Config, Configuration, DifficultyConfig,
-  Environment, P2PoolConfig, PolicyAction, PowAlgorithm, PowConfig, PowEnforcement, RiskConfig,
-  Secret, UpstreamConfig, WebConfig,
+  BrowserConfig, ChallengePolicy, Config, Configuration, DifficultyConfig, Environment,
+  P2PoolConfig, PowAlgorithm, PowConfig, PowEnforcement, Secret, UpstreamConfig, WebConfig,
 };
 
 pub fn config() -> Config {
@@ -16,8 +16,8 @@ pub fn config() -> Config {
       url: "http://127.0.0.1:3000".into(),
       preserve_host: false,
       max_body_bytes: 1024,
-      connect_timeout_seconds: 1,
-      read_timeout_seconds: 2,
+      connect_timeout: std::time::Duration::from_secs(1),
+      read_timeout: std::time::Duration::from_secs(2),
     },
     web: WebConfig {
       name: "Rilgate".into(),
@@ -27,6 +27,7 @@ pub fn config() -> Config {
     },
     pow: PowConfig {
       enforce: PowEnforcement::LocalVerify,
+      randomx_enabled: true,
       default_algorithm: PowAlgorithm::Fast,
       signing_key: Secret("test-shared-signing-key".into()),
       auth_signing_key: Secret("test-auth-signing-key".into()),
@@ -45,36 +46,40 @@ pub fn config() -> Config {
         port: 3333,
         password: Secret("x".into()),
         agent: "test".into(),
-        connect_timeout_seconds: 1,
-        submit_timeout_seconds: 1,
+        connect_timeout: std::time::Duration::from_secs(1),
+        submit_timeout: std::time::Duration::from_secs(1),
         max_sessions: 4,
-        session_ttl_seconds: 10,
+        session_ttl: std::time::Duration::from_secs(10),
         max_job_sessions: 2,
-        job_session_idle_seconds: 5,
+        job_session_mode: rilgate_pool::JobSessionMode::Pooled,
+        job_session_idle: std::time::Duration::from_secs(5),
       },
       difficulty: DifficultyConfig {
         base: 1000,
         weight_step: 10,
         max: 32_000,
       },
-      risk: RiskConfig {
-        default_weight: 0,
-        allow_debug_header: false,
-        debug_header: "x-pow-weight".into(),
+      policy: Definition {
+        mode: Mode::Custom,
+        default_action: Some(Action::Allow),
+        rules: Some(vec![Rule {
+          name: "protected".into(),
+          when: Condition {
+            path: Some(StringMatch {
+              prefix: Some("/protected".into()),
+              ..Default::default()
+            }),
+            ..Default::default()
+          },
+          action: Action::Challenge,
+          score: None,
+          challenge: Some(ChallengePolicy {
+            algorithm: Some(PowAlgorithm::Fast),
+            difficulty: Some(1),
+          }),
+        }]),
+        score: None,
       },
-      bots: vec![BotRuleConfig {
-        name: "protected".into(),
-        path_regex: Some("^/protected".into()),
-        user_agent_regex: None,
-        headers_regex: BTreeMap::new(),
-        action: PolicyAction::Challenge,
-        weight: Default::default(),
-        challenge: ChallengePolicy {
-          algorithm: Some(PowAlgorithm::Fast),
-          difficulty: Some(1),
-        },
-      }],
-      thresholds: vec![],
       browser: BrowserConfig {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
       },

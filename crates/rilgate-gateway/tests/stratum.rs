@@ -63,8 +63,16 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.enforce = PowEnforcement::P2poolAccepted;
   pow.p2pool.port = p2pool_port;
-  pow.bots[0].challenge.algorithm = Some(PowAlgorithm::RandomX);
-  pow.bots[0].challenge.difficulty = Some(1000);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .algorithm = Some(PowAlgorithm::RandomX);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .difficulty = Some(1000);
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let host = listener.local_addr().unwrap().to_string();
   let service = make_service(&cfg).unwrap();

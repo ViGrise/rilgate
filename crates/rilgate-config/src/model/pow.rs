@@ -1,6 +1,6 @@
 use crate::model::gateway::RateLimitConfig;
 use rilgate_crypto::Secret;
-use rilgate_policy::{BotRuleConfig, RiskConfig, ThresholdConfig};
+use rilgate_policy::policy::schema::Definition;
 use rilgate_pool::P2PoolConfig;
 use rilgate_pow::difficulty::DifficultyConfig;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
@@ -13,6 +13,7 @@ pub struct BrowserConfig {
 #[derive(Debug, Clone)]
 pub struct PowConfig {
   pub enforce: PowEnforcement,
+  pub randomx_enabled: bool,
   pub default_algorithm: PowAlgorithm,
   pub signing_key: Secret,
   pub auth_signing_key: Secret,
@@ -28,9 +29,7 @@ pub struct PowConfig {
   pub rate_limit: RateLimitConfig,
   pub p2pool: P2PoolConfig,
   pub difficulty: DifficultyConfig,
-  pub risk: RiskConfig,
-  pub bots: Vec<BotRuleConfig>,
-  pub thresholds: Vec<ThresholdConfig>,
+  pub policy: Definition,
   pub browser: BrowserConfig,
 }
 
@@ -46,9 +45,7 @@ impl PowConfig {
       challenge_ttl_seconds: self.challenge_ttl_seconds,
       receipt_ttl_seconds: self.receipt_ttl_seconds,
       auth_ttl_seconds: self.auth_ttl_seconds,
-      risk: self.risk.clone(),
-      bots: self.bots.clone(),
-      thresholds: self.thresholds.clone(),
+      policy: self.policy.clone(),
     }
   }
 }

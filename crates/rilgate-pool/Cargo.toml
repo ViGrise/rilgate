@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+serde.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true

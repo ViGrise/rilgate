@@ -22,6 +22,7 @@ rilgate-web.workspace = true
 rilgate-telemetry.workspace = true
 
 [dev-dependencies]
+serde_yaml_ng.workspace = true
 axum.workspace = true
 http.workspace = true
 rilgate-test-utils.workspace = true

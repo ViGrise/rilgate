@@ -1,0 +1,204 @@
+use super::value::Time;
+use rilgate_crypto::Secret;
+use rilgate_protocol::{PowAlgorithm, PowEnforcement};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Pow {
+  pub verification: PowEnforcement,
+  pub default_algorithm: PowAlgorithm,
+  pub challenge: Challenge,
+  pub rate_limit: RateLimit,
+  pub algorithms: Algorithms,
+  pub p2pool: Option<P2Pool>,
+}
+impl Default for Pow {
+  fn default() -> Self {
+    Self {
+      verification: PowEnforcement::LocalVerify,
+      default_algorithm: PowAlgorithm::Fast,
+      challenge: Challenge::default(),
+      rate_limit: RateLimit::default(),
+      algorithms: Algorithms::default(),
+      p2pool: None,
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Challenge {
+  pub ttl: Time,
+  pub receipt_ttl: Time,
+}
+impl Default for Challenge {
+  fn default() -> Self {
+    Self {
+      ttl: Time::seconds(60),
+      receipt_ttl: Time::seconds(30),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RateLimit {
+  pub enabled: bool,
+  pub max_clients: usize,
+  pub client: ClientQuota,
+  pub global: GlobalQuota,
+}
+impl Default for RateLimit {
+  fn default() -> Self {
+    Self {
+      enabled: true,
+      max_clients: 4096,
+      client: ClientQuota {
+        burst: 10,
+        refill_per_second: 0.1,
+      },
+      global: GlobalQuota {
+        burst: 64,
+        refill_per_second: 16.0,
+      },
+    }
+  }
+}
+macro_rules! quota {
+  ($name:ident, $burst:expr, $refill:expr) => {
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(default, deny_unknown_fields)]
+    pub struct $name {
+      pub burst: u32,
+      pub refill_per_second: f64,
+    }
+    impl Default for $name {
+      fn default() -> Self {
+        Self {
+          burst: $burst,
+          refill_per_second: $refill,
+        }
+      }
+    }
+  };
+}
+quota!(ClientQuota, 10, 0.1);
+quota!(GlobalQuota, 64, 16.0);
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Algorithms {
+  pub randomx: RandomX,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RandomX {
+  pub challenge_ttl: Time,
+  pub nonce_offset: usize,
+  pub verifier_queue: usize,
+  pub difficulty: Difficulty,
+  pub browser: Browser,
+}
+impl Default for RandomX {
+  fn default() -> Self {
+    Self {
+      challenge_ttl: Time::seconds(3600),
+      nonce_offset: 39,
+      verifier_queue: 8,
+      difficulty: Difficulty::default(),
+      browser: Browser::default(),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Difficulty {
+  pub base: u64,
+  pub score_step: i32,
+  pub max: u64,
+}
+impl Default for Difficulty {
+  fn default() -> Self {
+    Self {
+      base: 1000,
+      score_step: 10,
+      max: 32_000,
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Browser {
+  pub module: String,
+}
+impl Default for Browser {
+  fn default() -> Self {
+    Self {
+      module: "/static/js/solvers/randomx/solver.js".into(),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct P2Pool {
+  pub address: String,
+  pub password: Secret,
+  pub agent: String,
+  pub timeout: PoolTimeout,
+  pub sessions: Sessions,
+  pub job_sessions: JobSessions,
+}
+impl Default for P2Pool {
+  fn default() -> Self {
+    Self {
+      address: "127.0.0.1:3333".into(),
+      password: Secret("x".into()),
+      agent: "rilgate/0.1.0".into(),
+      timeout: PoolTimeout::default(),
+      sessions: Sessions::default(),
+      job_sessions: JobSessions::default(),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PoolTimeout {
+  pub connect: Time,
+  pub submit: Time,
+}
+impl Default for PoolTimeout {
+  fn default() -> Self {
+    Self {
+      connect: Time::seconds(5),
+      submit: Time::seconds(20),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Sessions {
+  pub max: usize,
+  pub ttl: Time,
+}
+impl Default for Sessions {
+  fn default() -> Self {
+    Self {
+      max: 64,
+      ttl: Time::seconds(900),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct JobSessions {
+  pub mode: rilgate_pool::JobSessionMode,
+  pub max: usize,
+  pub idle: Time,
+}
+impl Default for JobSessions {
+  fn default() -> Self {
+    Self {
+      mode: rilgate_pool::JobSessionMode::Pooled,
+      max: 16,
+      idle: Time::seconds(60),
+    }
+  }
+}

@@ -50,8 +50,16 @@ impl Algorithm for CountingAlgorithm {
 #[tokio::test]
 async fn registered_backend_controls_policy_and_proof_while_common_checks_run_first() {
   let mut configuration = common::config();
-  Arc::get_mut(&mut configuration).unwrap().pow.bots[0]
+  Arc::get_mut(&mut configuration)
+    .unwrap()
+    .pow
+    .policy
+    .rules
+    .as_mut()
+    .unwrap()[0]
     .challenge
+    .as_mut()
+    .unwrap()
     .difficulty = None;
   let cfg = Arc::new(configuration.pow.clone());
   let verified = Arc::new(AtomicUsize::new(0));

@@ -1,10 +1,8 @@
-use anyhow::{Context, Result, anyhow};
-use http::{HeaderMap, HeaderName};
-use regex::Regex;
-
-use crate::{
-  BotRuleConfig, PolicyAction, PolicyConfig, PowAlgorithm, ThresholdConfig, WeightExpression,
-};
+use super::schema::{Action, Definition, Mode, Rule};
+use crate::conditions::{Budget, Compiled, Request};
+use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
+use anyhow::{Context, Result, ensure};
+use http::{HeaderMap, Method};
 
 #[derive(Debug, Clone)]
 pub struct PolicyDecision<'a> {
@@ -14,378 +12,160 @@ pub struct PolicyDecision<'a> {
   pub difficulty: Option<u64>,
   pub rule: &'a str,
 }
-
 #[derive(Debug)]
-struct CompiledBotRule {
-  config: BotRuleConfig,
-  path: Option<Regex>,
-  user_agent: Option<Regex>,
-  headers: Vec<(HeaderName, Regex)>,
+struct CompiledRule {
+  rule: Rule,
+  condition: Compiled,
 }
-
-#[derive(Debug)]
-struct CompiledThreshold {
-  config: ThresholdConfig,
-  expression: CompiledWeightExpression,
-}
-
-#[derive(Debug)]
-enum CompiledWeightExpression {
-  Single(WeightComparison),
-  All(Vec<WeightComparison>),
-  Any(Vec<WeightComparison>),
-}
-
-#[derive(Debug)]
-struct WeightComparison {
-  op: ComparisonOperator,
-  value: i32,
-}
-
-#[derive(Debug)]
-enum ComparisonOperator {
-  Lt,
-  Le,
-  Eq,
-  Ne,
-  Ge,
-  Gt,
-}
-
 #[derive(Debug)]
 pub struct PolicyEngine {
-  rules: Vec<CompiledBotRule>,
-  thresholds: Vec<CompiledThreshold>,
+  rules: Vec<CompiledRule>,
+  default_action: PolicyAction,
 }
 
-impl PolicyEngine {
-  pub fn new(cfg: &PolicyConfig) -> Result<Self> {
-    let rules = cfg
-      .bots
-      .iter()
-      .cloned()
-      .map(CompiledBotRule::compile)
-      .collect::<Result<Vec<_>>>()?;
-
-    let thresholds = cfg
-      .thresholds
-      .iter()
-      .cloned()
-      .map(CompiledThreshold::compile)
-      .collect::<Result<Vec<_>>>()?;
-
-    Ok(Self { rules, thresholds })
+impl Definition {
+  pub fn resolved_rules(&self) -> Result<(Vec<Rule>, Action)> {
+    if self.mode != Mode::Custom {
+      ensure!(
+        self.rules.is_none() && self.score.is_none() && self.default_action.is_none(),
+        "policy: rules, score and default_action require mode: custom"
+      );
+      return Ok(super::presets::rules(self.mode));
+    }
+    let default = self.default_action.unwrap_or(Action::Allow);
+    ensure!(
+      default != Action::Score,
+      "policy.default_action: score is not terminal"
+    );
+    let mut rules = self.rules.clone().unwrap_or_default();
+    if let Some(score) = &self.score {
+      http::HeaderName::from_bytes(score.debug_header.name.as_bytes())
+        .context("policy.score.debug_header.name: expected an HTTP header name")?;
+      for pair in score.thresholds.windows(2) {
+        ensure!(
+          pair[0].min > pair[1].min,
+          "policy.score.thresholds: min values must be unique and strictly descending"
+        );
+      }
+      for threshold in &score.thresholds {
+        ensure!(
+          threshold.action != Action::Score,
+          "policy.score.thresholds: score is not terminal"
+        );
+        rules.push(Rule {
+          name: format!("score >= {}", threshold.min),
+          when: super::schema::Condition {
+            score: Some(super::schema::NumberMatch {
+              gte: Some(threshold.min),
+              ..Default::default()
+            }),
+            ..Default::default()
+          },
+          action: threshold.action,
+          score: None,
+          challenge: threshold.challenge.clone(),
+        });
+      }
+    }
+    Ok((rules, default))
   }
-
+  pub fn challenges(&self) -> Result<Vec<(String, ChallengePolicy)>> {
+    let (rules, default) = self.resolved_rules()?;
+    let mut choices: Vec<_> = rules
+      .into_iter()
+      .filter(|r| r.action == Action::Challenge)
+      .map(|r| (r.name, r.challenge.unwrap_or_default()))
+      .collect();
+    if default == Action::Challenge {
+      choices.push(("policy.default_action".into(), ChallengePolicy::default()));
+    }
+    Ok(choices)
+  }
+}
+impl PolicyEngine {
+  pub fn from_definition(definition: &Definition) -> Result<Self> {
+    let (source, default) = definition.resolved_rules()?;
+    ensure!(
+      source.len() <= 128,
+      "policy: at most 128 rules and thresholds are supported"
+    );
+    let mut names = std::collections::HashSet::new();
+    let mut budget = Budget::default();
+    let mut rules = Vec::new();
+    for (index, rule) in source.into_iter().enumerate() {
+      let explicit = definition.rules.as_ref().map_or(0, Vec::len);
+      let path = if definition.mode != Mode::Custom {
+        "policy.mode".to_string()
+      } else if index < explicit {
+        format!("policy.rules[{index}]")
+      } else {
+        format!("policy.score.thresholds[{}]", index - explicit)
+      };
+      ensure!(
+        !rule.name.is_empty() && rule.name.len() <= 128 && names.insert(rule.name.clone()),
+        "{path}: name must be unique and contain 1 to 128 bytes"
+      );
+      ensure!(
+        rule.score.is_some() == (rule.action == Action::Score),
+        "{path}.score: required only for action: score"
+      );
+      ensure!(
+        rule.challenge.is_none() || rule.action == Action::Challenge,
+        "{path}.challenge: only valid for action: challenge"
+      );
+      let condition =
+        Compiled::compile(&rule.when, 0, &mut budget).with_context(|| format!("{path}.when"))?;
+      rules.push(CompiledRule { rule, condition });
+    }
+    Ok(Self {
+      rules,
+      default_action: default,
+    })
+  }
   pub fn evaluate(
     &self,
     headers: &HeaderMap,
     path: &str,
     initial_weight: i32,
   ) -> PolicyDecision<'_> {
-    let mut weight = initial_weight;
-
-    for rule in &self.rules {
-      if !rule.matches(headers, path) {
+    self.evaluate_context(
+      &Request {
+        headers,
+        path,
+        method: &Method::GET,
+        client_ip: None,
+      },
+      initial_weight,
+    )
+  }
+  pub fn evaluate_context(&self, request: &Request<'_>, mut weight: i32) -> PolicyDecision<'_> {
+    for entry in &self.rules {
+      if !entry.condition.matches(request, weight) {
         continue;
       }
-
-      match rule.config.action {
-        PolicyAction::Weigh => {
-          weight = weight.saturating_add(rule.config.weight.adjust);
-        }
-
-        PolicyAction::Allow | PolicyAction::Deny | PolicyAction::Challenge => {
-          return PolicyDecision {
-            action: rule.config.action,
-            weight,
-            algorithm: rule.config.challenge.algorithm,
-            difficulty: rule.config.challenge.difficulty,
-            rule: &rule.config.name,
-          };
-        }
+      if entry.rule.action == Action::Score {
+        weight = weight.saturating_add(entry.rule.score.unwrap());
+        continue;
       }
+      let selection = entry.rule.challenge.as_ref();
+      return PolicyDecision {
+        action: entry.rule.action,
+        weight,
+        algorithm: selection.and_then(|c| c.algorithm),
+        difficulty: selection.and_then(|c| c.difficulty),
+        rule: &entry.rule.name,
+      };
     }
-
-    for threshold in &self.thresholds {
-      if threshold.expression.matches(weight) {
-        return PolicyDecision {
-          action: threshold.config.action,
-          weight,
-          algorithm: threshold.config.challenge.algorithm,
-          difficulty: threshold.config.challenge.difficulty,
-          rule: &threshold.config.name,
-        };
-      }
-    }
-
-    // Requests are allowed when no terminal policy or threshold matches.
     PolicyDecision {
-      action: PolicyAction::Allow,
+      action: self.default_action,
       weight,
       algorithm: None,
       difficulty: None,
-      rule: "default-allow",
-    }
-  }
-}
-
-impl CompiledBotRule {
-  fn compile(config: BotRuleConfig) -> Result<Self> {
-    let path = config
-      .path_regex
-      .as_deref()
-      .map(Regex::new)
-      .transpose()
-      .with_context(|| format!("Invalid path_regex in policy {}", config.name))?;
-
-    let user_agent = config
-      .user_agent_regex
-      .as_deref()
-      .map(Regex::new)
-      .transpose()
-      .with_context(|| format!("Invalid user_agent_regex in policy {}", config.name))?;
-
-    let headers = config
-      .headers_regex
-      .iter()
-      .map(|(name, expression)| {
-        let regex = Regex::new(expression)
-          .with_context(|| format!("Invalid header regex {name:?} in policy {}", config.name))?;
-
-        let name = HeaderName::from_bytes(name.as_bytes())
-          .with_context(|| format!("Invalid policy header name {name:?}"))?;
-        Ok((name, regex))
-      })
-      .collect::<Result<Vec<_>>>()?;
-
-    Ok(Self {
-      config,
-      path,
-      user_agent,
-      headers,
-    })
-  }
-
-  fn matches(&self, headers: &HeaderMap, path: &str) -> bool {
-    if let Some(regex) = &self.path
-      && !regex.is_match(path)
-    {
-      return false;
-    }
-
-    if let Some(regex) = &self.user_agent {
-      let user_agent = headers
-        .get(http::header::USER_AGENT)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-
-      if !regex.is_match(user_agent) {
-        return false;
-      }
-    }
-
-    for (name, regex) in &self.headers {
-      let value = headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-
-      if !regex.is_match(value) {
-        return false;
-      }
-    }
-
-    true
-  }
-}
-
-impl CompiledThreshold {
-  fn compile(config: ThresholdConfig) -> Result<Self> {
-    if config.action == PolicyAction::Weigh {
-      return Err(anyhow!(
-        "Threshold {} cannot use WEIGH; WEIGH is only valid in bots rules",
-        config.name
-      ));
-    }
-
-    let expression = CompiledWeightExpression::compile(&config.expression)
-      .with_context(|| format!("Invalid threshold expression in {}", config.name))?;
-
-    Ok(Self { config, expression })
-  }
-}
-
-impl CompiledWeightExpression {
-  fn compile(expression: &WeightExpression) -> Result<Self> {
-    match expression {
-      WeightExpression::Single(value) => Ok(Self::Single(WeightComparison::parse(value)?)),
-
-      WeightExpression::All { all } if all.is_empty() => {
-        Err(anyhow!("all expressions cannot be empty"))
-      }
-      WeightExpression::Any { any } if any.is_empty() => {
-        Err(anyhow!("any expressions cannot be empty"))
-      }
-      WeightExpression::All { all } => Ok(Self::All(
-        all
-          .iter()
-          .map(|value| WeightComparison::parse(value))
-          .collect::<Result<Vec<_>>>()?,
-      )),
-
-      WeightExpression::Any { any } => Ok(Self::Any(
-        any
-          .iter()
-          .map(|value| WeightComparison::parse(value))
-          .collect::<Result<Vec<_>>>()?,
-      )),
-    }
-  }
-
-  fn matches(&self, weight: i32) -> bool {
-    match self {
-      Self::Single(value) => value.matches(weight),
-      Self::All(values) => values.iter().all(|value| value.matches(weight)),
-      Self::Any(values) => values.iter().any(|value| value.matches(weight)),
-    }
-  }
-}
-
-impl WeightComparison {
-  fn parse(expression: &str) -> Result<Self> {
-    let regex = Regex::new(r"^\s*weight\s*(<=|>=|==|!=|<|>)\s*(-?\d+)\s*$")
-      .expect("weight expression parser regex must compile");
-
-    let captures = regex.captures(expression).ok_or_else(|| {
-      anyhow!("Unsupported expression {expression:?}; expected e.g. `weight >= 10`")
-    })?;
-
-    let op = match &captures[1] {
-      "<" => ComparisonOperator::Lt,
-      "<=" => ComparisonOperator::Le,
-      "==" => ComparisonOperator::Eq,
-      "!=" => ComparisonOperator::Ne,
-      ">=" => ComparisonOperator::Ge,
-      ">" => ComparisonOperator::Gt,
-      _ => unreachable!(),
-    };
-
-    let value = captures[2].parse::<i32>()?;
-
-    Ok(Self { op, value })
-  }
-
-  fn matches(&self, weight: i32) -> bool {
-    match self.op {
-      ComparisonOperator::Lt => weight < self.value,
-      ComparisonOperator::Le => weight <= self.value,
-      ComparisonOperator::Eq => weight == self.value,
-      ComparisonOperator::Ne => weight != self.value,
-      ComparisonOperator::Ge => weight >= self.value,
-      ComparisonOperator::Gt => weight > self.value,
-    }
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::{ChallengePolicy, PolicyAction, PowAlgorithm, ThresholdConfig, WeightExpression};
-
-  #[test]
-  fn decisions_preserve_rule_names_weights_and_challenge_settings() {
-    let cfg = PolicyConfig {
-      bots: vec![
-        serde_yaml_ng::from_str("name: weigh\naction: WEIGH\nweight:\n  adjust: 10").unwrap(),
-        serde_yaml_ng::from_str(
-          "name: terminal\npath_regex: ^/terminal$\naction: CHALLENGE\nchallenge:\n  algorithm: fast\n  difficulty: 2",
-        ).unwrap(),
-      ],
-      thresholds: vec![ThresholdConfig {
-        name: "threshold".into(),
-        expression: WeightExpression::Single("weight >= 20".into()),
-        action: PolicyAction::Deny,
-        challenge: ChallengePolicy::default(),
-      }],
-    };
-    let engine = PolicyEngine::new(&cfg).unwrap();
-    drop(cfg);
-    for (path, initial, name, action, weight) in [
-      ("/terminal", 10, "terminal", PolicyAction::Challenge, 20),
-      ("/other", 10, "threshold", PolicyAction::Deny, 20),
-      ("/other", 0, "default-allow", PolicyAction::Allow, 10),
-      (
-        "/other",
-        i32::MAX,
-        "threshold",
-        PolicyAction::Deny,
-        i32::MAX,
-      ),
-    ] {
-      let decision = engine.evaluate(&HeaderMap::new(), path, initial);
-      assert_eq!(decision.rule, name);
-      assert_eq!(decision.action, action);
-      assert_eq!(decision.weight, weight);
-      if action == PolicyAction::Challenge {
-        assert_eq!(decision.algorithm, Some(PowAlgorithm::Fast));
-        assert_eq!(decision.difficulty, Some(2));
-      }
-    }
-  }
-
-  #[test]
-  fn parses_all_weight_expression() {
-    let threshold = CompiledThreshold::compile(ThresholdConfig {
-      name: "moderate".to_string(),
-      expression: WeightExpression::All {
-        all: vec!["weight >= 10".to_string(), "weight < 20".to_string()],
+      rule: match self.default_action {
+        PolicyAction::Allow => "default-allow",
+        PolicyAction::Deny => "default-deny",
+        _ => "default-challenge",
       },
-      action: PolicyAction::Challenge,
-      challenge: ChallengePolicy {
-        algorithm: Some(PowAlgorithm::RandomX),
-        difficulty: Some(2_000),
-      },
-    })
-    .unwrap();
-
-    assert!(threshold.expression.matches(10));
-    assert!(threshold.expression.matches(19));
-    assert!(!threshold.expression.matches(20));
-  }
-
-  #[test]
-  fn a_threshold_difficulty_written_outside_challenge_is_rejected() {
-    // Writing `difficulty` beside `challenge` rather than inside it used to be
-    // accepted and then ignored, leaving the threshold to fall back to a
-    // difficulty derived from weight.
-    let misplaced = serde_yaml_ng::from_str::<ThresholdConfig>(
-      r#"
-name: moderate
-expression: weight >= 10
-action: CHALLENGE
-difficulty: 2
-challenge:
-  algorithm: fast
-"#,
-    )
-    .expect_err("difficulty beside challenge must be rejected");
-    assert!(
-      misplaced.to_string().contains("difficulty"),
-      "unexpected error: {misplaced}"
-    );
-
-    let correct: ThresholdConfig = serde_yaml_ng::from_str(
-      r#"
-name: moderate
-expression: weight >= 10
-action: CHALLENGE
-challenge:
-  algorithm: fast
-  difficulty: 2
-"#,
-    )
-    .expect("nested difficulty loads");
-    assert_eq!(correct.challenge.difficulty, Some(2));
+    }
   }
 }

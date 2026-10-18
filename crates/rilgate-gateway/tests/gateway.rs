@@ -378,7 +378,7 @@ async fn upstream_header_timeout_returns_gateway_timeout() {
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{address}");
-  config.upstream.read_timeout_seconds = 1;
+  config.upstream.read_timeout = std::time::Duration::from_secs(1);
   let router = app::router(cfg).await.unwrap();
   let response = router
     .oneshot(
@@ -402,20 +402,23 @@ fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
   assert!(config.validate().is_err());
   config.pow.signing_key.0 = "a".repeat(32);
   config.pow.auth_signing_key.0 = "b".repeat(32);
-  assert!(config.validate().is_err());
-  config.pow.thresholds.push(rilgate_config::ThresholdConfig {
-    name: "protected".into(),
-    expression: rilgate_config::WeightExpression::Single("weight >= -2147483648".into()),
-    action: rilgate_config::PolicyAction::Challenge,
-    challenge: rilgate_config::ChallengePolicy {
-      algorithm: Some(PowAlgorithm::Fast),
-      difficulty: Some(1),
-    },
-  });
   assert!(config.validate().is_ok());
-  config.pow.risk.allow_debug_header = true;
+  config.pow.policy.score = Some(rilgate_config::schema::policy::Scoring {
+    debug_header: rilgate_config::schema::policy::DebugHeader {
+      enabled: true,
+      ..Default::default()
+    },
+    ..Default::default()
+  });
   assert!(config.validate().is_err());
-  config.pow.risk.allow_debug_header = false;
+  config
+    .pow
+    .policy
+    .score
+    .as_mut()
+    .unwrap()
+    .debug_header
+    .enabled = false;
   config.pow.verifier_queue_capacity = 0;
   assert!(config.validate().is_err());
   config.pow.verifier_queue_capacity = 8;
@@ -429,8 +432,16 @@ fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
 #[tokio::test]
 async fn invalid_policy_difficulty_is_rejected_at_startup() {
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().pow.bots[0]
+  Arc::get_mut(&mut cfg)
+    .unwrap()
+    .pow
+    .policy
+    .rules
+    .as_mut()
+    .unwrap()[0]
     .challenge
+    .as_mut()
+    .unwrap()
     .difficulty = Some(0);
   assert!(make_service(&cfg).is_err());
 }
@@ -479,8 +490,16 @@ async fn unavailable_p2pool_returns_service_unavailable_after_valid_presentation
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.p2pool.port = port;
-  pow.bots[0].challenge.algorithm = Some(PowAlgorithm::RandomX);
-  pow.bots[0].challenge.difficulty = Some(1000);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .algorithm = Some(PowAlgorithm::RandomX);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .difficulty = Some(1000);
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = service

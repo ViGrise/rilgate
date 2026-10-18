@@ -13,15 +13,17 @@ pub(super) fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2
   registry.register(Arc::new(FastAlgorithm::new(&FastConfig {
     ttl: cfg.challenge_ttl_seconds,
   })))?;
-  registry.register(Arc::new(RandomXAlgorithm::new(
-    &RandomXConfig {
-      difficulty: cfg.difficulty.clone(),
-      ttl: cfg.randomx_challenge_ttl_seconds,
-      nonce_offset: cfg.nonce_offset,
-      queue_capacity: cfg.verifier_queue_capacity,
-    },
-    pool.clone(),
-  )))?;
+  if cfg.randomx_enabled {
+    registry.register(Arc::new(RandomXAlgorithm::new(
+      &RandomXConfig {
+        difficulty: cfg.difficulty.clone(),
+        ttl: cfg.randomx_challenge_ttl_seconds,
+        nonce_offset: cfg.nonce_offset,
+        queue_capacity: cfg.verifier_queue_capacity,
+      },
+      pool.clone(),
+    )))?;
+  }
   Ok((
     Arc::new(ChallengeService::with_registry(
       Arc::new(cfg.challenge()),

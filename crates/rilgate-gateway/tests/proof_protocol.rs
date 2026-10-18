@@ -179,8 +179,16 @@ async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty()
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.p2pool.port = port;
-  pow.bots[0].challenge.algorithm = Some(PowAlgorithm::RandomX);
-  pow.bots[0].challenge.difficulty = Some(u64::MAX);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .algorithm = Some(PowAlgorithm::RandomX);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .difficulty = Some(u64::MAX);
 
   // Issuance pools its Stratum sessions, so the mock has to behave like P2Pool
   // and keep each connection open rather than closing it after the login reply.
@@ -263,8 +271,16 @@ async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.p2pool.port = port;
-  pow.bots[0].challenge.algorithm = Some(PowAlgorithm::RandomX);
-  pow.bots[0].challenge.difficulty = Some(1000);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .algorithm = Some(PowAlgorithm::RandomX);
+  pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap()
+    .difficulty = Some(1000);
 
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
@@ -339,7 +355,14 @@ async fn a_fast_challenge_cannot_cross_enforcement_modes() {
   );
   drop(service);
   let mut changed = cfg;
-  Arc::get_mut(&mut changed).unwrap().pow.enforce = PowEnforcement::P2poolAccepted;
+  let pow = &mut Arc::get_mut(&mut changed).unwrap().pow;
+  pow.enforce = PowEnforcement::P2poolAccepted;
+  let selection = pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap();
+  selection.algorithm = Some(PowAlgorithm::RandomX);
+  selection.difficulty = Some(1000);
   let service = make_service(&changed).unwrap();
   assert!(
     service
@@ -486,7 +509,14 @@ async fn malformed_signed_randomx_work_is_rejected_before_native_hashing() {
 #[tokio::test]
 async fn randomx_http_proofs_require_local_verification_even_with_signed_matching_enforcement() {
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().pow.enforce = PowEnforcement::P2poolAccepted;
+  let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
+  pow.enforce = PowEnforcement::P2poolAccepted;
+  let selection = pow.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap();
+  selection.algorithm = Some(PowAlgorithm::RandomX);
+  selection.difficulty = Some(1000);
   let service = make_service(&cfg).unwrap();
   let claims = ChallengeClaims::Randomx {
     v: 1,

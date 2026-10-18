@@ -117,7 +117,22 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
 #[tokio::test]
 async fn denied_and_upstream_error_pages_preserve_http_status_and_hide_internal_errors() {
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().pow.bots[0].action = PolicyAction::Deny;
+  Arc::get_mut(&mut cfg)
+    .unwrap()
+    .pow
+    .policy
+    .rules
+    .as_mut()
+    .unwrap()[0]
+    .action = PolicyAction::Deny;
+  Arc::get_mut(&mut cfg)
+    .unwrap()
+    .pow
+    .policy
+    .rules
+    .as_mut()
+    .unwrap()[0]
+    .challenge = None;
   let router = app::router(cfg).await.unwrap();
   let response = router
     .oneshot(

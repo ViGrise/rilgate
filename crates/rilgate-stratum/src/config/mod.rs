@@ -5,6 +5,6 @@ pub struct StratumConfig {
   pub port: u16,
   pub password: Secret,
   pub agent: String,
-  pub connect_timeout_seconds: u64,
-  pub submit_timeout_seconds: u64,
+  pub connect_timeout: std::time::Duration,
+  pub submit_timeout: std::time::Duration,
 }

@@ -17,7 +17,24 @@ pub fn gate(
   uri: &Uri,
   method: &Method,
 ) -> Result<Option<Response>, ApiError> {
-  let decision = state.pow.evaluate_request(headers, uri.path());
+  gate_with_client(state, headers, uri, method, None)
+}
+
+pub fn gate_with_client(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  method: &Method,
+  client_ip: Option<std::net::IpAddr>,
+) -> Result<Option<Response>, ApiError> {
+  let decision = state
+    .pow
+    .evaluate_context(&rilgate_policy::conditions::Request {
+      headers,
+      path: uri.path(),
+      method,
+      client_ip,
+    });
 
   match decision.action {
     PolicyAction::Allow => {
@@ -43,12 +60,9 @@ pub fn gate(
 
     PolicyAction::Challenge => {}
 
-    // WEIGH rules are accumulated by PolicyEngine and should never escape as a
-    // final decision. Treat it as a configuration failure instead of silently
-    // challenging or allowing.
-    PolicyAction::Weigh => {
+    PolicyAction::Score => {
       return Err(ApiError::Internal(anyhow::anyhow!(
-        "WEIGH cannot be a final policy decision"
+        "score cannot be a final policy decision"
       )));
     }
   }

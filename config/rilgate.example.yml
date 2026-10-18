@@ -1,232 +1,578 @@
-env: development
+# Rilgate configuration
 
-web:
-  name: "Rilgate"
-  website_url: "https://rilgate.com"
-  base_path: "/.well-known/rilgate"
-  stylesheet_path: "css/rilgate.css"
-  # Omit root to use only embedded web resources.
-  # root: /etc/rilgate/web
-  seed:
-    empty_directory: true
-  watch:
-    enabled: false
-    debounce: 300ms
-  templates:
-    cache: true
-    strict: true
-    recursion_limit: 64
-    fuel: 50000
-  i18n:
-    default_locale: en
+# Getting started:
+#   1. Set server.upstream.url to your application.
+#   2. Export RILGATE_SECRET using a cryptographically random secret, for example:
+#        export RILGATE_SECRET="$(openssl rand -hex 32)"
+#   3. Run: rilgate --config config/rilgate.example.yml config check
 
-    # Locales are discovered from loaded translation files on snapshot builds.
-    # Declare supported_locales to select the served tags explicitly; the
-    # default locale must be part of that list.
-    # supported_locales:
-    #   - en
-    #   - vi
+# Only the upstream URL and signing secret are required. Embedded pages, assets,
+# translations, Fast SHA-256 proofs and the balanced policy work without P2Pool.
+# Optional settings are commented out. Remove the comment marker from the YAML
+# setting and its parent mappings to enable it; retain the YAML indentation.
+# Descriptions appear immediately above their settings, separated by a blank
+# comment line. Values shown are defaults unless marked as examples.
 
-    strict: false
-    language_cookie_name: "rilgate_lang"
+# Durations use units: 300ms, 5s, 1m, 6h. They must be positive and at most 365d.
+# Token lifetimes require whole seconds; network timeouts accept subsecond values.
+# Sizes use positive integer quantities: 1024B, 1KiB, 16MiB, 1GiB.
+# Environment references use ${VARIABLE_NAME} inside scalar values. Missing or
+# empty variables fail validation. Expansion is single-pass, without shell syntax.
+# YAML types remain strict and unknown keys are rejected, including in development.
 
-serve:
-  port: 8080
+# RILGATE_SECRET, RILGATE_UPSTREAM_URL and RILGATE_LISTEN override their YAML fields.
+# A working-directory .env supplies variables without replacing existing ones.
+# Configuration is loaded at startup; restart the process after editing YAML.
+# Resource watching below reloads web resources, not this configuration file.
 
-upstream:
-  url: "http://127.0.0.1:3000"
-  preserve_host: true
+# Check this file: rilgate --config config/rilgate.example.yml config check
+# Inspect resolved values: rilgate --config config/rilgate.example.yml config show
+# Include all defaults: append --defaults to config show. Secrets are redacted.
+# Redacted output is for inspection and cannot replace the original secret values.
 
-  # Request bodies are bounded; upstream responses are streamed.
-  max_body_bytes: 16777216
-  connect_timeout_seconds: 5
-  read_timeout_seconds: 30
+################################# ENVIRONMENT #################################
 
-pow:
-  # local_verify:
-  #   Stateless verification. Any gateway instance sharing the signing keys
-  #   can validate the signed P2Pool-derived challenge.
+# production: Secure authentication cookies and no client-controlled score header.
+# Serve production traffic through HTTPS, normally at a trusted reverse proxy.
+# development: permits local HTTP cookies and the optional score debug header.
+# Signing keys must meet the same strength requirements in either environment.
+#
+# environment: production
+
+#################################### SERVER ###################################
+
+server:
+  # Bind address. ':8080' listens on all IPv4 interfaces.
+  # Use '127.0.0.1:8080' behind a local edge or '[::]:8080' for IPv6.
+  # Hostnames are not supported here; use an IP address and port.
   #
-  # p2pool_accepted:
-  #   The challenge stays on one WebSocket/gateway instance while that instance
-  #   retains its P2Pool Stratum session. Access is granted only after P2Pool
-  #   accepts the submitted share.
-  enforce: local_verify
+  # listen: ":8080"
 
-  # Used when a CHALLENGE rule omits challenge.algorithm.
-  # Supported: fast (SHA-256) or randomx.
-  default_algorithm: randomx
-
-  signing_key: "change-me-pow-signing-key"
-  auth_signing_key: "change-me-auth-signing-key"
-
-  challenge_ttl_seconds: 60
-  randomx_challenge_ttl_seconds: 3600
-  receipt_ttl_seconds: 30
-  auth_ttl_seconds: 21600
-  auth_cookie_name: "rilgate_auth"
-
-  # Monero block hashing blob nonce offset.
-  nonce_offset: 39
-
-  # One dedicated verifier thread processes this bounded queue.
-  verifier_queue_capacity: 8
-
-  # Proof APIs share per-socket-IP and per-instance quotas.
-  rate_limit:
-    enabled: true
-    client_burst: 10
-    client_refill_per_second: 0.1
-    global_burst: 64
-    global_refill_per_second: 16
-    max_clients: 4096
-
-  p2pool:
-    host: "127.0.0.1"
-    port: 3333
-    password: "x"
-    agent: "rilgate/0.1.0"
-    connect_timeout_seconds: 5
-    submit_timeout_seconds: 20
-    max_sessions: 64
-    session_ttl_seconds: 900
-
-    # One pooled issuance session per active difficulty shares max_sessions
-    # with WebSocket sessions. Concurrent fetches reuse its latest job.
-    # Zero uses a new connection per challenge within that shared budget.
-    max_job_sessions: 16
-    # Time since the last job request, regardless of incoming pool notifications.
-    job_session_idle_seconds: 60
-
-  # RandomX fallback difficulty calculation for CHALLENGE rules that select
-  # randomx but don't set an explicit challenge.difficulty:
-  #
-  #   difficulty = base * 2^(weight / weight_step)
-  difficulty:
-    base: 1000
-    weight_step: 10
-    max: 32000
-
-  risk:
-    # Initial weight before matching bots rules.
-    default_weight: 0
-
-    # Development-only helper. When enabled, x-pow-weight replaces the initial
-    # weight before bots/thresholds are evaluated.
-    allow_debug_header: false
-    debug_header: "x-pow-weight"
-
-  # Request policy.
-  #
-  # Supported actions:
-  #   ALLOW      immediately allow the request
-  #   DENY       immediately deny the request
-  #   CHALLENGE  require PoW; choose fast or randomx per rule
-  #   WEIGH      add/subtract weight and continue evaluating later rules
-  #
-  # A rule may combine path_regex, user_agent_regex and headers_regex; when
-  # multiple matchers are present they must all match.
-  bots:
-    # Keep standard machine-readable endpoints accessible.
-    - name: well-known
-      path_regex: ^/\.well-known/.*$
-      action: ALLOW
-
-    - name: favicon
-      path_regex: ^/favicon\.ico$
-      action: ALLOW
-
-    - name: robots-txt
-      path_regex: ^/robots\.txt$
-      action: ALLOW
-
-    - name: feeds
-      path_regex: (?i)\.(?:rss|xml|atom)$
-      action: ALLOW
-
-    # Example direct deny rule:
+  upstream:
+    # REQUIRED. HTTP or HTTPS application URL, optionally including a base path.
+    # Credentials, query strings and fragments are forbidden. No default URL.
     #
-    # - name: blocked-scraper
-    #   user_agent_regex: (?i:badbot)
-    #   action: DENY
+    url: "http://127.0.0.1:3000"
 
-    # Example header-based weight adjustment:
+    # Forward the incoming Host header. Set false to use the upstream authority.
+    # HTTPS certificate verification still uses the configured upstream hostname.
     #
+    # preserve_host: true
+
+    # Maximum incoming proxied body size. Upstream responses remain streamed.
+    # Oversized requests receive 413. With an unknown-length streaming body,
+    # earlier bytes may already have reached the upstream before the limit is hit.
+    #
+    # max_body_size: 16MiB
+
+    # timeout:
+      # Per-attempt upstream connection timeout, within the overall connection
+      # budget of 30s. DNS resolution and connection setup consume that budget.
+      #
+      # connect: 5s
+
+      # Upstream read/write inactivity timeout, not a total response lifetime.
+      # A timeout before response headers returns 504; during a response it
+      # terminates the stream, since headers have already been sent.
+      #
+      # read: 30s
+
+  # Maximum accepted TCP connections, including idle connections. Range: 1..1000000.
+  # Excess connections are closed before request processing.
+  #
+  # max_connections: 1024
+
+  # Maximum concurrent requests. Streaming responses and upgraded WebSockets hold
+  # their slot until completion. Excess requests receive 503 with Retry-After.
+  # Range: 1..1000000. This is independent of the TCP connection limit.
+  #
+  # max_requests: 512
+
+  # Maximum concurrent HTTP/2 streams advertised per connection. Range: 1..1024.
+  # The process-wide max_requests limit also applies across all connections.
+  #
+  # h2_max_streams: 64
+
+  # Trusted immediate proxy peers, as IPv4/IPv6 CIDRs; at most 64 networks.
+  # Empty means no peer can supply the client IP through X-Forwarded-For.
+  # For a trusted peer, the chain is read right-to-left to the nearest untrusted
+  # hop. The resolved IP drives both policy matching and per-client proof quotas.
+  # Trust only actual edge proxies, which must overwrite incoming forwarding data.
+  # Example: ["127.0.0.1/32", "::1/128"]. Forwarded is not used for client identity.
+  #
+  # trusted_proxies: []
+
+  # Enable Prometheus metrics at <site.base_path>/api/metrics; false returns 404.
+  # This endpoint has no application authentication. Restrict access at the edge.
+  # Labels are bounded; request paths and client identities are not metric labels.
+  #
+  # metrics_enabled: false
+
+  # Dependency-probe timeout for <site.base_path>/api/ready. Maximum: 30s.
+  # Readiness probes TCP reachability of the upstream and, when required by the
+  # selected challenges, P2Pool. This does not check application response health.
+  # <site.base_path>/api/live only reports process liveness.
+  #
+  # readiness_timeout: 2s
+
+################################### SECURITY ##################################
+
+security:
+  # REQUIRED in single-secret mode. Supply at least 32 bytes of high-entropy data.
+  # HKDF-SHA256 derives independent challenge and authentication signing keys.
+  # Keep the secret outside source control. Changing it invalidates existing
+  # signatures. Instances sharing this secret and compatible verification settings
+  # can verify each other's local proofs and authentication tokens.
+  #
+  secret: "${RILGATE_SECRET}"
+
+  # Alternative explicit-key mode. Remove secret above AND unset RILGATE_SECRET
+  # before enabling keys. Both challenge and auth are required, each at least
+  # 32 bytes. These are direct signing secrets, rather than a master derivation key.
+  #
+  # keys:
+    # Signs challenge presentation, work and verification receipts.
+    #
+    # challenge: "${RILGATE_POW_SIGNING_KEY}"
+
+    # Signs authentication tokens, independently of the challenge key.
+    #
+    # auth: "${RILGATE_AUTH_SIGNING_KEY}"
+
+
+    # Rotation is optional and available independently for each explicit key.
+    # Defaults: no active_id and no previous keys, issuing unversioned tokens.
+    #
+    # challenge_rotation:
+      # Example ID, not a default. Setting it issues tokens with a signed key ID.
+      # Use 1..32 ASCII letters, digits, '_' or '-'. 'legacy' is reserved.
+      # Assign a new ID whenever changing the active signing secret.
+      #
+      # active_id: primary-1
+
+      # At most 8 ID-to-secret entries, each at least 32 bytes, for verification
+      # only. An ID cannot also be active_id. Example instead of '{}':
+      # previous:
+      # primary-0: "${RILGATE_PREVIOUS_CHALLENGE_KEY}"
+      # Use the reserved ID 'legacy' to accept old unversioned tokens explicitly.
+      #
+      # previous: {}
+    # auth_rotation:
+      # Example ID for the current auth secret; same syntax as challenge IDs.
+      #
+      # active_id: primary-1
+
+      # Verification-only auth keys. Example instead of '{}':
+      # previous:
+      # primary-0: "${RILGATE_PREVIOUS_AUTH_KEY}"
+      #
+      # previous: {}
+
+
+  # For rolling rotation, first distribute verification keys to every instance,
+  # then switch issuance to the new ID. Retire old verification keys only after
+  # all tokens signed by them have expired, allowing for rollout time and skew.
+
+  # auth:
+    # Cookie name, using valid HTTP token characters. Cookies are host-scoped,
+    # HttpOnly and SameSite=Lax, with Secure enabled in production.
+    #
+    # cookie: rilgate_auth
+
+    # Access lifetime, anchored to receipt issuance; repeated receipt exchange
+    # cannot extend it. Positive whole seconds, at most 365d.
+    # A valid cookie still cannot bypass a deny rule or a stronger challenge.
+    #
+    # ttl: 6h
+
+##################################### SITE ####################################
+
+# site:
+  # Display name used by challenge pages. Control characters are forbidden.
+  #
+  # name: Rilgate
+
+  # Public site/branding URL, not the upstream. HTTP/HTTPS without credentials.
+  #
+  # url: https://rilgate.com
+
+  # Reserved prefix for proof APIs and assets. Use an absolute, non-root path
+  # without a trailing slash, dot segments, query or fragment. Internal routing
+  # runs before user policies; unknown internal routes return 404.
+  #
+  # base_path: /.well-known/rilgate
+
+  # Logical stylesheet path under the static resource tree, not an external URL.
+  # The bundled default resolves to static/css/rilgate.css.
+  #
+  # stylesheet: css/rilgate.css
+
+
+  # Challenge and denial response formats. auto honors explicit Accept preferences;
+  # otherwise JSON Content-Type (including application/*+json) or X-Requested-With:
+  # XMLHttpRequest selects JSON. Ordinary page navigation receives HTML.
+  # JSON challenges return 403 with Rilgate-Challenge and Rilgate-Challenge-Url
+  # headers. The client opens the URL, solves the challenge, then retries its
+  # original request. No intercepted upload is automatically replayed.
+  #
+  # responses:
+    # auto, html or json. html keeps browser pages and plain 401 for unsafe methods;
+    # json always uses the JSON templates for challenge and denial responses.
+    #
+    # format: auto
+
+    # Optional API path prefixes that always receive JSON in auto mode, even if
+    # a client sends Accept: text/html. Matches whole path segments: /api matches
+    # /api and /api/users, but not /apiary. Up to 64 absolute paths; no escapes,
+    # query, fragment or dot segments. Cannot be combined with format: html.
+    # Example: [/api, /graphql]. Empty means use request headers only.
+    #
+    # json_paths: []
+
+  # Customize JSON bodies with templates/pages/challenge.json.jinja and
+  # templates/pages/denied.json.jinja in the external resource directory below.
+  # Use the tojson filter for dynamic values. Templates may use an application's
+  # own envelope and field names; rendered output must be a valid JSON object.
+  # See docs/web.md for the same-origin iframe completion protocol.
+
+  # resources:
+    # Example override directory, not a default. Omitted means embedded-only.
+    # External templates/, static/ and i18n/ overlay embedded resources.
+    # Relative directories resolve from the process working directory.
+    # Symlinks are rejected. Startup can fall back to embedded resources when
+    # overrides are invalid; use 'rilgate ... web validate' to check them.
+    #
+    # directory: /etc/rilgate/web
+
+    # if_empty seeds embedded files only into an empty external directory.
+    # Hidden files make it nonempty; existing contents are never overwritten.
+    # never disables seeding. No directory means there is nothing to seed.
+    #
+    # seed: if_empty
+    # watch:
+      # Watch external files and atomically publish valid resource snapshots.
+      # Invalid reloads retain the previous snapshot. Embedded-only mode has
+      # no watcher. On Unix, SIGHUP can also trigger a resource reload.
+      #
+      # enabled: false
+
+      # Coalesce nearby filesystem events. Must be positive and at most 60s.
+      #
+      # debounce: 300ms
+
+
+  # templates:
+    # In-memory compiled template cache. Currently must be true; false is
+    # unsupported. This does not enable browser caching of challenge responses.
+    #
+    # cache: true
+
+    # Undefined template variables produce errors instead of empty output.
+    #
+    # strict: true
+
+    # Maximum nested template recursion, including includes. Range: 1..256.
+    #
+    # recursion_limit: 64
+
+    # Positive instruction budget per template evaluation, bounding rendering
+    # work such as loops. Increase only for trusted, more complex templates.
+    #
+    # fuel: 50000
+
+
+  # i18n:
+    # Default/fallback BCP 47 locale tag. Must be included in supported when an
+    # explicit supported list is supplied, and available in loaded resources.
+    #
+    # default: en
+
+    # Empty or omitted discovers locales from translation files. A nonempty
+    # list restricts offered locales, for example [en, vi].
+    #
+    # supported: []
+
+    # Treat missing translation keys as validation errors. With false, missing
+    # keys are reported while locale/default/English fallback remains available.
+    #
+    # strict: false
+
+    # Language preference cookie name, using valid HTTP token characters.
+    # Selection order: ?lang, language cookie, Accept-Language, default locale.
+    #
+    # cookie: rilgate_lang
+
+################################ PROOF OF WORK ################################
+
+# pow:
+  # local_verify checks Fast SHA-256 or RandomX proofs on this gateway.
+  # Compatible signed local proofs can be verified across instances.
+  # p2pool_accepted requires RandomX challenges and an actual accepted share
+  # response from P2Pool, through a retained WebSocket/Stratum session. HTTP
+  # RandomX issue/verify is unavailable in that mode. Route sessions back to
+  # their owning gateway; there is no distributed session store.
+  #
+  # verification: local_verify
+
+  # Algorithm when a challenge action omits algorithm: fast or randomx.
+  # Presets explicitly select fast. Selecting RandomX requires explicit P2Pool
+  # configuration for jobs, including when verification is local.
+  #
+  # default_algorithm: fast
+
+
+  # challenge:
+    # Challenge presentation token and Fast work lifetime. Whole seconds only.
+    #
+    # ttl: 1m
+
+    # Window for exchanging a verified receipt for authentication. Whole seconds.
+    #
+    # receipt_ttl: 30s
+
+
+  # rate_limit:
+    # Apply per-client and global token buckets to proof HTTP APIs and WebSocket
+    # handshakes. Ordinary proxied requests use server admission limits instead.
+    # Quotas are per gateway process, not shared across a deployment.
+    #
+    # enabled: true
+
+    # Maximum tracked client-IP buckets, bounding memory. Range: 1..65536.
+    # If no bucket can be reclaimed at capacity, new clients are rate limited.
+    #
+    # max_clients: 4096
+    # client:
+      # Per-client initial token count and bucket capacity. Range: 1..1000000.
+      #
+      # burst: 10
+
+      # Tokens restored per second; 0.1 means one token every 10 seconds.
+      # Must be finite and within 0.001..1000000.
+      #
+      # refill_per_second: 0.1
+    # global:
+      # Shared initial tokens and capacity across clients. Range: 1..1000000.
+      #
+      # burst: 64
+
+      # Process-wide replenishment rate. Finite, within 0.001..1000000.
+      #
+      # refill_per_second: 16
+
+
+  # algorithms:
+    # Fast has no algorithm-specific configuration. RandomX is opt-in and uses
+    # substantially more browser/server memory and CPU than Fast.
+    #
+    # randomx:
+      # Signed RandomX work lifetime for local verification, separate from the
+      # shorter presentation-token TTL. Positive whole seconds, at most 365d.
+      #
+      # challenge_ttl: 1h
+
+      # Byte offset of the 4-byte nonce in the mining blob. Range: 0..252;
+      # it must also fit the actual P2Pool job blob. 39 is the Monero layout.
+      #
+      # nonce_offset: 39
+
+      # Pending native verification jobs, serviced by a dedicated worker.
+      # Range: 1..1024. A full queue returns 503 rather than growing unbounded.
+      #
+      # verifier_queue: 8
+      # difficulty:
+        # Minimum automatic difficulty, at least 1000.
+        #
+        # base: 1000
+
+        # Positive integer score interval per doubling. Automatic difficulty is
+        # base * 2^(score / score_step), with integer division and exponent
+        # clamped to 0..63, then capped at max. Negative scores do not reduce base.
+        #
+        # score_step: 10
+
+        # Maximum automatic difficulty, at least base. An explicit challenge
+        # difficulty bypasses this calculation/cap, but must still be >= 1000.
+        #
+        # max: 32000
+      # browser:
+        # Solver module under site.base_path, even with the leading '/'.
+        # Must be a local safe resource path, not an arbitrary external URL.
+        #
+        # module: /static/js/solvers/randomx/solver.js
+
+
+  # Omitted by default. Required whenever RandomX jobs or pool acceptance are
+  # selected. Merely adding this section does not switch the policy to RandomX.
+  #
+  # p2pool:
+    # Stratum host:port or [IPv6]:port. No URL scheme, credentials or path.
+    #
+    # address: 127.0.0.1:3333
+
+    # Pool login password. 'x' is the default, not a Rilgate signing key.
+    # Use an environment reference if your pool requires a private credential.
+    #
+    # password: x
+
+    # Client agent identifier sent in the Stratum login.
+    #
+    # agent: rilgate/0.1.0
+    # timeout:
+      # Timeout for connection setup and initial login response.
+      #
+      # connect: 5s
+
+      # Maximum wait for the pool response to a submitted share. A locally valid
+      # hash alone does not grant access with p2pool_accepted verification.
+      #
+      # submit: 20s
+    # sessions:
+      # Shared capacity for job connections and WebSocket verification sessions.
+      # Range: 1..4096; process-local. Capacity exhaustion returns 503.
+      #
+      # max: 64
+
+      # Maximum lifetime of a WebSocket acceptance session, not a proof-token TTL.
+      #
+      # ttl: 15m
+    # job_sessions:
+      # pooled reuses difficulty-specific job connections. per_challenge opens
+      # a connection per issued challenge. Both consume sessions.max capacity.
+      #
+      # mode: pooled
+
+      # Maximum pooled job sessions, 1..4096 and <= sessions.max in pooled mode.
+      # Not used as a pool size in per_challenge mode; zero is never a mode switch.
+      #
+      # max: 16
+
+      # Pooled connection idle timeout since the last job request. Incoming job
+      # notifications do not extend it. Not used in per_challenge mode.
+      #
+      # idle: 1m
+
+#################################### POLICY ###################################
+
+# policy:
+  # off: allow application traffic without proof enforcement.
+  # light: challenge empty or bot-like user agents with Fast difficulty 1.
+  # balanced: challenge application traffic with Fast difficulty 2.
+  # strict: challenge application traffic with Fast difficulty 4.
+  # custom: use only the rules, score and default_action configured below.
+  # light/balanced/strict allow /robots.txt, /favicon.ico and ACME challenge paths.
+  # All presets use Fast and need no mining pool. Internal APIs/assets are
+  # dispatched before policies, including broad public /.well-known/ exceptions.
+  #
+  # mode: balanced
+
+
+  # Everything below requires mode: custom. Other modes reject these settings
+  # rather than ignoring them. Rules and thresholds default to empty lists.
+  # See rilgate.custom.example.yml for an enabled custom-policy configuration.
+
+  # Final fallback when no terminal rule or score threshold matches.
+  # Options: allow, deny, challenge. A fallback challenge uses default_algorithm
+  # and automatic difficulty derived from the final score.
+  #
+  # default_action: allow
+
+
+  # EXAMPLE rules, not preset defaults. Evaluated in declaration order.
+  # allow, deny and challenge are terminal; score adjusts risk and continues.
+  # Names must be unique, nonempty and at most 128 bytes. Rules plus thresholds
+  # are limited to 128 entries. Score adjustments are signed 32-bit integers;
+  # accumulated scores saturate instead of wrapping at integer limits.
+
+  # Conditions use one engine. Fields in the same condition are ANDed.
+  # all/any contain nonempty condition lists; not contains one condition.
+  # Text fields path, method, user_agent and each headers entry accept exactly
+  # one of: exact, prefix, contains, in, regex. Matches are case-sensitive unless
+  # the regex enables (?i). 'in' accepts 1..64 strings. Header names ignore case;
+  # a missing header never matches, and any repeated header value may match.
+  # A missing User-Agent is evaluated as an empty string.
+  # client_ip accepts cidr for IPv4/IPv6. score accepts integer comparisons
+  # eq, gt, gte, lt, lte; multiple comparisons are ANDed. Impossible ranges fail.
+  # Example score condition: score: {gte: 10, lt: 30}.
+
+  # Expression depth is limited to 16 and compiled condition nodes to 512.
+  # Each text/pattern value is at most 2048 bytes, with a 64KiB total budget.
+  # Regexes use Rust regex syntax with bounded compilation, no backreferences
+  # or look-around. Invalid expressions fail startup validation.
+  #
+  # rules:
+    # - name: public-endpoints
+
+      # Any matching alternative allows these public machine-readable paths.
+      #
+      # when:
+        # any:
+          # - path: {prefix: "/.well-known/"}
+          # - path: {in: ["/favicon.ico", "/robots.txt"]}
+          # - path: {regex: '(?i)\.(rss|xml|atom)$'}
+      # action: allow
+    # - name: browser-score
+      # when:
+        # user_agent: {regex: "Mozilla|Opera"}
+      # action: score
+
+      # Required only for action: score. Negative adjustments are also allowed.
+      #
+      # score: 10
     # - name: suspicious-header
-    #   headers_regex:
-    #     X-Suspicious: .+
-    #   action: WEIGH
-    #   weight:
-    #     adjust: 10
+      # when:
+        # all:
+          # - method: {exact: POST}
+          # - headers: {X-Suspicious: {regex: ".+"}}
+          # - not:
+              # client_ip: {cidr: 192.0.2.0/24}
+      # action: score
+      # score: 10
+    # - name: protected-endpoint
+      # when:
+        # path: {prefix: /protected/}
+      # action: challenge
 
-    # Browser-like User-Agents start with +10 weight, then thresholds decide
-    # challenge difficulty.
-    - name: generic-browser
-      user_agent_regex: Mozilla|Opera
-      action: WEIGH
-      weight:
-        adjust: 10
+      # Allowed only with action: challenge. Omit this mapping or either field
+      # to use the default algorithm or score-derived difficulty, respectively.
+      #
+      # challenge:
+        # fast or randomx. RandomX also requires pow.p2pool.
+        #
+        # algorithm: fast
 
-  # Weight thresholds. First matching threshold wins.
-  #
-  # Supported expressions:
-  #   expression: weight <= 0
-  #
-  # or:
-  #
-  #   expression:
-  #     all:
-  #       - weight >= 10
-  #       - weight < 20
-  #
-  # `any:` is also supported.
+        # Fast: 1..64 leading zero hexadecimal digits, not bits; each added digit
+        # multiplies expected work by 16. RandomX: an integer of at least 1000.
+        #
+        # difficulty: 2
 
-  thresholds:
-    - name: minimal-suspicion
-      expression: weight <= 0
-      action: ALLOW
 
-    # Very light SHA-256 challenge.
-    - name: mild-suspicion
-      expression:
-        all:
-          - weight > 0
-          - weight < 10
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 1
+  # score:
+    # Starting signed 32-bit risk score, before ordered rules run.
+    #
+    # initial: 0
+    # debug_header:
+      # Development only; true is rejected in production. Allows clients to
+      # replace the starting score through the named request header.
+      #
+      # enabled: false
 
-    # Two leading zero hex digits, the usual `fast` difficulty setting.
-    - name: moderate-suspicion
-      expression:
-        all:
-          - weight >= 10
-          - weight < 20
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 2
+      # Valid HTTP header name read only when debug_header.enabled is true.
+      #
+      # name: x-pow-weight
 
-    # Stronger lightweight hash challenge.
-    - name: high-suspicion
-      expression:
-        all:
-          - weight >= 20
-          - weight < 30
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 4
-
-    # Escalate very suspicious clients to the expensive RandomX path.
-    - name: extreme-suspicion
-      expression: weight >= 30
-      action: CHALLENGE
-      challenge:
-        algorithm: randomx
-        difficulty: 8000
-
-  browser:
-    # Relative to web.base_path.
-    solver_module_path: "/static/js/solvers/randomx/solver.js"
+    # EXAMPLE thresholds, not defaults. Evaluated after rules only if no terminal
+    # action matched. First score >= min wins; min values must be strictly
+    # descending and unique. Actions: allow, deny, challenge, never score.
+    # If none match, default_action applies. Challenge fields follow rule syntax.
+    #
+    # thresholds:
+      # - min: 20
+        # action: challenge
+        # challenge: {algorithm: fast, difficulty: 4}
+      # - min: 10
+        # action: challenge
+        # challenge: {algorithm: fast, difficulty: 2}
+      # - min: 1
+        # action: challenge
+        # challenge: {algorithm: fast, difficulty: 1}

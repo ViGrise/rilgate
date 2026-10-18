@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+ipnet = "2"
 anyhow.workspace = true
 http.workspace = true
 regex.workspace = true

@@ -7,7 +7,7 @@ use rilgate_config::{Environment, PowEnforcement};
 #[command(version, about = "Rilgate proof-of-work gateway", long_about = None)]
 pub struct Args {
   /// Path to the YAML configuration file.
-  #[arg(short, long, value_name = "FILE")]
+  #[arg(short, long, global = true, value_name = "FILE")]
   pub config: Option<PathBuf>,
 
   #[command(subcommand)]
@@ -21,19 +21,31 @@ pub struct Args {
   #[arg(short, long)]
   pub port: Option<u16>,
 
-  /// PoW enforcement mode.
-  #[arg(long)]
+  /// Proof verification backend.
+  #[arg(long = "verification")]
   pub pow_enforce: Option<PowEnforcement>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-  /// Validate configuration and policies without opening a listener.
-  CheckConfig,
+  /// Validate or display the resolved YAML configuration.
+  Config {
+    #[command(subcommand)]
+    command: ConfigCommand,
+  },
   /// Initialize, validate, or compare operator web resources.
   Web {
     #[command(subcommand)]
     command: WebCommand,
+  },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+  Check,
+  Show {
+    #[arg(long)]
+    defaults: bool,
   },
 }
 
