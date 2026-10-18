@@ -1,6 +1,6 @@
 [package]
 name = "randomx-core"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Portable pure-Rust RandomX v1 Light mode implementation for native and wasm32"

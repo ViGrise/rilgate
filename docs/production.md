@@ -189,7 +189,8 @@ Pushes to `main` publish a multi-architecture image (`linux/amd64`,
 `linux/arm64`) to `ghcr.io/vigrise/rilgate`, tagged `main` and `sha-<commit>`,
 after these checks pass. Pushing a `v*` tag releases that revision:
 
-1. Set `version` in `crates/rilgate/Cargo.toml`, commit, then tag `v<version>`.
+1. Set `version` under `[workspace.package]` in `Cargo.toml`, commit, then tag
+   `v<version>`.
    The release fails when the tag and the package version differ.
 2. CI repeats the checks, builds native binaries for Linux (amd64, arm64),
    macOS (amd64, arm64) and Windows (amd64, arm64), and smoke tests each with

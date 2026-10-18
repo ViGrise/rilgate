@@ -151,7 +151,7 @@ impl Default for P2Pool {
     Self {
       address: "127.0.0.1:3333".into(),
       password: Secret("x".into()),
-      agent: "rilgate/0.1.0".into(),
+      agent: concat!("rilgate/", env!("CARGO_PKG_VERSION")).into(),
       timeout: PoolTimeout::default(),
       sessions: Sessions::default(),
       job_sessions: JobSessions::default(),

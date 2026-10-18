@@ -25,29 +25,30 @@ default-members = ["crates/rilgate"]
 resolver = "2"
 
 [workspace.package]
+version = "0.2.0"
 edition = "2024"
 license = "Apache-2.0"
 
 [workspace.dependencies]
-rilgate-core = { path = "crates/rilgate-core", version = "0.1.0" }
-rilgate-gateway = { path = "crates/rilgate-gateway", version = "0.1.0" }
-rilgate-challenge = { path = "crates/rilgate-challenge", version = "0.1.0" }
-rilgate-ip-feeds = { path = "crates/rilgate-ip-feeds", version = "0.1.0" }
-rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx", version = "0.1.0" }
-rilgate-pow-hash = { path = "crates/rilgate-pow-hash", version = "0.1.0" }
-rilgate-pool = { path = "crates/rilgate-pool", version = "0.1.0" }
-rilgate-stratum = { path = "crates/rilgate-stratum", version = "0.1.0" }
-rilgate-policy = { path = "crates/rilgate-policy", version = "0.1.0" }
-rilgate-protocol = { path = "crates/rilgate-protocol", version = "0.1.0" }
-rilgate-crypto = { path = "crates/rilgate-crypto", version = "0.1.0" }
-rilgate-telemetry = { path = "crates/rilgate-telemetry", version = "0.1.0" }
-rilgate-test-utils = { path = "crates/rilgate-test-utils", version = "0.1.0" }
+rilgate-core = { path = "crates/rilgate-core" }
+rilgate-gateway = { path = "crates/rilgate-gateway" }
+rilgate-challenge = { path = "crates/rilgate-challenge" }
+rilgate-ip-feeds = { path = "crates/rilgate-ip-feeds" }
+rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx" }
+rilgate-pow-hash = { path = "crates/rilgate-pow-hash" }
+rilgate-pool = { path = "crates/rilgate-pool" }
+rilgate-stratum = { path = "crates/rilgate-stratum" }
+rilgate-policy = { path = "crates/rilgate-policy" }
+rilgate-protocol = { path = "crates/rilgate-protocol" }
+rilgate-crypto = { path = "crates/rilgate-crypto" }
+rilgate-telemetry = { path = "crates/rilgate-telemetry" }
+rilgate-test-utils = { path = "crates/rilgate-test-utils" }
 
-randomx-core = { path = "crates/randomx-core", version = "0.1.0" }
+randomx-core = { path = "crates/randomx-core" }
 
-rilgate-config = { path = "crates/rilgate-config", version = "0.1.0" }
-rilgate-pow = { path = "crates/rilgate-pow", version = "0.1.0" }
-rilgate-web = { path = "crates/rilgate-web", version = "0.1.0" }
+rilgate-config = { path = "crates/rilgate-config" }
+rilgate-pow = { path = "crates/rilgate-pow" }
+rilgate-web = { path = "crates/rilgate-web" }
 
 tokio = { version = "1.53.1", features = ["full"] }
 axum = { version = "0.8.9", features = ["ws"] }

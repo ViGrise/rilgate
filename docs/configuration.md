@@ -135,7 +135,7 @@ with `B`, `KiB`, `MiB`, or `GiB`, without rounding or overflow.
 | `policy.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
 
 When `pow.p2pool` is enabled, its defaults are address `127.0.0.1:3333`, password
-`x`, agent `rilgate/0.1.0`, connect/submit timeouts `5s`/`20s`, session capacity
+`x`, agent `rilgate/<version>`, connect/submit timeouts `5s`/`20s`, session capacity
 `64`, session TTL `15m`, and job-session mode `pooled`, maximum `16`, idle `1m`.
 Set mode `per_challenge` to create one connection per job; `max` and `idle`
 configure the pooled mode. Zero never selects a job acquisition strategy.

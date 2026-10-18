@@ -467,7 +467,7 @@ security:
 
     # Client agent identifier sent in the Stratum login.
     #
-    # agent: rilgate/0.1.0
+    # agent: rilgate/<version>
     # timeout:
       # Timeout for connection setup and initial login response.
       #

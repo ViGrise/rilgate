@@ -1,6 +1,6 @@
 [package]
 name = "randomx-wasm"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Raw wasm32 ABI for the workspace RandomX implementation"
