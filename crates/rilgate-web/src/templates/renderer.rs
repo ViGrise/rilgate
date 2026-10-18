@@ -13,7 +13,7 @@ pub fn compile(
 ) -> Result<Environment<'static>> {
   let mut env = Environment::new();
   env.set_auto_escape_callback(|name| {
-    if name.ends_with(".html") {
+    if name.ends_with(".html.jinja") {
       AutoEscape::Html
     } else {
       AutoEscape::None
@@ -29,6 +29,10 @@ pub fn compile(
   translator::register(&mut env, translations);
   for (name, source) in templates {
     crate::resources::loader::logical_path(&name)?;
+    anyhow::ensure!(
+      name.ends_with(".html.jinja") || name.ends_with(".json.jinja"),
+      "Template must use .html.jinja or .json.jinja: {name}"
+    );
     anyhow::ensure!(
       matches!(
         name.split('/').next(),

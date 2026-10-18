@@ -3,7 +3,7 @@ use anyhow::{Context, Result, ensure};
 pub(crate) fn validate(name: &str, body: &str) -> Result<()> {
   if !matches!(
     name,
-    "pages/challenge.json" | "pages/denied.json"
+    "pages/challenge.json.jinja" | "pages/denied.json.jinja"
   ) {
     return Ok(());
   }

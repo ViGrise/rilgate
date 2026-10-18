@@ -162,7 +162,7 @@ impl WebSnapshot {
       for locale in snapshot.supported.tags() {
         let public = snapshot.challenge_context(PublicChallengeInfo::default(), locale)?;
         let html = snapshot.render_with_bootstrap(
-          "pages/challenge.html",
+          "pages/challenge.html.jinja",
           &public,
           locale,
           BOOTSTRAP_SLOT.into(),
@@ -212,11 +212,11 @@ impl WebSnapshot {
       }
     }
     for page in [
-      "pages/challenge.html",
-      "pages/denied.html",
-      "pages/error.html",
-      "pages/challenge.json",
-      "pages/denied.json",
+      "pages/challenge.html.jinja",
+      "pages/denied.html.jinja",
+      "pages/error.html.jinja",
+      "pages/challenge.json.jinja",
+      "pages/denied.json.jinja",
     ] {
       self
         .templates
@@ -270,7 +270,7 @@ impl WebSnapshot {
       return shell.render(&self.public.base_path, challenge);
     }
     let public = self.challenge_context(challenge.clone(), locale)?;
-    self.render("pages/challenge.html", &public, locale)
+    self.render("pages/challenge.html.jinja", &public, locale)
   }
 
   pub fn render_challenge_json(
@@ -279,7 +279,7 @@ impl WebSnapshot {
     locale: &str,
   ) -> Result<String> {
     let public = self.challenge_context(challenge.clone(), locale)?;
-    self.render("pages/challenge.json", &public, locale)
+    self.render("pages/challenge.json.jinja", &public, locale)
   }
 
   pub fn render(&self, name: &str, public: &TemplateContext, locale: &str) -> Result<String> {

@@ -119,8 +119,8 @@ pub fn render_page(
   let snapshot = state.web.current();
   let locale = negotiate_locale(&snapshot, headers, uri);
   let title_key = match template {
-    "pages/denied.html" | "pages/denied.json" => "denied.title",
-    "pages/error.html" => "error.title",
+    "pages/denied.html.jinja" | "pages/denied.json.jinja" => "denied.title",
+    "pages/error.html.jinja" => "error.title",
     _ => "challenge.title",
   };
   let title = snapshot
@@ -136,8 +136,8 @@ pub fn render_page(
     })
     .flatten();
   let description_key = match template {
-    "pages/denied.html" | "pages/denied.json" => "denied.description",
-    "pages/error.html" => "error.description",
+    "pages/denied.html.jinja" | "pages/denied.json.jinja" => "denied.description",
+    "pages/error.html.jinja" => "error.description",
     _ => "challenge.description",
   };
   let description = snapshot

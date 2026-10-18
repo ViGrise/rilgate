@@ -90,7 +90,7 @@ async fn operator_templates_can_use_an_application_specific_json_shape() {
   fs::write(
     directory
       .path()
-      .join("templates/pages/challenge.json"),
+      .join("templates/pages/challenge.json.jinja"),
     r#"{"success":false,"error":{"kind":"verification","url":{{ challenge.url | tojson }}}}"#,
   )
   .unwrap();

@@ -38,7 +38,7 @@ fn public(snapshot: &WebSnapshot) -> TemplateContext {
 }
 fn render(snapshot: &WebSnapshot, locale: &str) -> String {
   snapshot
-    .render("pages/challenge.html", &public(snapshot), locale)
+    .render("pages/challenge.html.jinja", &public(snapshot), locale)
     .unwrap()
 }
 
@@ -67,7 +67,7 @@ fn seeding_initializes_directory_trees_and_preserves_existing_files() {
   assert!(root.path().join(".rilgate-web-version").exists());
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "operator content",
   );
   assert!(seed::initialize(root.path()).is_err());
@@ -78,7 +78,7 @@ fn seeding_initializes_directory_trees_and_preserves_existing_files() {
   .unwrap();
   assert_eq!(render(&manager.current(), "en"), "operator content");
   assert_eq!(
-    fs::read_to_string(root.path().join("templates/pages/challenge.html")).unwrap(),
+    fs::read_to_string(root.path().join("templates/pages/challenge.html.jinja")).unwrap(),
     "operator content"
   );
 }
@@ -215,7 +215,7 @@ fn templates_escape_public_data_translations_and_script_json() {
   let mut context = public(&snapshot);
   context.challenge.token = "</script><script>alert(2)</script>".into();
   let html = snapshot
-    .render("pages/challenge.html", &context, "en")
+    .render("pages/challenge.html.jinja", &context, "en")
     .unwrap();
   assert!(html.contains("&lt;Acme &amp; Co&gt; __INTERNAL_PREFIX__"));
   assert!(html.contains("a=1&amp;b=2"));
@@ -228,14 +228,14 @@ fn invalid_edits_leave_the_previous_generation_and_held_snapshots_intact() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "First {{ t('challenge.title') }}",
   );
   let manager = WebManager::new(config(root.path())).unwrap();
   let first = manager.current();
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "{% if broken",
   );
   assert!(manager.reload().is_err());
@@ -243,7 +243,7 @@ fn invalid_edits_leave_the_previous_generation_and_held_snapshots_intact() {
   assert!(render(&manager.current(), "en").starts_with("First"));
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "Second {{ t('challenge.title') }}",
   );
   manager.reload().unwrap();
@@ -261,8 +261,8 @@ fn startup_errors_fall_back_but_validation_reports_them() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/pages/challenge.html",
-    "{% include 'pages/missing.html' %}",
+    "templates/pages/challenge.html.jinja",
+    "{% include 'pages/missing.html.jinja' %}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
   assert!(rilgate_web::management::validate(&config(root.path()), root.path()).is_err());
@@ -273,7 +273,7 @@ fn startup_errors_fall_back_but_validation_reports_them() {
       .diagnostics()
       .last_reload_error
       .unwrap()
-      .contains("missing.html")
+      .contains("missing.html.jinja")
   );
 }
 
@@ -282,7 +282,7 @@ fn strict_translation_mode_rejects_missing_keys() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "{{ t('missing.key') }}",
   );
   let mut config = config(root.path());
@@ -300,19 +300,19 @@ fn undefined_variables_recursion_and_fuel_are_checked_before_publication() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "{{ signing_key }}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
   write(
     root.path(),
-    "templates/pages/challenge.html",
-    "{% include 'pages/challenge.html' %}",
+    "templates/pages/challenge.html.jinja",
+    "{% include 'pages/challenge.html.jinja' %}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "{% for i in range(1000000) %}{{ i }}{% endfor %}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
@@ -391,11 +391,11 @@ fn concurrent_reloads_are_serialized() {
 fn symlink_escapes_and_invalid_logical_paths_are_rejected() {
   let root = tempfile::tempdir().unwrap();
   let outside = tempfile::tempdir().unwrap();
-  write(outside.path(), "secret.html", "secret");
+  write(outside.path(), "secret.html.jinja", "secret");
   fs::create_dir_all(root.path().join("templates/pages")).unwrap();
   std::os::unix::fs::symlink(
-    outside.path().join("secret.html"),
-    root.path().join("templates/pages/challenge.html"),
+    outside.path().join("secret.html.jinja"),
+    root.path().join("templates/pages/challenge.html.jinja"),
   )
   .unwrap();
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
@@ -403,7 +403,7 @@ fn symlink_escapes_and_invalid_logical_paths_are_rejected() {
   assert!(
     rilgate_web::resources::loader::read_checked(
       root.path(),
-      &root.path().join("templates/pages/challenge.html")
+      &root.path().join("templates/pages/challenge.html.jinja")
     )
     .is_err()
   );
@@ -423,7 +423,7 @@ fn symlink_escapes_and_invalid_logical_paths_are_rejected() {
 async fn watcher_debounces_updates_retains_invalid_edits_and_recovers() {
   use std::time::Duration;
   let root = tempfile::tempdir().unwrap();
-  write(root.path(), "templates/pages/challenge.html", "First");
+  write(root.path(), "templates/pages/challenge.html.jinja", "First");
   let mut config = config(root.path());
   config.watch.enabled = true;
   config.watch.debounce = Duration::from_millis(120);
@@ -432,20 +432,20 @@ async fn watcher_debounces_updates_retains_invalid_edits_and_recovers() {
     .unwrap()
     .unwrap();
   for value in ["One", "Two", "Three"] {
-    write(root.path(), "templates/pages/challenge.html", value);
+    write(root.path(), "templates/pages/challenge.html.jinja", value);
   }
   wait_until(|| manager.current().generation == 2).await;
   assert_eq!(render(&manager.current(), "en"), "Three");
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "{% if broken",
   );
   wait_until(|| manager.diagnostics().reload_failures_total > 0).await;
   assert_eq!(manager.current().generation, 2);
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "Recovered",
   );
   wait_until(|| manager.current().generation == 3).await;
@@ -466,13 +466,13 @@ fn validation_checks_both_fast_and_randomx_template_branches() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/pages/challenge.html",
-    "{% if challenge.algorithm == 'randomx' %}{% include 'pages/missing.html' %}{% endif %}",
+    "templates/pages/challenge.html.jinja",
+    "{% if challenge.algorithm == 'randomx' %}{% include 'pages/missing.html.jinja' %}{% endif %}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
   write(
     root.path(),
-    "templates/pages/challenge.html",
+    "templates/pages/challenge.html.jinja",
     "{% if challenge.difficulty >= 1000 %}{{ t('challenge.expires_in', seconds=challenge.expires_in) }}{% endif %}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_ok());
@@ -532,7 +532,7 @@ fn cached_challenge_shell_preserves_locales_and_isolates_bootstrap_data() {
       assert_eq!(
         cached,
         snapshot
-          .render("pages/challenge.html", &context, locale)
+          .render("pages/challenge.html.jinja", &context, locale)
           .unwrap()
       );
       assert!(!cached.contains("</script><script>alert("));
@@ -564,7 +564,7 @@ fn customized_templates_keep_dynamic_challenge_branches() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/partials/pow-info.html",
+    "templates/partials/pow-info.html.jinja",
     "{% if challenge.difficulty >= 1000 %}RX {{ challenge.expires_in }}{% else %}FAST{% endif %}",
   );
   let snapshot = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
@@ -618,14 +618,14 @@ fn invalid_json_templates_keep_the_previous_resource_snapshot() {
   let generation = manager.current().generation;
   write(
     root.path(),
-    "templates/pages/challenge.json",
+    "templates/pages/challenge.json.jinja",
     r#"{"error": {{ challenge.token }}}"#,
   );
   assert!(manager.reload().is_err());
   assert_eq!(manager.current().generation, generation);
   write(
     root.path(),
-    "templates/pages/challenge.json",
+    "templates/pages/challenge.json.jinja",
     r#"{"error":{"token":{{ challenge.token | tojson }}}}"#,
   );
   manager.reload().unwrap();

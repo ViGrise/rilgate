@@ -739,7 +739,7 @@ impl ProxyHttp for Handler {
         ) {
         let (html, locale) = render_page(
           &self.state,
-          "pages/error.html",
+          "pages/error.html.jinja",
           "",
           "fast",
           &session.req_header().headers,

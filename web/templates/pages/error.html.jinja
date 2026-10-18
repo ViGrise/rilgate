@@ -1,4 +1,4 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base.html.jinja" %}
 {% block content %}
 <main><h1>{{ t("error.title") }}</h1><p>{{ t("error.description") }}</p><button type="button" onclick="location.reload()">{{ t("common.retry") }}</button></main>
 {% endblock %}

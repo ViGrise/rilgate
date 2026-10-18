@@ -51,9 +51,9 @@ pub fn gate_with_client(
       );
 
       let template = if json {
-        "pages/denied.json"
+        "pages/denied.json.jinja"
       } else {
-        "pages/denied.html"
+        "pages/denied.html.jinja"
       };
       let (html, locale) = render_page(state, template, "", "fast", headers, uri);
       return Ok(Some(formatted_response(
