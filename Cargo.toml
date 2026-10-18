@@ -4,6 +4,7 @@ members = [
   "crates/rilgate-core",
   "crates/rilgate-gateway",
   "crates/rilgate-challenge",
+  "crates/rilgate-ip-feeds",
   "crates/rilgate-pow-randomx",
   "crates/rilgate-pow-hash",
   "crates/rilgate-pool",
@@ -31,6 +32,7 @@ license = "Apache-2.0"
 rilgate-core = { path = "crates/rilgate-core", version = "0.1.0" }
 rilgate-gateway = { path = "crates/rilgate-gateway", version = "0.1.0" }
 rilgate-challenge = { path = "crates/rilgate-challenge", version = "0.1.0" }
+rilgate-ip-feeds = { path = "crates/rilgate-ip-feeds", version = "0.1.0" }
 rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx", version = "0.1.0" }
 rilgate-pow-hash = { path = "crates/rilgate-pow-hash", version = "0.1.0" }
 rilgate-pool = { path = "crates/rilgate-pool", version = "0.1.0" }
@@ -86,6 +88,7 @@ url = "2"
 
 arc-swap = "1"
 humantime-serde = "1"
+fastrand = "2"
 include_dir = "0.7"
 minijinja = { version = "2", features = ["loader", "json", "fuel"] }
 mime_guess = "2"

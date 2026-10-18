@@ -1,7 +1,7 @@
 pub mod conditions;
 pub mod ip_sets;
 pub mod policy;
-pub use ip_sets::{IpRanges, IpSet, IpSets, Membership};
+pub use ip_sets::{IpRanges, IpSet, IpSets, MAX_PREFIXES_PER_SET, Membership};
 pub use policy::config::ChallengePolicy;
 pub use policy::schema::Action as PolicyAction;
 pub use policy::{PolicyDecision, PolicyEngine};

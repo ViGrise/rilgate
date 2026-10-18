@@ -2459,6 +2459,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rilgate-ip-feeds"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bytes",
+ "fastrand",
+ "http",
+ "ipnet",
+ "reqwest",
+ "rilgate-policy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rilgate-policy"
 version = "0.1.0"
 dependencies = [
