@@ -22,6 +22,10 @@ allocate substantial memory.
 
 ## Code organization
 
+Typed YAML configuration and defaults live in `crates/rilgate-config/src/schema/`.
+The loader parses and expands values, `assembly/resolve.rs` validates and resolves
+immutable runtime settings, and `rilgate-policy` compiles request conditions.
+
 Token signing lives in `crates/rilgate-crypto/src/token/`: `keys.rs` owns key
 rotation configuration, `purpose.rs` defines protocol domains, and `signer.rs`
 owns token encoding and verification. `mod.rs` keeps the public API stable;

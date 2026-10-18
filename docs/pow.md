@@ -32,15 +32,7 @@ The browser solver runs in a dedicated Web Worker and does **not** load the
 RandomX WASM module. Server verification is one SHA-256 operation, so this is
 appropriate for low/moderate suspicion.
 
-Supported names in YAML:
-
-```text
-fast
-sha256
-hash
-```
-
-They all resolve to the same lightweight algorithm.
+The canonical YAML algorithm name is `fast`.
 
 ### `randomx` - expensive challenge
 
@@ -58,7 +50,7 @@ With:
 
 ```yaml
 pow:
-  enforce: local_verify
+  verification: local_verify
 ```
 
 the gateway verifies RandomX locally.
@@ -67,48 +59,37 @@ With:
 
 ```yaml
 pow:
-  enforce: p2pool_accepted
+  verification: p2pool_accepted
 ```
 
 RandomX uses the WebSocket + retained Stratum session and succeeds only after
 P2Pool accepts the share.
 
-`fast` is always locally verified because it has no P2Pool/Stratum meaning.
+`fast` supports only local verification. Policies selecting it with
+`p2pool_accepted` are rejected. P2Pool-accepted deployments must select RandomX.
 
 ### Hybrid escalation
 
-A useful default is to make normal browser traffic cheap and reserve RandomX
-for highly suspicious traffic:
+With local verification, a custom policy can reserve RandomX for higher scores.
+Configure `pow.p2pool` explicitly for RandomX work:
 
 ```yaml
 pow:
-  thresholds:
-    - name: moderate-suspicion
-      expression:
-        all:
-          - weight >= 10
-          - weight < 20
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 2
-
-    - name: high-suspicion
-      expression:
-        all:
-          - weight >= 20
-          - weight < 30
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 4
-
-    - name: extreme-suspicion
-      expression: weight >= 30
-      action: CHALLENGE
-      challenge:
-        algorithm: randomx
-        difficulty: 8000
+  p2pool:
+    address: 127.0.0.1:3333
+policy:
+  mode: custom
+  score:
+    thresholds:
+      - min: 30
+        action: challenge
+        challenge: {algorithm: randomx, difficulty: 8000}
+      - min: 20
+        action: challenge
+        challenge: {algorithm: fast, difficulty: 4}
+      - min: 10
+        action: challenge
+        challenge: {algorithm: fast, difficulty: 2}
 ```
 
 If a `CHALLENGE` omits `algorithm`, `pow.default_algorithm` is used:
@@ -120,13 +101,13 @@ pow:
 
 ## Enforcement modes
 
-Configured through `pow.enforce` in the selected YAML file or `POW_ENFORCE`.
+Configured through `pow.verification` in YAML or the `--verification` CLI flag.
 
 ### Stateless local verification
 
 ```yaml
 pow:
-  enforce: local_verify
+  verification: local_verify
 ```
 
 Flow:
@@ -181,7 +162,7 @@ the same protocol event as P2Pool returning a Stratum `accepted`.
 
 ```yaml
 pow:
-  enforce: p2pool_accepted
+  verification: p2pool_accepted
 ```
 
 Flow:
@@ -190,7 +171,7 @@ Flow:
 challenge page
   |
   v
-WebSocket under web.base_path
+WebSocket under site.base_path
   |
   v
 one gateway instance
@@ -226,7 +207,7 @@ gateway sharing the auth key.
 
 ## Browser RandomX adapter
 
-The gateway-owned solver URL is also scoped below `web.base_path`.
+The gateway-owned solver URL is also scoped below `site.base_path`.
 
 Default:
 
@@ -297,8 +278,8 @@ without rebuilding the seed cache. Pool blobs must fit in 233 bytes before the
 23-byte suffix; larger jobs return 503. This local work cannot be submitted as a
 P2Pool share. The `p2pool_accepted` mode uses the original pool blob unchanged.
 
-`pow.challenge_ttl_seconds` controls presentations and fast challenges.
-`pow.randomx_challenge_ttl_seconds` controls local RandomX solving and defaults
+`pow.challenge.ttl` controls presentations and fast challenges.
+`pow.algorithms.randomx.challenge_ttl` controls local RandomX solving and defaults
 to 3600 seconds. Tune it for browser hash rates and policy difficulty. The HTTP
 RandomX response includes `expires_at` in Unix seconds; the browser checks it
 before initialization and before and after each hash. Native verification times

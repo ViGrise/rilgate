@@ -7,7 +7,7 @@ Challenge, denied, and upstream error pages are rendered at the requested
 application URL:
 
 ```yaml
-web:
+site:
   base_path: "/.well-known/rilgate"
 ```
 
@@ -30,7 +30,7 @@ With the default prefix:
 /.well-known/rilgate/static/js/solvers/randomx/randomx_wasm.wasm
 ```
 
-Changing `web.base_path` moves the APIs and assets. The prefix itself has no
+Changing `site.base_path` moves the APIs and assets. The prefix itself has no
 index page and returns `404`.
 
 Only the configured subtree is reserved. With the default configuration,
@@ -41,8 +41,9 @@ paths such as:
 /.well-known/security.txt
 ```
 
-still pass through to the upstream application because they are outside
-`/.well-known/rilgate`.
+remain application routes governed by the configured policy because they are
+outside `/.well-known/rilgate`. The balanced preset allows ACME paths; other
+application paths require a valid proof unless a policy explicitly allows them.
 
 Unknown paths below the configured gateway prefix are **never** proxied to the
 protected application.
@@ -57,10 +58,11 @@ public TLS can continue to terminate at the deployment reverse proxy.
 Configure the protected application:
 
 ```yaml
-upstream:
-  url: "http://127.0.0.1:3000"
-  preserve_host: true
-  max_body_bytes: 16777216
+server:
+  upstream:
+    url: "http://127.0.0.1:3000"
+    preserve_host: true
+    max_body_size: 16MiB
 ```
 
 Normal application URLs stay unchanged.
@@ -109,18 +111,23 @@ GET /articles/123
 upstream /articles/123
 ```
 
-The protected application does not need to know about the challenge URLs, and
-the browser never navigates away from the originally requested path.
+For browser HTML navigation, the application does not need to know about the
+challenge URLs and the browser stays at the originally requested path.
 
-For a `CHALLENGE` policy decision, unauthenticated `GET`/`HEAD` requests receive
-the challenge page in-place. All other methods, including `POST`, `PUT`, and
-`OPTIONS`, return `401` instead of being buffered and replayed automatically.
+For a `CHALLENGE` policy decision, unauthenticated HTML `GET`/`HEAD` requests receive
+the challenge page in-place. Other methods return a plain `401` when HTML is
+selected. JSON responses use `403` and identify the challenge with notification
+headers and a configurable body. Automatic selection considers `Accept`, JSON
+request `Content-Type`, `X-Requested-With`, and configured API path prefixes.
+See [AJAX and API integration](api-integration.md) for JSON templates and the
+same-origin iframe completion protocol. Intercepted bodies are never buffered
+for automatic replay.
 
 Application WebSocket upgrades pass through the same policy and cookie checks
 as ordinary requests. The dedicated proof WebSocket is handled locally.
 
 The proxy streams request and response bodies. Requests are limited by
-`upstream.max_body_bytes`. It removes standard hop-by-hop headers and headers named
+`server.upstream.max_body_size`. It removes standard hop-by-hop headers and headers named
 by `Connection` on both sides, while retaining the protocol fields required for
 accepted WebSocket upgrades. Redirects are returned to the client. Upstream
 HTTP requests are never replayed. Connection failures can try another resolved
@@ -132,14 +139,14 @@ independently of `preserve_host`.
 ## Resource limits and failure handling
 
 The native RandomX verifier uses one dedicated thread and a bounded queue. Requests beyond
-`pow.verifier_queue_capacity` receive `503`; queued work whose caller disconnects
+`pow.algorithms.randomx.verifier_queue` receive `503`; queued work whose caller disconnects
 or times out is skipped. Seed changes release the old cache before allocating
 another one.
 
-P2Pool connections share `pow.p2pool.max_sessions` slots across HTTP job fetches
+P2Pool connections share `pow.p2pool.sessions.max` slots across HTTP job fetches
 and WebSocket sessions. Excess requests receive `503` before upgrade or login.
-WebSocket sessions expire after `pow.p2pool.session_ttl_seconds`, and pending
-submissions expire after `pow.p2pool.submit_timeout_seconds`. Job rotation does
+WebSocket sessions expire after `pow.p2pool.sessions.ttl`, and pending
+submissions expire after `pow.p2pool.timeout.submit`. Job rotation does
 not discard an outstanding acceptance response. Shares must match the current
 job and the selected difficulty before submission; access still requires the
 matching P2Pool acceptance. Gateway clients send the nonce as a numeric
@@ -147,15 +154,15 @@ hexadecimal value; the Stratum adapter converts it to the little-endian byte
 encoding expected by P2Pool.
 
 Challenge issuance keeps its Stratum sessions open in a pool of at most
-`pow.p2pool.max_job_sessions`, each owned by a task that tracks job rotation
+`pow.p2pool.job_sessions.max`, each owned by a task that tracks job rotation
 while idle, so issuing a challenge reuses a connection instead of opening one.
-Those sessions take permits from `max_sessions`, so `max_job_sessions` must not
+Those sessions take permits from `sessions.max`, so `job_sessions.max` must not
 exceed it and the remainder stays available to WebSocket sessions. A session
-unused for `pow.p2pool.job_session_idle_seconds` is closed; incoming job
+unused for `pow.p2pool.job_sessions.idle` is closed; incoming job
 notifications do not extend that deadline. The idle clock starts when the initial
 job becomes available, so connection/login time does not consume it.
-Setting `max_job_sessions` to `0`
-uses one connection per challenge within the shared `max_sessions` budget.
+Setting `pow.p2pool.job_sessions.mode: per_challenge` uses one connection per
+challenge within the shared `sessions.max` budget. Zero is not a mode selector.
 
 One pooled session per difficulty publishes its latest job to all matching
 issuance requests. Concurrent requests share the initial connection and login;
@@ -163,7 +170,7 @@ reading an initialized job does not reserve a session or require a task message.
 The background task continuously tracks job rotation and reconnects on demand
 after a connection fails. WebSocket acceptance sessions remain independent.
 
-Size `max_job_sessions` for the number of active difficulties. Idle sessions for
+Size `job_sessions.max` for the number of active difficulties. Idle sessions for
 one difficulty still occupy capacity that another difficulty may need; requests
 that cannot reuse a matching session or open another one return `503`.
 The health endpoint exposes `pool.fetch_failures_total` and
@@ -171,18 +178,26 @@ The health endpoint exposes `pool.fetch_failures_total` and
 counters and are emitted at most once per ten seconds per provider.
 
 ```yaml
-upstream:
-  connect_timeout_seconds: 5
-  read_timeout_seconds: 30
-
+server:
+  upstream:
+    timeout:
+      connect: 5s
+      read: 30s
 pow:
-  verifier_queue_capacity: 8
+  algorithms:
+    randomx:
+      verifier_queue: 8
   p2pool:
-    max_sessions: 64
-    session_ttl_seconds: 900
-    submit_timeout_seconds: 20
-    max_job_sessions: 16
-    job_session_idle_seconds: 60
+    address: 127.0.0.1:3333
+    timeout:
+      submit: 20s
+    sessions:
+      max: 64
+      ttl: 15m
+    job_sessions:
+      mode: pooled
+      max: 16
+      idle: 1m
 ```
 
 Upstream connect/read failures produce `502`, and upstream timeouts produce
@@ -198,13 +213,13 @@ use `Cache-Control: no-store`; Stratum messages are limited to 64 KiB.
 Local HTTP endpoints have a fixed 30-second deadline and return `408` on
 expiry. Proxy connection attempts share a 30-second budget, and uploads have
 a 30-second budget with a 30-second downstream read timeout. Upstream reads
-and writes use `upstream.read_timeout_seconds`; this is an inactivity limit,
+and writes use `server.upstream.timeout.read`; this is an inactivity limit,
 not a deadline for the complete response. Streaming responses and upgraded
 WebSocket sessions can outlive these request budgets.
 
 Startup validates policy difficulties, paths, timeouts, and queue/session
 capacities. Production rejects placeholder or shorter-than-32-byte signing
-keys and debug weight headers. P2Pool passwords are redacted in configuration
+keys and debug score headers. P2Pool passwords are redacted in configuration
 logs.
 
 RandomX requires a click before solver initialization. The page discloses CPU
@@ -227,10 +242,12 @@ remain subject to connection and request concurrency limits.
 pow:
   rate_limit:
     enabled: true
-    client_burst: 10
-    client_refill_per_second: 0.1
-    global_burst: 64
-    global_refill_per_second: 16
+    client:
+      burst: 10
+      refill_per_second: 0.1
+    global:
+      burst: 64
+      refill_per_second: 16
     max_clients: 4096
 ```
 
@@ -241,7 +258,7 @@ multiple instances have separate quotas. They do not replace the verifier's
 queue or P2Pool connection limits.
 
 Client identity defaults to the TCP peer address. `Forwarded` is ignored.
-When `serve.trusted_proxies` contains the peer, `X-Forwarded-For` is resolved
+When `server.trusted_proxies` contains the peer, `X-Forwarded-For` is resolved
 from right to left through trusted hops. Untrusted peers cannot override their IP.
 IPv4-mapped IPv6 addresses share the same bucket as their IPv4 address. Clients
 behind an untrusted reverse proxy or NAT share that peer's quota; configure

@@ -19,7 +19,7 @@ browser completes the required work.
 ## Features
 
 - **Two PoW algorithms:** lightweight SHA-256 (`fast`) and memory-intensive RandomX.
-- **Request policies:** choose allow, deny, challenge or weight adjustments using
+- **Request policies:** choose allow, deny, challenge or score adjustments using
   paths, user agents and headers.
 - **Two RandomX modes:** local verification or access granted after P2Pool accepts
   a submitted share. RandomX starts only after explicit browser consent.
@@ -57,15 +57,15 @@ In another terminal, copy the example to your configuration file and start Rilga
 
 ```bash
 cp config/rilgate.example.yml config/rilgate.yml
+export RILGATE_SECRET="$(openssl rand -hex 32)"
 ./target/debug/rilgate --config config/rilgate.yml
 ```
 
 Open **<http://localhost:8080/protected/>**. The browser solves a Fast challenge,
 receives an access cookie and reloads the same URL to reach the upstream page.
-The example assigns Fast challenges to browser-like User-Agents, so this demo
-does not require P2Pool. Policies that select RandomX require a P2Pool endpoint.
-Existing `POW_*` and `UPSTREAM_*` environment variables or a local `.env` file
-can override the copied configuration.
+The balanced preset challenges application traffic regardless of User-Agent and
+requires no external pool. Policies that select RandomX need explicit P2Pool
+configuration. See [configuration](docs/configuration.md) for environment references.
 
 Check gateway health:
 
@@ -92,7 +92,7 @@ flowchart TD
 Without a valid access cookie, protected GET/HEAD requests receive challenge
 HTML at the requested URL. Other protected methods return `401`, allowing the
 client to retry after authentication. Internal APIs and static resources live
-under `web.base_path`, which defaults to `/.well-known/rilgate`.
+under `site.base_path`, which defaults to `/.well-known/rilgate`.
 
 Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache,
 plus scratchpads and runtime memory, and requires WebAssembly SIMD128. Both
@@ -103,32 +103,27 @@ protocol, host binding, lifetime and enforcement details.
 
 ## Configuration
 
-Rilgate looks for `config/rilgate.yml` by default. This operator-owned file is
-not included in the repository; copy [the full example](config/rilgate.example.yml)
-or choose another file with `--config` or `CONFIG`. Settings resolve in this
-order: CLI flags, environment variables, YAML, then defaults. In development,
-without a default file, environment variables and built-in defaults allow
-requests at the default risk weight. Production requires an explicit policy
-in a configuration file.
+Rilgate reads `config/rilgate.yml`, or a file selected by `--config` or
+`RILGATE_CONFIG`. Only the upstream URL and signing secret are required:
 
 ```yaml
-upstream:
-  url: http://127.0.0.1:3000
-web:
-  name: My Gateway
-  website_url: https://example.com
-  base_path: /.well-known/gate
-pow:
-  auth_cookie_name: gate_auth
+server:
+  upstream:
+    url: http://127.0.0.1:3000
+security:
+  secret: "${RILGATE_SECRET}"
 ```
 
-Use [the production configuration](config/rilgate.production.yml) for public deployments
-and follow [production operations](docs/production.md). Production mode
-requires strong signing keys and rejects the development placeholders. Public
-branding, auth and language cookie names, templates and locales are configurable.
+The defaults are production, embedded resources, local Fast verification and
+`policy.mode: balanced`. HKDF derives independent purpose-specific signing keys.
+Unknown fields and conflicting settings fail validation in every environment.
+Use `rilgate config check` to validate and `rilgate config show --defaults` to
+inspect all defaults with secrets redacted. The schema has no version field and
+replaces the unreleased previous format.
 
-See [configuration](docs/configuration.md), [request policies](docs/policy.md)
-and [web resources](docs/web.md) for the complete behavior and examples.
+See [the commented template](config/rilgate.example.yml),
+[configuration](docs/configuration.md), [request policies](docs/policy.md),
+[web resources](docs/web.md), and [production operations](docs/production.md).
 
 ## Deployment
 
@@ -143,8 +138,7 @@ Docker and Compose examples are included:
 
 ```bash
 docker build -f deploy/docker/Dockerfile -t rilgate:local .
-export POW_SIGNING_KEY="$(openssl rand -hex 32)"
-export POW_AUTH_SIGNING_KEY="$(openssl rand -hex 32)"
+export RILGATE_SECRET="$(openssl rand -hex 32)"
 docker compose -f deploy/docker/compose.yml up --build
 ```
 
@@ -181,7 +175,7 @@ validation requirements.
 Local proofs and access tokens are reusable within their signed lifetime.
 Single-use verification across gateway instances would require shared state or a
 different protocol. RandomX solve time depends heavily on the device and
-configured difficulty; test the policy against the browsers you intend to serve.
+configured difficulty; test the policy against the browsers you intend to server.
 
 ## Contributing
 

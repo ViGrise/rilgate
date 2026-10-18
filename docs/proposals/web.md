@@ -1,5 +1,8 @@
 # Rilgate Web Template & i18n Architecture
 
+Historical design notes. Current YAML names and configuration behavior are defined
+in [Configuration](../configuration.md); the `web` schema below is superseded.
+
 See [Web resources](../web.md), [Configuration](../configuration.md), and
 [Workspace architecture](../architecture.md) for current behavior and paths.
 
@@ -120,16 +123,16 @@ rilgate/
 │       └── web/
 │           ├── templates/
 │           │   ├── layouts/
-│           │   │   └── base.html
+│           │   │   └── base.html.jinja
 │           │   │
 │           │   ├── pages/
-│           │   │   ├── challenge.html
-│           │   │   ├── denied.html
-│           │   │   └── error.html
+│           │   │   ├── challenge.html.jinja
+│           │   │   ├── denied.html.jinja
+│           │   │   └── error.html.jinja
 │           │   │
 │           │   └── partials/
-│           │       ├── pow-info.html
-│           │       └── footer.html
+│           │       ├── pow-info.html.jinja
+│           │       └── footer.html.jinja
 │           │
 │           ├── static/
 │           │   ├── css/
@@ -160,14 +163,14 @@ When an override directory is configured:
 /etc/rilgate/web/
 ├── templates/
 │   ├── layouts/
-│   │   └── base.html
+│   │   └── base.html.jinja
 │   ├── pages/
-│   │   ├── challenge.html
-│   │   ├── denied.html
-│   │   └── error.html
+│   │   ├── challenge.html.jinja
+│   │   ├── denied.html.jinja
+│   │   └── error.html.jinja
 │   └── partials/
-│       ├── pow-info.html
-│       └── footer.html
+│       ├── pow-info.html.jinja
+│       └── footer.html.jinja
 │
 ├── static/
 │   ├── css/
@@ -430,7 +433,7 @@ Thumbs.db
 But:
 
 ```text
-templates/pages/challenge.html
+templates/pages/challenge.html.jinja
 ```
 
 means the web root is operator-managed and must not be automatically seeded.
@@ -505,7 +508,7 @@ EmbeddedWeb
 Conceptual API:
 
 ```rust
-EmbeddedWeb::get("templates/pages/challenge.html")
+EmbeddedWeb::get("templates/pages/challenge.html.jinja")
 EmbeddedWeb::get("static/css/rilgate.css")
 EmbeddedWeb::get("i18n/en.json")
 ```
@@ -632,10 +635,10 @@ embedded fallback
 Example:
 
 ```text
-pages/challenge.html
+pages/challenge.html.jinja
         │
         ▼
-/etc/rilgate/web/templates/pages/challenge.html
+/etc/rilgate/web/templates/pages/challenge.html.jinja
         │
      exists?
      │    │
@@ -654,7 +657,7 @@ All resulting template source is then loaded into MiniJinja memory.
 An operator can override only:
 
 ```text
-templates/pages/challenge.html
+templates/pages/challenge.html.jinja
 static/css/rilgate.css
 i18n/en.json
 ```
@@ -662,9 +665,9 @@ i18n/en.json
 while keeping built-in:
 
 ```text
-layouts/base.html
-partials/footer.html
-pages/error.html
+layouts/base.html.jinja
+partials/footer.html.jinja
+pages/error.html.jinja
 ```
 
 No full copy is required.
@@ -679,7 +682,7 @@ Recommended production setup:
 let mut env = Environment::new();
 
 env.set_auto_escape_callback(|name| {
-    if name.ends_with(".html") {
+    if name.ends_with(".html.jinja") {
         AutoEscape::Html
     } else {
         AutoEscape::None
@@ -779,7 +782,7 @@ internal upstream credentials
 # 21. Template Example
 
 ```jinja
-{% extends "layouts/base.html" %}
+{% extends "layouts/base.html.jinja" %}
 
 {% block content %}
 
@@ -800,7 +803,7 @@ internal upstream credentials
     data-difficulty="{{ challenge.difficulty }}">
   </div>
 
-  {% include "partials/pow-info.html" %}
+  {% include "partials/pow-info.html.jinja" %}
 
 </main>
 
@@ -1411,8 +1414,8 @@ web:
 Events:
 
 ```text
-0 ms    modify challenge.html
-10 ms   rename challenge.html
+0 ms    modify challenge.html.jinja
+10 ms   rename challenge.html.jinja
 35 ms   modify en.json
 ```
 
@@ -1571,7 +1574,7 @@ Useful logs:
 
 ```text
 INFO web directory change detected
-paths=["templates/pages/challenge.html"]
+paths=["templates/pages/challenge.html.jinja"]
 ```
 
 ```text
@@ -1586,7 +1589,7 @@ On error:
 
 ```text
 ERROR web snapshot reload failed
-file="templates/pages/challenge.html"
+file="templates/pages/challenge.html.jinja"
 error="unexpected end of template"
 generation_kept=16
 ```
@@ -1683,9 +1686,9 @@ symlink escapes
 Template names should use logical paths:
 
 ```text
-layouts/base.html
-pages/challenge.html
-partials/footer.html
+layouts/base.html.jinja
+pages/challenge.html.jinja
+partials/footer.html.jinja
 ```
 
 not arbitrary filesystem paths.
@@ -1735,7 +1738,7 @@ resolved target must remain inside canonical web.root
 Never allow:
 
 ```text
-web/templates/foo.html
+web/templates/foo.html.jinja
   → /etc/shadow
 ```
 
@@ -1775,7 +1778,7 @@ web:
 Editing:
 
 ```text
-./web/templates/pages/challenge.html
+./web/templates/pages/challenge.html.jinja
 ```
 
 will automatically rebuild and publish a new snapshot.

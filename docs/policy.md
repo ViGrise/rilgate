@@ -1,189 +1,118 @@
 # Request policies
 
-## Policy and request weight
+`policy` owns request classification, scoring and challenge decisions. The
+internal namespace is handled by the dedicated router before application
+policies, including when a rule allows all of `/.well-known/`. An unknown
+internal route remains an internal 404 and is never forwarded by an allow rule.
 
-The gateway evaluates `pow.bots` and `pow.thresholds` from the selected YAML
-configuration, which defaults to `config/rilgate.yml` when present.
+## Presets
 
-A `WEIGH` rule adds or subtracts points and policy evaluation continues.
-`ALLOW`, `DENY`, and `CHALLENGE` are terminal bot-rule actions.
+| Mode | Behavior |
+| --- | --- |
+| `off` | Allow application traffic without requiring PoW |
+| `light` | Challenge missing or bot-like User-Agents at Fast difficulty 1 |
+| `balanced` | Challenge application traffic at Fast difficulty 2 |
+| `strict` | Challenge application traffic at Fast difficulty 4 |
+| `custom` | Use only the operator's rules, thresholds and default action |
 
-Example:
+Light matches User-Agents containing bot, crawler, spider, curl, wget, python,
+or scrapy, case-insensitively, or an empty User-Agent. Light, balanced and strict
+allow exact `/robots.txt`, `/favicon.ico`, and the `/.well-known/acme-challenge/`
+prefix. Presets never require RandomX or P2Pool. Any custom `rules`, `score`, or
+`default_action` in a preset is rejected rather than silently ignored.
+
+## Custom evaluation
+
+See [the complete example](../config/rilgate.custom.example.yml). Rules run in
+declaration order. A matching `score` adds a signed integer with saturating i32
+arithmetic and continues. `allow`, `deny` and `challenge` are terminal. If no rule
+terminates, thresholds run against the final score in declaration order. A
+threshold matches `score >= min`; minimums must be unique and strictly descending.
+The first match wins. Otherwise `default_action` applies, defaulting to `allow`.
+It can be `allow`, `deny`, or `challenge`, but never `score`.
 
 ```yaml
-pow:
-  risk:
-    default_weight: 0
-
-  bots:
-    - name: well-known
-      path_regex: ^/\.well-known/.*$
-      action: ALLOW
-
-    - name: robots-txt
-      path_regex: ^/robots\.txt$
-      action: ALLOW
-
-    - name: trusted-session
-      headers_regex:
-        Cookie: trusted_session=
-      action: WEIGH
-      weight:
-        adjust: -10
-
-    - name: suspicious-client
-      user_agent_regex: (?i:bot|crawler)
-      action: WEIGH
-      weight:
-        adjust: 20
-
-    - name: generic-browser
-      user_agent_regex: Mozilla|Opera
-      action: WEIGH
-      weight:
-        adjust: 10
+policy:
+  mode: custom
+  default_action: deny
+  rules:
+    - name: browser-score
+      when:
+        user_agent:
+          contains: Mozilla
+      action: score
+      score: 10
+    - name: allow-public-api
+      when:
+        all:
+          - path: {prefix: /api/}
+          - any:
+              - method: {exact: POST}
+              - headers: {X-Allowed: {exact: 'yes'}}
+          - not:
+              path: {prefix: /api/private/}
+      action: allow
+  score:
+    initial: 0
+    thresholds:
+      - min: 10
+        action: challenge
+        challenge:
+          algorithm: fast
+          difficulty: 2
 ```
 
-Supported request matchers:
+Every rule needs a unique nonempty name and a nonempty `when`. `score` is required
+only on a score action. `challenge` settings are accepted only on a challenge
+action, in rules and thresholds. Custom policies never inherit preset exceptions.
+
+## Conditions
+
+Multiple fields in a condition are combined with AND. `all`, `any`, and `not`
+compose conditions recursively; `all` and `any` cannot be empty.
+
+| Field | Operators |
+| --- | --- |
+| `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
+| `client_ip` | `cidr` |
+| `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
+
+A string matcher requires exactly one operator. Matching is case-sensitive
+unless a regex explicitly selects case-insensitive matching. Header names are
+case-insensitive; any repeated header value may satisfy its matcher. Missing
+headers do not match, including an empty-string regex; `not` can test absence.
+A missing User-Agent is an empty string. A missing client IP does not match CIDR.
+Numeric comparisons combine with AND and impossible ranges are rejected.
+
+Client IP comes from the TCP peer unless `server.trusted_proxies` authorizes a
+forwarded chain. Forwarded headers from untrusted peers cannot influence IP rules.
+The same resolved address controls proof API quotas.
+
+Policies permit at most 128 rules plus thresholds, 512 compiled condition nodes,
+16 nested condition levels, 64 entries per membership list, 2048 bytes per
+matcher string and 64 KiB of matcher strings in total. Regex compilation has
+bounded program and DFA sizes. The request path and method come from the actual
+HTTP request, and policy and forwarding use the same validated path.
+
+## Challenge selection and score debugging
+
+A challenge without an algorithm uses `pow.default_algorithm`. Explicit Fast
+difficulty must be 1..64 leading zero hexadecimal digits. Explicit RandomX
+difficulty must be at least 1000; it is used as supplied. Without an explicit
+RandomX difficulty:
 
 ```text
-path_regex
-user_agent_regex
-headers_regex
+difficulty = base * 2^(score / score_step)
 ```
 
-When a rule contains more than one matcher, all of them must match.
+The exponent uses integer division and is clamped to 0..63. Multiplication
+saturates and the result is bounded by `pow.algorithms.randomx.difficulty.max`.
+Fast fallback difficulty is 1 below score 10, otherwise `2 * (score / 10)`,
+bounded to 1..64. RandomX rules require explicit `pow.p2pool` infrastructure.
+`p2pool_accepted` permits only RandomX challenges and grants access only after
+an actual accepted Stratum response on the owning session.
 
-After all matching `WEIGH` rules have been accumulated, the first matching
-threshold decides what to do:
-
-```yaml
-pow:
-  thresholds:
-    - name: minimal-suspicion
-      expression: weight <= 0
-      action: ALLOW
-
-    - name: mild-suspicion
-      expression:
-        all:
-          - weight > 0
-          - weight < 10
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 1
-
-    - name: moderate-suspicion
-      expression:
-        all:
-          - weight >= 10
-          - weight < 20
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 2
-
-    - name: high-suspicion
-      expression:
-        all:
-          - weight >= 20
-          - weight < 30
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 4
-
-    - name: extreme-suspicion
-      expression: weight >= 30
-      action: CHALLENGE
-      challenge:
-        algorithm: randomx
-        difficulty: 8000
-```
-
-Supported threshold expressions are intentionally small and predictable:
-
-```text
-weight < N
-weight <= N
-weight == N
-weight != N
-weight >= N
-weight > N
-```
-
-They can be grouped using:
-
-```yaml
-expression:
-  all:
-    - weight >= 10
-    - weight < 20
-```
-
-or:
-
-```yaml
-expression:
-  any:
-    - weight < 0
-    - weight >= 30
-```
-
-If no bot rule or threshold produces a terminal action, the gateway defaults to
-`ALLOW`.
-
-A direct `CHALLENGE` bot rule may specify its own algorithm and difficulty:
-
-```yaml
-- name: expensive-bot-challenge
-  user_agent_regex: (?i:bot|crawler)
-  action: CHALLENGE
-  challenge:
-    algorithm: randomx
-    difficulty: 16000
-```
-
-If `challenge.difficulty` is omitted, the gateway derives it from weight.
-
-For `randomx`:
-
-```text
-difficulty = base * 2^(weight / weight_step)
-```
-
-and clamps it at `pow.difficulty.max`.
-
-The exponent uses integer division for positive weights and is capped at 63;
-nonpositive weights use `pow.difficulty.base`. RandomX difficulty is at least
-1000. The maximum applies to this derived fallback; an explicit
-`challenge.difficulty` may exceed it.
-
-For `fast`, the fallback follows the lightweight scale approximately used by
-the default policy (`1`, `2`, `4`, `6`, ... leading zero hex digits).
-
-The policy decision is calculated on the **original application request**, not
-on the internal challenge API request. The gateway signs the original path,
-matched rule, weight, difficulty, host, and enforcement mode into a short-lived
-presentation token. The browser cannot change the path or lower its assigned
-weight/difficulty before requesting PoW work.
-
-For local testing only, `pow.risk.allow_debug_header` can enable the configured
-debug header:
-
-```yaml
-pow:
-  risk:
-    allow_debug_header: true
-    debug_header: "x-pow-weight"
-```
-
-Then:
-
-```bash
-curl -H 'x-pow-weight: 20' http://localhost:8080/
-```
-
-sets the initial weight to `20` before `bots` rules run. This is disabled by
-default and is rejected in production mode.
+In development only, set `policy.score.debug_header.enabled: true` to let the
+configured header replace the initial score. Its default name is `x-pow-weight`.
+The gateway signs the selected rule, final score, difficulty, algorithm, host and
+verification backend into the presentation. A browser cannot alter these claims.

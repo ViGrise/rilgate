@@ -1,185 +1,145 @@
 # Configuration
 
-Rilgate reads `config/rilgate.yml` by default. Select an operator-owned
-file with `--config /path/to/config.yml` or the `CONFIG` environment variable.
-CLI values take precedence over environment variables, then YAML and defaults.
-The application loads `.env` when present; [.env.sample](../.env.sample) lists
-common scalar overrides. Use [the full example](../config/rilgate.example.yml)
-for available fields.
+The YAML contract has six groups: `environment`, `server`, `site`, `security`,
+`pow`, and `policy`. Configuration has no schema version. Unknown fields,
+unsupported values and conflicting settings are errors in every environment.
+This unreleased schema replaces the previous configuration format; old keys
+are rejected, with no compatibility loader or migration command.
 
-The repository includes `config/rilgate.example.yml` as a reference, but no
-`config/rilgate.yml`. Copy the example to `config/rilgate.yml` before running
-the quick start. When
-the default file is absent in development, environment variables and built-in
-defaults are used. Those defaults contain no bot rules and allow requests at
-weight zero. Production requires a configuration file with explicit policy.
-An explicitly selected configuration file must exist and be readable.
-
-Scalar environment names replace dots with underscores and use uppercase,
-such as `SERVE_PORT`, `UPSTREAM_MAX_BODY_BYTES`, and `POW_P2POOL_MAX_SESSIONS`.
-`PORT` is an alias for `SERVE_PORT`; `APP_ENV` and `ENV` select the environment.
-`pow.bots` and `pow.thresholds` are YAML lists rather than scalar environment
-overrides. Unknown fields in policy rules and the `web` section are rejected;
-unrecognized scalar and sequence keys elsewhere produce a warning in development
-and are rejected in production.
-
-See [production operations](production.md) for the production template, limits,
-trusted proxies, key rotation and monitoring. Production requires explicit,
-nonempty `pow.thresholds` in a configuration file and rejects unknown keys.
-
-Production mode requires signing keys of at least 32 bytes and rejects placeholder
-values. Store secrets outside committed configuration. Use `ENV=production` or
-`--env production` for a deployment.
-
-## Shared configuration when scaling
-
-Every gateway instance should have the same:
-
-```text
-compatible proof and authentication verification keyrings
-web.base_path
-pow.enforce
-pow.auth_cookie_name
-compatible token lifetimes
-difficulty policy
-```
-
-There is no shared runtime database requirement.
-Local proofs and receipts can cross instances with compatible settings. An
-active P2Pool-accepted challenge retains its Stratum connection on the instance
-handling its WebSocket. Rate limits and pool/verifier capacity remain local to
-each instance.
-
-## Configuration example
+The minimal configuration requires an upstream URL and a signing secret:
 
 ```yaml
-env: development
-
-web:
-  name: "Rilgate"
-  website_url: "https://rilgate.com"
-  base_path: "/.well-known/rilgate"
-  stylesheet_path: "css/rilgate.css"
-  # root: /etc/rilgate/web
-  seed:
-    empty_directory: true
-  watch:
-    enabled: false
-    debounce: 300ms
-  templates:
-    cache: true
-    strict: true
-    recursion_limit: 64
-    fuel: 50000
-  i18n:
-    default_locale: en
-    strict: false
-    language_cookie_name: "rilgate_lang"
-
-serve:
-  port: 8080
-
-upstream:
-  url: "http://127.0.0.1:3000"
-  preserve_host: true
-  max_body_bytes: 16777216
-  connect_timeout_seconds: 5
-  read_timeout_seconds: 30
-
-pow:
-  enforce: local_verify
-  default_algorithm: randomx
-
-  signing_key: "replace-me"
-  auth_signing_key: "replace-me-too"
-
-  challenge_ttl_seconds: 60
-  randomx_challenge_ttl_seconds: 3600
-  receipt_ttl_seconds: 30
-  auth_ttl_seconds: 21600
-  auth_cookie_name: "rilgate_auth"
-  nonce_offset: 39
-  verifier_queue_capacity: 8
-
-  rate_limit:
-    enabled: true
-    client_burst: 10
-    client_refill_per_second: 0.1
-    global_burst: 64
-    global_refill_per_second: 16
-    max_clients: 4096
-
-  p2pool:
-    host: "127.0.0.1"
-    port: 3333
-    password: "x"
-    agent: "rilgate/0.1.0"
-    connect_timeout_seconds: 5
-    submit_timeout_seconds: 20
-    max_sessions: 64
-    session_ttl_seconds: 900
-    max_job_sessions: 16
-    job_session_idle_seconds: 60
-
-  difficulty:
-    base: 1000
-    weight_step: 10
-    max: 32000
-
-  risk:
-    default_weight: 0
-    allow_debug_header: false
-    debug_header: "x-pow-weight"
-
-  bots:
-    - name: generic-browser
-      user_agent_regex: Mozilla|Opera
-      action: WEIGH
-      weight:
-        adjust: 10
-
-  thresholds:
-    - name: minimal-suspicion
-      expression: weight <= 0
-      action: ALLOW
-
-    - name: mild-suspicion
-      expression:
-        all:
-          - weight > 0
-          - weight < 10
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 1
-
-    - name: moderate-suspicion
-      expression:
-        all:
-          - weight >= 10
-          - weight < 20
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 2
-
-    - name: high-suspicion
-      expression:
-        all:
-          - weight >= 20
-          - weight < 30
-      action: CHALLENGE
-      challenge:
-        algorithm: fast
-        difficulty: 4
-
-    - name: extreme-suspicion
-      expression: weight >= 30
-      action: CHALLENGE
-      challenge:
-        algorithm: randomx
-        difficulty: 8000
-
-  browser:
-    solver_module_path: "/static/js/solvers/randomx/solver.js"
+server:
+  upstream:
+    url: http://127.0.0.1:3000
+security:
+  secret: "${RILGATE_SECRET}"
 ```
+
+Generate at least 256 bits of randomness with `openssl rand -hex 32` and supply
+`RILGATE_SECRET` through the process environment or deployment secret store.
+Rilgate derives independent challenge and authentication keys using HKDF-SHA256
+with separate context identifiers. Secret length is checked, but randomness
+cannot be established by inspecting a string. Never commit a real secret.
+
+The defaults are production mode, an IPv4 wildcard listener at `:8080`, embedded
+site resources, local Fast verification, and the balanced policy. RandomX and
+P2Pool are opt-in. The balanced preset challenges application traffic at Fast
+difficulty 2 regardless of User-Agent, with public exceptions described in
+[policies](policy.md). HTTPS is required for production authentication cookies.
+
+Use [the commented distribution template](../config/rilgate.example.yml),
+[custom policy example](../config/rilgate.custom.example.yml), or
+[RandomX example](../config/rilgate.randomx.example.yml).
+
+## Loading and validation
+
+Rilgate reads `--config FILE`, then `RILGATE_CONFIG`, then `config/rilgate.yml`.
+An explicitly selected missing file fails. If the default file is absent,
+`RILGATE_UPSTREAM_URL` and `RILGATE_SECRET` can supply the essentials.
+`.env` is loaded from the working directory without replacing existing process
+variables. YAML is parsed before string interpolation, so environment values
+cannot inject YAML structure. References are converted according to the expected
+scalar type: strings remain strings, booleans require `true` or `false`, and
+numbers must fit their numeric type. Literal YAML values retain strict typing. `${VARIABLE_NAME}` requires a present, nonempty
+UTF-8 variable. Shell substitution and default-value syntax are unsupported.
+
+Three explicit environment overrides are available: `RILGATE_SECRET`,
+`RILGATE_UPSTREAM_URL`, and `RILGATE_LISTEN`. Other settings use YAML, optionally
+with `${VARIABLE_NAME}` references. CLI `--env`, `--port`, and `--verification`
+override the corresponding resolved values. Old automatic `POW_*`, `WEB_*`,
+`SERVE_*`, `ENV`, `PORT`, and `CONFIG` aliases are unsupported.
+
+```bash
+rilgate --config /etc/rilgate/config.yml config check
+rilgate --config /etc/rilgate/config.yml config show
+rilgate --config /etc/rilgate/config.yml config show --defaults
+```
+
+`check` validates fields, cross-field constraints, policy expressions, and
+algorithm selection without opening a listener or contacting dependencies.
+`show` produces resolved YAML with every signing key and pool password redacted.
+By default it omits unchanged defaults; `--defaults` includes the whole schema.
+A redacted result is for inspection and cannot be used as a secret-bearing
+configuration. Validate external templates with `rilgate web validate DIRECTORY`.
+
+## Defaults
+
+Durations use units such as `300ms`, `5s`, `1m`, `6h`. Timeouts retain subsecond
+precision. Token TTLs require positive whole seconds because signed claims use
+Unix seconds. Durations are positive and at most one year; readiness is at most
+30s, and resource-watch debounce is at most 60s. Sizes require a positive integer
+with `B`, `KiB`, `MiB`, or `GiB`, without rounding or overflow.
+
+| Setting | Default |
+| --- | --- |
+| `environment` | `production` |
+| `server.listen` | `:8080` |
+| `server.upstream.preserve_host` | `true` |
+| `server.upstream.max_body_size` | `16MiB` |
+| `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |
+| `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
+| `server.trusted_proxies` | `[]`, trust no peers |
+| `server.metrics_enabled`, `.readiness_timeout` | `false`, `2s` |
+| `site.name`, `.url`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `/.well-known/rilgate`, `css/rilgate.css` |
+| `site.resources.directory`, `.seed` | none, `if_empty` |
+| `site.resources.watch.enabled`, `.debounce` | `false`, `300ms` |
+| `site.templates.cache`, `.strict`, `.recursion_limit`, `.fuel` | `true`, `true`, `64`, `50000` |
+| `site.i18n.default`, `.supported`, `.strict`, `.cookie` | `en`, `[]` (discover), `false`, `rilgate_lang` |
+| `security.auth.cookie`, `.ttl` | `rilgate_auth`, `6h` |
+| `pow.verification`, `.default_algorithm` | `local_verify`, `fast` |
+| `pow.challenge.ttl`, `.receipt_ttl` | `1m`, `30s` |
+| `pow.rate_limit.enabled`, `.max_clients` | `true`, `4096` |
+| `pow.rate_limit.client.burst`, `.refill_per_second` | `10`, `0.1` |
+| `pow.rate_limit.global.burst`, `.refill_per_second` | `64`, `16` |
+| `pow.algorithms.randomx.challenge_ttl`, `.nonce_offset`, `.verifier_queue` | `1h`, `39`, `8` |
+| `pow.algorithms.randomx.difficulty.base`, `.score_step`, `.max` | `1000`, `10`, `32000` |
+| `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
+| `policy.mode` | `balanced` |
+
+When `pow.p2pool` is enabled, its defaults are address `127.0.0.1:3333`, password
+`x`, agent `rilgate/0.1.0`, connect/submit timeouts `5s`/`20s`, session capacity
+`64`, session TTL `15m`, and job-session mode `pooled`, maximum `16`, idle `1m`.
+Set mode `per_challenge` to create one connection per job; `max` and `idle`
+configure the pooled mode. Zero never selects a job acquisition strategy.
+
+Custom policies default to `default_action: allow`, no rules, score initial `0`,
+debug header disabled with name `x-pow-weight`, and no thresholds. Custom settings
+are rejected in preset modes. Debug headers are forbidden in production.
+
+## Separate keys and rotation
+
+Use explicit keys instead of a master secret when independent key management or
+rolling rotation is required. The two modes are mutually exclusive.
+
+```yaml
+security:
+  keys:
+    challenge: "${RILGATE_POW_SIGNING_KEY}"
+    auth: "${RILGATE_AUTH_SIGNING_KEY}"
+    challenge_rotation:
+      active_id: proof-next
+      previous:
+        proof-current: "${RILGATE_PREVIOUS_POW_KEY}"
+    auth_rotation:
+      active_id: auth-next
+      previous:
+        auth-current: "${RILGATE_PREVIOUS_AUTH_KEY}"
+```
+
+Each key must have at least 32 bytes. Key IDs contain 1 to 32 ASCII letters,
+digits, underscores or hyphens. Each ring permits at most eight verification
+keys. The active ID cannot be in `previous`. Omit the active ID for unversioned
+signing; a verification entry named `legacy` explicitly accepts unversioned
+signatures during a named-key transition. Changing a master secret invalidates
+its existing tokens; use explicit keys when an overlap window is required.
+Secrets never appear in configuration
+output or debug representations. See [production rotation](production.md).
+
+## API response presentation
+
+`site.responses.format` selects `auto`, `html` or `json`. Automatic mode negotiates
+request headers; `site.responses.json_paths` can force JSON for API path prefixes.
+Operator JSON templates under the external web resource directory can match an
+application-specific envelope. See [AJAX and API integration](api-integration.md)
+for notification headers, JSON body templates and iframe completion.

@@ -23,394 +23,47 @@ web -> its own configuration and resource/runtime modules
 `rilgate-test-utils` is a development dependency. It shares fixtures and explicit
 service composition for gateway tests; production bootstrap remains in the app.
 Domain crates do not depend on the configuration loader or application state.
-The legacy deployment `pow` section is assembled into narrow domain settings,
-so existing YAML and environment variables retain their behavior.
+The typed YAML schema groups settings by operator responsibility. Defaults live
+in the schema, and assembly resolves immutable domain settings without exposing
+the serialization structure to gateway execution. Unknown legacy fields fail.
 
-## Detailed source tree
-
-Generated build artifacts, including the staged RandomX WASM module, are omitted.
+## Source organization
 
 ```text
-rilgate/
-├── .cargo/
-│   └── config.toml
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── config/
-│   └── rilgate.example.yml
-├── crates/
-│   ├── randomx-core/
-│   │   ├── examples/
-│   │   │   └── throughput.rs
-│   │   ├── src/
-│   │   │   ├── aes/
-│   │   │   │   └── lookup.rs
-│   │   │   ├── float/
-│   │   │   │   ├── accelerated.rs
-│   │   │   │   └── simd.rs
-│   │   │   ├── aes.rs
-│   │   │   ├── blake_generator.rs
-│   │   │   ├── cache.rs
-│   │   │   ├── constants.rs
-│   │   │   ├── float.rs
-│   │   │   ├── helpers.rs
-│   │   │   ├── instruction.rs
-│   │   │   ├── lib.rs
-│   │   │   ├── program.rs
-│   │   │   ├── reciprocal.rs
-│   │   │   ├── superscalar.rs
-│   │   │   ├── vm.rs
-│   │   │   └── wasm_dataset.rs
-│   │   ├── tests/
-│   │   │   └── vectors.rs
-│   │   └── Cargo.toml
-│   ├── randomx-wasm/
-│   │   ├── src/
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate/
-│   │   ├── src/
-│   │   │   ├── app/
-│   │   │   │   ├── bootstrap.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── cli/
-│   │   │   │   ├── args.rs
-│   │   │   │   ├── config.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── serve.rs
-│   │   │   │   └── web.rs
-│   │   │   ├── lib.rs
-│   │   │   ├── main.rs
-│   │   │   └── shutdown.rs
-│   │   ├── tests/
-│   │   │   └── startup.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-challenge/
-│   │   ├── src/
-│   │   │   ├── authorization/
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── service.rs
-│   │   │   ├── challenge/
-│   │   │   │   ├── issuance.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── presentation.rs
-│   │   │   │   └── work.rs
-│   │   │   ├── engine/
-│   │   │   │   ├── config.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── service.rs
-│   │   │   ├── tokens/
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── validation.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-config/
-│   │   ├── src/
-│   │   │   ├── assembly/
-│   │   │   │   ├── defaults.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── overrides.rs
-│   │   │   │   ├── pow.rs
-│   │   │   │   ├── upstream.rs
-│   │   │   │   └── web.rs
-│   │   │   ├── loader/
-│   │   │   │   ├── file.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── model/
-│   │   │   │   ├── gateway.rs
-│   │   │   ├── pingora.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── pow.rs
-│   │   │   │   └── pow_validation.rs
-│   │   │   ├── resolution/
-│   │   │   │   ├── compatibility.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── runtime/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-core/
-│   │   ├── src/
-│   │   │   ├── error.rs
-│   │   │   ├── lib.rs
-│   │   │   └── time.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-crypto/
-│   │   ├── src/
-│   │   │   ├── secret/
-│   │   │   │   └── mod.rs
-│   │   │   ├── token/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-gateway/
-│   │   ├── src/
-│   │   │   ├── auth/
-│   │   │   │   ├── cookies.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── observability/
-│   │   │   │   ├── health/
-│   │   │   │   │   ├── dto.rs
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   └── service.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── proof/
-│   │   │   │   ├── websocket/
-│   │   │   │   │   ├── messages.rs
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   └── session.rs
-│   │   │   │   ├── dto.rs
-│   │   │   │   ├── handlers.rs
-│   │   │   │   ├── mod.rs
-│   │   │   ├── proxy/
-│   │   │   │   ├── client.rs
-│   │   │   │   ├── gate.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── runtime/
-│   │   │   │   ├── app.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── state.rs
-│   │   │   ├── transport/
-│   │   │   │   ├── rate_limit/
-│   │   │   │   │   └── mod.rs
-│   │   │   │   ├── context.rs
-│   │   │   │   ├── errors.rs
-│   │   │   │   ├── response.rs
-│   │   │   │   ├── server.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── web/
-│   │   │   │   ├── assets.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── pages.rs
-│   │   │   └── lib.rs
-│   │   ├── tests/
-│   │   │   ├── common/
-│   │   │   │   └── mod.rs
-│   │   │   ├── algorithms.rs
-│   │   │   ├── gateway.rs
-│   │   │   ├── pingora.rs
-│   │   │   ├── pool.rs
-│   │   │   ├── proof_protocol.rs
-│   │   │   ├── rate_limits.rs
-│   │   │   ├── stratum.rs
-│   │   │   ├── uploads.rs
-│   │   │   └── web.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-policy/
-│   │   ├── src/
-│   │   │   ├── policy/
-│   │   │   │   ├── config.rs
-│   │   │   │   ├── evaluator.rs
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-pool/
-│   │   ├── src/
-│   │   │   ├── config/
-│   │   │   │   └── mod.rs
-│   │   │   ├── provider/
-│   │   │   │   ├── contract.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── p2pool.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-pow/
-│   │   ├── src/
-│   │   │   ├── algorithm/
-│   │   │   │   ├── contract.rs
-│   │   │   │   ├── descriptor.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── registry.rs
-│   │   │   ├── difficulty/
-│   │   │   │   └── mod.rs
-│   │   │   ├── target/
-│   │   │   │   └── mod.rs
-│   │   │   ├── work/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-pow-hash/
-│   │   ├── src/
-│   │   │   ├── sha256/
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── verifier.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-pow-randomx/
-│   │   ├── src/
-│   │   │   ├── randomx/
-│   │   │   │   ├── verification/
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   ├── target.rs
-│   │   │   │   │   └── workers.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── work.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-protocol/
-│   │   ├── src/
-│   │   │   ├── algorithm/
-│   │   │   │   ├── enforcement.rs
-│   │   │   │   ├── id.rs
-│   │   │   │   └── mod.rs
-│   │   │   ├── challenge/
-│   │   │   │   └── mod.rs
-│   │   │   ├── claims/
-│   │   │   │   └── mod.rs
-│   │   │   ├── difficulty/
-│   │   │   │   └── mod.rs
-│   │   │   ├── mining/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-stratum/
-│   │   ├── src/
-│   │   │   ├── client/
-│   │   │   │   └── mod.rs
-│   │   │   ├── codec/
-│   │   │   │   └── mod.rs
-│   │   │   ├── config/
-│   │   │   │   └── mod.rs
-│   │   │   ├── job/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-telemetry/
-│   │   ├── src/
-│   │   │   ├── tracing/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-test-utils/
-│   │   ├── src/
-│   │   │   ├── config/
-│   │   │   │   └── mod.rs
-│   │   │   ├── gateway/
-│   │   │   │   └── mod.rs
-│   │   │   └── lib.rs
-│   │   └── Cargo.toml
-│   ├── rilgate-web/
-│   │   ├── src/
-│   │   │   ├── assets/
-│   │   │   │   ├── metadata.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── response.rs
-│   │   │   ├── config/
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── validation.rs
-│   │   │   ├── i18n/
-│   │   │   │   ├── loader.rs
-│   │   │   │   ├── locale.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── store.rs
-│   │   │   │   └── translator.rs
-│   │   │   ├── management/
-│   │   │   │   ├── diff.rs
-│   │   │   │   ├── init.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── validate.rs
-│   │   │   ├── resources/
-│   │   │   │   ├── embedded.rs
-│   │   │   │   ├── loader.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── seed.rs
-│   │   │   ├── runtime/
-│   │   │   │   ├── manager.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── shell.rs
-│   │   │   │   ├── snapshot.rs
-│   │   │   │   └── watcher.rs
-│   │   │   ├── templates/
-│   │   │   │   ├── context.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── renderer.rs
-│   │   │   └── lib.rs
-│   │   ├── tests/
-│   │   │   └── runtime.rs
-│   │   ├── Cargo.toml
-│   │   └── README.md
-│   └── xtask/
-│       ├── src/
-│       │   └── main.rs
-│       └── Cargo.toml
-├── deploy/
-│   ├── docker/
-│   │   ├── Dockerfile
-│   │   └── compose.yml
-│   ├── examples/
-│   │   ├── caddy/
-│   │   │   └── Caddyfile
-│   │   └── nginx/
-│   │       └── nginx.conf
-│   ├── systemd/
-│   │   └── rilgate.service
-│   └── README.md
-├── docs/
-│   ├── proposals/
-│   │   └── web.md
-│   ├── algorithms.md
-│   ├── architecture.md
-│   ├── configuration.md
-│   ├── development.md
-│   ├── gateway.md
-│   ├── policy.md
-│   ├── pow.md
-│   └── web.md
-├── scripts/
-│   ├── build.sh
-│   ├── perf-gate.sh
-│   ├── perf/
-│   │   └── upstream.mjs
-│   ├── test.sh
-│   └── validate-randomx-wasm.mjs
-├── tests/
-│   ├── support/
-│   │   └── challenge-source.mjs
-│   ├── browser-solver.test.mjs
-│   ├── challenge-page.test.mjs
-│   └── randomx-wasm.test.mjs
-├── web/
-│   ├── i18n/
-│   │   └── en.json
-│   ├── static/
-│   │   ├── css/
-│   │   │   └── rilgate.css
-│   │   └── js/
-│   │       ├── challenge/
-│   │       │   ├── p2pool.js
-│   │       │   ├── registry.js
-│   │       │   └── runtime.js
-│   │       ├── solvers/
-│   │       │   ├── fast/
-│   │       │   │   ├── adapter.js
-│   │       │   │   ├── solver.js
-│   │       │   │   └── worker.js
-│   │       │   └── randomx/
-│   │       │       ├── adapter.js
-│   │       │       ├── randomx-worker.js
-│   │       │       └── solver.js
-│   │       └── challenge.js
-│   └── templates/
-│       ├── layouts/
-│       │   └── base.html
-│       ├── pages/
-│       │   ├── challenge.html
-│       │   ├── denied.html
-│       │   └── error.html
-│       └── partials/
-│           ├── footer.html
-│           └── pow-info.html
-├── .dockerignore
-├── .env.sample
-├── .gitignore
-├── .rustfmt.toml
-├── Cargo.lock
-├── Cargo.toml
-├── LICENSE
-├── README.md
-└── rust-toolchain.toml
+crates/rilgate-config/src/
+  schema/           Typed YAML groups, defaults, durations and sizes
+  loader/           YAML parsing, bounded environment expansion and overrides
+  assembly/         Validation and immutable runtime resolution
+  model/            Domain PoW and quota settings
+  runtime/          Listener and upstream settings
+crates/rilgate-policy/src/
+  policy/schema.rs  Rules, actions, thresholds and condition representation
+  policy/presets.rs Built-in policy definitions
+  policy/evaluator.rs Ordered rule and threshold execution
+  conditions/       Shared bounded matcher compiler and evaluator
+crates/rilgate-crypto/src/
+  derivation.rs     Purpose-specific HKDF signing keys
+  secret/           Redacted secret representation
+  token/            Keyrings, protocol domains, signing and verification
+crates/rilgate/src/
+  cli/              config check/show, web management and serving
+  app/              Algorithm registration and service composition
+crates/rilgate-gateway/src/
+  transport/        Pingora lifecycle, client IPs and proof quotas
+  proxy/            Application gate, forwarding and upstream connections
+  observability/    Health, dependency readiness and Prometheus exposition
+  proof/            HTTP and connection-affine WebSocket proof APIs
+  runtime/          Shared application state and resources
+scripts/test/       Production browser and container verification runners
+tests/e2e/          Playwright configuration, npm manifests and browser tests
+tests/container/    Container protocol helpers
+config/             Minimal, commented, custom and RandomX configuration examples
+deploy/             Docker, systemd, edge proxy and monitoring examples
 ```
+
+Other domain crates own algorithms, shared work/claim models, P2Pool sessions,
+Stratum framing, web resources and telemetry. Integration tests live with their
+owning crate; logs and temporary build/test artifacts live outside the project.
 
 ## Ownership and extension
 
@@ -421,7 +74,7 @@ Algorithm registration belongs to application bootstrap.
 
 New algorithms get real implementation crates when their backend and protocol
 are available. See [algorithm development](algorithms.md). Unimplemented algorithms,
-replay storage, vardiff, Prometheus exporters, fuzz targets and benchmark harnesses
+replay storage, vardiff and fuzz targets
 are not represented by empty crates or placeholder modules.
 
 Canonical embedded resources are in root `web/`. The archived
@@ -437,7 +90,7 @@ ignored by default.
 ## Runtime invariants
 
 Challenge pages stay at the requested application URL. Their APIs and assets
-resolve beneath the configured `web.base_path`. Policy rules choose algorithms
+resolve beneath the configured `site.base_path`. Policy rules choose algorithms
 and difficulty independently of the global default.
 
 Fast and RandomX local proofs can cross gateway instances sharing signing keys
@@ -449,7 +102,8 @@ Each challenge service prepares keyed HMAC states for presentation, challenge,
 receipt and access tokens. Requests clone these states and use separate token
 buffers; signatures retain the purpose-bound HMAC-SHA256 wire format and
 constant-time verification. Prepared states belong to the service configuration
-and are never shared across signing keys.
+and are never shared across signing keys. Single-secret configuration derives
+independent challenge and authentication keys with HKDF before service construction.
 
 Native and browser RandomX share `randomx-core` and reference vectors. Light mode
 uses a 256 MiB cache and derives dataset items on demand. Native verification
@@ -477,4 +131,5 @@ Application state owns the policy/challenge services, P2Pool provider, limiter,
 web snapshot manager, and reload watcher handles. Shutdown stops acceptance,
 cancels proof WebSockets, notifies Pingora, and drains connections for up to
 30 seconds. The socket digest supplies peer addresses for rate limiting;
-forwarded headers do not replace the socket identity.
+forwarded chains influence client IP only when the socket peer belongs to an
+explicit trusted proxy network. That resolved IP is shared by policies and quotas.

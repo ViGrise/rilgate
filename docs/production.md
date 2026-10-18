@@ -7,30 +7,28 @@ accepting public traffic.
 
 ## Configuration and network boundary
 
-Start from `config/rilgate.production.yml`, not the development example. It
-challenges every application route regardless of User-Agent, except the explicit
-ACME and robots.txt allow rules. Review those exceptions for your application.
-Fast difficulty 4 and a 30-minute access lifetime are starting values; measure
-solve time and abuse resistance for your expected clients.
+Use `config/rilgate.production.yml` or the commented distribution template.
+Both use the balanced preset: Fast difficulty 2 for application traffic, with
+robots.txt, favicon.ico and ACME exceptions, and a six-hour access lifetime.
+Review these settings and exceptions for your expected clients and abuse model.
+RandomX requires explicit policies and P2Pool configuration.
 
-Generate two independent random signing secrets, for example with
-`openssl rand -hex 32`, and inject `POW_SIGNING_KEY` and
-`POW_AUTH_SIGNING_KEY` through the deployment secret store. Do not commit them.
-Production requires explicit, nonempty `pow.thresholds`, strong signing keys,
-and disabled debug weight headers. Unknown scalar and sequence configuration
-keys are rejected. Check the resulting configuration before rollout:
+Generate a random secret with `openssl rand -hex 32`, and inject `RILGATE_SECRET`
+through the deployment secret store. Do not commit it. Rilgate uses HKDF-SHA256
+to derive independent challenge and authentication signing keys. Explicit
+`security.keys` are available for independent rotation. All environments reject
+unknown fields and conflicting configuration; production forbids debug scores.
 
 ```bash
-./target/release/rilgate --config /etc/rilgate/rilgate.yml check-config
+./target/release/rilgate --config /etc/rilgate/rilgate.yml config check
+./target/release/rilgate --config /etc/rilgate/rilgate.yml config show --defaults
 ```
 
-The command validates keys, limits, policy expressions and algorithm selection
-without opening a listener or contacting upstream/P2Pool. Validate filesystem
-web overrides separately with `rilgate web validate DIRECTORY`.
-
-The production template binds to `127.0.0.1`; `serve.host` or `SERVE_HOST`
-selects the bind IP. The container sets `SERVE_HOST=0.0.0.0` inside its network
-namespace, while Compose publishes only on host loopback.
+These commands validate keys, limits, policies and algorithm selection without
+opening a listener or contacting upstream/P2Pool. Resolved output redacts all
+keys and pool passwords. Validate filesystem overrides with `web validate`.
+The template uses `server.listen: ":8080"`, an IPv4 wildcard listener. Use
+`127.0.0.1:8080` for a host-local edge; Compose publishes only on host loopback.
 
 Terminate TLS at a trusted edge and restrict direct gateway access to the edge,
 load balancer and monitoring network. Restrict the application upstream so public
@@ -39,7 +37,7 @@ clients cannot bypass the gateway. Production cookies require HTTPS.
 When using nginx or Caddy on the same host, configure:
 
 ```yaml
-serve:
+server:
   trusted_proxies: ['127.0.0.1/32', '::1/128']
 ```
 
@@ -53,11 +51,11 @@ own trust boundary; Rilgate does not rewrite the application's forwarding header
 
 ## Capacity and quotas
 
-`serve.max_connections` bounds accepted TCP connections, including idle clients;
-excess connections are closed. `serve.max_requests` bounds concurrent requests,
+`server.max_connections` bounds accepted TCP connections, including idle clients;
+excess connections are closed. `server.max_requests` bounds concurrent requests,
 including streams and upgraded WebSockets; excess requests receive `503` and
 `Retry-After: 1`. HTTP/2 streams per connection are bounded by
-`serve.h2_max_streams`. Existing body limits, deadlines, verifier queue capacity
+`server.h2_max_streams`. Existing body limits, deadlines, verifier queue capacity
 and P2Pool session limits remain enforced. Size OS file limits and container
 memory for these settings and the roughly 256 MiB RandomX cache.
 
@@ -75,16 +73,16 @@ application WebSockets may be interrupted and clients must reconnect.
 
 ## Health, metrics and alerts
 
-The following routes are relative to `web.base_path`:
+The following routes are relative to `site.base_path`:
 
 | Route | Meaning |
 | --- | --- |
 | `/api/live` | The process can serve HTTP requests |
 | `/api/health` | Existing web diagnostics and cumulative pool failures |
 | `/api/ready` | Upstream TCP connectivity, and P2Pool TCP connectivity when a configured challenge rule selects RandomX; returns 503 when unavailable or draining |
-| `/api/metrics` | Prometheus exposition, enabled only with `serve.metrics_enabled: true` |
+| `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true` |
 
-Readiness probes have a configurable 1-30 second timeout (default 2 seconds),
+Readiness probes have a positive timeout up to 30s (default 2s),
 probe dependencies concurrently, and allow only one probe at a time per instance.
 TCP readiness does not assert successful application HTTP responses, TLS
 handshakes, Stratum login, available mining jobs or proof acceptance. Monitor
@@ -93,7 +91,7 @@ also produce 503 for probes; operational endpoints do not reserve unlimited
 resources during overload.
 
 Keep operational endpoints private. Edge examples block their public paths;
-adjust those rules when changing `web.base_path`. Scrape the gateway directly
+adjust those rules when changing `site.base_path`. Scrape the gateway directly
 from the monitoring network. No authentication is added to these endpoints.
 
 Metrics cover HTTP status classes and duration histograms, active connections
@@ -116,20 +114,24 @@ purpose-separated signatures. IDs are included in signatures and must contain
 secret. At most eight additional verification keys are accepted per keyring.
 
 ```yaml
-pow:
-  signing_keys:
-    active_id: proof-next
-    previous:
-      proof-current: '<current proof secret from the secret store>'
-  auth_signing_keys:
-    active_id: auth-next
-    previous:
-      auth-current: '<current auth secret from the secret store>'
+security:
+  keys:
+    challenge: "${RILGATE_POW_SIGNING_KEY}"
+    auth: "${RILGATE_AUTH_SIGNING_KEY}"
+    challenge_rotation:
+      active_id: proof-next
+      previous:
+        proof-current: "${RILGATE_PREVIOUS_POW_KEY}"
+    auth_rotation:
+      active_id: auth-next
+      previous:
+        auth-current: "${RILGATE_PREVIOUS_AUTH_KEY}"
 ```
 
-`pow.signing_key` / `POW_SIGNING_KEY` and `pow.auth_signing_key` /
-`POW_AUTH_SIGNING_KEY` contain the active secrets. Treat files with verification
-keys as secrets too; keep them outside Git with restricted permissions.
+Remove `security.secret` when selecting explicit keys. Treat all current and
+verification keys as secrets. Keep secret-bearing files outside Git with
+restricted permissions. Single-secret mode derives unversioned signing keys;
+use explicit-key mode when named-key rotation is required.
 
 Use a three-stage rolling deployment:
 
@@ -144,11 +146,8 @@ Use a three-stage rolling deployment:
    the auth lifetime. Include clock skew and rollout time in the window.
 
 Unversioned tokens can be retained with a verification entry named `legacy`.
-When migrating from an older binary that cannot understand key IDs, first
-upgrade every instance while keeping unversioned signing (omit `active_id`).
-Then stage the next named keys as above, switch to named signing and keep the
-old secrets under `legacy` until their lifetimes have elapsed. Never roll back
-to a binary that cannot verify the currently issued token format.
+Stage named verification keys on all instances before switching active signers.
+Keep the old unversioned signing key under `legacy` for the overlap window.
 
 Tokens are intentionally stateless, reusable bearer credentials within their
 signed lifetime. Rechecking a challenge may issue new receipts until challenge
