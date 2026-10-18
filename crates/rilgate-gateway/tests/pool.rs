@@ -82,7 +82,8 @@ async fn job_notifications_do_not_keep_unused_sessions_alive() {
     loop {
       tokio::select! {
         read = socket.read(&mut buffer) => {
-          assert_eq!(read.unwrap(), 0);
+          // Closing a socket with unread notifications can produce a reset instead of EOF.
+          assert!(matches!(read, Ok(0)) || read.is_err_and(|error| error.kind() == std::io::ErrorKind::ConnectionReset));
           break;
         }
         _ = tokio::time::sleep(Duration::from_millis(25)) => {

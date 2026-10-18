@@ -12,3 +12,4 @@ tmp/
 /web/randomx
 
 !config/rilgate.production.yml
+/tests/e2e/node_modules

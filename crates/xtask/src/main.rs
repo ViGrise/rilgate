@@ -61,8 +61,15 @@ fn build_wasm() -> ExitCode {
     return ExitCode::from(1);
   }
 
-  let built = root
-    .join("target")
+  let target_dir = env::var_os("CARGO_TARGET_DIR")
+    .map(PathBuf::from)
+    .unwrap_or_else(|| root.join("target"));
+  let target_dir = if target_dir.is_absolute() {
+    target_dir
+  } else {
+    root.join(target_dir)
+  };
+  let built = target_dir
     .join(WASM_TARGET)
     .join("release")
     .join("randomx_wasm.wasm");
