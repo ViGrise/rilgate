@@ -1,6 +1,6 @@
 use crate::ChallengePolicy;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -249,10 +249,63 @@ pub struct IpSetDefinition {
     skip_serializing_if = "Option::is_none"
   )]
   pub cidrs: Option<Vec<String>>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub url: Option<String>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub format: Option<FeedFormat>,
+  #[serde(
+    default,
+    with = "humantime_serde",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub refresh: Option<std::time::Duration>,
+  #[serde(
+    default,
+    with = "humantime_serde",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub max_stale: Option<std::time::Duration>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedFormat {
+  IpPrefixesJson,
 }
 
 pub(super) fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
   deserializer: D,
 ) -> Result<Option<T>, D::Error> {
   T::deserialize(deserializer).map(Some)
+}
+
+impl Condition {
+  /// Reports whether the condition tree references any of the named IP sets.
+  pub(crate) fn references(&self, names: &BTreeSet<&str>) -> bool {
+    self
+      .client_ip
+      .as_ref()
+      .and_then(|value| value.in_sets.as_ref())
+      .is_some_and(|sets| sets.iter().any(|name| names.contains(name.as_str())))
+      || self
+        .all
+        .as_ref()
+        .is_some_and(|values| values.iter().any(|value| value.references(names)))
+      || self
+        .any
+        .as_ref()
+        .is_some_and(|values| values.iter().any(|value| value.references(names)))
+      || self
+        .not
+        .as_ref()
+        .is_some_and(|value| value.references(names))
+  }
 }

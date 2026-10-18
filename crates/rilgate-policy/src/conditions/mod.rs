@@ -13,6 +13,23 @@ pub struct Request<'a> {
   pub client_ip: Option<IpAddr>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Truth {
+  True,
+  False,
+  Unknown,
+}
+
+impl Truth {
+  fn not(self) -> Self {
+    match self {
+      Self::True => Self::False,
+      Self::False => Self::True,
+      Self::Unknown => Self::Unknown,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub(crate) enum Compiled {
   All(Vec<Self>),
@@ -196,11 +213,35 @@ impl Compiled {
     Ok(Self::Sets(resolved))
   }
 
-  pub(crate) fn matches(&self, request: &Request<'_>, score: i32) -> bool {
+  pub(crate) fn matches(&self, request: &Request<'_>, score: i32) -> Truth {
     match self {
-      Self::All(nodes) => nodes.iter().all(|c| c.matches(request, score)),
-      Self::Any(nodes) => nodes.iter().any(|c| c.matches(request, score)),
-      Self::Not(node) => !node.matches(request, score),
+      Self::All(nodes) => {
+        let mut unknown = false;
+        for node in nodes {
+          match node.matches(request, score) {
+            Truth::False => return Truth::False,
+            Truth::Unknown => unknown = true,
+            Truth::True => {}
+          }
+        }
+        if unknown { Truth::Unknown } else { Truth::True }
+      }
+      Self::Any(nodes) => {
+        let mut unknown = false;
+        for node in nodes {
+          match node.matches(request, score) {
+            Truth::True => return Truth::True,
+            Truth::Unknown => unknown = true,
+            Truth::False => {}
+          }
+        }
+        if unknown {
+          Truth::Unknown
+        } else {
+          Truth::False
+        }
+      }
+      Self::Not(node) => node.matches(request, score).not(),
       Self::Text(field, test) => {
         let value = match field {
           Field::Path => Some(request.path),
@@ -213,30 +254,49 @@ impl Compiled {
               .unwrap_or_default(),
           ),
           Field::Header(name) => {
-            return request
-              .headers
-              .get_all(name)
-              .iter()
-              .any(|v| v.to_str().is_ok_and(|v| test.matches(v)));
+            return truth(
+              request
+                .headers
+                .get_all(name)
+                .iter()
+                .any(|v| v.to_str().is_ok_and(|v| test.matches(v))),
+            );
           }
         };
-        value.is_some_and(|v| test.matches(v))
+        truth(value.is_some_and(|v| test.matches(v)))
       }
-      Self::Ip(ranges) => request.client_ip.is_some_and(|ip| ranges.contains(ip)),
-      Self::Sets(sets) => request.client_ip.is_some_and(|ip| {
-        sets
-          .iter()
-          .any(|set| set.membership(ip) == Membership::Member)
-      }),
-      Self::Score(test) => {
+      Self::Ip(ranges) => truth(request.client_ip.is_some_and(|ip| ranges.contains(ip))),
+      Self::Sets(sets) => {
+        let Some(ip) = request.client_ip else {
+          return Truth::False;
+        };
+        let mut unknown = false;
+        for set in sets {
+          match set.membership(ip) {
+            Membership::Member => return Truth::True,
+            Membership::Unknown => unknown = true,
+            Membership::NotMember => {}
+          }
+        }
+        if unknown {
+          Truth::Unknown
+        } else {
+          Truth::False
+        }
+      }
+      Self::Score(test) => truth(
         test.eq.is_none_or(|v| score == v)
           && test.gt.is_none_or(|v| score > v)
           && test.gte.is_none_or(|v| score >= v)
           && test.lt.is_none_or(|v| score < v)
-          && test.lte.is_none_or(|v| score <= v)
-      }
+          && test.lte.is_none_or(|v| score <= v),
+      ),
     }
   }
+}
+
+fn truth(value: bool) -> Truth {
+  if value { Truth::True } else { Truth::False }
 }
 impl Text {
   fn compile(source: &StringMatch, budget: &mut Budget) -> Result<Self> {

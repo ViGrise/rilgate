@@ -1,9 +1,10 @@
 use super::schema::{Action, Definition, Mode, Rule};
-use crate::conditions::{Budget, Compiled, Request};
+use crate::conditions::{Budget, Compiled, Request, Truth};
 use crate::ip_sets::IpSets;
 use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, Method};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone)]
 pub struct PolicyDecision<'a> {
@@ -12,6 +13,7 @@ pub struct PolicyDecision<'a> {
   pub algorithm: Option<PowAlgorithm>,
   pub difficulty: Option<u64>,
   pub rule: &'a str,
+  pub unresolved: bool,
 }
 #[derive(Debug)]
 struct CompiledRule {
@@ -82,6 +84,22 @@ impl Definition {
       .filter(|r| r.action == Action::Challenge)
       .map(|r| (r.name, r.challenge.unwrap_or_default()))
       .collect();
+    let remote: BTreeSet<&str> = self
+      .ip_sets
+      .iter()
+      .filter(|(_, definition)| definition.url.is_some())
+      .map(|(name, _)| name.as_str())
+      .collect();
+    if !remote.is_empty() {
+      for rule in self.rules.iter().flatten() {
+        if rule.action == Action::Deny && rule.when.references(&remote) {
+          choices.push((
+            format!("{} (unknown ip set)", rule.name),
+            ChallengePolicy::default(),
+          ));
+        }
+      }
+    }
     if default == Action::Challenge {
       choices.push(("policy.default_action".into(), ChallengePolicy::default()));
     }
@@ -155,22 +173,43 @@ impl PolicyEngine {
     )
   }
   pub fn evaluate_context(&self, request: &Request<'_>, mut weight: i32) -> PolicyDecision<'_> {
+    // A decision is unresolved when any rule evaluated on the way to it,
+    // including the deciding rule, depended on unavailable IP set data.
+    let mut unresolved = false;
     for entry in &self.rules {
-      if !entry.condition.matches(request, weight) {
-        continue;
+      let truth = entry.condition.matches(request, weight);
+      unresolved |= truth == Truth::Unknown;
+      match (entry.rule.action, truth) {
+        (_, Truth::False) => {}
+        (Action::Allow, Truth::True) => {
+          return self.decision(entry, PolicyAction::Allow, weight, unresolved);
+        }
+        (Action::Allow, Truth::Unknown) => {}
+        (Action::Deny, Truth::True) => {
+          return self.decision(entry, PolicyAction::Deny, weight, unresolved);
+        }
+        (Action::Deny, Truth::Unknown) => {
+          // Unavailable data degrades a deny rule to a challenge, bounding the
+          // impact of a feed outage on a denylist.
+          return PolicyDecision {
+            action: PolicyAction::Challenge,
+            weight,
+            algorithm: None,
+            difficulty: None,
+            rule: &entry.rule.name,
+            unresolved,
+          };
+        }
+        (Action::Challenge, _) => {
+          return self.decision(entry, PolicyAction::Challenge, weight, unresolved);
+        }
+        (Action::Score, _) => {
+          let score = entry.rule.score.unwrap_or(0);
+          if truth == Truth::True || score > 0 {
+            weight = weight.saturating_add(score);
+          }
+        }
       }
-      if entry.rule.action == Action::Score {
-        weight = weight.saturating_add(entry.rule.score.unwrap());
-        continue;
-      }
-      let selection = entry.rule.challenge.as_ref();
-      return PolicyDecision {
-        action: entry.rule.action,
-        weight,
-        algorithm: selection.and_then(|c| c.algorithm),
-        difficulty: selection.and_then(|c| c.difficulty),
-        rule: &entry.rule.name,
-      };
     }
     PolicyDecision {
       action: self.default_action,
@@ -182,6 +221,25 @@ impl PolicyEngine {
         PolicyAction::Deny => "default-deny",
         _ => "default-challenge",
       },
+      unresolved,
+    }
+  }
+
+  fn decision<'a>(
+    &self,
+    entry: &'a CompiledRule,
+    action: PolicyAction,
+    weight: i32,
+    unresolved: bool,
+  ) -> PolicyDecision<'a> {
+    let selection = entry.rule.challenge.as_ref();
+    PolicyDecision {
+      action,
+      weight,
+      algorithm: selection.and_then(|c| c.algorithm),
+      difficulty: selection.and_then(|c| c.difficulty),
+      rule: &entry.rule.name,
+      unresolved,
     }
   }
 }
