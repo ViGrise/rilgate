@@ -37,18 +37,47 @@ Use [the commented distribution template](../config/rilgate.example.yml),
 Rilgate reads `--config FILE`, then `RILGATE_CONFIG`, then `config/rilgate.yml`.
 An explicitly selected missing file fails. If the default file is absent,
 `RILGATE_UPSTREAM_URL` and `RILGATE_SECRET` can supply the essentials.
-`.env` is loaded from the working directory without replacing existing process
-variables. YAML is parsed before string interpolation, so environment values
+`.env` is loaded from the working directory, or the file named by `--env-file`,
+without replacing existing process variables. YAML is parsed before string interpolation, so environment values
 cannot inject YAML structure. References are converted according to the expected
 scalar type: strings remain strings, booleans require `true` or `false`, and
 numbers must fit their numeric type. Literal YAML values retain strict typing. `${VARIABLE_NAME}` requires a present, nonempty
 UTF-8 variable. Shell substitution and default-value syntax are unsupported.
 
-Three explicit environment overrides are available: `RILGATE_SECRET`,
-`RILGATE_UPSTREAM_URL`, and `RILGATE_LISTEN`. Other settings use YAML, optionally
-with `${VARIABLE_NAME}` references. CLI `--env`, `--port`, and `--verification`
-override the corresponding resolved values. Old automatic `POW_*`, `WEB_*`,
-`SERVE_*`, `ENV`, `PORT`, and `CONFIG` aliases are unsupported.
+Every scalar and list setting also has a flag and an environment variable.
+Precedence is flag, then variable, then YAML, then the default. The flag is the
+YAML path with `.` and `_` replaced by `-`, without a leading `server.` or
+`security.`; the variable is `RILGATE_` followed by the flag in upper snake case.
+`environment` is the exception, as `--env` and `RILGATE_ENV`.
+
+| YAML path | Flag | Variable |
+| --- | --- | --- |
+| `server.upstream.url` | `--upstream-url`, `-u` | `RILGATE_UPSTREAM_URL` |
+| `server.listen` | `--listen`, `-l` | `RILGATE_LISTEN` |
+| `security.secret` | `--secret`, `-s` | `RILGATE_SECRET` |
+| `server.max_connections` | `--max-connections` | `RILGATE_MAX_CONNECTIONS` |
+| `site.i18n.default` | `--site-i18n-default` | `RILGATE_SITE_I18N_DEFAULT` |
+| `pow.verification` | `--pow-verification` | `RILGATE_POW_VERIFICATION` |
+| `pow.p2pool.address` | `--pow-p2pool-address` | `RILGATE_POW_P2POOL_ADDRESS` |
+
+`rilgate --help` lists every setting with its YAML path and default. Values are
+validated by the schema exactly like `${VARIABLE_NAME}` references, so durations
+take `5s` and sizes take `16MiB`; an invalid value names its flag or variable.
+Boolean flags alone mean `true` and accept `--flag=false`. Lists are
+comma-separated or repeated and replace the YAML list; an empty value clears it.
+Setting any `pow.p2pool.*` value enables P2Pool with defaults for the rest.
+Policy rules, IP sets and signing key rotation (`security.keys`) are YAML only.
+Pass the secret through `RILGATE_SECRET` rather than `--secret`, because process
+arguments are visible to other local users.
+
+`--port` (`RILGATE_PORT`) replaces only the port of the resolved listen address.
+`--log-level` (`RUST_LOG`) sets the log filter and `--log-format`
+(`RILGATE_LOG_FORMAT`) selects `text` or `json` output. Old automatic `POW_*`,
+`WEB_*`, `SERVE_*`, `ENV`, `PORT`, and `CONFIG` aliases are unsupported.
+
+`rilgate upgrade` replaces the running binary with the latest GitHub release,
+or the tag given by `--version`, after checking the release `SHA256SUMS`. It
+keeps the current binary when the release is not newer unless `--force` is set.
 
 ```bash
 rilgate --config /etc/rilgate/config.yml config check

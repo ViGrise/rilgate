@@ -2,7 +2,7 @@ mod overrides;
 mod resolve;
 use crate::{Environment, PowConfig, ServerConfig, UpstreamConfig};
 use anyhow::{Context, Result, ensure};
-pub use overrides::Overrides;
+pub use overrides::{Overrides, Setting, SettingValue};
 pub use rilgate_web::WebConfig;
 use std::{net::SocketAddr, sync::Arc};
 pub type Config = Arc<Configuration>;

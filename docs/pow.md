@@ -101,7 +101,8 @@ pow:
 
 ## Enforcement modes
 
-Configured through `pow.verification` in YAML or the `--verification` CLI flag.
+Configured through `pow.verification` in YAML, `--pow-verification` or
+`RILGATE_POW_VERIFICATION`.
 
 ### Stateless local verification
 

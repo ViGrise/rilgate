@@ -1,9 +1,29 @@
-use crate::{Environment, PowEnforcement};
 use std::path::PathBuf;
+
+/// Values from the command line and process environment that take precedence
+/// over the YAML document.
 #[derive(Debug, Default)]
 pub struct Overrides {
   pub config: Option<PathBuf>,
-  pub env: Option<Environment>,
+  /// Replaces only the port of the resolved listen address.
   pub port: Option<u16>,
-  pub pow_enforce: Option<PowEnforcement>,
+  pub settings: Vec<Setting>,
+}
+
+/// A value assigned to one YAML path, such as `server.upstream.url`.
+///
+/// Values are typed by the schema exactly like `${VARIABLE}` references, so a
+/// duration accepts `5s` and a list replaces the whole sequence.
+#[derive(Debug, Clone)]
+pub struct Setting {
+  pub path: &'static str,
+  /// The flag or variable that supplied the value, for error messages.
+  pub source: String,
+  pub value: SettingValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingValue {
+  Scalar(String),
+  List(Vec<String>),
 }

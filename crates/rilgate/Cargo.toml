@@ -30,10 +30,14 @@ rilgate-pow-hash.workspace = true
 rilgate-pow-randomx.workspace = true
 rilgate-web.workspace = true
 rilgate-telemetry.workspace = true
+reqwest.workspace = true
+semver.workspace = true
+serde_yaml_ng.workspace = true
+sha2.workspace = true
+hex.workspace = true
 openssl = { version = "0.10", optional = true, features = ["vendored"] }
 
 [dev-dependencies]
-serde_yaml_ng.workspace = true
 axum.workspace = true
 http.workspace = true
 rilgate-test-utils.workspace = true

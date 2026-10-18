@@ -1,5 +1,5 @@
 mod value;
-use crate::{Overrides, schema::Document};
+use crate::{Overrides, Setting, SettingValue, schema::Document};
 use anyhow::{Context, Result, ensure};
 use serde_yaml_ng::Value;
 use std::path::PathBuf;
@@ -21,38 +21,22 @@ pub fn load(args: &Overrides) -> Result<Document> {
       return Err(error).with_context(|| format!("configuration file {}", path.display()));
     }
   };
-  let mut document = parse(&text)?;
-  if let Some(value) = std::env::var_os("RILGATE_SECRET") {
-    ensure!(
-      document.security.keys.is_none(),
-      "security: RILGATE_SECRET conflicts with security.keys"
-    );
-    document.security.secret =
-      Some(rilgate_crypto::Secret(value.into_string().map_err(
-        |_| anyhow::anyhow!("RILGATE_SECRET must be UTF-8"),
-      )?));
-  }
-  if let Ok(value) = std::env::var("RILGATE_UPSTREAM_URL") {
-    document.server.upstream.url = value;
-  }
-  if let Ok(value) = std::env::var("RILGATE_LISTEN") {
-    document.server.listen = value;
-  }
-  if let Some(value) = args.env {
-    document.environment = value;
-  }
+  let mut document = parse_with(&text, &args.settings)?;
   if let Some(port) = args.port {
     let mut address = super::assembly::listen_address(&document.server.listen)?;
     address.set_port(port);
     document.server.listen = address.to_string();
   }
-  if let Some(value) = args.pow_enforce {
-    document.pow.verification = value;
-  }
   Ok(document)
 }
 
 pub fn parse(text: &str) -> Result<Document> {
+  parse_with(text, &[])
+}
+
+/// Parses a YAML document and applies settings over it before deserialization,
+/// so overridden values pass the same schema validation as YAML values.
+pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
   ensure!(
     text.len() <= 1_048_576,
     "configuration must not exceed 1 MiB"
@@ -62,9 +46,60 @@ pub fn parse(text: &str) -> Result<Document> {
   } else {
     serde_yaml_ng::from_str(text).context("configuration YAML")?
   };
-  let value = expand(value, "", 0)?;
-  serde_path_to_error::deserialize(value)
-    .map_err(|error| anyhow::anyhow!("Configuration error at {}: {}", error.path(), error.inner()))
+  let mut value = expand(value, "", 0)?;
+  for setting in settings {
+    assign(&mut value, setting)
+      .with_context(|| format!("{} ({})", setting.path, setting.source))?;
+  }
+  serde_path_to_error::deserialize(value).map_err(|error| {
+    let path = error.path().to_string();
+    let source = settings
+      .iter()
+      .rev()
+      .find(|setting| path == setting.path || path.starts_with(&format!("{}[", setting.path)))
+      .map(|setting| format!(" (from {})", setting.source))
+      .unwrap_or_default();
+    anyhow::anyhow!("Configuration error at {path}{source}: {}", error.inner())
+  })
+}
+
+fn assign(root: &mut value::Expanded, setting: &Setting) -> Result<()> {
+  use value::Expanded;
+  let scalar = |text: &String| -> Result<Expanded> {
+    ensure!(text.len() <= 65_536, "value exceeds 64 KiB");
+    Ok(Expanded::Environment(text.clone()))
+  };
+  let replacement = match &setting.value {
+    SettingValue::Scalar(text) => scalar(text)?,
+    SettingValue::List(items) => {
+      Expanded::Sequence(items.iter().map(scalar).collect::<Result<_>>()?)
+    }
+  };
+  let mut node = root;
+  let mut keys = setting.path.split('.').peekable();
+  while let Some(key) = keys.next() {
+    // An absent or null section becomes a mapping, so a setting can enable an
+    // optional section such as `pow.p2pool`.
+    if matches!(node, Expanded::Scalar(Value::Null)) {
+      *node = Expanded::Mapping(Vec::new());
+    }
+    let Expanded::Mapping(entries) = node else {
+      anyhow::bail!("expected a YAML mapping above {key}");
+    };
+    let index = match entries.iter().position(|(name, _)| name == key) {
+      Some(index) => index,
+      None => {
+        entries.push((key.to_string(), Expanded::Scalar(Value::Null)));
+        entries.len() - 1
+      }
+    };
+    if keys.peek().is_none() {
+      entries[index].1 = replacement;
+      return Ok(());
+    }
+    node = &mut entries[index].1;
+  }
+  anyhow::bail!("empty setting path")
 }
 
 fn expand(value: Value, path: &str, depth: usize) -> Result<value::Expanded> {

@@ -135,8 +135,9 @@ curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.s
 ```
 
 Set `VERSION=v<version>` to pin a release and `INSTALL_DIR` to change the target
-directory. Multi-architecture images are published to
-`ghcr.io/vigrise/rilgate`.
+directory; `rilgate upgrade` later installs newer releases. Multi-architecture
+images are published to `ghcr.io/vigrise/rilgate`. Every setting can also be
+given as a flag or `RILGATE_*` variable; see `rilgate --help`.
 
 To build a release binary with embedded web assets from source:
 

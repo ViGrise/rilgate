@@ -2341,8 +2341,10 @@ dependencies = [
  "axum",
  "clap",
  "dotenvy",
+ "hex",
  "http",
  "openssl",
+ "reqwest",
  "rilgate-challenge",
  "rilgate-config",
  "rilgate-gateway",
@@ -2354,7 +2356,9 @@ dependencies = [
  "rilgate-telemetry",
  "rilgate-test-utils",
  "rilgate-web",
+ "semver",
  "serde_yaml_ng",
+ "sha2",
  "tempfile",
  "tokio",
  "tower",
@@ -2773,6 +2777,12 @@ name = "seize"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "689224d06523904ebcc9b482c6a3f4f7fb396096645c4cd10c0d2ff7371a34d3"
+
+[[package]]
+name = "semver"
+version = "1.0.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"

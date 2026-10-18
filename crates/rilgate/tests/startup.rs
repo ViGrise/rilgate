@@ -168,6 +168,113 @@ fn environment_only_configuration_and_overrides_work_without_a_file() {
   assert_eq!(value["server"]["listen"], "127.0.0.1:9090");
 }
 
+fn show(
+  directory: &std::path::Path,
+  variables: &[(&str, &str)],
+  args: &[&str],
+) -> std::process::Output {
+  std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
+    .current_dir(directory)
+    .env_clear()
+    .env("RILGATE_SECRET", SECRET)
+    .envs(variables.iter().copied())
+    .args(args)
+    .args(["config", "show", "--defaults"])
+    .output()
+    .unwrap()
+}
+
+#[test]
+fn flags_override_variables_which_override_yaml_with_schema_types() {
+  let directory = tempfile::tempdir().unwrap();
+  std::fs::write(
+    directory.path().join("rilgate.yml"),
+    "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  listen: 127.0.0.1:7000\n  max_connections: 10\nsecurity:\n  secret: \"${RILGATE_SECRET}\"\n",
+  )
+  .unwrap();
+  let result = show(
+    directory.path(),
+    &[
+      ("RILGATE_LISTEN", "127.0.0.1:7001"),
+      ("RILGATE_MAX_CONNECTIONS", "20"),
+    ],
+    &[
+      "--config",
+      "rilgate.yml",
+      "--listen",
+      "127.0.0.1:7002",
+      "--auth-ttl",
+      "2h",
+      "--trusted-proxies",
+      "10.0.0.0/8,192.0.2.1/32",
+      "--metrics-enabled",
+      "--pow-p2pool-address",
+      "127.0.0.1:3334",
+    ],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["listen"], "127.0.0.1:7002");
+  assert_eq!(value["server"]["max_connections"], 20);
+  assert_eq!(value["server"]["metrics_enabled"], true);
+  assert_eq!(value["server"]["trusted_proxies"][1], "192.0.2.1/32");
+  assert_eq!(value["security"]["auth"]["ttl"], "2h");
+  assert_eq!(value["pow"]["p2pool"]["address"], "127.0.0.1:3334");
+  assert_eq!(value["pow"]["p2pool"]["sessions"]["max"], 64);
+}
+
+#[test]
+fn invalid_override_values_name_their_flag_or_variable() {
+  let directory = tempfile::tempdir().unwrap();
+  let upstream = ("RILGATE_UPSTREAM_URL", "http://127.0.0.1:3000");
+  let result = show(
+    directory.path(),
+    &[upstream, ("RILGATE_MAX_CONNECTIONS", "many")],
+    &[],
+  );
+  let error = String::from_utf8_lossy(&result.stderr);
+  assert!(!result.status.success());
+  assert!(
+    error.contains("server.max_connections (from RILGATE_MAX_CONNECTIONS)"),
+    "{error}"
+  );
+  let result = show(
+    directory.path(),
+    &[upstream],
+    &["--pow-verification", "remote"],
+  );
+  let error = String::from_utf8_lossy(&result.stderr);
+  assert!(
+    error.contains("pow.verification (from --pow-verification)"),
+    "{error}"
+  );
+}
+
+#[test]
+fn env_file_supplies_settings_before_flags_are_read() {
+  let directory = tempfile::tempdir().unwrap();
+  std::fs::write(
+    directory.path().join("gateway.env"),
+    "RILGATE_UPSTREAM_URL=http://127.0.0.1:3100\nRILGATE_SITE_NAME=Edge\n",
+  )
+  .unwrap();
+  let result = show(directory.path(), &[], &["--env-file", "gateway.env"]);
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["upstream"]["url"], "http://127.0.0.1:3100");
+  assert_eq!(value["site"]["name"], "Edge");
+  let missing = show(directory.path(), &[], &["--env-file", "absent.env"]);
+  assert!(String::from_utf8_lossy(&missing.stderr).contains("loading environment file absent.env"));
+}
+
 #[test]
 fn environment_references_follow_schema_types_without_coercing_literal_yaml() {
   let source = r#"
