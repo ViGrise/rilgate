@@ -5,6 +5,15 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "rilgate"
+path = "src/main.rs"
+
+[features]
+# Builds and statically links OpenSSL, so release binaries for platforms without
+# a system OpenSSL 3 (macOS, Windows) run without a separate installation.
+vendored-openssl = ["dep:openssl"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
@@ -21,6 +30,7 @@ rilgate-pow-hash.workspace = true
 rilgate-pow-randomx.workspace = true
 rilgate-web.workspace = true
 rilgate-telemetry.workspace = true
+openssl = { version = "0.10", optional = true, features = ["vendored"] }
 
 [dev-dependencies]
 serde_yaml_ng.workspace = true
@@ -29,7 +39,3 @@ http.workspace = true
 rilgate-test-utils.workspace = true
 tower.workspace = true
 tempfile.workspace = true
-
-[[bin]]
-name = "rilgate"
-path = "src/main.rs"

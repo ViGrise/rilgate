@@ -19,6 +19,11 @@ RUN --mount=type=cache,id=rilgate-registry,target=/usr/local/cargo/registry,shar
     && cargo build --release --locked \
     && cp target/release/rilgate /app/rilgate-release
 
+# The release binary alone, for packaging with
+# `docker buildx build --target binary --output type=local,dest=<dir>`.
+FROM scratch AS binary
+COPY --from=builder /app/rilgate-release /rilgate
+
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 RUN apt-get update \
   && apt-get upgrade -y \

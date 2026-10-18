@@ -178,10 +178,27 @@ OS vulnerabilities need separate review; image scanning does not prove safety.
 No known vulnerability advisory is exempted. Review these dependencies on each
 release and remove exceptions when their upstream dependency chains change.
 
-Tagged `v*` revisions and manual release workflows run these checks before
-producing a Linux amd64 package with checksum, source revision and toolchain
-metadata as workflow artifacts. Artifact creation does not publish or deploy.
-Keep the previous immutable artifact and its configuration for rollback.
+Pushes to `main` publish a multi-architecture image (`linux/amd64`,
+`linux/arm64`) to `ghcr.io/vigrise/rilgate`, tagged `main` and `sha-<commit>`,
+after these checks pass. Pushing a `v*` tag releases that revision:
+
+1. Set `version` in `crates/rilgate/Cargo.toml`, commit, then tag `v<version>`.
+   The release fails when the tag and the package version differ.
+2. CI repeats the checks, builds native binaries for Linux (amd64, arm64),
+   macOS (amd64, arm64) and Windows (amd64, arm64), and smoke tests each with
+   `--version` and `config check`.
+3. The image gains `<version>`, `<major>.<minor>`, `<major>` (from 1.0 onward)
+   and `latest` tags; a tag containing `-`, such as `v1.2.0-rc.1`, publishes a
+   prerelease that never moves `latest`.
+4. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows),
+   each holding the binary, `LICENSE` and `rilgate.production.yml`, plus
+   `SHA256SUMS` and `install.sh`, with generated release notes.
+
+Linux binaries come from the image builder stage, so they need glibc 2.36 or
+newer and OpenSSL 3 (`libssl3`). macOS and Windows binaries link OpenSSL
+statically through the `vendored-openssl` feature; rebuild them for OpenSSL
+security releases. Keep the previous immutable image digest or archive and its
+configuration for rollback.
 
 Run locally with the prerequisites in `docs/development.md`:
 

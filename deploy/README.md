@@ -1,5 +1,8 @@
 # Deployment examples
 
+Tagged releases publish binaries on GitHub Releases and multi-architecture
+images at `ghcr.io/vigrise/rilgate`; see
+[release, rollout and rollback](../docs/production.md#release-rollout-and-rollback).
 Build a native binary from the repository root with `scripts/build.sh --release`.
 The Pingora transport requires OpenSSL at build time and runtime. On Debian or
 Ubuntu, install `pkg-config` and `libssl-dev` to build, and `libssl3` plus

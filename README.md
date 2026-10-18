@@ -127,7 +127,18 @@ See [the commented template](config/rilgate.example.yml),
 
 ## Deployment
 
-Build a release binary with embedded web assets:
+Install a release binary on Linux or macOS (Windows archives are on the
+[releases page](https://github.com/ViGrise/rilgate/releases)):
+
+```bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
+```
+
+Set `VERSION=v<version>` to pin a release and `INSTALL_DIR` to change the target
+directory. Multi-architecture images are published to
+`ghcr.io/vigrise/rilgate`.
+
+To build a release binary with embedded web assets from source:
 
 ```bash
 scripts/build.sh --release
