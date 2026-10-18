@@ -158,8 +158,14 @@ Stage named verification keys on all instances before switching active signers.
 Keep the old unversioned signing key under `legacy` for the overlap window.
 
 Tokens are intentionally stateless, reusable bearer credentials within their
-signed lifetime. Rechecking a challenge may issue new receipts until challenge
-expiry; repeating receipt exchange preserves the original receipt issue time
+signed lifetime. Authentication cookies are also portable between machines unless
+`security.auth.bind` is configured. Binding ties a cookie to the client network,
+browser family and chosen headers, so a copied cookie fails from a different
+network or browser. It does not stop sharing between clients that match the same
+binding, does not identify a person and does not revoke a cookie. See
+[configuration](configuration.md#authentication-cookie-binding).
+
+Rechecking a challenge may issue new receipts until challenge expiry; repeating receipt exchange preserves the original receipt issue time
 and cannot extend access from that receipt. Proofs do not establish a unique
 person or prevent credential sharing. Applications requiring exactly-once work,
 immediate per-token revocation or account-level limits need a shared atomic

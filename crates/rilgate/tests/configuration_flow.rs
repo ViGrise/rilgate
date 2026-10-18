@@ -4,6 +4,7 @@ use axum::{
   http::{Request, StatusCode},
 };
 use rilgate_config::loader::parse;
+use rilgate_test_utils::binding::unbound;
 use rilgate_test_utils::gateway::TestGateway;
 use tower::ServiceExt;
 
@@ -140,10 +141,21 @@ async fn hkdf_secret_supports_portable_proofs_and_rejects_different_instances_se
     )
     .await
     .unwrap();
-  let auth = b.exchange_receipt(&receipt, "example.test").unwrap();
-  assert!(a.verify_auth_token(&auth, "example.test").is_ok());
-  assert!(c.verify_auth_token(&auth, "example.test").is_err());
-  assert!(a.verify_auth_token(&auth, "other.test").is_err());
+  let auth = b
+    .exchange_receipt(&receipt, "example.test", &unbound())
+    .unwrap();
+  assert!(
+    a.verify_auth_token(&auth, "example.test", &unbound())
+      .is_ok()
+  );
+  assert!(
+    c.verify_auth_token(&auth, "example.test", &unbound())
+      .is_err()
+  );
+  assert!(
+    a.verify_auth_token(&auth, "other.test", &unbound())
+      .is_err()
+  );
 }
 
 #[tokio::test]

@@ -1,4 +1,5 @@
 use crate::model::gateway::RateLimitConfig;
+use rilgate_challenge::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
 use rilgate_policy::policy::schema::Definition;
 use rilgate_pool::P2PoolConfig;
@@ -23,6 +24,7 @@ pub struct PowConfig {
   pub randomx_challenge_ttl_seconds: u64,
   pub receipt_ttl_seconds: u64,
   pub auth_ttl_seconds: u64,
+  pub auth_binding: AuthBinding,
   pub auth_cookie_name: String,
   pub nonce_offset: usize,
   pub verifier_queue_capacity: usize,
@@ -45,6 +47,7 @@ impl PowConfig {
       challenge_ttl_seconds: self.challenge_ttl_seconds,
       receipt_ttl_seconds: self.receipt_ttl_seconds,
       auth_ttl_seconds: self.auth_ttl_seconds,
+      auth_binding: self.auth_binding.clone(),
       policy: self.policy.clone(),
     }
   }

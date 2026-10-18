@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use http::{HeaderMap, HeaderValue};
-use rilgate_challenge::ChallengeService;
+use rilgate_challenge::{ChallengeService, authorization::binding::BindingInput};
 use rilgate_config::{Config, Environment};
 pub fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
   headers
@@ -19,8 +19,9 @@ pub fn auth_cookie_header(
   cfg: &Config,
   token: &str,
   host: &str,
+  binding: &BindingInput<'_>,
 ) -> Result<HeaderValue> {
-  let claims = service.verify_auth_token(token, host)?;
+  let claims = service.verify_auth_token(token, host, binding)?;
   issued_cookie_header(cfg, token, claims.expires_at)
 }
 

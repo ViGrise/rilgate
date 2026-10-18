@@ -2370,12 +2370,18 @@ name = "rilgate-challenge"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
+ "hmac",
  "http",
+ "ipnet",
  "rilgate-core",
  "rilgate-crypto",
  "rilgate-policy",
  "rilgate-pow",
  "rilgate-protocol",
+ "serde",
+ "sha2",
+ "thiserror",
  "uuid",
 ]
 

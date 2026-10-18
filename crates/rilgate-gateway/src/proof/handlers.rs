@@ -8,6 +8,7 @@ use crate::{
   },
 };
 use http::{HeaderMap, StatusCode, Uri, header::SET_COOKIE};
+use rilgate_challenge::authorization::binding::BindingInput;
 use rilgate_protocol::PowEnforcement;
 
 pub fn client_config(state: &AppState) -> Response {
@@ -62,10 +63,11 @@ pub fn exchange(
   headers: &HeaderMap,
   uri: &Uri,
   request: ExchangeRequest,
+  binding: &BindingInput<'_>,
 ) -> Result<Response, ApiError> {
   let issued = state
     .pow
-    .exchange_receipt_with_claims(&request.receipt, &request_host(headers, uri))
+    .exchange_receipt_with_claims(&request.receipt, &request_host(headers, uri), binding)
     .map_err(ApiError::proof)?;
   let cookie =
     crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)

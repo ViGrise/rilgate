@@ -168,6 +168,48 @@ its existing tokens; use explicit keys when an overlap window is required.
 Secrets never appear in configuration
 output or debug representations. See [production rotation](production.md).
 
+## Authentication cookie binding
+
+By default the authentication cookie is a portable bearer credential: a cookie
+earned on one machine works from any other until it expires. Set
+`security.auth.bind` to tie it to the client that solved the challenge.
+
+```yaml
+security:
+  auth:
+    bind:
+      client_ip: {ipv4_prefix: 24, ipv6_prefix: 64}
+      user_agent: family
+      headers: [accept-language]
+      proxy_headers: [x-ja4]
+```
+
+- `client_ip` binds the network of the resolved client IP. The section being
+  present, even as `{}`, enables it with the defaults shown. Prefixes are 0 to 32
+  and 0 to 128. The resolved IP honors `server.trusted_proxies`, so that list
+  must be correct.
+- `user_agent` is `full` for the exact header or `family` for the header without
+  version numbers. A browser update keeps a `family` cookie valid; a different
+  browser does not.
+- `headers` lists client request headers, read on every request.
+- `proxy_headers` lists headers that an edge proxy sets, such as a JA4 TLS
+  fingerprint. They are read only when the immediate TCP peer is inside
+  `server.trusted_proxies`. From any other peer they count as absent, so a client
+  cannot choose their value.
+
+Each list holds at most 16 distinct, valid header names. A missing header differs
+from an empty one. Settings are also available as flags and variables, such as
+`--security-auth-bind-client-ip-ipv4-prefix`; setting either prefix enables IP
+binding.
+
+A cookie that does not match its binding is treated as absent: the client
+receives the challenge, never a 403, and
+`rilgate_auth_binding_mismatches_total` counts the event. Clients whose network
+or browser changes, such as mobile and VPN users, solve again. The binding is a
+keyed digest derived from the auth signing key, so changing that key makes
+every bound client solve again. Without any binding configured, behavior is
+unchanged.
+
 ## API response presentation
 
 `site.responses.format` selects `auto`, `html` or `json`. Automatic mode negotiates

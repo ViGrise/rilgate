@@ -116,28 +116,10 @@ fn section(out: &mut String, title: &str) {
 }
 
 fn defaults() -> HashMap<&'static str, String> {
-  let document = rilgate_config::loader::parse("pow:\n  p2pool: {}\n").expect("schema defaults");
-  let root = serde_yaml_ng::to_value(document).expect("serializable defaults");
+  let root = super::settings::defaults().expect("schema defaults");
   SPECS
     .iter()
-    .filter_map(|spec| {
-      let value = spec
-        .path
-        .split('.')
-        .try_fold(&root, |node, key| node.get(key))?;
-      let text = match value {
-        serde_yaml_ng::Value::String(text) => text.clone(),
-        serde_yaml_ng::Value::Bool(value) => value.to_string(),
-        serde_yaml_ng::Value::Number(value) => value.to_string(),
-        serde_yaml_ng::Value::Sequence(items) => items
-          .iter()
-          .filter_map(|item| item.as_str())
-          .collect::<Vec<_>>()
-          .join(","),
-        _ => return None,
-      };
-      Some((spec.path, text))
-    })
+    .filter_map(|spec| Some((spec.path, super::settings::default_text(&root, spec.path)?)))
     .collect()
 }
 

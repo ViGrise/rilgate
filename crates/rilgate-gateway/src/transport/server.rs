@@ -25,6 +25,7 @@ use pingora::{
   server::configuration::ServerConf,
   upstreams::peer::HttpPeer,
 };
+use rilgate_challenge::authorization::binding::BindingInput;
 use std::{
   sync::Arc,
   time::{Duration, Instant},
@@ -270,13 +271,15 @@ impl Handler {
       )
       || (path == "/api/metrics" && self.state.cfg.server.metrics_enabled)
       || path.starts_with("/static/");
+    let socket_peer = session
+      .client_addr()
+      .and_then(|address| address.as_inet())
+      .map(|address| address.ip());
+    let mut client_ip = None;
     if proof {
-      let peer = session
-        .client_addr()
-        .and_then(|address| address.as_inet())
-        .map(|address| address.ip());
       let peer =
-        match crate::transport::client_ip::client_ip(peer, &headers, &self.state.cfg.server) {
+        match crate::transport::client_ip::client_ip(socket_peer, &headers, &self.state.cfg.server)
+        {
           Ok(peer) => peer,
           Err(message) => {
             return Ok(Some(
@@ -284,6 +287,7 @@ impl Handler {
             ));
           }
         };
+      client_ip = peer;
       if let Err(seconds) = self.state.limiter.check(peer) {
         let mut out = ApiError::RateLimited(seconds).into_response();
         out
@@ -336,7 +340,17 @@ impl Handler {
           Err(out) => Ok(*out),
         },
         "/api/exchange" => match read_json(session).await {
-          Ok(value) => handlers::exchange(&self.state, &headers, &uri, value),
+          Ok(value) => {
+            let binding = BindingInput {
+              client_ip,
+              headers: &headers,
+              trusted_peer: crate::transport::client_ip::trusted_peer(
+                socket_peer,
+                &self.state.cfg.server,
+              ),
+            };
+            handlers::exchange(&self.state, &headers, &uri, value, &binding)
+          }
           Err(out) => Ok(*out),
         },
         "/api/ws" => match self.websocket(session, ctx).await {
@@ -560,6 +574,7 @@ impl ProxyHttp for Handler {
       &header.uri,
       &header.method,
       client_ip,
+      crate::transport::client_ip::trusted_peer(peer, &self.state.cfg.server),
     ) {
       Ok(Some(out)) => {
         send(session, out, ctx).await?;

@@ -1,5 +1,6 @@
 use crate::{
   ChallengeService,
+  authorization::binding::{BindingInput, BindingMismatch},
   tokens::validation::{unix_now, validate_lifetime},
 };
 use anyhow::{Context, Result, anyhow};
@@ -39,10 +40,15 @@ impl ChallengeService {
     self.tokens.receipt.sign_json(&claims)
   }
 
-  pub fn exchange_receipt(&self, receipt: &str, request_host: &str) -> Result<String> {
+  pub fn exchange_receipt(
+    &self,
+    receipt: &str,
+    request_host: &str,
+    binding: &BindingInput<'_>,
+  ) -> Result<String> {
     Ok(
       self
-        .exchange_receipt_with_claims(receipt, request_host)?
+        .exchange_receipt_with_claims(receipt, request_host, binding)?
         .token,
     )
   }
@@ -51,6 +57,7 @@ impl ChallengeService {
     &self,
     receipt: &str,
     request_host: &str,
+    binding: &BindingInput<'_>,
   ) -> Result<crate::IssuedToken<AuthClaims>> {
     let receipt: ReceiptClaims = self
       .tokens
@@ -85,6 +92,7 @@ impl ChallengeService {
       enforce: receipt.enforce,
       issued_at: receipt.issued_at,
       expires_at: receipt.issued_at + self.cfg.auth_ttl_seconds as i64,
+      binding: self.cfg.auth_binding.digest(&self.binding_key, binding),
     };
 
     validate_lifetime(
@@ -97,7 +105,12 @@ impl ChallengeService {
     Ok(crate::IssuedToken { token, claims })
   }
 
-  pub fn verify_auth_token(&self, token: &str, request_host: &str) -> Result<AuthClaims> {
+  pub fn verify_auth_token(
+    &self,
+    token: &str,
+    request_host: &str,
+    binding: &BindingInput<'_>,
+  ) -> Result<AuthClaims> {
     let claims: AuthClaims = self.tokens.auth.verify_json(token)?;
 
     validate_lifetime(
@@ -113,6 +126,11 @@ impl ChallengeService {
       .algorithms
       .get(claims.algorithm)?
       .validate_difficulty(claims.difficulty)?;
+    if let Some(expected) = self.cfg.auth_binding.digest(&self.binding_key, binding)
+      && claims.binding.as_deref() != Some(expected.as_str())
+    {
+      return Err(BindingMismatch.into());
+    }
 
     Ok(claims)
   }

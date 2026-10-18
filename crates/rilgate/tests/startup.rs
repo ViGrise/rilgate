@@ -228,6 +228,55 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
 }
 
 #[test]
+fn a_binding_prefix_flag_enables_client_ip_binding() {
+  let directory = tempfile::tempdir().unwrap();
+  let upstream = ("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000");
+  let result = show(
+    directory.path(),
+    &[upstream],
+    &["--security-auth-bind-client-ip-ipv4-prefix", "16"],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  let bind = &value["security"]["auth"]["bind"];
+  assert_eq!(bind["client_ip"]["ipv4_prefix"], 16);
+  assert_eq!(bind["client_ip"]["ipv6_prefix"], 64);
+
+  let result = show(
+    directory.path(),
+    &[
+      upstream,
+      ("RILGATE_SECURITY_AUTH_BIND_USER_AGENT", "family"),
+      ("RILGATE_SECURITY_AUTH_BIND_HEADERS", "accept-language"),
+    ],
+    &["--security-auth-bind-proxy-headers", "x-ja4"],
+  );
+  assert!(result.status.success());
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  let bind = &value["security"]["auth"]["bind"];
+  assert_eq!(bind["user_agent"], "family");
+  assert_eq!(bind["headers"][0], "accept-language");
+  assert_eq!(bind["proxy_headers"][0], "x-ja4");
+  assert!(bind.get("client_ip").is_none() || bind["client_ip"].is_null());
+
+  let result = show(
+    directory.path(),
+    &[upstream],
+    &["--security-auth-bind-client-ip-ipv4-prefix", "40"],
+  );
+  let error = String::from_utf8_lossy(&result.stderr);
+  assert!(!result.status.success());
+  assert!(
+    error.contains("security.auth.bind.client_ip.ipv4_prefix"),
+    "{error}"
+  );
+}
+
+#[test]
 fn invalid_override_values_name_their_flag_or_variable() {
   let directory = tempfile::tempdir().unwrap();
   let upstream = ("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000");

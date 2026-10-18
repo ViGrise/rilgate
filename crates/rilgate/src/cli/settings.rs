@@ -86,6 +86,11 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SECURITY, Secret, "security.secret", "security-secret", "RILGATE_SECURITY_SECRET", Some('s'), "Signing secret of at least 32 bytes; prefer the variable over the flag"),
   spec!(SECURITY, Text, "security.auth.cookie", "security-auth-cookie", "RILGATE_SECURITY_AUTH_COOKIE", None, "Authentication cookie name"),
   spec!(SECURITY, Text, "security.auth.ttl", "security-auth-ttl", "RILGATE_SECURITY_AUTH_TTL", None, "Authentication cookie lifetime"),
+  spec!(SECURITY, Text, "security.auth.bind.client_ip.ipv4_prefix", "security-auth-bind-client-ip-ipv4-prefix", "RILGATE_SECURITY_AUTH_BIND_CLIENT_IP_IPV4_PREFIX", None, "IPv4 prefix length the cookie is bound to; setting either prefix enables client IP binding"),
+  spec!(SECURITY, Text, "security.auth.bind.client_ip.ipv6_prefix", "security-auth-bind-client-ip-ipv6-prefix", "RILGATE_SECURITY_AUTH_BIND_CLIENT_IP_IPV6_PREFIX", None, "IPv6 prefix length the cookie is bound to; setting either prefix enables client IP binding"),
+  spec!(SECURITY, Text, "security.auth.bind.user_agent", "security-auth-bind-user-agent", "RILGATE_SECURITY_AUTH_BIND_USER_AGENT", None, "Bind the cookie to the User-Agent: full or family"),
+  spec!(SECURITY, List, "security.auth.bind.headers", "security-auth-bind-headers", "RILGATE_SECURITY_AUTH_BIND_HEADERS", None, "Client request headers the cookie is bound to"),
+  spec!(SECURITY, List, "security.auth.bind.proxy_headers", "security-auth-bind-proxy-headers", "RILGATE_SECURITY_AUTH_BIND_PROXY_HEADERS", None, "Headers set by trusted proxies the cookie is bound to"),
   spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or p2pool_accepted"),
   spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast or randomx"),
   spec!(POW, Text, "pow.challenge.ttl", "pow-challenge-ttl", "RILGATE_POW_CHALLENGE_TTL", None, "Challenge lifetime"),
@@ -205,14 +210,21 @@ impl FromArgMatches for Settings {
   }
 }
 
-/// The schema defaults, with the optional P2Pool section present so its
-/// defaults are shown too.
-fn defaults() -> Option<serde_yaml_ng::Value> {
-  let document = rilgate_config::loader::parse("pow:\n  p2pool: {}\n").ok()?;
-  serde_yaml_ng::to_value(document).ok()
+/// A document that enables the optional sections whose defaults are shown.
+const OPTIONAL_SECTIONS: &str =
+  "pow:\n  p2pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
+
+/// The schema defaults, with the optional sections present so their defaults
+/// are shown too.
+pub(crate) fn defaults() -> Option<serde_yaml_ng::Value> {
+  defaults_of(OPTIONAL_SECTIONS)
 }
 
-fn default_text(root: &serde_yaml_ng::Value, path: &str) -> Option<String> {
+fn defaults_of(document: &str) -> Option<serde_yaml_ng::Value> {
+  serde_yaml_ng::to_value(rilgate_config::loader::parse(document).ok()?).ok()
+}
+
+pub(crate) fn default_text(root: &serde_yaml_ng::Value, path: &str) -> Option<String> {
   use serde_yaml_ng::Value;
   let value = path.split('.').try_fold(root, |node, key| node.get(key))?;
   match value {
@@ -254,10 +266,10 @@ mod tests {
 
   #[test]
   fn every_path_exists_in_the_schema() {
-    let document =
-      rilgate_config::loader::parse("security:\n  secret: placeholder\npow:\n  p2pool: {}\n")
-        .unwrap();
-    let defaults = serde_yaml_ng::to_value(document).unwrap();
+    let defaults = defaults_of(
+      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  p2pool: {}\n",
+    )
+    .unwrap();
     for spec in SPECS {
       assert!(
         spec

@@ -1,3 +1,4 @@
+use rilgate_test_utils::binding::unbound;
 use rilgate_test_utils::gateway as app;
 use rilgate_test_utils::gateway::service as make_service;
 mod common;
@@ -115,8 +116,12 @@ async fn fast_proof_is_portable_between_gateway_instances() {
     .verify_challenge(&challenge_token, &nonce, "example.test")
     .await
     .unwrap();
-  let auth = verifier.exchange_receipt(&receipt, "example.test").unwrap();
-  let claims = issuer.verify_auth_token(&auth, "example.test").unwrap();
+  let auth = verifier
+    .exchange_receipt(&receipt, "example.test", &unbound())
+    .unwrap();
+  let claims = issuer
+    .verify_auth_token(&auth, "example.test", &unbound())
+    .unwrap();
   assert_eq!(claims.algorithm, PowAlgorithm::Fast);
   assert_eq!(claims.difficulty, 1);
   let cookie = rilgate_gateway::auth::cookies::auth_cookie_header(
@@ -124,6 +129,7 @@ async fn fast_proof_is_portable_between_gateway_instances() {
     &common::config(),
     &auth,
     "example.test",
+    &unbound(),
   )
   .unwrap();
   assert!(cookie.to_str().unwrap().contains("HttpOnly; SameSite=Lax"));
@@ -163,12 +169,24 @@ async fn unsolved_randomx_challenge_cannot_be_exchanged_or_used_as_auth() {
     serde_json::from_value(serde_json::to_value(&claims).unwrap()).unwrap();
   assert_eq!(receipt_shape.difficulty, 1000);
   let service = make_service(&cfg).unwrap();
-  assert!(service.exchange_receipt(&token, "example.test").is_err());
-  assert!(service.verify_auth_token(&token, "example.test").is_err());
+  assert!(
+    service
+      .exchange_receipt(&token, "example.test", &unbound())
+      .is_err()
+  );
+  assert!(
+    service
+      .verify_auth_token(&token, "example.test", &unbound())
+      .is_err()
+  );
   let receipt = service
     .issue_p2pool_receipt(1000, "example.test".into())
     .unwrap();
-  assert!(service.exchange_receipt(&receipt, "example.test").is_err());
+  assert!(
+    service
+      .exchange_receipt(&receipt, "example.test", &unbound())
+      .is_err()
+  );
 }
 
 #[tokio::test]
@@ -197,7 +215,7 @@ async fn expired_receipt_is_rejected_at_its_expiry_second() {
   assert!(
     make_service(&cfg)
       .unwrap()
-      .exchange_receipt(&token, "example.test")
+      .exchange_receipt(&token, "example.test", &unbound())
       .is_err()
   );
 }

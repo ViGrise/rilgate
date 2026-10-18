@@ -1,4 +1,5 @@
 use rilgate_gateway::proof::websocket::messages::ServerWsMessage;
+use rilgate_test_utils::binding::unbound;
 use rilgate_test_utils::gateway as app;
 use rilgate_test_utils::gateway::service as make_service;
 mod common;
@@ -56,10 +57,14 @@ async fn receipts_and_access_are_host_bound_and_exchange_preserves_proof_time() 
   .unwrap();
   let service = make_service(&cfg).unwrap();
   for host in ["other.test", ""] {
-    assert!(service.exchange_receipt(&token, host).is_err());
+    assert!(service.exchange_receipt(&token, host, &unbound()).is_err());
   }
-  let auth = service.exchange_receipt(&token, "example.test").unwrap();
-  let claims = service.verify_auth_token(&auth, "example.test").unwrap();
+  let auth = service
+    .exchange_receipt(&token, "example.test", &unbound())
+    .unwrap();
+  let claims = service
+    .verify_auth_token(&auth, "example.test", &unbound())
+    .unwrap();
   assert_eq!(claims.issued_at, proof.issued_at);
   assert_eq!(
     claims.expires_at,
@@ -67,14 +72,21 @@ async fn receipts_and_access_are_host_bound_and_exchange_preserves_proof_time() 
   );
   assert_eq!(
     auth,
-    service.exchange_receipt(&token, "example.test").unwrap()
+    service
+      .exchange_receipt(&token, "example.test", &unbound())
+      .unwrap()
   );
   for host in ["other.test", ""] {
-    assert!(service.verify_auth_token(&auth, host).is_err());
+    assert!(service.verify_auth_token(&auth, host, &unbound()).is_err());
   }
-  let cookie =
-    rilgate_gateway::auth::cookies::auth_cookie_header(&service, &cfg, &auth, "example.test")
-      .unwrap();
+  let cookie = rilgate_gateway::auth::cookies::auth_cookie_header(
+    &service,
+    &cfg,
+    &auth,
+    "example.test",
+    &unbound(),
+  )
+  .unwrap();
   let max_age: i64 = cookie
     .to_str()
     .unwrap()
@@ -113,7 +125,11 @@ async fn signed_claims_require_supported_version_and_valid_lifetime() {
       TokenPurpose::Receipt,
     )
     .unwrap();
-    assert!(service.exchange_receipt(&token, "example.test").is_err());
+    assert!(
+      service
+        .exchange_receipt(&token, "example.test", &unbound())
+        .is_err()
+    );
   }
   let legacy_auth = json!({"v": 1, "algorithm": "fast", "difficulty": 1, "enforce": "local_verify", "issued_at": now(), "expires_at": now() + 300});
   let token = crypto::sign_json(
@@ -122,7 +138,11 @@ async fn signed_claims_require_supported_version_and_valid_lifetime() {
     TokenPurpose::Auth,
   )
   .unwrap();
-  assert!(service.verify_auth_token(&token, "example.test").is_err());
+  assert!(
+    service
+      .verify_auth_token(&token, "example.test", &unbound())
+      .is_err()
+  );
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let token = service
     .issue_presentation("example.test".into(), "/protected".into(), &decision)
@@ -158,7 +178,7 @@ async fn old_receipts_cannot_mint_access_after_the_proof_access_window() {
   assert!(
     make_service(&cfg)
       .unwrap()
-      .exchange_receipt(&token, "example.test")
+      .exchange_receipt(&token, "example.test", &unbound())
       .is_err()
   );
 }
@@ -606,13 +626,27 @@ async fn rolling_key_rotation_preserves_the_full_cross_instance_proof_flow() {
     .verify_challenge(&challenge_token, &nonce, "example.test")
     .await
     .unwrap();
-  let auth = new.exchange_receipt(&receipt, "example.test").unwrap();
-  assert!(old.verify_auth_token(&auth, "example.test").is_ok());
-  assert!(new.verify_auth_token(&auth, "other.test").is_err());
+  let auth = new
+    .exchange_receipt(&receipt, "example.test", &unbound())
+    .unwrap();
+  assert!(
+    old
+      .verify_auth_token(&auth, "example.test", &unbound())
+      .is_ok()
+  );
+  assert!(
+    new
+      .verify_auth_token(&auth, "other.test", &unbound())
+      .is_err()
+  );
   let mut retired = current;
   let config = Arc::get_mut(&mut retired).unwrap();
   config.pow.signing_keys.previous.clear();
   config.pow.auth_signing_keys.previous.clear();
   let retired = make_service(&retired).unwrap();
-  assert!(retired.verify_auth_token(&auth, "example.test").is_err());
+  assert!(
+    retired
+      .verify_auth_token(&auth, "example.test", &unbound())
+      .is_err()
+  );
 }

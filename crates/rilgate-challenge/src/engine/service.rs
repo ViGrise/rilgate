@@ -1,4 +1,4 @@
-use crate::ChallengeConfig;
+use crate::{ChallengeConfig, authorization::binding::AuthBinding};
 use anyhow::{Context, Result};
 use http::HeaderMap;
 use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine};
@@ -10,6 +10,7 @@ pub struct ChallengeService {
   pub(crate) algorithms: AlgorithmRegistry,
   policy: PolicyEngine,
   pub(crate) tokens: crate::tokens::TokenSigners,
+  pub(crate) binding_key: [u8; 32],
 }
 
 impl ChallengeService {
@@ -32,8 +33,10 @@ impl ChallengeService {
       }
     }
     let tokens = crate::tokens::TokenSigners::new(&cfg)?;
+    let binding_key = AuthBinding::derive_key(cfg.auth_signing_key.expose().as_bytes())?;
     Ok(Self {
       tokens,
+      binding_key,
       cfg,
       algorithms,
       policy,

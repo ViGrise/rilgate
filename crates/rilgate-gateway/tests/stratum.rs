@@ -1,4 +1,5 @@
 use rilgate_gateway::proof::websocket::messages::ServerWsMessage;
+use rilgate_test_utils::binding::unbound;
 use rilgate_test_utils::gateway as app;
 use rilgate_test_utils::gateway::service as make_service;
 mod common;
@@ -175,10 +176,12 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
   )
   .unwrap();
   let service = make_service(&cfg).unwrap();
-  let token = service.exchange_receipt(&receipt, &claims.host).unwrap();
+  let token = service
+    .exchange_receipt(&receipt, &claims.host, &unbound())
+    .unwrap();
   assert_eq!(
     service
-      .verify_auth_token(&token, &claims.host)
+      .verify_auth_token(&token, &claims.host, &unbound())
       .unwrap()
       .enforce,
     PowEnforcement::P2poolAccepted

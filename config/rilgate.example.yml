@@ -189,6 +189,46 @@ security:
     #
     # ttl: 6h
 
+    # Binds the cookie to the client that solved the challenge. Without binding, a
+    # cookie is a portable bearer credential that works from any machine until it
+    # expires. A bound cookie from a different client gets the challenge instead.
+    # Each enabled component is hashed with a key derived from the active auth
+    # signing key; changing that key makes bound clients solve again.
+    #
+    # bind:
+      # Bind to the client network. Present, even as '{}', enables IP binding.
+      # The resolved client IP is used, so server.trusted_proxies must be correct.
+      # Mobile and VPN users solve again when their network changes.
+      #
+      # client_ip:
+        # Leading IPv4 bits that must match. 0 to 32; 24 binds the /24 network.
+        # Setting this or ipv6_prefix enables IP binding.
+        #
+        # ipv4_prefix: 24
+
+        # Leading IPv6 bits that must match. 0 to 128; 64 binds the /64 network.
+        # Setting this or ipv4_prefix enables IP binding.
+        #
+        # ipv6_prefix: 64
+
+      # Bind to the User-Agent header. Absent means not bound. 'full' requires the
+      # exact value; 'family' ignores version numbers, so browser updates keep
+      # the cookie valid while a different browser needs a new solve.
+      #
+      # user_agent: family
+
+      # Client request headers to bind, read on every request, at most 16 names.
+      # A missing header differs from an empty one. Example: [accept-language]
+      #
+      # headers: []
+
+      # Headers set by an edge proxy, such as a JA4 TLS fingerprint, at most 16
+      # names. They are read only when the immediate TCP peer is inside
+      # server.trusted_proxies and are ignored from any other peer.
+      # Example: [x-ja4]
+      #
+      # proxy_headers: []
+
 ##################################### SITE ####################################
 
 # site:

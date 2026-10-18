@@ -35,6 +35,13 @@ pub fn exposition(state: &AppState) -> Response {
         .policy_unresolved_decisions
         .load(Ordering::Relaxed),
     ),
+    (
+      "auth_binding_mismatches",
+      state
+        .metrics
+        .auth_binding_mismatches
+        .load(Ordering::Relaxed),
+    ),
   ] {
     let _ = writeln!(
       text,

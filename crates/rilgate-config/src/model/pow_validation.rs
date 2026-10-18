@@ -23,6 +23,7 @@ impl PowConfig {
       (1..=1024).contains(&self.verifier_queue_capacity),
       "pow.algorithms.randomx.verifier_queue must be between 1 and 1024"
     );
+    self.auth_binding.validate()?;
     self.p2pool.validate()?;
     for (path, ttl) in [
       ("pow.challenge.ttl", self.challenge_ttl_seconds),

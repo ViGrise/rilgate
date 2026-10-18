@@ -78,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
       enforce: cfg.pow.enforce,
       issued_at: now,
       expires_at: now + cfg.pow.auth_ttl_seconds as i64,
+      binding: None,
     },
     cfg.pow.auth_signing_key.expose().as_bytes(),
     TokenPurpose::Auth,

@@ -1,3 +1,4 @@
+use rilgate_test_utils::binding::unbound;
 mod common;
 
 use anyhow::{Result, ensure};
@@ -127,10 +128,12 @@ async fn registered_backend_controls_policy_and_proof_while_common_checks_run_fi
     .verify_challenge(&challenge_token, &nonce, "example.test")
     .await
     .unwrap();
-  let auth = service.exchange_receipt(&receipt, "example.test").unwrap();
+  let auth = service
+    .exchange_receipt(&receipt, "example.test", &unbound())
+    .unwrap();
   assert_eq!(
     service
-      .verify_auth_token(&auth, "example.test")
+      .verify_auth_token(&auth, "example.test", &unbound())
       .unwrap()
       .algorithm,
     PowAlgorithm::Fast

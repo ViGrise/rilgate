@@ -9,6 +9,7 @@ use http::{
   HeaderMap, Method, StatusCode, Uri,
   header::{CACHE_CONTROL, CONTENT_TYPE},
 };
+use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
 use rilgate_policy::PolicyAction;
 
 pub fn gate(
@@ -17,7 +18,7 @@ pub fn gate(
   uri: &Uri,
   method: &Method,
 ) -> Result<Option<Response>, ApiError> {
-  gate_with_client(state, headers, uri, method, None)
+  gate_with_client(state, headers, uri, method, None, false)
 }
 
 pub fn gate_with_client(
@@ -26,6 +27,7 @@ pub fn gate_with_client(
   uri: &Uri,
   method: &Method,
   client_ip: Option<std::net::IpAddr>,
+  trusted_peer: bool,
 ) -> Result<Option<Response>, ApiError> {
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let decision = state
@@ -88,8 +90,27 @@ pub fn gate_with_client(
   })?;
 
   let host = request_host(headers, uri);
+  let binding = BindingInput {
+    client_ip,
+    headers,
+    trusted_peer,
+  };
   let authenticated = cookie_value(headers, &state.cfg.pow.auth_cookie_name)
-    .and_then(|token| state.pow.verify_auth_token(token, &host).ok())
+    .and_then(
+      |token| match state.pow.verify_auth_token(token, &host, &binding) {
+        Ok(claims) => Some(claims),
+        Err(error) => {
+          if error.downcast_ref::<BindingMismatch>().is_some() {
+            state
+              .metrics
+              .auth_binding_mismatches
+              .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            tracing::debug!(path = %uri.path(), "Authentication cookie does not match its binding");
+          }
+          None
+        }
+      },
+    )
     .is_some_and(|claims| {
       claims.enforce == state.pow.enforcement()
         && claims.algorithm == decision.algorithm.expect("challenge algorithm resolved")

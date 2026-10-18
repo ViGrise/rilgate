@@ -235,3 +235,65 @@ fn resolved_ip_sets_round_trip_through_serialization() {
     Some(std::time::Duration::from_secs(3 * 86_400))
   );
 }
+
+#[test]
+fn auth_binding_is_disabled_by_default_and_enabled_by_any_component() {
+  assert!(!resolve(BASE).unwrap().pow.auth_binding.enabled());
+  let cfg = resolve(&format!(
+    "{BASE}  auth:\n    bind:\n      client_ip: {{}}\n      user_agent: family\n      headers: [Accept-Language]\n      proxy_headers: [x-ja4]\n"
+  ))
+  .unwrap();
+  let binding = &cfg.pow.auth_binding;
+  assert!(binding.enabled());
+  assert_eq!(binding.client_ip.unwrap().ipv4_prefix, 24);
+  assert_eq!(binding.client_ip.unwrap().ipv6_prefix, 64);
+  assert_eq!(binding.headers, ["Accept-Language"]);
+  assert_eq!(binding.proxy_headers, ["x-ja4"]);
+}
+
+#[test]
+fn invalid_auth_binding_reports_the_configuration_path() {
+  for (bind, path) in [
+    (
+      "client_ip: {ipv4_prefix: 33}",
+      "security.auth.bind.client_ip.ipv4_prefix: expected 0 to 32",
+    ),
+    (
+      "client_ip: {ipv6_prefix: 129}",
+      "security.auth.bind.client_ip.ipv6_prefix: expected 0 to 128",
+    ),
+    (
+      "headers: ['not a header']",
+      "security.auth.bind.headers: \"not a header\"",
+    ),
+    (
+      "headers: [x-a]\n      proxy_headers: [X-A]",
+      "security.auth.bind.proxy_headers",
+    ),
+    ("user_agent: browser", "security.auth.bind.user_agent"),
+    ("client_ip: {prefix: 24}", "security.auth.bind.client_ip"),
+  ] {
+    let error = resolve(&format!("{BASE}  auth:\n    bind:\n      {bind}\n"))
+      .unwrap_err()
+      .to_string();
+    assert!(error.contains(path), "{bind}: {error}");
+  }
+}
+
+#[test]
+fn auth_binding_round_trips_through_serialization() {
+  let text = format!(
+    "{BASE}  auth:\n    bind:\n      client_ip: {{ipv4_prefix: 16}}\n      user_agent: full\n      headers: [accept-language]\n"
+  );
+  let document = parse(&text).unwrap();
+  let shown = serde_yaml_ng::to_string(&document).unwrap();
+  assert!(shown.contains("ipv4_prefix: 16"), "{shown}");
+  assert!(shown.contains("user_agent: full"), "{shown}");
+  let again: rilgate_config::schema::Document = serde_yaml_ng::from_str(&shown).unwrap();
+  assert_eq!(serde_yaml_ng::to_string(&again).unwrap(), shown);
+  assert!(
+    !serde_yaml_ng::to_string(&parse(BASE).unwrap())
+      .unwrap()
+      .contains("client_ip")
+  );
+}

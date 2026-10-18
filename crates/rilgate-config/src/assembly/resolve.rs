@@ -121,6 +121,7 @@ impl Document {
           .challenge_ttl
           .whole_seconds("pow.algorithms.randomx.challenge_ttl")?,
         auth_ttl_seconds: self.security.auth.ttl.whole_seconds("security.auth.ttl")?,
+        auth_binding: self.security.auth.bind.clone(),
         auth_cookie_name: self.security.auth.cookie.clone(),
         nonce_offset: randomx.nonce_offset,
         verifier_queue_capacity: randomx.verifier_queue,

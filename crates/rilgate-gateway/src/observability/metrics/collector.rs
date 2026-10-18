@@ -9,6 +9,7 @@ pub struct Metrics {
   pub connection_rejections: AtomicU64,
   pub request_rejections: AtomicU64,
   pub policy_unresolved_decisions: AtomicU64,
+  pub auth_binding_mismatches: AtomicU64,
 }
 
 const BOUNDS: [u64; 7] = [1000, 5000, 10000, 50000, 100000, 1000000, 10000000];

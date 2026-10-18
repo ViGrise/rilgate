@@ -2,6 +2,14 @@ use http::HeaderMap;
 use rilgate_config::ServerConfig;
 use std::net::IpAddr;
 
+/// Whether the immediate socket peer is one of the configured trusted proxies.
+pub fn trusted_peer(peer: Option<IpAddr>, cfg: &ServerConfig) -> bool {
+  peer.is_some_and(|peer| {
+    let peer = peer.to_canonical();
+    cfg.trusted_proxies.iter().any(|net| net.contains(&peer))
+  })
+}
+
 pub fn client_ip(
   peer: Option<IpAddr>,
   headers: &HeaderMap,
@@ -72,5 +80,17 @@ mod tests {
       client_ip(Some("::ffff:192.0.2.1".parse().unwrap()), &headers, &cfg).unwrap(),
       Some("192.0.2.1".parse().unwrap())
     );
+  }
+
+  #[test]
+  fn only_the_socket_peer_decides_whether_a_proxy_is_trusted() {
+    let cfg = ServerConfig {
+      trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
+      ..Default::default()
+    };
+    assert!(trusted_peer(Some("10.1.2.3".parse().unwrap()), &cfg));
+    assert!(trusted_peer(Some("::ffff:10.1.2.3".parse().unwrap()), &cfg));
+    assert!(!trusted_peer(Some("192.0.2.1".parse().unwrap()), &cfg));
+    assert!(!trusted_peer(None, &cfg));
   }
 }

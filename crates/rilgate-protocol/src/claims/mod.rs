@@ -66,6 +66,8 @@ pub struct AuthClaims {
   pub enforce: PowEnforcement,
   pub issued_at: i64,
   pub expires_at: i64,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub binding: Option<String>,
 }
 
 impl ChallengeClaims {

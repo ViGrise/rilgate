@@ -1,3 +1,4 @@
+use crate::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
 use rilgate_policy::policy::schema::Definition;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
@@ -12,6 +13,7 @@ pub struct ChallengeConfig {
   pub challenge_ttl_seconds: u64,
   pub receipt_ttl_seconds: u64,
   pub auth_ttl_seconds: u64,
+  pub auth_binding: AuthBinding,
   pub policy: Definition,
 }
 impl ChallengeConfig {
@@ -31,6 +33,7 @@ impl ChallengeConfig {
     for key in [&self.signing_key, &self.auth_signing_key] {
       anyhow::ensure!(!key.expose().is_empty(), "PoW signing keys cannot be empty");
     }
+    self.auth_binding.validate()?;
     rilgate_policy::PolicyEngine::from_definition(&self.policy)?;
     Ok(())
   }

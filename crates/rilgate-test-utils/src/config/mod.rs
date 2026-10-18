@@ -37,6 +37,7 @@ pub fn config() -> Config {
       randomx_challenge_ttl_seconds: 3600,
       receipt_ttl_seconds: 30,
       auth_ttl_seconds: 300,
+      auth_binding: Default::default(),
       auth_cookie_name: "rilgate_auth".into(),
       nonce_offset: 39,
       verifier_queue_capacity: 8,

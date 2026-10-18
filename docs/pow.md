@@ -293,8 +293,11 @@ in HTTP and WebSocket job messages. Custom solvers should accept both forms.
 
 Exchanging a receipt preserves its issue time when calculating access expiry.
 Repeated exchange cannot extend access. Tokens remain reusable bearer credentials
-within their signed lifetime; rejecting every replay across instances requires
-shared state or a different protocol. Re-verifying the same challenge can still
+within their signed lifetime, and authentication cookies work from any machine
+unless `security.auth.bind` ties them to the client network, browser family or
+chosen headers. Binding limits where a copied cookie works. It does not stop
+reuse by a client that matches the binding. Rejecting every replay across
+instances requires shared state or a different protocol. Re-verifying the same challenge can still
 issue receipts until that challenge expires.
 
 ### RandomX throughput
