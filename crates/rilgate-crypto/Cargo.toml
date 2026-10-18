@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+hkdf = "0.12"
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

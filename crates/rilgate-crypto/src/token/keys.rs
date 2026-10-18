@@ -2,7 +2,8 @@ use crate::Secret;
 use anyhow::Result;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct KeyRotation {
   pub active_id: Option<String>,
   pub previous: BTreeMap<String, Secret>,
