@@ -9,6 +9,6 @@ cp "$root/tests/e2e/"*.mjs "$workdir/tests/e2e/"
 cd "$workdir"
 npm ci --ignore-scripts
 npx playwright install "$@" chromium firefox webkit
-binary="${RILGATE_BINARY:-${CARGO_TARGET_DIR:-$root/target}/debug/rilgate}"
+binary="${RILGATE_BINARY:-$root/target/debug/rilgate}"
 if [[ "$binary" != /* ]]; then binary="$root/$binary"; fi
 RILGATE_PROJECT_ROOT="$root" RILGATE_BINARY="$binary" npx playwright test --config tests/e2e/playwright.config.mjs

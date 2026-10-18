@@ -22,6 +22,21 @@ fn main() -> ExitCode {
   }
 }
 
+/// The directory that holds final build artifacts, as Cargo resolves it from
+/// the environment and configuration.
+fn target_directory(root: &Path) -> Option<PathBuf> {
+  let output = Command::new(cargo())
+    .current_dir(root)
+    .args(["metadata", "--format-version", "1", "--no-deps"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+  metadata["target_directory"].as_str().map(PathBuf::from)
+}
+
 /// Builds `randomx-wasm` for wasm32 and stages the artifact where the server
 /// embeds it.
 ///
@@ -61,13 +76,9 @@ fn build_wasm() -> ExitCode {
     return ExitCode::from(1);
   }
 
-  let target_dir = env::var_os("CARGO_TARGET_DIR")
-    .map(PathBuf::from)
-    .unwrap_or_else(|| root.join("target"));
-  let target_dir = if target_dir.is_absolute() {
-    target_dir
-  } else {
-    root.join(target_dir)
+  let Some(target_dir) = target_directory(&root) else {
+    eprintln!("failed to read the target directory from cargo metadata");
+    return ExitCode::FAILURE;
   };
   let built = target_dir
     .join(WASM_TARGET)

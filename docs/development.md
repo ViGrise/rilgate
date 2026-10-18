@@ -13,8 +13,8 @@ Run commands from the repository root. Build with `scripts/build.sh` or
 `scripts/build.sh --release`. The script creates the browser WASM artifact
 before the gateway embeds it. Run `scripts/test.sh` for
 the complete default checks, including WASM generation, formatting, Rust tests,
-Clippy and Node tests. Test artifacts use a temporary target directory that is
-removed on exit unless `CARGO_TARGET_DIR` is explicitly set. Browser E2E tests
+Clippy and Node tests, building incrementally in the workspace target
+directory. Browser E2E tests
 run with `scripts/test/browser.sh` or `npm --prefix tests/e2e run test:e2e`;
 dependencies and reports stay in temporary directories.
 The native RandomX reference tests below are opt-in and
