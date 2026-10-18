@@ -73,7 +73,7 @@ impl RateLimiter {
     if state.global.tokens < 1.0 {
       return Err(state.global.wait_for(1.0, cfg.global_refill_per_second));
     }
-    let client = client.map(normalize_ip);
+    let client = client.map(|ip| ip.to_canonical());
     if !state.clients.contains_key(&client) {
       if state.clients.len() >= cfg.max_clients {
         if let Some(deadline) = state.next_cleanup
@@ -114,13 +114,6 @@ impl RateLimiter {
     bucket.tokens -= 1.0;
     state.global.tokens -= 1.0;
     Ok(())
-  }
-}
-
-fn normalize_ip(ip: IpAddr) -> IpAddr {
-  match ip {
-    IpAddr::V6(ip) => ip.to_ipv4_mapped().map_or(IpAddr::V6(ip), IpAddr::V4),
-    other => other,
   }
 }
 

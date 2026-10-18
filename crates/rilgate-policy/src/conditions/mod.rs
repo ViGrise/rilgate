@@ -1,7 +1,7 @@
+use crate::ip_sets::IpRanges;
 use crate::policy::schema::{Condition, NumberMatch, StringMatch};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
-use ipnet::IpNet;
 use regex::Regex;
 use std::net::IpAddr;
 
@@ -18,7 +18,7 @@ pub(crate) enum Compiled {
   Any(Vec<Self>),
   Not(Box<Self>),
   Text(Field, Text),
-  Ip(IpNet),
+  Ip(IpRanges),
   Score(NumberMatch),
 }
 #[derive(Debug)]
@@ -104,12 +104,11 @@ impl Compiled {
     }
     if let Some(value) = &condition.client_ip {
       budget.consume(depth)?;
-      nodes.push(Self::Ip(
-        value
-          .cidr
-          .parse()
-          .context("client_ip.cidr: expected an IPv4 or IPv6 network")?,
-      ));
+      let network = value
+        .cidr
+        .parse()
+        .context("client_ip.cidr: expected an IPv4 or IPv6 network")?;
+      nodes.push(Self::Ip(IpRanges::from_networks([network])));
     }
     if let Some(value) = &condition.score {
       budget.consume(depth)?;
@@ -176,7 +175,7 @@ impl Compiled {
         };
         value.is_some_and(|v| test.matches(v))
       }
-      Self::Ip(net) => request.client_ip.is_some_and(|ip| net.contains(&ip)),
+      Self::Ip(ranges) => request.client_ip.is_some_and(|ip| ranges.contains(ip)),
       Self::Score(test) => {
         test.eq.is_none_or(|v| score == v)
           && test.gt.is_none_or(|v| score > v)

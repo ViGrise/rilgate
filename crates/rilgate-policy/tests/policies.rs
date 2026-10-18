@@ -263,3 +263,24 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
     .is_err()
   );
 }
+
+#[test]
+fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
+  let headers = HeaderMap::new();
+  let request = |ip: &str| Request {
+    headers: &headers,
+    path: "/",
+    method: &Method::GET,
+    client_ip: Some(ip.parse().unwrap()),
+  };
+  assert!(matched(
+    "{client_ip: {cidr: '::ffff:192.0.2.0/120'}}",
+    &request("192.0.2.1"),
+    0
+  ));
+  assert!(matched(
+    "{client_ip: {cidr: 192.0.2.0/24}}",
+    &request("::ffff:192.0.2.1"),
+    0
+  ));
+}

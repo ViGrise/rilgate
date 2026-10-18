@@ -10,7 +10,7 @@ pub fn client_ip(
   let Some(peer) = peer else {
     return Ok(None);
   };
-  let peer = normalize(peer);
+  let peer = peer.to_canonical();
   let trusted = |ip: &IpAddr| cfg.trusted_proxies.iter().any(|net| net.contains(ip));
   if !trusted(&peer) {
     return Ok(Some(peer));
@@ -33,22 +33,14 @@ pub fn client_ip(
       if count > 32 {
         return Err("Forwarded client chain is too long");
       }
-      current = normalize(
-        raw
-          .trim()
-          .parse()
-          .map_err(|_| "Invalid forwarded client address")?,
-      );
+      current = raw
+        .trim()
+        .parse()
+        .map_err(|_| "Invalid forwarded client address")?;
+      current = current.to_canonical();
     }
   }
   Ok(Some(current))
-}
-
-fn normalize(ip: IpAddr) -> IpAddr {
-  match ip {
-    IpAddr::V6(value) => value.to_ipv4_mapped().map_or(ip, IpAddr::V4),
-    _ => ip,
-  }
 }
 
 #[cfg(test)]
