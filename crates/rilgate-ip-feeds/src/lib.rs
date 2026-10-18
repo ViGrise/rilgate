@@ -1,4 +1,6 @@
+mod fetch;
 mod parse;
+pub use fetch::{FeedClient, Fetched, Validators};
 pub use parse::parse;
 use std::time::Duration;
 

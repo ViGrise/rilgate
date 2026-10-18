@@ -20,4 +20,5 @@ rilgate-policy.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
+futures-util.workspace = true
 tokio.workspace = true
