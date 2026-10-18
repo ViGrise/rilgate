@@ -57,6 +57,18 @@ impl RandomXAlgorithm {
   }
 }
 impl Algorithm for RandomXAlgorithm {
+  fn verifier_diagnostics(&self) -> Option<rilgate_pow::algorithm::VerifierDiagnostics> {
+    let verifier = self
+      .verifier
+      .lock()
+      .unwrap_or_else(|error| error.into_inner());
+    Some(
+      verifier
+        .as_ref()
+        .map_or_else(Default::default, RandomXVerifier::diagnostics),
+    )
+  }
+
   fn descriptor(&self) -> AlgorithmDescriptor {
     AlgorithmDescriptor {
       id: PowAlgorithm::RandomX,

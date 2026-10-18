@@ -52,6 +52,14 @@ impl ChallengeService {
     })
   }
 
+  pub fn verifier_diagnostics(&self) -> Option<rilgate_pow::algorithm::VerifierDiagnostics> {
+    self
+      .algorithms
+      .get(PowAlgorithm::RandomX)
+      .ok()?
+      .verifier_diagnostics()
+  }
+
   pub fn algorithm_descriptors(&self) -> Vec<AlgorithmDescriptor> {
     self.algorithms.descriptors()
   }

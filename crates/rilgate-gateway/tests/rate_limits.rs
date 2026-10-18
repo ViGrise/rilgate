@@ -172,3 +172,29 @@ async fn server_connection_info_populates_the_client_bucket() {
   }
   server.abort();
 }
+
+#[tokio::test]
+async fn trusted_proxy_clients_have_independent_quotas_and_spoofed_prefixes_do_not_reset_them() {
+  let mut cfg = common::config();
+  let config = Arc::get_mut(&mut cfg).unwrap();
+  config.pow.rate_limit.client_burst = 1;
+  config.server.trusted_proxies = vec!["::1/128".parse().unwrap()];
+  let gateway = app::router(cfg).await.unwrap();
+  let path = "/.well-known/test-pow/api/verify";
+  for (chain, expected) in [
+    ("192.0.2.1", StatusCode::UNPROCESSABLE_ENTITY),
+    ("192.0.2.2", StatusCode::UNPROCESSABLE_ENTITY),
+    ("203.0.113.9, 192.0.2.1", StatusCode::TOO_MANY_REQUESTS),
+    ("invalid", StatusCode::BAD_REQUEST),
+  ] {
+    assert_eq!(
+      gateway
+        .clone()
+        .oneshot(request(path, None, chain))
+        .await
+        .unwrap()
+        .status(),
+      expected
+    );
+  }
+}

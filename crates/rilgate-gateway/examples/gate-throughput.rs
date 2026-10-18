@@ -55,6 +55,10 @@ async fn main() -> anyhow::Result<()> {
   let (pow, pool) = rilgate_test_utils::gateway::services(&cfg)?;
   let web = rilgate_web::WebManager::new(cfg.web.clone())?;
   let state = AppState {
+    metrics: Arc::new(Default::default()),
+    connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
+    requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
+    probes: Arc::new(tokio::sync::Semaphore::new(1)),
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone())?),
     limiter: Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone())?),
     web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),

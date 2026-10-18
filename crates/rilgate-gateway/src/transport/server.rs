@@ -52,6 +52,7 @@ pub struct RequestContext {
   addresses: usize,
   upstream: Option<http::Uri>,
   failure: Option<StatusCode>,
+  permit: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 impl Gateway {
   pub fn new(state: AppState) -> Self {
@@ -69,8 +70,12 @@ impl Gateway {
     );
     let mut options = HttpServerOptions::default();
     options.h2c = true;
+    options.keepalive_request_limit = Some(1000);
     options.h2_idle_timeout = Some(Duration::from_secs(60));
     proxy.server_options = Some(options);
+    let mut h2 = pingora::protocols::http::v2::server::default_h2_options();
+    h2.max_concurrent_streams(state.cfg.server.h2_max_streams);
+    proxy.h2_options = Some(h2);
     Self {
       proxy: Arc::new(proxy),
       state,
@@ -89,6 +94,14 @@ impl Gateway {
         _ = &mut shutdown => break Ok(()),
         accepted = listener.accept() => {
           let (socket, _) = match accepted { Ok(pair) => pair, Err(error) => break Err(error.into()) };
+          let permit = match self.state.connections.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+              self.state.metrics.connection_rejections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+              drop(socket);
+              continue;
+            }
+          };
           if let Err(error) = socket.set_nodelay(true) { break Err(error.into()); }
           #[cfg(unix)]
           let digest = { use std::os::fd::AsRawFd; SocketDigest::from_raw_fd(socket.as_raw_fd()) };
@@ -99,7 +112,7 @@ impl Gateway {
           let stream = DownstreamStream::new(stream);
           let proxy = self.proxy.clone();
           let stopped = stopped.clone();
-          connections.spawn(async move { proxy.process_new(Box::new(stream), &stopped).await; });
+          connections.spawn(async move { let _permit = permit; proxy.process_new(Box::new(stream), &stopped).await; });
         }
         Some(result) = connections.join_next(), if !connections.is_empty() => {
           if let Err(error) = result { tracing::warn!(%error, "HTTP connection task failed"); }
@@ -250,13 +263,27 @@ impl Handler {
     } else {
       Method::GET
     };
-    let known =
-      proof || matches!(path, "/api/client-config" | "/api/health") || path.starts_with("/static/");
+    let known = proof
+      || matches!(
+        path,
+        "/api/client-config" | "/api/health" | "/api/live" | "/api/ready"
+      )
+      || (path == "/api/metrics" && self.state.cfg.server.metrics_enabled)
+      || path.starts_with("/static/");
     if proof {
       let peer = session
         .client_addr()
         .and_then(|address| address.as_inet())
         .map(|address| address.ip());
+      let peer =
+        match crate::transport::client_ip::client_ip(peer, &headers, &self.state.cfg.server) {
+          Ok(peer) => peer,
+          Err(message) => {
+            return Ok(Some(
+              ApiError::InvalidRequest(message.into()).into_response(),
+            ));
+          }
+        };
       if let Err(seconds) = self.state.limiter.check(peer) {
         let mut out = ApiError::RateLimited(seconds).into_response();
         out
@@ -285,6 +312,11 @@ impl Handler {
     } else {
       let result: Result<Response, ApiError> = match path {
         "/api/client-config" => Ok(handlers::client_config(&self.state)),
+        "/api/live" => Ok(json(StatusCode::OK, &serde_json::json!({"status": "ok"}))),
+        "/api/ready" => Ok(crate::observability::readiness::service::check(&self.state).await),
+        "/api/metrics" => Ok(crate::observability::metrics::service::exposition(
+          &self.state,
+        )),
         "/api/health" => Ok(json(
           StatusCode::OK,
           &crate::observability::health::service::status(
@@ -318,7 +350,7 @@ impl Handler {
       };
       result.unwrap_or_else(ApiError::into_response)
     };
-    if path.starts_with("/api/") && path != "/api/health" {
+    if path.starts_with("/api/") {
       out
         .headers_mut()
         .insert(CACHE_CONTROL, "no-store".parse().unwrap());
@@ -405,6 +437,7 @@ impl ProxyHttp for Handler {
       addresses: 0,
       upstream: None,
       failure: None,
+      permit: None,
     }
   }
   async fn request_filter(
@@ -422,6 +455,28 @@ impl ProxyHttp for Handler {
     session
       .req_header_mut()
       .insert_header("x-request-id", ctx.id.clone())?;
+    match self.state.requests.clone().try_acquire_owned() {
+      Ok(permit) => ctx.permit = Some(permit),
+      Err(_) => {
+        self
+          .state
+          .metrics
+          .request_rejections
+          .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut out = response(
+          StatusCode::SERVICE_UNAVAILABLE,
+          "Gateway capacity exhausted",
+        );
+        out
+          .headers_mut()
+          .insert("retry-after", "1".parse().unwrap());
+        out
+          .headers_mut()
+          .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+        send(session, out, ctx).await?;
+        return Ok(true);
+      }
+    }
     session.set_read_timeout(Some(Duration::from_secs(30)));
     session.set_write_timeout(Some(Duration::from_secs(30)));
     if session
@@ -693,6 +748,14 @@ impl ProxyHttp for Handler {
     true
   }
   async fn logging(&self, session: &mut Session, error: Option<&Error>, ctx: &mut RequestContext) {
+    let status = session
+      .response_written()
+      .map_or(0, |header| header.status.as_u16());
+    self.state.metrics.observe(
+      status,
+      ctx.started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+    );
+    ctx.permit.take();
     tracing::debug!(request_id = %ctx.id.to_str().unwrap_or_default(), method = %session.req_header().method, path = %session.req_header().uri.path(), status = session.response_written().map(|header| header.status.as_u16()), elapsed_us = ctx.started.elapsed().as_micros(), error = ?error, "HTTP request completed");
   }
 }

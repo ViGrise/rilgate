@@ -19,6 +19,10 @@ pub async fn build(
   let web_runtime = Arc::new(rilgate_web::runtime::watcher::runtime(&web));
   let limiter = Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone())?);
   Ok(Gateway::new(AppState {
+    connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
+    requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
+    probes: Arc::new(tokio::sync::Semaphore::new(1)),
+    metrics: Arc::new(Default::default()),
     cfg,
     pow,
     pool,

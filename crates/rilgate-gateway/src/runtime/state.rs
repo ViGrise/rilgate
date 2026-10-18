@@ -5,6 +5,10 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
   pub cfg: Config,
+  pub metrics: Arc<crate::observability::metrics::Metrics>,
+  pub connections: Arc<tokio::sync::Semaphore>,
+  pub requests: Arc<tokio::sync::Semaphore>,
+  pub probes: Arc<tokio::sync::Semaphore>,
   pub pow: Arc<ChallengeService>,
   pub pool: Arc<rilgate_pool::P2PoolProvider>,
   pub shutdown: tokio_util::sync::CancellationToken,

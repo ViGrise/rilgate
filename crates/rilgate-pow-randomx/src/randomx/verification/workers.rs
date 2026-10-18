@@ -1,4 +1,17 @@
-use std::thread;
+use std::{
+  sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU64, Ordering},
+  },
+  thread,
+};
+
+#[derive(Default)]
+struct Stats {
+  active: AtomicBool,
+  completed: AtomicU64,
+  rejected: AtomicU64,
+}
 
 use anyhow::{Context, Result, anyhow};
 use randomx_core::RandomX;
@@ -20,6 +33,7 @@ struct HashTask {
 #[derive(Clone)]
 pub struct RandomXVerifier {
   tx: mpsc::Sender<HashTask>,
+  stats: Arc<Stats>,
 }
 
 impl Default for RandomXVerifier {
@@ -63,6 +77,8 @@ impl RandomXVerifier {
       ));
     }
     let (tx, mut rx) = mpsc::channel::<HashTask>(capacity);
+    let stats = Arc::new(Stats::default());
+    let worker_stats = stats.clone();
     thread::Builder::new()
       .name("randomx-verifier".into())
       .spawn(move || {
@@ -71,12 +87,24 @@ impl RandomXVerifier {
           if task.reply.is_closed() {
             continue;
           }
+          worker_stats.active.store(true, Ordering::Relaxed);
           let result = hash(&task.seed, &task.blob);
+          worker_stats.active.store(false, Ordering::Relaxed);
+          worker_stats.completed.fetch_add(1, Ordering::Relaxed);
           let _ = task.reply.send(result);
         }
       })
       .context("Failed to spawn RandomX verifier thread")?;
-    Ok(Self { tx })
+    Ok(Self { tx, stats })
+  }
+
+  pub fn diagnostics(&self) -> rilgate_pow::algorithm::VerifierDiagnostics {
+    rilgate_pow::algorithm::VerifierDiagnostics {
+      queued: self.tx.max_capacity() - self.tx.capacity(),
+      active: self.stats.active.load(Ordering::Relaxed),
+      completed: self.stats.completed.load(Ordering::Relaxed),
+      rejected: self.stats.rejected.load(Ordering::Relaxed),
+    }
   }
 
   pub async fn hash(&self, seed: Vec<u8>, blob: Vec<u8>) -> Result<[u8; 32]> {
@@ -91,7 +119,10 @@ impl RandomXVerifier {
       .tx
       .try_send(HashTask { seed, blob, reply })
       .map_err(|error| match error {
-        mpsc::error::TrySendError::Full(_) => anyhow::Error::new(CapacityExceeded),
+        mpsc::error::TrySendError::Full(_) => {
+          self.stats.rejected.fetch_add(1, Ordering::Relaxed);
+          anyhow::Error::new(CapacityExceeded)
+        }
         mpsc::error::TrySendError::Closed(_) => anyhow!("RandomX verifier thread stopped"),
       })?;
 

@@ -109,6 +109,10 @@ impl P2PoolProvider {
     })
   }
 
+  pub fn active_sessions(&self) -> usize {
+    self.config.max_sessions - self.slots.available_permits()
+  }
+
   pub fn acquire_slot(&self) -> Result<OwnedSemaphorePermit> {
     self
       .slots

@@ -2,7 +2,18 @@ use super::{AlgorithmDescriptor, PowAlgorithm};
 use crate::{PreparedWork, Proof, WorkRequest};
 use anyhow::Result;
 pub type AlgorithmFuture<'a, T> = rilgate_core::BoxFuture<'a, T>;
+#[derive(Default, Clone, Copy)]
+pub struct VerifierDiagnostics {
+  pub queued: usize,
+  pub active: bool,
+  pub completed: u64,
+  pub rejected: u64,
+}
 pub trait Algorithm: Send + Sync {
+  fn verifier_diagnostics(&self) -> Option<VerifierDiagnostics> {
+    None
+  }
+
   fn descriptor(&self) -> AlgorithmDescriptor;
   fn difficulty_for_weight(&self, weight: i32) -> u64;
   fn validate_difficulty(&self, difficulty: u64) -> Result<()>;
