@@ -4,12 +4,13 @@ import test from "node:test";
 import vm from "node:vm";
 
 
-function page(fetch, failPost = false, translations = null) {
+function page(fetch, failPost = false, translations = null, embedded = false) {
   const elements = new Map();
   const listeners = new Map();
   const workers = [];
   const requests = [];
   let reloads = 0;
+  const messages = [];
   const element = (id) => {
     if (!elements.has(id)) {
       elements.set(id, { hidden: true, textContent: "", removeAttribute() {}, addEventListener(type, handler) { this[type] = handler; } });
@@ -29,11 +30,12 @@ function page(fetch, failPost = false, translations = null) {
     AbortSignal, DOMException, Worker,
     document: { querySelector: element },
     window: {
+      POW_EMBEDDED: embedded, parent: { postMessage: (message, origin) => messages.push({ message, origin }) },
       POW_INTERNAL_PREFIX: "/gateway", POW_ALGORITHM: "fast", POW_PRESENTATION_TOKEN: "presentation",
       addEventListener(type, handler) { listeners.set(type, handler); },
       removeEventListener(type) { listeners.delete(type); },
     },
-    location: { reload() { reloads += 1; } },
+    location: { origin: "https://example.test", reload() { reloads += 1; } },
     console: { error() {} },
     fetch: async (url, options) => {
       requests.push({ url, options });
@@ -41,7 +43,7 @@ function page(fetch, failPost = false, translations = null) {
     },
   });
   vm.runInContext(source, context);
-  return { element, workers, listeners, requests, reloads: () => reloads };
+  return { element, workers, listeners, requests, messages, reloads: () => reloads };
 }
 
 async function until(predicate) {
@@ -129,4 +131,17 @@ test("server-rendered translations localize statuses and named placeholders", as
   state.workers[0].onmessage({ data: { type: "solved", nonce: "153" } });
   await until(() => state.reloads() === 1);
   assert.equal(state.element("#status").textContent, "Vérification terminée");
+});
+
+test("embedded completion notifies only the same-origin parent without reloading", async () => {
+  const state = page(async url => {
+    if (url.endsWith("verify")) return response({ receipt: "receipt" });
+    if (url.endsWith("exchange")) return response({ status: "ok" });
+    return challengeFetch(url);
+  }, false, null, true);
+  await until(() => state.workers[0]?.request);
+  state.workers[0].onmessage({ data: { type: "solved", nonce: "153" } });
+  await until(() => state.messages.length === 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.messages)), [{ message: { type: "rilgate:verified" }, origin: "https://example.test" }]);
+  assert.equal(state.reloads(), 0);
 });

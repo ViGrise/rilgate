@@ -32,6 +32,8 @@ pub struct PageInfo {
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicChallengeInfo {
+  pub url: String,
+  pub embedded: bool,
   pub id: String,
   pub token: String,
   pub algorithm: String,
@@ -43,6 +45,8 @@ pub struct PublicChallengeInfo {
 impl Default for PublicChallengeInfo {
   fn default() -> Self {
     Self {
+      url: String::new(),
+      embedded: false,
       id: String::new(),
       token: String::new(),
       algorithm: "fast".into(),

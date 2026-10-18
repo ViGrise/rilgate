@@ -1,4 +1,4 @@
-use rilgate_web::config::{TemplateConfig, WatchConfig};
+use rilgate_web::config::{ResponseConfig, TemplateConfig, WatchConfig};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -11,6 +11,7 @@ pub struct Site {
   pub stylesheet: String,
   pub resources: Resources,
   pub templates: TemplateConfig,
+  pub responses: ResponseConfig,
   pub i18n: I18n,
 }
 impl Default for Site {
@@ -22,6 +23,7 @@ impl Default for Site {
       stylesheet: "css/rilgate.css".into(),
       resources: Resources::default(),
       templates: TemplateConfig::default(),
+      responses: ResponseConfig::default(),
       i18n: I18n::default(),
     }
   }

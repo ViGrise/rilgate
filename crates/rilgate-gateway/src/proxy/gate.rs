@@ -27,6 +27,7 @@ pub fn gate_with_client(
   method: &Method,
   client_ip: Option<std::net::IpAddr>,
 ) -> Result<Option<Response>, ApiError> {
+  let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let decision = state
     .pow
     .evaluate_context(&rilgate_policy::conditions::Request {
@@ -49,12 +50,18 @@ pub fn gate_with_client(
         "Request denied by PoW policy"
       );
 
-      let (html, locale) = render_page(state, "pages/denied.html", "", "fast", headers, uri);
-      return Ok(Some(page_response(
+      let template = if json {
+        "pages/denied.json"
+      } else {
+        "pages/denied.html"
+      };
+      let (html, locale) = render_page(state, template, "", "fast", headers, uri);
+      return Ok(Some(formatted_response(
         StatusCode::FORBIDDEN,
         html,
         locale,
         method == Method::HEAD,
+        json,
       )));
     }
 
@@ -86,7 +93,7 @@ pub fn gate_with_client(
     return Ok(None);
   }
 
-  if method == Method::GET || method == Method::HEAD {
+  if json || method == Method::GET || method == Method::HEAD {
     let presentation = state
       .pow
       .issue_presentation_with_claims(host, uri.path().to_string(), &decision)
@@ -101,14 +108,33 @@ pub fn gate_with_client(
       "Presenting proof-of-work challenge"
     );
 
-    let (html, locale) = render_challenge_page(state, presentation, headers, uri);
+    let challenge_url =
+      crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token);
+    let (html, locale) = render_challenge_page(state, presentation, headers, uri, json, false);
 
-    return Ok(Some(page_response(
-      StatusCode::OK,
+    let mut out = formatted_response(
+      if json {
+        StatusCode::FORBIDDEN
+      } else {
+        StatusCode::OK
+      },
       html,
       locale,
       method == Method::HEAD,
-    )));
+      json,
+    );
+    if json {
+      out
+        .headers_mut()
+        .insert("rilgate-challenge", "required".parse().unwrap());
+      out.headers_mut().insert(
+        "rilgate-challenge-url",
+        challenge_url
+          .parse()
+          .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?,
+      );
+    }
+    return Ok(Some(out));
   }
 
   Ok(Some(response(
@@ -123,13 +149,34 @@ pub(crate) fn page_response(
   locale: String,
   head: bool,
 ) -> Response {
-  let mut out = response(status, if head { String::new() } else { html });
+  formatted_response(status, html, locale, head, false)
+}
+
+fn formatted_response(
+  status: StatusCode,
+  body: String,
+  locale: String,
+  head: bool,
+  json: bool,
+) -> Response {
+  let mut out = response(status, if head { String::new() } else { body });
   let headers = out.headers_mut();
-  headers.insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+  headers.insert(
+    CONTENT_TYPE,
+    if json {
+      "application/json"
+    } else {
+      "text/html; charset=utf-8"
+    }
+    .parse()
+    .unwrap(),
+  );
   headers.insert(CACHE_CONTROL, "no-store".parse().unwrap());
   headers.insert(
     http::header::VARY,
-    "Accept-Language, Cookie".parse().unwrap(),
+    "Accept, Content-Type, X-Requested-With, Accept-Language, Cookie"
+      .parse()
+      .unwrap(),
   );
   headers.insert(
     http::header::CONTENT_LANGUAGE,

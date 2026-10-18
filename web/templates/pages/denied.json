@@ -1,0 +1,4 @@
+{
+  "code": "access_denied",
+  "message": {{ t("denied.description") | tojson }}
+}

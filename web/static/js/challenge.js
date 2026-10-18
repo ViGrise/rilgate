@@ -18,7 +18,13 @@ async function main() {
   progressEl.value = 1;
   progressEl.max = 1;
   status(t("challenge.success", "Verification successful. Continuing…"));
-  location.reload();
+  if (window.POW_EMBEDDED) {
+    const message = { type: "rilgate:verified" };
+    if (window.parent !== window) window.parent.postMessage(message, location.origin);
+    if (window.opener) window.opener.postMessage(message, location.origin);
+  } else {
+    location.reload();
+  }
 }
 
 main().catch((error) => {

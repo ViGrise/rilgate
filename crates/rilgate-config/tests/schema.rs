@@ -182,3 +182,20 @@ fn all_rule_challenges_are_validated_before_runtime_construction() {
     assert!(error.contains("difficulty"), "{error}");
   }
 }
+
+#[test]
+fn response_selection_validates_modes_and_path_prefixes() {
+  let cfg = resolve(&format!(
+    "{BASE}site:\n  responses:\n    format: auto\n    json_paths: [/api]\n"
+  ))
+  .unwrap();
+  assert_eq!(cfg.web.responses.json_paths, vec!["/api"]);
+  for extra in [
+    "site: {responses: {format: xml}}",
+    "site: {responses: {format: html, json_paths: [/api]}}",
+    "site: {responses: {json_paths: [relative]}}",
+    "site: {responses: {json_paths: [/api/../secret]}}",
+  ] {
+    assert!(resolve(&format!("{BASE}{extra}\n")).is_err(), "{extra}");
+  }
+}

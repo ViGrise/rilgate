@@ -10,6 +10,7 @@ pub fn valid_cookie_name(name: &str) -> bool {
 
 impl WebConfig {
   pub fn validate(&self) -> Result<()> {
+    self.responses.validate()?;
     ensure!(
       !self.name.trim().is_empty() && !self.name.chars().any(char::is_control),
       "site.name must contain visible text without control characters"

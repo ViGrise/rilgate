@@ -42,17 +42,15 @@ test.beforeAll(async () => {
     const port = await listen(reservation);
     await new Promise(resolve => reservation.close(resolve));
     const config = (await readFile(join(root, 'config/rilgate.production.yml'), 'utf8'))
-      .replace('port: 8080', `port: ${port}`)
+      .replace('listen: ":8080"', `listen: "127.0.0.1:${port}"`)
       .replace('http://127.0.0.1:3000', `http://127.0.0.1:${originPort}`);
     const configPath = join(directory, 'production.yml');
     await writeFile(configPath, config);
     const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-      !/^(POW_|UPSTREAM_|WEB_|SERVE_|ENV$|APP_ENV$|CONFIG$|PORT$)/.test(key)));
+      !/^(RILGATE_|POW_|UPSTREAM_|WEB_|SERVE_|ENV$|APP_ENV$|CONFIG$|PORT$)/.test(key)));
     gateway = spawn(process.env.RILGATE_BINARY || join(root, 'target/debug/rilgate'), ['--config', configPath], {
       cwd: directory,
-      env: { ...environment, ENV: 'production',
-        POW_SIGNING_KEY: 'browser-test-proof-key-with-at-least-32-bytes',
-        POW_AUTH_SIGNING_KEY: 'browser-test-auth-key-with-at-least-32-bytes' },
+      env: { ...environment, RILGATE_SECRET: 'browser-test-proof-key-with-at-least-32-bytes' },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let errors = '';
@@ -112,8 +110,43 @@ test('real worker solves proof, receives a secure cookie and returns to the orig
   expect(cookie.secure).toBe(true);
   expect(cookie.httpOnly).toBe(true);
   expect(cookie.sameSite).toBe('Lax');
-  expect(cookie.value).toMatch(/^primary-1\./);
+  expect(cookie.value.split('.')).toHaveLength(2);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Protected origin' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('AJAX receives JSON, solves in an iframe and retries the original request', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(`${base}/robots.txt`);
+  const result = await page.evaluate(async () => {
+    const options = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'original' }) };
+    const blocked = await fetch('/protected/ajax', options);
+    const body = await blocked.json();
+    if (blocked.status !== 403 || blocked.headers.get('rilgate-challenge') !== 'required') {
+      throw new Error('Expected a JSON challenge notification');
+    }
+    const frame = document.createElement('iframe');
+    const completed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { window.removeEventListener('message', listener); reject(new Error('Iframe verification timed out')); }, 45000);
+      function listener(event) {
+        if (event.origin !== location.origin || event.source !== frame.contentWindow || event.data?.type !== 'rilgate:verified') return;
+        clearTimeout(timer);
+        window.removeEventListener('message', listener);
+        resolve();
+      }
+      window.addEventListener('message', listener);
+    });
+    frame.src = body.challenge_url;
+    document.body.append(frame);
+    await completed;
+    frame.remove();
+    const retried = await fetch('/protected/ajax', options);
+    return { status: retried.status, body: await retried.text(), url: location.pathname };
+  });
+  expect(result.status).toBe(200);
+  expect(result.body).toContain('Protected origin');
+  expect(result.url).toBe('/robots.txt');
   expect(errors).toEqual([]);
 });

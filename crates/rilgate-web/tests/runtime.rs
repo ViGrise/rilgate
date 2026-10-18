@@ -443,7 +443,11 @@ async fn watcher_debounces_updates_retains_invalid_edits_and_recovers() {
   );
   wait_until(|| manager.diagnostics().reload_failures_total > 0).await;
   assert_eq!(manager.current().generation, 2);
-  write(root.path(), "templates/pages/challenge.html", "Recovered");
+  write(
+    root.path(),
+    "templates/pages/challenge.html",
+    "Recovered",
+  );
   wait_until(|| manager.current().generation == 3).await;
   assert_eq!(render(&manager.current(), "en"), "Recovered");
   async fn wait_until(predicate: impl Fn() -> bool) {
@@ -605,4 +609,25 @@ fn challenge_shells_and_i18n_json_follow_snapshot_generations() {
       .unwrap()
       .contains("New title")
   );
+}
+
+#[test]
+fn invalid_json_templates_keep_the_previous_resource_snapshot() {
+  let root = tempfile::tempdir().unwrap();
+  let manager = WebManager::new(config(root.path())).unwrap();
+  let generation = manager.current().generation;
+  write(
+    root.path(),
+    "templates/pages/challenge.json",
+    r#"{"error": {{ challenge.token }}}"#,
+  );
+  assert!(manager.reload().is_err());
+  assert_eq!(manager.current().generation, generation);
+  write(
+    root.path(),
+    "templates/pages/challenge.json",
+    r#"{"error":{"token":{{ challenge.token | tojson }}}}"#,
+  );
+  manager.reload().unwrap();
+  assert!(manager.current().generation > generation);
 }

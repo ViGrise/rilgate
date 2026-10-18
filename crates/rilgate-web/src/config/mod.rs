@@ -1,4 +1,6 @@
+mod responses;
 mod validation;
+pub use responses::{ResponseConfig, ResponseFormat};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 pub use validation::valid_cookie_name;
@@ -14,6 +16,7 @@ pub struct WebConfig {
   pub seed: SeedConfig,
   pub watch: WatchConfig,
   pub templates: TemplateConfig,
+  pub responses: ResponseConfig,
   pub i18n: I18nConfig,
 }
 
@@ -28,6 +31,7 @@ impl Default for WebConfig {
       seed: SeedConfig::default(),
       watch: WatchConfig::default(),
       templates: TemplateConfig::default(),
+      responses: ResponseConfig::default(),
       i18n: I18nConfig::default(),
     }
   }

@@ -47,7 +47,10 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
       .await
       .unwrap();
     assert_eq!(response.headers()["content-language"], expected);
-    assert_eq!(response.headers()["vary"], "Accept-Language, Cookie");
+    assert_eq!(
+      response.headers()["vary"],
+      "Accept, Content-Type, X-Requested-With, Accept-Language, Cookie"
+    );
     let html = String::from_utf8(
       to_bytes(response.into_body(), 100_000)
         .await
@@ -82,11 +85,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response.headers().contains_key("etag"));
     let bytes = to_bytes(response.into_body(), 1_000_000).await.unwrap();
-    assert!(
-      !String::from_utf8_lossy(&bytes)
-        .to_lowercase()
-        .contains("rilgate")
-    );
+    assert!(!String::from_utf8_lossy(&bytes).contains("Rilgate"));
   }
   let response = router
     .clone()

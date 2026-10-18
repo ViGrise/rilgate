@@ -215,6 +215,8 @@ impl WebSnapshot {
       "pages/challenge.html",
       "pages/denied.html",
       "pages/error.html",
+      "pages/challenge.json",
+      "pages/denied.json",
     ] {
       self
         .templates
@@ -271,6 +273,15 @@ impl WebSnapshot {
     self.render("pages/challenge.html", &public, locale)
   }
 
+  pub fn render_challenge_json(
+    &self,
+    challenge: &PublicChallengeInfo,
+    locale: &str,
+  ) -> Result<String> {
+    let public = self.challenge_context(challenge.clone(), locale)?;
+    self.render("pages/challenge.json", &public, locale)
+  }
+
   pub fn render(&self, name: &str, public: &TemplateContext, locale: &str) -> Result<String> {
     self.render_with_bootstrap(
       name,
@@ -311,6 +322,7 @@ impl WebSnapshot {
         client_i18n_json => client_i18n_json, challenge_bootstrap => minijinja::Value::from_safe_string(bootstrap),
       })
       .with_context(|| format!("Rendering template {name} for locale {locale}"))?;
+    crate::templates::json::validate(name, &html)?;
     Ok(html)
   }
 }

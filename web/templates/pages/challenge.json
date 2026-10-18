@@ -1,0 +1,13 @@
+{
+  "code": "proof_required",
+  "message": {{ t("challenge.description") | tojson }},
+  "challenge_url": {{ challenge.url | tojson }},
+  "challenge": {{ challenge | tojson }},
+  "endpoints": {
+    "config": {{ (rilgate.base_path ~ "/api/client-config") | tojson }},
+    "challenge": {{ (rilgate.base_path ~ "/api/challenge") | tojson }},
+    "verify": {{ (rilgate.base_path ~ "/api/verify") | tojson }},
+    "exchange": {{ (rilgate.base_path ~ "/api/exchange") | tojson }},
+    "ws": {{ (rilgate.base_path ~ "/api/ws") | tojson }}
+  }
+}

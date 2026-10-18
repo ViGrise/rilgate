@@ -95,6 +95,7 @@ impl Document {
         },
         watch: site.resources.watch.clone(),
         templates: site.templates.clone(),
+        responses: site.responses.clone(),
         i18n: rilgate_web::config::I18nConfig {
           default_locale: site.i18n.default.clone(),
           supported_locales: site.i18n.supported.clone(),

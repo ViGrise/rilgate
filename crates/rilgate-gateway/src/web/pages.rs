@@ -5,6 +5,8 @@ pub fn render_challenge_page(
   issued: rilgate_challenge::IssuedToken<rilgate_protocol::claims::PresentationClaims>,
   headers: &HeaderMap,
   uri: &Uri,
+  json: bool,
+  embedded: bool,
 ) -> (String, String) {
   use rilgate_web::templates::context::PublicChallengeInfo;
   let snapshot = state.web.current();
@@ -14,6 +16,8 @@ pub fn render_challenge_page(
     .unwrap_or_default()
     .as_secs() as i64;
   let challenge = PublicChallengeInfo {
+    url: challenge_url(&snapshot.config.base_path, &issued.token),
+    embedded,
     token: issued.token,
     algorithm: match issued.claims.algorithm {
       rilgate_protocol::PowAlgorithm::Fast => "fast",
@@ -29,17 +33,61 @@ pub fn render_challenge_page(
     ),
     ..Default::default()
   };
-  let html = snapshot
-    .render_challenge(&challenge, &locale)
-    .unwrap_or_else(|error| {
-      tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
-      state
-        .web
-        .fallback()
-        .render_challenge(&challenge, &locale)
-        .unwrap_or_else(|_| "Unable to continue".into())
-    });
+  let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
+    if json {
+      snapshot.render_challenge_json(&challenge, &locale)
+    } else {
+      snapshot.render_challenge(&challenge, &locale)
+    }
+  };
+  let html = render(&snapshot).unwrap_or_else(|error| {
+    tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
+    render(&state.web.fallback()).expect("Validated embedded challenge template")
+  });
   (html, locale)
+}
+
+pub(crate) fn challenge_url(prefix: &str, token: &str) -> String {
+  let query = url::form_urlencoded::Serializer::new(String::new())
+    .append_pair("presentation_token", token)
+    .finish();
+  format!("{prefix}/challenge?{query}")
+}
+
+pub(crate) fn challenge_page(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  head: bool,
+) -> Result<crate::transport::response::Response, crate::transport::errors::ApiError> {
+  use crate::transport::errors::ApiError;
+  let token = uri
+    .query()
+    .and_then(|query| {
+      url::form_urlencoded::parse(query.as_bytes())
+        .find(|(key, _)| key == "presentation_token")
+        .map(|(_, value)| value.into_owned())
+    })
+    .filter(|token| token.len() <= 16384)
+    .ok_or_else(|| ApiError::InvalidRequest("Missing or oversized presentation_token".into()))?;
+  let claims = state
+    .pow
+    .verify_presentation(&token, &request_host(headers, uri))
+    .map_err(ApiError::proof)?;
+  let issued = rilgate_challenge::IssuedToken { token, claims };
+  let (html, locale) = render_challenge_page(state, issued, headers, uri, false, true);
+  let mut out = crate::proxy::gate::page_response(http::StatusCode::OK, html, locale, head);
+  out.headers_mut().insert(
+    "content-security-policy",
+    "frame-ancestors 'self'".parse().unwrap(),
+  );
+  out
+    .headers_mut()
+    .insert("x-frame-options", "SAMEORIGIN".parse().unwrap());
+  out
+    .headers_mut()
+    .insert("referrer-policy", "no-referrer".parse().unwrap());
+  Ok(out)
 }
 
 fn negotiate_locale(
@@ -71,7 +119,7 @@ pub fn render_page(
   let snapshot = state.web.current();
   let locale = negotiate_locale(&snapshot, headers, uri);
   let title_key = match template {
-    "pages/denied.html" => "denied.title",
+    "pages/denied.html" | "pages/denied.json" => "denied.title",
     "pages/error.html" => "error.title",
     _ => "challenge.title",
   };
@@ -88,7 +136,7 @@ pub fn render_page(
     })
     .flatten();
   let description_key = match template {
-    "pages/denied.html" => "denied.description",
+    "pages/denied.html" | "pages/denied.json" => "denied.description",
     "pages/error.html" => "error.description",
     _ => "challenge.description",
   };
@@ -126,7 +174,7 @@ pub fn render_page(
         .web
         .fallback()
         .render(template, &public, &locale)
-        .unwrap_or_else(|_| "Unable to continue".into())
+        .expect("Validated embedded page template")
     });
   (html, locale)
 }

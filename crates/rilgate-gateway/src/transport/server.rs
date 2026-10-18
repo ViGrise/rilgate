@@ -256,7 +256,7 @@ impl Handler {
     let method = session.req_header().method.clone();
     let proof = matches!(
       path,
-      "/api/challenge" | "/api/verify" | "/api/exchange" | "/api/ws"
+      "/challenge" | "/api/challenge" | "/api/verify" | "/api/exchange" | "/api/ws"
     );
     let expected = if matches!(path, "/api/challenge" | "/api/verify" | "/api/exchange") {
       Method::POST
@@ -311,6 +311,9 @@ impl Handler {
       out
     } else {
       let result: Result<Response, ApiError> = match path {
+        "/challenge" => {
+          crate::web::pages::challenge_page(&self.state, &headers, &uri, method == Method::HEAD)
+        }
         "/api/client-config" => Ok(handlers::client_config(&self.state)),
         "/api/live" => Ok(json(StatusCode::OK, &serde_json::json!({"status": "ok"}))),
         "/api/ready" => Ok(crate::observability::readiness::service::check(&self.state).await),

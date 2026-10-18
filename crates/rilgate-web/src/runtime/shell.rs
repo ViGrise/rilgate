@@ -97,6 +97,8 @@ fn write_bootstrap(
   write_script_json(output, &challenge.token)?;
   output.extend_from_slice(b";\n  window.POW_ALGORITHM = ");
   write_script_json(output, &challenge.algorithm)?;
+  output.extend_from_slice(b";\n  window.POW_EMBEDDED = ");
+  write_script_json(output, &challenge.embedded)?;
   output.extend_from_slice(b";\n</script>");
   Ok(())
 }
