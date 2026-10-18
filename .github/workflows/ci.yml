@@ -59,8 +59,7 @@ jobs:
         run: docker build -f deploy/docker/Dockerfile -t rilgate:production-check .
       - name: Validate Compose configuration
         env:
-          POW_SIGNING_KEY: ci-proof-secret-with-at-least-32-bytes
-          POW_AUTH_SIGNING_KEY: ci-auth-secret-with-at-least-32-bytes
+          RILGATE_SECRET: ci-secret-with-at-least-32-random-bytes
         run: docker compose -f deploy/docker/compose.yml config --quiet
       - name: Test container lifecycle and dependency failures
         run: scripts/test/container.sh

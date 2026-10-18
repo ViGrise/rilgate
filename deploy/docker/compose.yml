@@ -8,11 +8,8 @@ services:
     volumes:
       - ../../config/rilgate.production.yml:/app/config/rilgate.yml:ro
     environment:
-      ENV: production
-      POW_SIGNING_KEY: "${POW_SIGNING_KEY:?Set POW_SIGNING_KEY}"
-      POW_AUTH_SIGNING_KEY: "${POW_AUTH_SIGNING_KEY:?Set POW_AUTH_SIGNING_KEY}"
-      UPSTREAM_URL: "http://host.docker.internal:3000"
-      POW_P2POOL_HOST: "host.docker.internal"
+      RILGATE_SECRET: "${RILGATE_SECRET:?Set RILGATE_SECRET}"
+      RILGATE_UPSTREAM_URL: "http://host.docker.internal:3000"
     ports:
       - "127.0.0.1:8080:8080"
     extra_hosts:

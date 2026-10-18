@@ -18,11 +18,11 @@ const match = html.match(/window\.POW_PRESENTATION_TOKEN = ("[^"\n]+");/);
 if (!match) throw new Error('Missing production presentation token');
 const api = '/.well-known/rilgate/api';
 const work = await (await request(`${api}/challenge`, { presentation_token: JSON.parse(match[1]) })).json();
-if (work.algorithm !== 'fast' || work.difficulty !== 4) throw new Error('Production smoke requires Fast difficulty 4');
+if (work.algorithm !== 'fast' || work.difficulty !== 2) throw new Error('Production smoke requires Fast difficulty 2');
 let nonce;
 const deadline = Date.now() + 30_000;
 for (let value = 0; Date.now() < deadline; value++) {
-  if (createHash('sha256').update(`${work.challenge}${value}`).digest('hex').startsWith('0000')) {
+  if (createHash('sha256').update(`${work.challenge}${value}`).digest('hex').startsWith('0'.repeat(work.difficulty))) {
     nonce = String(value);
     break;
   }

@@ -30,7 +30,6 @@ COPY --from=builder /app/rilgate-release /app/rilgate
 COPY --from=builder /app/LICENSE /app/LICENSE
 COPY config/rilgate.production.yml /app/config/rilgate.yml
 
-ENV ENV=production SERVE_HOST=0.0.0.0
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl --fail --silent --max-time 4 http://127.0.0.1:8080/.well-known/rilgate/api/ready || exit 1

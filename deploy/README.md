@@ -5,12 +5,11 @@ The Pingora transport requires OpenSSL at build time and runtime. On Debian or
 Ubuntu, install `pkg-config` and `libssl-dev` to build, and `libssl3` plus
 `ca-certificates` to run. The Docker image includes these dependencies.
 
-For Docker Compose, review `config/rilgate.production.yml` and supply independent
-signing secrets through the deployment secret store:
+For Docker Compose, review `config/rilgate.production.yml` and supply the signing
+secret through the deployment secret store:
 
 ```bash
-export POW_SIGNING_KEY="$(openssl rand -hex 32)"
-export POW_AUTH_SIGNING_KEY="$(openssl rand -hex 32)"
+export RILGATE_SECRET="$(openssl rand -hex 32)"
 docker compose -f deploy/docker/compose.yml up --build
 ```
 
@@ -30,14 +29,13 @@ healthcheck if changing the port or namespace.
 
 For systemd, create a `rilgate` user, install the binary under `/opt/rilgate`,
 the production configuration under `/etc/rilgate`, and a writable `/var/lib/rilgate` directory.
-Provide `/etc/rilgate/environment` with production settings and strong signing
-keys. If filesystem web overrides are enabled, set `web.root` to
+Provide `/etc/rilgate/environment` with `RILGATE_SECRET` and optional explicit environment overrides. If filesystem web overrides are enabled, set `site.resources.directory` to
 `/var/lib/rilgate/web`. `systemctl reload rilgate` requests a web snapshot reload.
 
 The Caddy and nginx examples forward the host and support the gateway's P2Pool
 WebSocket API and upstream application WebSockets. Set the
 public hostname and configure TLS at the edge; the nginx example only contains
-an HTTP listener. Configure `serve.trusted_proxies` with only the actual proxy
+an HTTP listener. Configure `server.trusted_proxies` with only the actual proxy
 addresses to obtain independent client proof quotas. The nginx example enforces
 per-client request and connection quotas at the edge; Caddy does not add a
 shared quota service. Both examples block public operational endpoints.

@@ -91,23 +91,29 @@ PIDS+=($!)
 wait_for_http "http://127.0.0.1:$UPSTREAM_PORT/"
 
 cat >"$RUNDIR/rilgate.yml" <<EOF
-serve:
-  port: $PORT
-upstream:
-  url: "http://127.0.0.1:$UPSTREAM_PORT"
+server:
+  listen: "127.0.0.1:$PORT"
+  upstream:
+    url: "http://127.0.0.1:$UPSTREAM_PORT"
+security:
+  keys:
+    challenge: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    auth: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 pow:
-  signing_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  auth_signing_key: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   rate_limit:
     enabled: false
-  bots:
+policy:
+  mode: custom
+  rules:
     - name: protected
-      path_regex: ^/protected$
-      action: CHALLENGE
+      when:
+        path:
+          exact: /protected
+      action: challenge
       challenge:
         algorithm: fast
         difficulty: 1
-  thresholds: []
+
 EOF
 
 # The shipping default is what a deployment gets, so the gate measures it.
