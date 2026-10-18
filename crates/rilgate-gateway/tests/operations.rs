@@ -230,3 +230,122 @@ async fn http2_advertises_the_configured_stream_limit() {
   .await
   .unwrap();
 }
+
+#[tokio::test]
+async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
+  use rilgate_config::schema::policy::{
+    Action, Condition, FeedFormat, IpMatch, IpSetDefinition, Rule,
+  };
+
+  let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config();
+  {
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
+    config.server.metrics_enabled = true;
+    config.pow.policy.ip_sets.insert(
+      "feed".into(),
+      IpSetDefinition {
+        url: Some("http://127.0.0.1:9/".into()),
+        format: Some(FeedFormat::IpPrefixesJson),
+        ..Default::default()
+      },
+    );
+    config.pow.policy.rules = Some(vec![Rule {
+      name: "blocked".into(),
+      when: Condition {
+        client_ip: Some(IpMatch {
+          in_sets: Some(vec!["feed".into()]),
+          cidr: None,
+        }),
+        ..Default::default()
+      },
+      action: Action::Deny,
+      score: None,
+      challenge: None,
+    }]);
+  }
+  let (challenge, pool) = app::services(&cfg).unwrap();
+  let gateway = app::TestGateway::start(
+    rilgate_gateway::app::build(cfg.clone(), challenge.clone(), pool)
+      .await
+      .unwrap(),
+  )
+  .await
+  .unwrap();
+  let client = reqwest::Client::new();
+  let base = format!("http://{}/.well-known/test-pow/api", gateway.address());
+
+  let ready = client.get(format!("{base}/ready")).send().await.unwrap();
+  assert_eq!(ready.status(), 503);
+  let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
+  assert_eq!(body["ip_sets"], serde_json::Value::Bool(false));
+
+  let protected = client
+    .get(format!("http://{}/protected", gateway.address()))
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(protected.status(), 200);
+  assert!(
+    protected.headers()["content-type"]
+      .to_str()
+      .unwrap()
+      .contains("text/html")
+  );
+
+  let metrics = client
+    .get(format!("{base}/metrics"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert!(
+    metrics.contains(r#"rilgate_ip_set_stale{set="feed"} 1"#),
+    "{metrics}"
+  );
+  assert!(
+    metrics.contains(r#"rilgate_ip_set_prefixes{set="feed"} 0"#),
+    "{metrics}"
+  );
+  assert!(
+    metrics.contains(r#"rilgate_ip_set_refresh_failures_total{set="feed"} 0"#),
+    "{metrics}"
+  );
+  assert!(
+    metrics.contains("rilgate_policy_unresolved_decisions_total 1"),
+    "{metrics}"
+  );
+
+  challenge
+    .ip_sets()
+    .get("feed")
+    .unwrap()
+    .publish(rilgate_policy::IpRanges::from_networks(["192.0.2.0/24"
+      .parse()
+      .unwrap()]));
+
+  let ready = client.get(format!("{base}/ready")).send().await.unwrap();
+  assert_eq!(ready.status(), 200);
+  let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
+  assert_eq!(body["ip_sets"], serde_json::Value::Bool(true));
+  let metrics = client
+    .get(format!("{base}/metrics"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert!(
+    metrics.contains(r#"rilgate_ip_set_stale{set="feed"} 0"#),
+    "{metrics}"
+  );
+  assert!(
+    metrics.contains(r#"rilgate_ip_set_age_seconds{set="feed"} 0"#),
+    "{metrics}"
+  );
+  drop(origin);
+}

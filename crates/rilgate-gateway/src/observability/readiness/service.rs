@@ -48,7 +48,8 @@ pub async fn check(state: &AppState) -> Response {
     }
   };
   let (upstream, pool) = tokio::join!(upstream, pool);
-  let ready = upstream && pool.unwrap_or(true) && !state.shutdown.is_cancelled();
+  let ip_sets = state.pow.ip_sets().all_remote_loaded();
+  let ready = upstream && pool.unwrap_or(true) && ip_sets && !state.shutdown.is_cancelled();
   json(
     if ready {
       StatusCode::OK
@@ -59,6 +60,7 @@ pub async fn check(state: &AppState) -> Response {
       ready,
       upstream,
       pool,
+      ip_sets,
     },
   )
 }

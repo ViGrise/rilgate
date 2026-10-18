@@ -36,6 +36,12 @@ pub fn gate_with_client(
       method,
       client_ip,
     });
+  if decision.unresolved {
+    state
+      .metrics
+      .policy_unresolved_decisions
+      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  }
 
   match decision.action {
     PolicyAction::Allow => {
@@ -46,6 +52,7 @@ pub fn gate_with_client(
       tracing::debug!(
         rule = %decision.rule,
         weight = decision.weight,
+        unresolved = decision.unresolved,
         path = %uri.path(),
         "Request denied by PoW policy"
       );
@@ -104,6 +111,7 @@ pub fn gate_with_client(
       weight = decision.weight,
       algorithm = ?decision.algorithm,
       difficulty = required_difficulty,
+      unresolved = decision.unresolved,
       path = %uri.path(),
       "Presenting proof-of-work challenge"
     );

@@ -36,3 +36,10 @@ groups:
           severity: warning
         annotations:
           summary: Rilgate request p95 exceeds one second
+      - alert: RilgateIpSetStale
+        expr: max by (instance, set) (rilgate_ip_set_stale) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: A remote IP set has never loaded or is older than its maximum staleness
