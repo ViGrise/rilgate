@@ -1,9 +1,10 @@
-use crate::ip_sets::IpRanges;
+use crate::ip_sets::{IpRanges, IpSet, IpSets, MAX_SETS_PER_MATCHER, Membership};
 use crate::policy::schema::{Condition, NumberMatch, StringMatch};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
 use regex::Regex;
 use std::net::IpAddr;
+use std::sync::Arc;
 
 pub struct Request<'a> {
   pub headers: &'a HeaderMap,
@@ -19,6 +20,7 @@ pub(crate) enum Compiled {
   Not(Box<Self>),
   Text(Field, Text),
   Ip(IpRanges),
+  Sets(Vec<Arc<IpSet>>),
   Score(NumberMatch),
 }
 #[derive(Debug)]
@@ -39,29 +41,45 @@ pub(crate) struct Budget {
   bytes: usize,
 }
 impl Budget {
-  fn consume(&mut self, depth: usize) -> Result<()> {
+  fn consume(&mut self, depth: usize, path: &str) -> Result<()> {
     self.nodes += 1;
-    ensure!(depth <= 16, "condition depth must not exceed 16");
+    ensure!(depth <= 16, "{path}: condition depth must not exceed 16");
     ensure!(
       self.nodes <= 512,
-      "policy must not exceed 512 condition nodes"
+      "{path}: policy must not exceed 512 condition nodes"
     );
     Ok(())
   }
 }
 impl Compiled {
-  pub(crate) fn compile(condition: &Condition, depth: usize, budget: &mut Budget) -> Result<Self> {
-    budget.consume(depth)?;
+  pub(crate) fn compile(
+    condition: &Condition,
+    path: &str,
+    depth: usize,
+    budget: &mut Budget,
+    sets: &IpSets,
+  ) -> Result<Self> {
+    budget.consume(depth, path)?;
     let mut nodes = Vec::new();
     for (values, any) in [(&condition.all, false), (&condition.any, true)] {
       if let Some(values) = values {
+        let label = if any { "any" } else { "all" };
         ensure!(
           !values.is_empty(),
-          "all/any must contain at least one condition"
+          "{path}.{label}: must contain at least one condition"
         );
         let children = values
           .iter()
-          .map(|c| Self::compile(c, depth + 1, budget))
+          .enumerate()
+          .map(|(index, c)| {
+            Self::compile(
+              c,
+              &format!("{path}.{label}[{index}]"),
+              depth + 1,
+              budget,
+              sets,
+            )
+          })
           .collect::<Result<Vec<_>>>()?;
         nodes.push(if any {
           Self::Any(children)
@@ -73,8 +91,10 @@ impl Compiled {
     if let Some(value) = &condition.not {
       nodes.push(Self::Not(Box::new(Self::compile(
         value,
+        &format!("{path}.not"),
         depth + 1,
         budget,
+        sets,
       )?)));
     }
     let mut fields = vec![
@@ -84,41 +104,38 @@ impl Compiled {
     ];
     for (field, source) in fields.drain(..) {
       if let Some(source) = source {
-        budget.consume(depth)?;
+        budget.consume(depth, path)?;
         let label = match &field {
           Field::Path => "path",
           Field::Method => "method",
           Field::UserAgent => "user_agent",
           Field::Header(_) => unreachable!(),
         };
-        let test = Text::compile(source, budget).with_context(|| label.to_string())?;
+        let test = Text::compile(source, budget).with_context(|| format!("{path}.{label}"))?;
         nodes.push(Self::Text(field, test));
       }
     }
     for (name, source) in &condition.headers {
-      budget.consume(depth)?;
-      let name =
-        HeaderName::from_bytes(name.as_bytes()).context("headers: expected an HTTP header name")?;
-      let test = Text::compile(source, budget).with_context(|| format!("headers.{name}"))?;
-      nodes.push(Self::Text(Field::Header(name), test));
+      budget.consume(depth, path)?;
+      let header = HeaderName::from_bytes(name.as_bytes())
+        .with_context(|| format!("{path}.headers: expected an HTTP header name"))?;
+      let test =
+        Text::compile(source, budget).with_context(|| format!("{path}.headers.{header}"))?;
+      nodes.push(Self::Text(Field::Header(header), test));
     }
     if let Some(value) = &condition.client_ip {
-      budget.consume(depth)?;
-      let network = value
-        .cidr
-        .parse()
-        .context("client_ip.cidr: expected an IPv4 or IPv6 network")?;
-      nodes.push(Self::Ip(IpRanges::from_networks([network])));
+      budget.consume(depth, path)?;
+      nodes.push(Self::compile_ip(value, path, sets)?);
     }
     if let Some(value) = &condition.score {
-      budget.consume(depth)?;
+      budget.consume(depth, path)?;
       ensure!(
         value.eq.is_some()
           || value.gt.is_some()
           || value.gte.is_some()
           || value.lt.is_some()
           || value.lte.is_some(),
-        "score: expected a numeric comparison"
+        "{path}.score: expected a numeric comparison"
       );
       let lower = [
         Some(i32::MIN as i64),
@@ -140,15 +157,45 @@ impl Compiled {
       .flatten()
       .min()
       .unwrap();
-      ensure!(lower <= upper, "score: comparisons describe an empty range");
+      ensure!(
+        lower <= upper,
+        "{path}.score: comparisons describe an empty range"
+      );
       nodes.push(Self::Score(value.clone()));
     }
     ensure!(
       !nodes.is_empty(),
-      "condition must contain at least one matcher"
+      "{path}: condition must contain at least one matcher"
     );
     Ok(Self::All(nodes))
   }
+
+  fn compile_ip(value: &crate::policy::schema::IpMatch, path: &str, sets: &IpSets) -> Result<Self> {
+    ensure!(
+      (value.cidr.is_some() as usize + value.in_sets.is_some() as usize) == 1,
+      "{path}: client_ip: expected exactly one of cidr, in_sets"
+    );
+    if let Some(cidr) = &value.cidr {
+      let network = cidr
+        .parse()
+        .with_context(|| format!("{path}.client_ip.cidr: expected an IPv4 or IPv6 network"))?;
+      return Ok(Self::Ip(IpRanges::from_networks([network])));
+    }
+    let names = value.in_sets.as_ref().expect("one of cidr, in_sets");
+    ensure!(
+      !names.is_empty() && names.len() <= MAX_SETS_PER_MATCHER,
+      "{path}.client_ip.in_sets: in_sets requires 1 to {MAX_SETS_PER_MATCHER} set names"
+    );
+    let mut resolved = Vec::with_capacity(names.len());
+    for name in names {
+      let set = sets
+        .get(name)
+        .with_context(|| format!("{path}.client_ip.in_sets: unknown ip set {name}"))?;
+      resolved.push(set.clone());
+    }
+    Ok(Self::Sets(resolved))
+  }
+
   pub(crate) fn matches(&self, request: &Request<'_>, score: i32) -> bool {
     match self {
       Self::All(nodes) => nodes.iter().all(|c| c.matches(request, score)),
@@ -176,6 +223,11 @@ impl Compiled {
         value.is_some_and(|v| test.matches(v))
       }
       Self::Ip(ranges) => request.client_ip.is_some_and(|ip| ranges.contains(ip)),
+      Self::Sets(sets) => request.client_ip.is_some_and(|ip| {
+        sets
+          .iter()
+          .any(|set| set.membership(ip) == Membership::Member)
+      }),
       Self::Score(test) => {
         test.eq.is_none_or(|v| score == v)
           && test.gt.is_none_or(|v| score > v)

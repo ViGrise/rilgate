@@ -1,5 +1,6 @@
 use super::schema::{Action, Definition, Mode, Rule};
 use crate::conditions::{Budget, Compiled, Request};
+use crate::ip_sets::IpSets;
 use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, Method};
@@ -21,11 +22,16 @@ struct CompiledRule {
 pub struct PolicyEngine {
   rules: Vec<CompiledRule>,
   default_action: PolicyAction,
+  ip_sets: IpSets,
 }
 
 impl Definition {
   pub fn resolved_rules(&self) -> Result<(Vec<Rule>, Action)> {
     if self.mode != Mode::Custom {
+      ensure!(
+        self.ip_sets.is_empty(),
+        "policy: ip_sets require mode: custom"
+      );
       ensure!(
         self.rules.is_none() && self.score.is_none() && self.default_action.is_none(),
         "policy: rules, score and default_action require mode: custom"
@@ -85,6 +91,7 @@ impl Definition {
 impl PolicyEngine {
   pub fn from_definition(definition: &Definition) -> Result<Self> {
     let (source, default) = definition.resolved_rules()?;
+    let ip_sets = IpSets::compile(&definition.ip_sets)?;
     ensure!(
       source.len() <= 128,
       "policy: at most 128 rules and thresholds are supported"
@@ -113,14 +120,23 @@ impl PolicyEngine {
         rule.challenge.is_none() || rule.action == Action::Challenge,
         "{path}.challenge: only valid for action: challenge"
       );
-      let condition =
-        Compiled::compile(&rule.when, 0, &mut budget).with_context(|| format!("{path}.when"))?;
+      let condition = Compiled::compile(
+        &rule.when,
+        &format!("{path}.when"),
+        0,
+        &mut budget,
+        &ip_sets,
+      )?;
       rules.push(CompiledRule { rule, condition });
     }
     Ok(Self {
       rules,
       default_action: default,
+      ip_sets,
     })
+  }
+  pub fn ip_sets(&self) -> &IpSets {
+    &self.ip_sets
   }
   pub fn evaluate(
     &self,

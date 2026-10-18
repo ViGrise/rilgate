@@ -79,6 +79,7 @@ pub fn config() -> Config {
           }),
         }]),
         score: None,
+        ip_sets: std::collections::BTreeMap::new(),
       },
       browser: BrowserConfig {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),

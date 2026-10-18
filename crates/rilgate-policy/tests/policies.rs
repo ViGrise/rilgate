@@ -284,3 +284,23 @@ fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
     0
   ));
 }
+
+#[test]
+fn condition_budget_errors_report_the_rule_path() {
+  let mut when = String::from("{path: {prefix: /}}");
+  for _ in 0..20 {
+    when = format!("{{not: {when}}}");
+  }
+  let error = format!(
+    "{:#}",
+    engine(&format!(
+      "mode: custom\nrules:\n  - name: deep\n    when: {when}\n    action: deny\n"
+    ))
+    .unwrap_err()
+  );
+  assert!(
+    error.contains("policy.rules[0].when.not.not")
+      && error.contains("condition depth must not exceed 16"),
+    "{error}"
+  );
+}

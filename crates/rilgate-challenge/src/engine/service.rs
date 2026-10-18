@@ -60,6 +60,10 @@ impl ChallengeService {
     self.cfg.enforce
   }
 
+  pub fn ip_sets(&self) -> &rilgate_policy::IpSets {
+    self.policy.ip_sets()
+  }
+
   pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision<'_> {
     self.evaluate_context(&rilgate_policy::conditions::Request {
       headers,

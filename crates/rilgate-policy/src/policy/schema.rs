@@ -43,6 +43,8 @@ pub struct Definition {
     skip_serializing_if = "Option::is_none"
   )]
   pub score: Option<Scoring>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub ip_sets: BTreeMap<String, IpSetDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -221,10 +223,32 @@ pub struct NumberMatch {
   )]
   pub lte: Option<i32>,
 }
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct IpMatch {
-  pub cidr: String,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub cidr: Option<String>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub in_sets: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct IpSetDefinition {
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub cidrs: Option<Vec<String>>,
 }
 
 pub(super) fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
