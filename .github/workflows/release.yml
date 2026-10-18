@@ -1,0 +1,37 @@
+name: Release candidate
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+  package:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/rilgate-target
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
+      - name: Build and package the validated revision
+        run: |
+          scripts/build.sh --release
+          package_dir="$(mktemp -d)"
+          cp "$CARGO_TARGET_DIR/release/rilgate" LICENSE config/rilgate.production.yml "$package_dir/"
+          git rev-parse HEAD > "$package_dir/REVISION"
+          rustc --version > "$package_dir/TOOLCHAIN"
+          tar -czf /tmp/rilgate-linux-amd64.tar.gz -C "$package_dir" .
+          cd /tmp
+          sha256sum rilgate-linux-amd64.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rilgate-linux-amd64
+          path: |
+            /tmp/rilgate-linux-amd64.tar.gz
+            /tmp/SHA256SUMS
+          if-no-files-found: error

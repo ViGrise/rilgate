@@ -1,21 +1,77 @@
 name: CI
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/rilgate-target
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
       - name: Install native proxy dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
       - name: Prepare Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       - name: Test workspace and browser resources
         run: scripts/test.sh
+      - name: Test production flow in real browsers over HTTPS
+        run: |
+          cargo build --locked
+          scripts/test/browser.sh --with-deps
+      - name: Test native RandomX reference vectors
+        run: |
+          cargo test -p randomx-core --release --locked --test vectors -- --ignored --test-threads=1
+          cargo test -p rilgate-pow-randomx --release --locked --lib -- --ignored --test-threads=1
+      - name: Check performance regression smoke workload
+        run: |
+          sudo apt-get update && sudo apt-get install -y wrk
+          scripts/build.sh --release
+          PERF_GATE_BINARY="$CARGO_TARGET_DIR/release/rilgate" PERF_GATE_DURATION=3s PERF_GATE_WARMUP=1s scripts/perf-gate.sh
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check advisories, licenses and dependency sources
+        run: |
+          cargo install cargo-deny --version 0.20.2 --locked
+          cargo deny --locked --config .config/deny.toml check advisories licenses sources bans
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build production image
+        run: docker build -f deploy/docker/Dockerfile -t rilgate:production-check .
+      - name: Validate Compose configuration
+        env:
+          POW_SIGNING_KEY: ci-proof-secret-with-at-least-32-bytes
+          POW_AUTH_SIGNING_KEY: ci-auth-secret-with-at-least-32-bytes
+        run: docker compose -f deploy/docker/compose.yml config --quiet
+      - name: Test container lifecycle and dependency failures
+        run: scripts/test/container.sh
+      - name: Scan image for fixable high and critical vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.0 image --ignore-unfixed --severity HIGH,CRITICAL \
+            --exit-code 1 rilgate:production-check
+      - name: Validate edge proxy configuration
+        run: |
+          scratch="$(mktemp -d)"
+          { printf 'events {}\nhttp {\n'; cat deploy/examples/nginx/nginx.conf; printf '\n}\n'; } > "$scratch/nginx.conf"
+          docker run --rm -v "$scratch/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:stable nginx -t
+          docker run --rm -v "$PWD/deploy/examples/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
