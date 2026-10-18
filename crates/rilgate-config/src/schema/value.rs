@@ -37,7 +37,12 @@ impl<'de> Deserialize<'de> for Time {
 pub struct Size(pub usize);
 impl Serialize for Size {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&format!("{}B", self.0))
+    // The largest unit that represents the size exactly, as written in YAML.
+    let (value, unit) = [(1 << 30, "GiB"), (1 << 20, "MiB"), (1 << 10, "KiB")]
+      .into_iter()
+      .find(|(unit, _)| self.0.is_multiple_of(*unit))
+      .map_or((self.0, "B"), |(unit, name)| (self.0 / unit, name));
+    serializer.serialize_str(&format!("{value}{unit}"))
   }
 }
 impl<'de> Deserialize<'de> for Size {

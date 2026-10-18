@@ -57,7 +57,7 @@ fn every_distribution_template_validates_without_network_dependencies() {
     let result = command(
       contents,
       &["config", "check"],
-      &[("RILGATE_SECRET", SECRET)],
+      &[("RILGATE_SECURITY_SECRET", SECRET)],
     );
     assert!(
       result.status.success(),
@@ -73,7 +73,7 @@ fn every_distribution_template_validates_without_network_dependencies() {
 fn configuration_show_is_valid_yaml_and_redacts_expanded_secrets() {
   let template = include_str!("../../../config/rilgate.production.yml");
   for args in [vec!["config", "show"], vec!["config", "show", "--defaults"]] {
-    let result = command(template, &args, &[("RILGATE_SECRET", SECRET)]);
+    let result = command(template, &args, &[("RILGATE_SECURITY_SECRET", SECRET)]);
     assert!(
       result.status.success(),
       "{}",
@@ -95,12 +95,12 @@ fn configuration_show_is_valid_yaml_and_redacts_expanded_secrets() {
 fn invalid_configuration_fails_without_revealing_keys() {
   let template = include_str!("../../../config/rilgate.production.yml");
   for (contents, expected) in [
-    (template.to_string(), "RILGATE_SECRET"),
+    (template.to_string(), "RILGATE_SECURITY_SECRET"),
     (template.replace("mode: balanced", "mode: balanced\n  rules: []"), "policy"),
     (template.replace("upstream:", "upsteam:"), "server"),
     (template.replace("mode: balanced", "mode: custom\n  rules:\n    - name: bad-regex\n      when: {path: {regex: '['}}\n      action: deny"), "regex"),
   ] {
-    let variables = if expected == "RILGATE_SECRET" { vec![] } else { vec![("RILGATE_SECRET", SECRET)] };
+    let variables = if expected == "RILGATE_SECURITY_SECRET" { vec![] } else { vec![("RILGATE_SECURITY_SECRET", SECRET)] };
     let result = command(&contents, &["config", "check"], &variables);
     assert!(!result.status.success());
     let error = String::from_utf8_lossy(&result.stderr);
@@ -117,7 +117,7 @@ fn environment_expansion_cannot_inject_yaml_structure() {
   let result = command(
     template,
     &["config", "show", "--defaults"],
-    &[("RILGATE_SECRET", secret)],
+    &[("RILGATE_SECURITY_SECRET", secret)],
   );
   assert!(
     result.status.success(),
@@ -137,7 +137,7 @@ fn executable_dispatches_web_commands_without_binding_a_socket() {
     let result = command(
       template,
       &["web", operation, resources.to_str().unwrap()],
-      &[("RILGATE_SECRET", SECRET)],
+      &[("RILGATE_SECURITY_SECRET", SECRET)],
     );
     assert!(
       result.status.success(),
@@ -153,9 +153,9 @@ fn environment_only_configuration_and_overrides_work_without_a_file() {
   let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
     .current_dir(directory.path())
     .env_clear()
-    .env("RILGATE_SECRET", SECRET)
-    .env("RILGATE_UPSTREAM_URL", "http://127.0.0.1:3000")
-    .env("RILGATE_LISTEN", "127.0.0.1:8081")
+    .env("RILGATE_SECURITY_SECRET", SECRET)
+    .env("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000")
+    .env("RILGATE_SERVER_LISTEN", "127.0.0.1:8081")
     .args(["--port", "9090", "config", "show", "--defaults"])
     .output()
     .unwrap();
@@ -176,7 +176,7 @@ fn show(
   std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
     .current_dir(directory)
     .env_clear()
-    .env("RILGATE_SECRET", SECRET)
+    .env("RILGATE_SECURITY_SECRET", SECRET)
     .envs(variables.iter().copied())
     .args(args)
     .args(["config", "show", "--defaults"])
@@ -189,25 +189,25 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   let directory = tempfile::tempdir().unwrap();
   std::fs::write(
     directory.path().join("rilgate.yml"),
-    "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  listen: 127.0.0.1:7000\n  max_connections: 10\nsecurity:\n  secret: \"${RILGATE_SECRET}\"\n",
+    "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  listen: 127.0.0.1:7000\n  max_connections: 10\nsecurity:\n  secret: \"${RILGATE_SECURITY_SECRET}\"\n",
   )
   .unwrap();
   let result = show(
     directory.path(),
     &[
-      ("RILGATE_LISTEN", "127.0.0.1:7001"),
-      ("RILGATE_MAX_CONNECTIONS", "20"),
+      ("RILGATE_SERVER_LISTEN", "127.0.0.1:7001"),
+      ("RILGATE_SERVER_MAX_CONNECTIONS", "20"),
     ],
     &[
       "--config",
       "rilgate.yml",
-      "--listen",
+      "--server-listen",
       "127.0.0.1:7002",
-      "--auth-ttl",
+      "--security-auth-ttl",
       "2h",
-      "--trusted-proxies",
+      "--server-trusted-proxies",
       "10.0.0.0/8,192.0.2.1/32",
-      "--metrics-enabled",
+      "--server-metrics-enabled",
       "--pow-p2pool-address",
       "127.0.0.1:3334",
     ],
@@ -230,16 +230,16 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
 #[test]
 fn invalid_override_values_name_their_flag_or_variable() {
   let directory = tempfile::tempdir().unwrap();
-  let upstream = ("RILGATE_UPSTREAM_URL", "http://127.0.0.1:3000");
+  let upstream = ("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000");
   let result = show(
     directory.path(),
-    &[upstream, ("RILGATE_MAX_CONNECTIONS", "many")],
+    &[upstream, ("RILGATE_SERVER_MAX_CONNECTIONS", "many")],
     &[],
   );
   let error = String::from_utf8_lossy(&result.stderr);
   assert!(!result.status.success());
   assert!(
-    error.contains("server.max_connections (from RILGATE_MAX_CONNECTIONS)"),
+    error.contains("server.max_connections (from RILGATE_SERVER_MAX_CONNECTIONS)"),
     "{error}"
   );
   let result = show(
@@ -259,7 +259,7 @@ fn env_file_supplies_settings_before_flags_are_read() {
   let directory = tempfile::tempdir().unwrap();
   std::fs::write(
     directory.path().join("gateway.env"),
-    "RILGATE_UPSTREAM_URL=http://127.0.0.1:3100\nRILGATE_SITE_NAME=Edge\n",
+    "RILGATE_SERVER_UPSTREAM_URL=http://127.0.0.1:3100\nRILGATE_SITE_NAME=Edge\n",
   )
   .unwrap();
   let result = show(directory.path(), &[], &["--env-file", "gateway.env"]);
@@ -286,7 +286,7 @@ server:
     timeout:
       connect: "${CONNECT_TIMEOUT}"
 security:
-  secret: "${RILGATE_SECRET}"
+  secret: "${RILGATE_SECURITY_SECRET}"
 pow:
   rate_limit:
     client:
@@ -302,7 +302,10 @@ policy:
           difficulty: "${DIFFICULTY}"
 "#;
   let variables = [
-    ("RILGATE_SECRET", "12345678901234567890123456789012"),
+    (
+      "RILGATE_SECURITY_SECRET",
+      "12345678901234567890123456789012",
+    ),
     ("CONNECTIONS", "123"),
     ("METRICS", "true"),
     ("CONNECT_TIMEOUT", "300ms"),

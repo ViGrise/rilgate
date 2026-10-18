@@ -2,8 +2,8 @@
 
 # Getting started:
 #   1. Set server.upstream.url to your application.
-#   2. Export RILGATE_SECRET using a cryptographically random secret, for example:
-#        export RILGATE_SECRET="$(openssl rand -hex 32)"
+#   2. Export RILGATE_SECURITY_SECRET with a cryptographically random secret:
+#        export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
 #   3. Run: rilgate --config config/rilgate.example.yml config check
 
 # Only the upstream URL and signing secret are required. Embedded pages, assets,
@@ -20,8 +20,12 @@
 # empty variables fail validation. Expansion is single-pass, without shell syntax.
 # YAML types remain strict and unknown keys are rejected, including in development.
 
-# RILGATE_SECRET, RILGATE_UPSTREAM_URL and RILGATE_LISTEN override their YAML fields.
-# A working-directory .env supplies variables without replacing existing ones.
+# Every scalar setting also has a RILGATE_* variable and a flag named after its
+# path: server.upstream.url is RILGATE_SERVER_UPSTREAM_URL or
+# --server-upstream-url. Flags override variables, which override this file.
+# .env.example lists every variable; rilgate --help lists every flag.
+# A working-directory .env, or --env-file, supplies variables without replacing
+# existing ones.
 # Configuration is loaded at startup; restart the process after editing YAML.
 # Resource watching below reloads web resources, not this configuration file.
 
@@ -124,20 +128,20 @@ security:
   # signatures. Instances sharing this secret and compatible verification settings
   # can verify each other's local proofs and authentication tokens.
   #
-  secret: "${RILGATE_SECRET}"
+  secret: "${RILGATE_SECURITY_SECRET}"
 
-  # Alternative explicit-key mode. Remove secret above AND unset RILGATE_SECRET
+  # Alternative explicit-key mode. Remove secret above AND unset RILGATE_SECURITY_SECRET
   # before enabling keys. Both challenge and auth are required, each at least
   # 32 bytes. These are direct signing secrets, rather than a master derivation key.
   #
   # keys:
     # Signs challenge presentation, work and verification receipts.
     #
-    # challenge: "${RILGATE_POW_SIGNING_KEY}"
+    # challenge: "${RILGATE_SECURITY_KEYS_CHALLENGE}"
 
     # Signs authentication tokens, independently of the challenge key.
     #
-    # auth: "${RILGATE_AUTH_SIGNING_KEY}"
+    # auth: "${RILGATE_SECURITY_KEYS_AUTH}"
 
 
     # Rotation is optional and available independently for each explicit key.
@@ -153,7 +157,7 @@ security:
       # At most 8 ID-to-secret entries, each at least 32 bytes, for verification
       # only. An ID cannot also be active_id. Example instead of '{}':
       # previous:
-      # primary-0: "${RILGATE_PREVIOUS_CHALLENGE_KEY}"
+      # primary-0: "${RILGATE_SECURITY_KEYS_CHALLENGE_PREVIOUS}"
       # Use the reserved ID 'legacy' to accept old unversioned tokens explicitly.
       #
       # previous: {}
@@ -164,7 +168,7 @@ security:
 
       # Verification-only auth keys. Example instead of '{}':
       # previous:
-      # primary-0: "${RILGATE_PREVIOUS_AUTH_KEY}"
+      # primary-0: "${RILGATE_SECURITY_KEYS_AUTH_PREVIOUS}"
       #
       # previous: {}
 

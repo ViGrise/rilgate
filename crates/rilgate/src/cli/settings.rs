@@ -1,9 +1,9 @@
 //! Command-line flags and environment variables for scalar configuration settings.
 //!
 //! Each entry assigns one YAML path. A flag is the path with `.` and `_` turned
-//! into `-`, without the `server.` or `security.` prefix; its variable is
-//! `RILGATE_` followed by the flag in upper snake case. Values are validated by
-//! the configuration schema, so they accept the same syntax as YAML values.
+//! into `-`, and its variable is `RILGATE_` followed by the flag in upper snake
+//! case. Values are validated by the configuration schema, so they accept the
+//! same syntax as YAML values.
 use clap::{Arg, ArgAction, ArgMatches, Args, Command, FromArgMatches};
 use rilgate_config::{Setting, SettingValue};
 
@@ -28,6 +28,7 @@ pub(crate) struct Spec {
   pub(crate) help: &'static str,
 }
 
+const ENVIRONMENT: &str = "Environment";
 const SERVER: &str = "Server";
 const SITE: &str = "Site";
 const SECURITY: &str = "Security";
@@ -51,19 +52,19 @@ macro_rules! spec {
 
 #[rustfmt::skip]
 pub(crate) const SPECS: &[Spec] = &[
-  spec!(SERVER, Text, "environment", "env", "RILGATE_ENV", Some('E'), "Runtime environment: development or production"),
-  spec!(SERVER, Text, "server.listen", "listen", "RILGATE_LISTEN", Some('l'), "Listen address, such as :8080 or [::]:8080"),
-  spec!(SERVER, Text, "server.upstream.url", "upstream-url", "RILGATE_UPSTREAM_URL", Some('u'), "Application upstream URL"),
-  spec!(SERVER, Switch, "server.upstream.preserve_host", "upstream-preserve-host", "RILGATE_UPSTREAM_PRESERVE_HOST", None, "Forward the client Host header upstream"),
-  spec!(SERVER, Text, "server.upstream.max_body_size", "upstream-max-body-size", "RILGATE_UPSTREAM_MAX_BODY_SIZE", None, "Largest forwarded request body, such as 16MiB"),
-  spec!(SERVER, Text, "server.upstream.timeout.connect", "upstream-timeout-connect", "RILGATE_UPSTREAM_TIMEOUT_CONNECT", None, "Upstream connect timeout"),
-  spec!(SERVER, Text, "server.upstream.timeout.read", "upstream-timeout-read", "RILGATE_UPSTREAM_TIMEOUT_READ", None, "Upstream read timeout"),
-  spec!(SERVER, Text, "server.max_connections", "max-connections", "RILGATE_MAX_CONNECTIONS", None, "Maximum concurrent client connections"),
-  spec!(SERVER, Text, "server.max_requests", "max-requests", "RILGATE_MAX_REQUESTS", None, "Maximum concurrent requests"),
-  spec!(SERVER, Text, "server.h2_max_streams", "h2-max-streams", "RILGATE_H2_MAX_STREAMS", None, "Maximum concurrent HTTP/2 streams per connection"),
-  spec!(SERVER, List, "server.trusted_proxies", "trusted-proxies", "RILGATE_TRUSTED_PROXIES", None, "Proxy networks allowed to set X-Forwarded-For"),
-  spec!(SERVER, Switch, "server.metrics_enabled", "metrics-enabled", "RILGATE_METRICS_ENABLED", None, "Expose Prometheus metrics"),
-  spec!(SERVER, Text, "server.readiness_timeout", "readiness-timeout", "RILGATE_READINESS_TIMEOUT", None, "Dependency timeout for readiness probes"),
+  spec!(ENVIRONMENT, Text, "environment", "environment", "RILGATE_ENVIRONMENT", Some('E'), "Runtime environment: development or production"),
+  spec!(SERVER, Text, "server.listen", "server-listen", "RILGATE_SERVER_LISTEN", Some('l'), "Listen address, such as :8080 or [::]:8080"),
+  spec!(SERVER, Text, "server.upstream.url", "server-upstream-url", "RILGATE_SERVER_UPSTREAM_URL", Some('u'), "Application upstream URL"),
+  spec!(SERVER, Switch, "server.upstream.preserve_host", "server-upstream-preserve-host", "RILGATE_SERVER_UPSTREAM_PRESERVE_HOST", None, "Forward the client Host header upstream"),
+  spec!(SERVER, Text, "server.upstream.max_body_size", "server-upstream-max-body-size", "RILGATE_SERVER_UPSTREAM_MAX_BODY_SIZE", None, "Largest forwarded request body, such as 16MiB"),
+  spec!(SERVER, Text, "server.upstream.timeout.connect", "server-upstream-timeout-connect", "RILGATE_SERVER_UPSTREAM_TIMEOUT_CONNECT", None, "Upstream connect timeout"),
+  spec!(SERVER, Text, "server.upstream.timeout.read", "server-upstream-timeout-read", "RILGATE_SERVER_UPSTREAM_TIMEOUT_READ", None, "Upstream read timeout"),
+  spec!(SERVER, Text, "server.max_connections", "server-max-connections", "RILGATE_SERVER_MAX_CONNECTIONS", None, "Maximum concurrent client connections"),
+  spec!(SERVER, Text, "server.max_requests", "server-max-requests", "RILGATE_SERVER_MAX_REQUESTS", None, "Maximum concurrent requests"),
+  spec!(SERVER, Text, "server.h2_max_streams", "server-h2-max-streams", "RILGATE_SERVER_H2_MAX_STREAMS", None, "Maximum concurrent HTTP/2 streams per connection"),
+  spec!(SERVER, List, "server.trusted_proxies", "server-trusted-proxies", "RILGATE_SERVER_TRUSTED_PROXIES", None, "Proxy networks allowed to set X-Forwarded-For"),
+  spec!(SERVER, Switch, "server.metrics_enabled", "server-metrics-enabled", "RILGATE_SERVER_METRICS_ENABLED", None, "Expose Prometheus metrics"),
+  spec!(SERVER, Text, "server.readiness_timeout", "server-readiness-timeout", "RILGATE_SERVER_READINESS_TIMEOUT", None, "Dependency timeout for readiness probes"),
   spec!(SITE, Text, "site.name", "site-name", "RILGATE_SITE_NAME", None, "Site name shown on challenge pages"),
   spec!(SITE, Text, "site.url", "site-url", "RILGATE_SITE_URL", None, "Site URL linked from challenge pages"),
   spec!(SITE, Text, "site.base_path", "site-base-path", "RILGATE_SITE_BASE_PATH", None, "Path prefix of the internal namespace"),
@@ -82,9 +83,9 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SITE, List, "site.i18n.supported", "site-i18n-supported", "RILGATE_SITE_I18N_SUPPORTED", None, "Supported locales; empty discovers them from resources"),
   spec!(SITE, Switch, "site.i18n.strict", "site-i18n-strict", "RILGATE_SITE_I18N_STRICT", None, "Fail on missing translations"),
   spec!(SITE, Text, "site.i18n.cookie", "site-i18n-cookie", "RILGATE_SITE_I18N_COOKIE", None, "Locale cookie name"),
-  spec!(SECURITY, Secret, "security.secret", "secret", "RILGATE_SECRET", Some('s'), "Signing secret of at least 32 bytes; prefer the variable over the flag"),
-  spec!(SECURITY, Text, "security.auth.cookie", "auth-cookie", "RILGATE_AUTH_COOKIE", None, "Authentication cookie name"),
-  spec!(SECURITY, Text, "security.auth.ttl", "auth-ttl", "RILGATE_AUTH_TTL", None, "Authentication cookie lifetime"),
+  spec!(SECURITY, Secret, "security.secret", "security-secret", "RILGATE_SECURITY_SECRET", Some('s'), "Signing secret of at least 32 bytes; prefer the variable over the flag"),
+  spec!(SECURITY, Text, "security.auth.cookie", "security-auth-cookie", "RILGATE_SECURITY_AUTH_COOKIE", None, "Authentication cookie name"),
+  spec!(SECURITY, Text, "security.auth.ttl", "security-auth-ttl", "RILGATE_SECURITY_AUTH_TTL", None, "Authentication cookie lifetime"),
   spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or p2pool_accepted"),
   spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast or randomx"),
   spec!(POW, Text, "pow.challenge.ttl", "pow-challenge-ttl", "RILGATE_POW_CHALLENGE_TTL", None, "Challenge lifetime"),
@@ -236,16 +237,12 @@ mod tests {
   #[test]
   fn flags_and_variables_follow_the_naming_rule() {
     for spec in SPECS {
-      if spec.path == "environment" {
-        assert_eq!((spec.flag, spec.env), ("env", "RILGATE_ENV"));
-        continue;
-      }
-      let path = spec
-        .path
-        .strip_prefix("server.")
-        .or_else(|| spec.path.strip_prefix("security."))
-        .unwrap_or(spec.path);
-      assert_eq!(spec.flag, path.replace(['.', '_'], "-"), "{}", spec.path);
+      assert_eq!(
+        spec.flag,
+        spec.path.replace(['.', '_'], "-"),
+        "{}",
+        spec.path
+      );
       assert_eq!(
         spec.env,
         format!("RILGATE_{}", spec.flag.replace('-', "_").to_uppercase()),

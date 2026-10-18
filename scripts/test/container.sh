@@ -20,7 +20,7 @@ server:
 site:
   base_path: /origin-internal
 security:
-  secret: ${RILGATE_SECRET}
+  secret: ${RILGATE_SECURITY_SECRET}
 policy:
   mode: off
 YAML
@@ -28,13 +28,13 @@ chmod 755 "$workdir"
 chmod 644 "$workdir/origin.yml"
 docker run -d --name "$name-origin" --network "$network" --network-alias origin \
   -v "$workdir/origin.yml:/app/config/rilgate.yml:ro" \
-  -e RILGATE_SECRET=container-origin-secret-with-at-least-32-bytes \
+  -e RILGATE_SECURITY_SECRET=container-origin-secret-with-at-least-32-bytes \
   "$image" >/dev/null
 docker run -d --name "$name" --network "$network" --publish 127.0.0.1::8080 --read-only --cap-drop ALL \
   --security-opt no-new-privileges:true --pids-limit 128 --memory 1g \
   --tmpfs /tmp:size=16m,noexec,nosuid \
-  -e RILGATE_SECRET=container-test-secret-with-at-least-32-bytes \
-  -e RILGATE_UPSTREAM_URL=http://origin:8080 "$image" >/dev/null
+  -e RILGATE_SECURITY_SECRET=container-test-secret-with-at-least-32-bytes \
+  -e RILGATE_SERVER_UPSTREAM_URL=http://origin:8080 "$image" >/dev/null
 [[ "$(docker inspect --format '{{.Config.User}}' "$name")" == "10001:10001" ]]
 for attempt in $(seq 1 60); do
   if docker exec "$name" curl -fsS --max-time 2 http://127.0.0.1:8080/.well-known/rilgate/api/ready >/dev/null; then break; fi

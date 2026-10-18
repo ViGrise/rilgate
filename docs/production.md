@@ -13,7 +13,7 @@ robots.txt, favicon.ico and ACME exceptions, and a six-hour access lifetime.
 Review these settings and exceptions for your expected clients and abuse model.
 RandomX requires explicit policies and P2Pool configuration.
 
-Generate a random secret with `openssl rand -hex 32`, and inject `RILGATE_SECRET`
+Generate a random secret with `openssl rand -hex 32`, and inject `RILGATE_SECURITY_SECRET`
 through the deployment secret store. Do not commit it. Rilgate uses HKDF-SHA256
 to derive independent challenge and authentication signing keys. Explicit
 `security.keys` are available for independent rotation. All environments reject
@@ -124,16 +124,16 @@ secret. At most eight additional verification keys are accepted per keyring.
 ```yaml
 security:
   keys:
-    challenge: "${RILGATE_POW_SIGNING_KEY}"
-    auth: "${RILGATE_AUTH_SIGNING_KEY}"
+    challenge: "${RILGATE_SECURITY_KEYS_CHALLENGE}"
+    auth: "${RILGATE_SECURITY_KEYS_AUTH}"
     challenge_rotation:
       active_id: proof-next
       previous:
-        proof-current: "${RILGATE_PREVIOUS_POW_KEY}"
+        proof-current: "${RILGATE_SECURITY_KEYS_CHALLENGE_PREVIOUS}"
     auth_rotation:
       active_id: auth-next
       previous:
-        auth-current: "${RILGATE_PREVIOUS_AUTH_KEY}"
+        auth-current: "${RILGATE_SECURITY_KEYS_AUTH_PREVIOUS}"
 ```
 
 Remove `security.secret` when selecting explicit keys. Treat all current and

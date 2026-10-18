@@ -2,7 +2,7 @@ server:
   upstream:
     url: "http://127.0.0.1:3000"
 security:
-  secret: "${RILGATE_SECRET}"
+  secret: "${RILGATE_SECURITY_SECRET}"
 pow:
   # p2pool_accepted requires actual share acceptance over the owning WebSocket.
   verification: local_verify

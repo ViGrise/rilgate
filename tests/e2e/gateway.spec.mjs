@@ -50,7 +50,7 @@ test.beforeAll(async () => {
       !/^(RILGATE_|POW_|UPSTREAM_|WEB_|SERVE_|ENV$|APP_ENV$|CONFIG$|PORT$)/.test(key)));
     gateway = spawn(process.env.RILGATE_BINARY || join(root, 'target/debug/rilgate'), ['--config', configPath], {
       cwd: directory,
-      env: { ...environment, RILGATE_SECRET: 'browser-test-proof-key-with-at-least-32-bytes' },
+      env: { ...environment, RILGATE_SECURITY_SECRET: 'browser-test-proof-key-with-at-least-32-bytes' },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let errors = '';

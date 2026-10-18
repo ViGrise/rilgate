@@ -12,7 +12,7 @@ For Docker Compose, review `config/rilgate.production.yml` and supply the signin
 secret through the deployment secret store:
 
 ```bash
-export RILGATE_SECRET="$(openssl rand -hex 32)"
+export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
 docker compose -f deploy/docker/compose.yml up --build
 ```
 
@@ -32,7 +32,7 @@ healthcheck if changing the port or namespace.
 
 For systemd, create a `rilgate` user, install the binary under `/opt/rilgate`,
 the production configuration under `/etc/rilgate`, and a writable `/var/lib/rilgate` directory.
-Provide `/etc/rilgate/environment` with `RILGATE_SECRET` and any `RILGATE_*` setting variables. If filesystem web overrides are enabled, set `site.resources.directory` to
+Provide `/etc/rilgate/environment` with `RILGATE_SECURITY_SECRET` and any `RILGATE_*` setting variables. If filesystem web overrides are enabled, set `site.resources.directory` to
 `/var/lib/rilgate/web`. `systemctl reload rilgate` requests a web snapshot reload.
 
 The Caddy and nginx examples forward the host and support the gateway's P2Pool

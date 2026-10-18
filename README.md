@@ -57,7 +57,7 @@ In another terminal, copy the example to your configuration file and start Rilga
 
 ```bash
 cp config/rilgate.example.yml config/rilgate.yml
-export RILGATE_SECRET="$(openssl rand -hex 32)"
+export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
 ./target/debug/rilgate --config config/rilgate.yml
 ```
 
@@ -111,7 +111,7 @@ server:
   upstream:
     url: http://127.0.0.1:3000
 security:
-  secret: "${RILGATE_SECRET}"
+  secret: "${RILGATE_SECURITY_SECRET}"
 ```
 
 The defaults are production, embedded resources, local Fast verification and
@@ -150,7 +150,7 @@ Docker and Compose examples are included:
 
 ```bash
 docker build -f deploy/docker/Dockerfile -t rilgate:local .
-export RILGATE_SECRET="$(openssl rand -hex 32)"
+export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
 docker compose -f deploy/docker/compose.yml up --build
 ```
 

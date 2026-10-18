@@ -6,3 +6,6 @@ mod settings;
 pub use settings::Settings;
 pub mod upgrade;
 pub mod web;
+
+#[cfg(test)]
+mod env_example;

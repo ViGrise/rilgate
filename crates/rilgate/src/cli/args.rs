@@ -153,11 +153,11 @@ mod tests {
   fn flags_become_settings_for_their_yaml_paths() {
     let mut args = Args::try_parse_from([
       "rilgate",
-      "--upstream-url",
+      "--server-upstream-url",
       "http://127.0.0.1:3000",
-      "--metrics-enabled",
+      "--server-metrics-enabled",
       "--site-i18n-strict=false",
-      "--trusted-proxies",
+      "--server-trusted-proxies",
       "10.0.0.0/8,192.0.2.1/32",
       "config",
       "check",
@@ -175,7 +175,7 @@ mod tests {
       find("server.upstream.url"),
       Some((
         SettingValue::Scalar("http://127.0.0.1:3000".into()),
-        "--upstream-url".into()
+        "--server-upstream-url".into()
       ))
     );
     assert_eq!(
