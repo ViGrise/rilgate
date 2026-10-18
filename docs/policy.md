@@ -74,7 +74,7 @@ compose conditions recursively; `all` and `any` cannot be empty.
 | Field | Operators |
 | --- | --- |
 | `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
-| `client_ip` | `cidr` |
+| `client_ip` | `cidr`, `in_sets` |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 
 A string matcher requires exactly one operator. Matching is case-sensitive
@@ -90,9 +90,106 @@ The same resolved address controls proof API quotas.
 
 Policies permit at most 128 rules plus thresholds, 512 compiled condition nodes,
 16 nested condition levels, 64 entries per membership list, 2048 bytes per
-matcher string and 64 KiB of matcher strings in total. Regex compilation has
-bounded program and DFA sizes. The request path and method come from the actual
-HTTP request, and policy and forwarding use the same validated path.
+matcher string and 64 KiB of matcher strings in total. A custom policy defines at
+most 64 IP sets, an `in_sets` list names at most 16 sets and a set holds at most
+65 536 prefixes. Regex compilation has bounded program and DFA sizes. The request
+path and method come from the actual HTTP request, and policy and forwarding use
+the same validated path.
+
+## IP sets
+
+A named IP set groups addresses that conditions match with `client_ip.in_sets`.
+`ip_sets` requires `mode: custom`. A set name has 1 to 64 bytes from `a-z`, `0-9`,
+`-` and `_`, starting with a letter or digit, and at most 64 sets are defined. A
+set defines exactly one source: `cidrs` (static) or `url` (remote feed).
+`client_ip` takes exactly one of `cidr` or `in_sets`; `in_sets` lists 1 to 16
+defined names and matches when the address belongs to any of them. An unknown
+name is a configuration error. Combining `cidr` and `in_sets` uses an explicit
+`all` or `any`.
+
+```yaml
+policy:
+  mode: custom
+  ip_sets:
+    office:
+      cidrs: [203.0.113.0/24, 2001:db8::/32]
+    google-common-crawlers:
+      url: https://developers.google.com/static/crawling/ipranges/common-crawlers.json
+      format: ip_prefixes_json
+      refresh: 24h
+      max_stale: 7d
+  rules:
+    - name: verified-google-crawler
+      when:
+        all:
+          - client_ip: {in_sets: [google-common-crawlers]}
+          - user_agent: {contains: Googlebot}
+      action: allow
+```
+
+`format` is required with `url`; `ip_prefixes_json` is the only format. `refresh`
+defaults to `24h` and is bounded to `1h..=7d`. `max_stale` defaults to `7d`, is at
+least `refresh` and at most `30d`. Remote fields are rejected on a static set. In
+production a remote `url` must use `https`; development also accepts `http`.
+
+The client address is canonicalized with `IpAddr::to_canonical`, so an
+IPv4-mapped IPv6 peer matches as IPv4. The trusted proxy resolver and the proof
+API rate limiter use the same canonicalization. A configured or published network
+inside `::ffff:0:0/96` is converted to the equivalent IPv4 network. Other IPv6
+networks, including `::/0`, keep IPv6 semantics and never match an IPv4 client.
+Host bits in a network are truncated. The same index serves `client_ip.cidr` and
+`in_sets`.
+
+Feeds are fetched in the background, never on the request path; the first fetch
+starts at startup. `ip_prefixes_json` is the object published by Google, Bing and
+OpenAI:
+
+```json
+{"creationTime": "...", "prefixes": [{"ipv4Prefix": "66.249.64.0/27"}, {"ipv6Prefix": "2001:4860:4801:10::/64"}]}
+```
+
+`prefixes` is required. A prefix object with both or neither of `ipv4Prefix` and
+`ipv6Prefix` is ignored; a value that is not a valid network rejects the document.
+`formatVersion` is optional and a major version other than `1` rejects the
+document, while other unknown fields are ignored. A document with no usable prefix,
+or more than 65 536, is rejected. A successful fetch publishes a new immutable
+snapshot atomically, so in-flight evaluations keep the snapshot they loaded.
+Requests carry `If-None-Match` and `If-Modified-Since` from the last success and
+`304 Not Modified` renews the current snapshot. The response body is limited to
+4 MiB, the request to 30 seconds and redirects to 3 hops that keep the scheme of
+the configured URL. After a success the next fetch waits `refresh`. After a
+failure, a set that has never loaded retries after 15 seconds, doubling per
+consecutive failure up to 5 minutes; a loaded set waits 5 minutes, doubling per
+consecutive failure up to `refresh`. Every wait adds a uniform jitter of up to 10%. A failure keeps the
+last valid snapshot and increments the failure counter.
+
+A remote set is unknown before its first successful load and when its snapshot is
+older than `max_stale`. Static sets are always known. Conditions use three-valued
+logic: `all` is false when any child is false, otherwise unknown when any child is
+unknown, otherwise true; `any` is true when any child is true, otherwise unknown
+when any child is unknown, otherwise false; `not` keeps unknown. A rule whose
+condition is unknown never produces a more permissive outcome than it would with
+complete data:
+
+| Rule action | Unknown condition |
+| --- | --- |
+| `allow` | Skipped |
+| `score` with a positive score | Applied |
+| `score` with zero or a negative score | Skipped |
+| `challenge` | Applied |
+| `deny` | Challenge with the default algorithm and score-derived difficulty |
+
+The deny downgrade bounds the impact of a feed outage on a denylist. A decision is
+unresolved when any rule evaluated on the way to it, including the deciding rule,
+had an unknown condition; logs and metrics report unresolved decisions so the
+cause stays visible.
+Configuration validation treats a deny rule that references a remote set as a
+possible default challenge for algorithm and P2Pool checks.
+
+Matching a published range together with a declared User-Agent confirms that the
+request comes from the publisher's network and claims the matching identity. It is
+not cryptographic proof of identity. Publishers split crawler groups, so each set
+names one group.
 
 ## Challenge selection and score debugging
 

@@ -34,6 +34,12 @@ Terminate TLS at a trusted edge and restrict direct gateway access to the edge,
 load balancer and monitoring network. Restrict the application upstream so public
 clients cannot bypass the gateway. Production cookies require HTTPS.
 
+Remote IP set feeds are fetched in the background, never on the request path.
+`config check` never contacts publishers, and startup does not wait for them. Allow outbound HTTPS to the
+configured feed hosts and keep DNS available; an instance reports not ready until
+every remote set has loaded once. A feed outage after a successful load keeps the
+last valid snapshot and leaves readiness unaffected.
+
 When using nginx or Caddy on the same host, configure:
 
 ```yaml
@@ -79,7 +85,7 @@ The following routes are relative to `site.base_path`:
 | --- | --- |
 | `/api/live` | The process can serve HTTP requests |
 | `/api/health` | Existing web diagnostics and cumulative pool failures |
-| `/api/ready` | Upstream TCP connectivity, and P2Pool TCP connectivity when a configured challenge rule selects RandomX; returns 503 when unavailable or draining |
+| `/api/ready` | Upstream TCP connectivity, every configured remote IP set having loaded once, and P2Pool TCP connectivity when a configured challenge rule selects RandomX; returns 503 when unavailable or draining |
 | `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true` |
 
 Readiness probes have a positive timeout up to 30s (default 2s),
@@ -95,10 +101,12 @@ adjust those rules when changing `site.base_path`. Scrape the gateway directly
 from the monitoring network. No authentication is added to these endpoints.
 
 Metrics cover HTTP status classes and duration histograms, active connections
-and requests, overload rejections, pool sessions/failures, web reloads, and
-RandomX queue depth, active hashing, completions and rejected work. HTTP duration
-includes streaming/WebSocket lifetimes. Labels exclude paths, hosts and client
-IPs to keep cardinality bounded. Concurrent gauges and histograms are snapshots.
+and requests, overload rejections, pool sessions/failures, web reloads, IP set
+prefix counts, age, staleness and refresh failures, unresolved policy decisions,
+and RandomX queue depth, active hashing, completions and rejected work. HTTP
+duration includes streaming/WebSocket lifetimes. Labels exclude paths, hosts and
+client IPs to keep cardinality bounded, except a bounded configured IP set name.
+Concurrent gauges and histograms are snapshots.
 Use `RILGATE_LOG_FORMAT=json` for JSON logs and `RUST_LOG` for verbosity.
 
 `deploy/monitoring/` contains a Prometheus scrape example and initial alerts.

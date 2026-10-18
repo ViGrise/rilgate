@@ -7,10 +7,11 @@ are grouped by responsibility instead of collecting every subsystem in `src/`.
 ## Dependency direction
 
 ```text
-rilgate -> config, gateway, challenge, pow implementations, pool, web, telemetry
+rilgate -> config, gateway, challenge, pow implementations, pool, web, telemetry, ip-feeds
 config -> domain configuration types (challenge, policy, pool, pow, web)
 gateway -> config, challenge, policy, pool, pow API, protocol, crypto, web, telemetry
 challenge -> pow API, policy, protocol, crypto, core
+ip-feeds -> policy
 pow-randomx -> pow API, pool provider contract, protocol, core, randomx-core
 pow-hash -> pow API, protocol, core
 pool -> stratum, protocol, crypto, core
@@ -41,6 +42,11 @@ crates/rilgate-policy/src/
   policy/presets.rs Built-in policy definitions
   policy/evaluator.rs Ordered rule and threshold execution
   conditions/       Shared bounded matcher compiler and evaluator
+  ip_sets/          Address range index, set state and the set registry
+crates/rilgate-ip-feeds/src/
+  parse.rs          Published IP prefix document parsing
+  fetch.rs          Conditional, bounded and redirect-checked HTTP requests
+  refresh.rs        Background refresh loop with backoff and jitter
 crates/rilgate-crypto/src/
   derivation.rs     Purpose-specific HKDF signing keys
   secret/           Redacted secret representation

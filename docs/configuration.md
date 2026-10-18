@@ -96,6 +96,7 @@ with `B`, `KiB`, `MiB`, or `GiB`, without rounding or overflow.
 | `pow.algorithms.randomx.difficulty.base`, `.score_step`, `.max` | `1000`, `10`, `32000` |
 | `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
 | `policy.mode` | `balanced` |
+| `policy.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
 
 When `pow.p2pool` is enabled, its defaults are address `127.0.0.1:3333`, password
 `x`, agent `rilgate/0.1.0`, connect/submit timeouts `5s`/`20s`, session capacity
@@ -103,9 +104,11 @@ When `pow.p2pool` is enabled, its defaults are address `127.0.0.1:3333`, passwor
 Set mode `per_challenge` to create one connection per job; `max` and `idle`
 configure the pooled mode. Zero never selects a job acquisition strategy.
 
-Custom policies default to `default_action: allow`, no rules, score initial `0`,
-debug header disabled with name `x-pow-weight`, and no thresholds. Custom settings
-are rejected in preset modes. Debug headers are forbidden in production.
+Custom policies default to `default_action: allow`, no rules, no IP sets, score
+initial `0`, debug header disabled with name `x-pow-weight`, and no thresholds.
+Custom settings are rejected in preset modes. An IP set feed `url` must use
+`https` in production; development also accepts `http`. Debug headers are
+forbidden in production.
 
 ## Separate keys and rotation
 
