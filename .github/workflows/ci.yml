@@ -10,10 +10,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/rilgate-target
     steps:
       - uses: actions/checkout@v4
+      - name: Use a temporary Cargo target directory
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/rilgate-target" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
