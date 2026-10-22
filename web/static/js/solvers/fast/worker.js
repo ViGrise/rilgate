@@ -17,14 +17,34 @@ const K = new Uint32Array([
   0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]);
 
-const encoder = new TextEncoder();
+const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
+
+function utf8(input) {
+  if (encoder) return encoder.encode(input);
+  const bytes = [];
+  for (let i = 0; i < input.length; i++) {
+    let code = input.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const low = input.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + low - 0xdc00;
+        i++;
+      } else { code = 0xfffd; }
+    } else if (code >= 0xdc00 && code <= 0xdfff) { code = 0xfffd; }
+    if (code < 0x80) bytes.push(code);
+    else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+    else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    else bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+  }
+  return new Uint8Array(bytes);
+}
 
 function rotr(value, shift) {
   return (value >>> shift) | (value << (32 - shift));
 }
 
 function sha256(input) {
-  const bytes = encoder.encode(input);
+  const bytes = utf8(input);
   const bitLength = bytes.length * 8;
   const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
   const padded = new Uint8Array(paddedLength);
@@ -134,47 +154,45 @@ function meetsDifficulty(hash, difficulty) {
   return true;
 }
 
-self.onmessage = (event) => {
-  const { challenge, difficulty, start = 0 } = event.data;
-
-  if (
-    !Number.isInteger(difficulty) ||
-    difficulty < 1 ||
-    difficulty > 64
-  ) {
-    self.postMessage({
-      type: "error",
-      message: "Invalid fast difficulty",
-    });
-    return;
+function startFastWork(data, report) {
+  const { challenge, difficulty, start = 0 } = data;
+  let timer;
+  let canceled = false;
+  const cancel = () => { canceled = true; clearTimeout(timer); };
+  if (typeof difficulty !== "number" || !isFinite(difficulty) || Math.floor(difficulty) !== difficulty || difficulty < 1 || difficulty > 64) {
+    timer = setTimeout(() => report({ type: "error", message: "Invalid fast difficulty" }), 0);
+    return cancel;
   }
-
   let nonce = Number(start) || 0;
   let attempts = 0;
-  const startedAt = performance.now();
-
-  for (;;) {
-    const hash = sha256(`${challenge}${nonce}`);
-    attempts++;
-
-    if (meetsDifficulty(hash, difficulty)) {
-      self.postMessage({
-        type: "solved",
-        nonce: String(nonce),
-        attempts,
-        elapsed_ms: performance.now() - startedAt,
-      });
-      return;
+  const startedAt = Date.now();
+  function chunk() {
+    const deadline = Date.now() + 8;
+    while (!canceled) {
+      const hash = sha256(`${challenge}${nonce}`);
+      attempts++;
+      if (meetsDifficulty(hash, difficulty)) {
+        report({ type: "solved", nonce: String(nonce), attempts, elapsed_ms: Date.now() - startedAt });
+        return;
+      }
+      nonce++;
+      if (attempts % 128 === 0 && Date.now() >= deadline) break;
     }
-
-    nonce++;
-
-    if (attempts % 100000 === 0) {
-      self.postMessage({
-        type: "progress",
-        attempts,
-        elapsed_ms: performance.now() - startedAt,
-      });
+    if (!canceled) {
+      report({ type: "progress", attempts, elapsed_ms: Date.now() - startedAt });
+      timer = setTimeout(chunk, 0);
     }
   }
-};
+  timer = setTimeout(chunk, 0);
+  return cancel;
+}
+
+if (typeof window !== "undefined") {
+  window.PowClient.startFastWork = startFastWork;
+} else {
+  let cancel;
+  self.onmessage = (event) => {
+    if (cancel) cancel();
+    cancel = startFastWork(event.data, (message) => self.postMessage(message));
+  };
+}

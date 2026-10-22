@@ -4,19 +4,35 @@ use std::{
   process::{Command, ExitCode},
 };
 
+mod web;
+
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 const OUTPUT: &str = "web/static/js/solvers/randomx/randomx_wasm.wasm";
 
 fn main() -> ExitCode {
   match env::args().nth(1).as_deref() {
     Some("build-wasm") => build_wasm(),
+    Some("build-web") => {
+      let args: Vec<_> = env::args().skip(2).collect();
+      if !args.is_empty() && args != ["--check"] {
+        eprintln!("usage: cargo xtask build-web [--check]");
+        return ExitCode::FAILURE;
+      }
+      match web::build(&workspace_root(), args == ["--check"]) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+          eprintln!("{error:#}");
+          ExitCode::FAILURE
+        }
+      }
+    }
     Some("help" | "h" | "-h" | "--help") => {
-      eprintln!("cargo xtask build-wasm");
+      eprintln!("cargo xtask build-wasm\ncargo xtask build-web [--check]");
       ExitCode::SUCCESS
     }
     other => {
       eprintln!("unknown xtask command: {other:?}");
-      eprintln!("usage: cargo xtask build-wasm");
+      eprintln!("usage: cargo xtask build-wasm | build-web [--check]");
       ExitCode::FAILURE
     }
   }

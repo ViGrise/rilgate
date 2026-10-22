@@ -66,6 +66,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
   }
   for path in [
     "/shield/static/css/shield.css",
+    "/shield/static/js/challenge.bundle.js",
     "/shield/static/js/challenge.js",
     "/shield/static/js/challenge/runtime.js",
     "/shield/static/js/challenge/registry.js",
@@ -74,6 +75,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
     "/shield/static/js/solvers/fast/solver.js",
     "/shield/static/js/solvers/fast/worker.js",
     "/shield/static/js/solvers/randomx/adapter.js",
+    "/shield/static/js/solvers/randomx/loader.js",
     "/shield/static/js/solvers/randomx/solver.js",
     "/shield/static/randomx/randomx-worker.js",
   ] {
@@ -84,6 +86,19 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
       .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response.headers().contains_key("etag"));
+    let etag = response.headers()["etag"].clone();
+    let cached = router
+      .clone()
+      .oneshot(
+        Request::builder()
+          .uri(path)
+          .header("if-none-match", etag)
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
     let bytes = to_bytes(response.into_body(), 1_000_000).await.unwrap();
     assert!(!String::from_utf8_lossy(&bytes).contains("Rilgate"));
   }

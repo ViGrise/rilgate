@@ -13,7 +13,7 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
   const messages = [];
   const element = (id) => {
     if (!elements.has(id)) {
-      elements.set(id, { hidden: true, textContent: "", removeAttribute() {}, addEventListener(type, handler) { this[type] = handler; } });
+      elements.set(id, { hidden: true, textContent: "", removeAttribute() {}, removeEventListener() {}, addEventListener(type, handler) { this[type] = handler; } });
     }
     return elements.get(id);
   };
@@ -27,7 +27,7 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
     }
   }
   const context = vm.createContext({
-    AbortSignal, DOMException, Worker,
+    AbortSignal, AbortController, DOMException, Worker, setTimeout, clearTimeout,
     document: { querySelector: element },
     window: {
       POW_EMBEDDED: embedded, parent: { postMessage: (message, origin) => messages.push({ message, origin }) },
@@ -54,7 +54,7 @@ async function until(predicate) {
   assert.fail("page did not reach expected state");
 }
 
-function response(body) { return { ok: true, json: async () => body }; }
+function response(body) { return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) }; }
 function challengeFetch(url) {
   return response(url.endsWith("client-config") ? { enforce: "local_verify" } : { algorithm: "fast", challenge: "data", difficulty: 1, challenge_token: "challenge" });
 }
@@ -110,7 +110,7 @@ test("completed fast proofs clean up before exchanging the receipt and reloading
 test("rate-limit failures display the server's retry delay", async () => {
   const state = page(async () => ({
     ok: false, status: 429, headers: { get: () => "10" },
-    json: async () => ({ message: "Too many proof-of-work requests" }),
+    text: async () => JSON.stringify({ message: "Too many proof-of-work requests" }),
   }));
   await until(() => !state.element("#retry").hidden);
   assert.match(state.element("#status").textContent, /Try again in 10 seconds/);

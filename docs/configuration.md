@@ -115,6 +115,34 @@ By default it omits unchanged defaults; `--defaults` includes the whole schema.
 A redacted result is for inspection and cannot be used as a secret-bearing
 configuration. Validate external templates with `rilgate web validate DIRECTORY`.
 
+## Challenge browser support
+
+The embedded fast challenge targets IE11, Safari and iOS 9+, Chrome 49
+(including Windows XP), Firefox 52 ESR, Android 4.4 WebView, Samsung Internet 4,
+and KaiOS 2.5. Its classic ES5 startup bundle includes a small Promise fallback.
+Requests use XMLHttpRequest when fetch or AbortController is unavailable, and
+SHA-256 work yields in short chunks on the main thread when workers are absent.
+JavaScript must be enabled. This compatibility target is established by syntax
+checks and API fallback tests; the Playwright suite exercises current Chromium,
+Firefox and WebKit, not those historical browser releases.
+
+RandomX requires a modern browser with ES modules, workers, BigInt and WebAssembly
+SIMD, plus about 256 MiB of memory for its cache. An incapable browser displays
+the localized failure and retry controls after consent. It never switches a
+RandomX challenge to the fast algorithm on the client.
+
+`rilgate web init` and automatic seeding retain readable source files. The server
+assembles `static/js/challenge.bundle.js` from committed ES5 outputs when each
+source matches the embedded source digest, including seeded, unedited files.
+An operator-edited startup member or fast worker is served as authored, without
+the legacy browser guarantee. Individual script routes remain available. Changing
+a source member updates the assembled bundle on resource reload; a custom template
+must load the classic bundle to use it. No JavaScript compiler runs in the server.
+
+After editing embedded browser sources, regenerate the committed outputs with
+`cargo xtask build-web`. CI checks freshness with `cargo xtask build-web --check`.
+The [development guide](development.md) describes the regeneration workflow.
+
 ## Defaults
 
 Durations use units such as `300ms`, `5s`, `1m`, `6h`. Timeouts retain subsecond

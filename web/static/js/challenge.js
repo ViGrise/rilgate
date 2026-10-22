@@ -1,13 +1,4 @@
 async function main() {
-  if (!window.PowClient?.ready) {
-    for (const path of [
-      "challenge/runtime.js", "challenge/registry.js", "challenge/p2pool.js",
-      "solvers/fast/solver.js", "solvers/fast/adapter.js", "solvers/randomx/adapter.js",
-    ]) {
-      await import(`${window.POW_INTERNAL_PREFIX}/static/js/${path}`);
-    }
-    window.PowClient.ready = true;
-  }
   const { t, status, jsonFetch, endpoint, progressEl } = window.PowClient;
   const config = await jsonFetch(endpoint("/api/client-config"));
   const algorithm = window.POW_ALGORITHM;
@@ -35,5 +26,5 @@ main().catch((error) => {
     : `Challenge failed: ${error.message}`;
   const retry = document.querySelector("#retry");
   retry.hidden = false;
-  retry.addEventListener("click", () => location.reload(), { once: true });
+  window.PowClient.once(retry, "click", () => location.reload());
 });

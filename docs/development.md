@@ -20,6 +20,36 @@ dependencies and reports stay in temporary directories.
 The native RandomX reference tests below are opt-in and
 allocate substantial memory.
 
+## Browser resource generation
+
+Edit readable sources under `web/`, then run:
+
+```bash
+cargo xtask build-web
+cargo xtask build-web --check
+```
+
+Commit the resulting `crates/rilgate-web/generated/` files alongside source
+changes. The manifest records execution order, SHA-256 source digests and the
+pinned SWC compiler version. The build lowers each startup member and the fast
+worker to ES5 in a strict IIFE, with helpers inlined and no property mangling.
+The check command regenerates in memory, compares every output and validates
+both the assembled bundle and worker syntax. It requires Rust and the xtask
+build dependencies; Node and a JavaScript compiler are not runtime dependencies.
+
+The fast worker source also registers the same time-sliced hashing implementation
+in the page bundle for browsers without workers. It uses no Promise, so its
+standalone worker output needs no Promise polyfill. The startup bundle installs
+the local Apache-2.0 Promise compatibility implementation v1 only when Promise is
+missing; its source digest pins it with the other members. RandomX's module loader,
+solver and worker remain separate modern resources. The loader imports the
+configured solver only after the classic adapter checks capabilities and consent.
+Generated headers and `generated/NOTICE` retain helper license attribution.
+
+`web init` and `web diff` use `web/` sources, never generated outputs. Operator
+JavaScript overrides are concatenated as authored and must supply their own browser
+compatibility. See [browser requirements](configuration.md#challenge-browser-support).
+
 ## Code organization
 
 Typed YAML configuration and defaults live in `crates/rilgate-config/src/schema/`.

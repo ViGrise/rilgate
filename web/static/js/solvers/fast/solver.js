@@ -2,23 +2,27 @@
   const { t, status, endpoint } = window.PowClient;
   function solveFast(challenge) {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(endpoint("/static/js/solvers/fast/worker.js"), {
-        type: "classic",
-      });
+      let worker = null;
+      let cancel = null;
 
       const abort = () => {
         finish();
-        reject(new DOMException("Proof calculation canceled", "AbortError"));
+        const error = new Error("Proof calculation canceled");
+        error.name = "AbortError";
+        reject(error);
       };
       function finish() {
-        worker.terminate();
-        worker.onmessage = null;
-        worker.onerror = null;
+        if (worker) {
+          worker.terminate();
+          worker.onmessage = null;
+          worker.onerror = null;
+        }
+        if (cancel) cancel();
         window.removeEventListener("pagehide", abort);
       }
-      window.addEventListener("pagehide", abort, { once: true });
+      window.addEventListener("pagehide", abort);
 
-      worker.onmessage = (event) => {
+      const onmessage = (event) => {
         const message = event.data;
 
         if (message.type === "solved") {
@@ -44,17 +48,21 @@
         }
       };
 
-      worker.onerror = (event) => {
+      const onerror = (event) => {
         finish();
         reject(new Error(event.message || "SHA-256 worker failed"));
       };
 
       try {
-        worker.postMessage({
-          challenge: challenge.challenge,
-          difficulty: challenge.difficulty,
-          start: 0,
-        });
+        const data = { challenge: challenge.challenge, difficulty: challenge.difficulty, start: 0 };
+        if (typeof Worker === "function") {
+          worker = new Worker(endpoint("/static/js/solvers/fast/worker.js"));
+          worker.onmessage = onmessage;
+          worker.onerror = onerror;
+          worker.postMessage(data);
+        } else {
+          cancel = window.PowClient.startFastWork(data, (message) => onmessage({ data: message }));
+        }
       } catch (error) {
         finish();
         reject(error);

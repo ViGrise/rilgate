@@ -187,18 +187,18 @@ test("RandomX mining is disclosed and waits for a click before loading the solve
   const elements = new Map();
   const element = (selector) => {
     if (!elements.has(selector)) {
-      elements.set(selector, { textContent: "", hidden: true, removeAttribute() {}, addEventListener(type, handler) { this[type] = handler; } });
+      elements.set(selector, { textContent: "", hidden: true, removeAttribute() {}, removeEventListener() {}, addEventListener(type, handler) { this[type] = handler; } });
     }
     return elements.get(selector);
   };
   const calls = [];
   const context = vm.createContext({
-    AbortSignal,
+    AbortSignal, AbortController, setTimeout, clearTimeout,
     document: { querySelector: element },
     window: { POW_INTERNAL_PREFIX: "/gateway", POW_ALGORITHM: "randomx" },
     fetch: async (url) => {
       calls.push(url);
-      return { ok: true, json: async () => ({ enforce: "p2pool_accepted" }) };
+      return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ enforce: "p2pool_accepted" }) };
     },
     console: { error: (error) => assert.fail(error.message) },
   });

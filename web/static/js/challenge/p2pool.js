@@ -1,5 +1,5 @@
 (() => {
-  const { t, status, endpoint, exchange, progressEl } = window.PowClient;
+  const { t, status, endpoint, exchange, progressEl, once } = window.PowClient;
   async function p2poolAccepted(solver) {
     status(t("challenge.status.connecting", "Connecting to the P2Pool-backed proof-of-work service…"));
 
@@ -13,13 +13,9 @@
     );
 
     await new Promise((resolve, reject) => {
-      ws.addEventListener("open", resolve, { once: true });
-      ws.addEventListener(
-        "error",
-        () => reject(new Error("WebSocket connection failed")),
-        { once: true },
-      );
-      ws.addEventListener("close", () => reject(new Error("WebSocket connection closed")), { once: true });
+      once(ws, "open", resolve);
+      once(ws, "error", () => reject(new Error("WebSocket connection failed")));
+      once(ws, "close", () => reject(new Error("WebSocket connection closed")));
     }).catch((error) => {
       ws.close();
       throw error;
@@ -86,8 +82,8 @@
           }
         });
 
-        ws.addEventListener(
-          "close",
+        once(
+          ws, "close",
           () => {
             if (!completed) {
               reject(
@@ -97,7 +93,6 @@
               );
             }
           },
-          { once: true },
         );
       });
     } finally {

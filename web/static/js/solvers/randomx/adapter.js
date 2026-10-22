@@ -1,19 +1,32 @@
 (() => {
-  const { t, status, jsonFetch, endpoint, exchange, requestChallenge, progressEl } = window.PowClient;
-  async function loadRandomXSolver() {
+  const { t, status, jsonFetch, endpoint, exchange, requestChallenge, progressEl, once } = window.PowClient;
+  function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
-    if (!moduleUrl) {
-      throw new Error("RandomX solver module URL is empty");
+    const simd = [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11];
+    if (typeof Worker !== "function" || typeof WebAssembly !== "object" ||
+        typeof WebAssembly.validate !== "function" || typeof BigInt !== "function" ||
+        !WebAssembly.validate(new Uint8Array(simd))) {
+      return Promise.reject(new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly SIMD, BigInt, and workers is required.")));
     }
-
-    const module = await import(moduleUrl);
-    if (typeof module.solve !== "function") {
-      throw new Error(
-        "RandomX solver module must export async solve(job, options)",
-      );
-    }
-
-    return module;
+    if (!moduleUrl) return Promise.reject(new Error("RandomX solver module URL is empty"));
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      const timer = setTimeout(() => finish(new Error("RandomX solver module load timed out")), 30000);
+      function finish(error, module) {
+        clearTimeout(timer);
+        script.onerror = null;
+        if (script.parentNode) script.parentNode.removeChild(script);
+        delete window.PowClient.randomxLoaded;
+        if (error) reject(error);
+        else if (!module || typeof module.solve !== "function") reject(new Error("RandomX solver module must export async solve(job, options)"));
+        else resolve(module);
+      }
+      window.PowClient.randomxLoaded = (module, error) => finish(error, module);
+      script.type = "module";
+      script.src = endpoint("/static/js/solvers/randomx/loader.js");
+      script.onerror = () => finish(new Error("RandomX solver module failed to load"));
+      document.head.appendChild(script);
+    });
   }
 
   function randomxJob(job, difficulty, nonceOffset, expiresAt) {
@@ -90,10 +103,10 @@
       status(t("challenge.status.waiting", "Waiting for you to start RandomX work."));
       const startButton = document.querySelector("#randomx-start");
       startButton.hidden = false;
-      await new Promise((resolve) => startButton.addEventListener("click", resolve, { once: true }));
+      await new Promise((resolve) => once(startButton, "click", resolve));
       startButton.hidden = true;
       const solver = await loadRandomXSolver();
-      window.addEventListener("pagehide", () => solver.cancel?.(), { once: true });
+      const removePagehide = once(window, "pagehide", () => solver.cancel?.());
       try {
         if (config.enforce === "local_verify") {
           await randomxLocalVerify(solver);
@@ -105,6 +118,7 @@
           );
         }
       } finally {
+        removePagehide();
         solver.cancel?.();
       }
   }

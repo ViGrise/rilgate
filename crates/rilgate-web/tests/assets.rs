@@ -66,3 +66,56 @@ async fn asset_responses_preserve_bytes_and_cache_semantics() {
     }
   }
 }
+
+#[tokio::test]
+async fn challenge_assets_revalidate_the_bundle_and_individual_scripts() {
+  let snapshot =
+    rilgate_web::runtime::snapshot::WebSnapshot::build(&Default::default(), 1, false).unwrap();
+  for name in [
+    "js/challenge.bundle.js",
+    "js/challenge.js",
+    "js/challenge/runtime.js",
+    "js/challenge/registry.js",
+    "js/challenge/p2pool.js",
+    "js/solvers/fast/worker.js",
+    "js/solvers/fast/solver.js",
+    "js/solvers/fast/adapter.js",
+    "js/solvers/randomx/adapter.js",
+    "js/solvers/randomx/loader.js",
+    "js/solvers/randomx/solver.js",
+    "challenge.js",
+    "hash-worker.js",
+  ] {
+    let asset = &snapshot.assets[rilgate_web::assets::canonical_asset(name)];
+    let response = asset.response(&HeaderMap::new(), false).unwrap();
+    assert_eq!(response.status(), StatusCode::OK, "{name}");
+    assert_eq!(response.headers()[header::ETAG], asset.etag);
+    assert_eq!(
+      response.headers()[header::CACHE_CONTROL],
+      "public, max-age=0, must-revalidate"
+    );
+    assert_eq!(
+      response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .as_ref(),
+      asset.bytes().unwrap()
+    );
+    let mut headers = HeaderMap::new();
+    headers.insert(header::IF_NONE_MATCH, asset.etag.parse().unwrap());
+    let response = asset.response(&headers, false).unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{name}");
+    assert!(
+      response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .is_empty()
+    );
+  }
+}

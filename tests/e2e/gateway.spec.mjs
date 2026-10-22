@@ -53,7 +53,13 @@ test.beforeAll(async () => {
       !/^(RILGATE_|POW_|UPSTREAM_|WEB_|SERVE_|ENV$|APP_ENV$|CONFIG$|PORT$)/.test(key)));
     gateway = spawn(process.env.RILGATE_BINARY || join(root, 'target/debug/rilgate'), ['--config', configPath], {
       cwd: directory,
-      env: { ...environment, RILGATE_SERVER_OPERATIONS_LISTEN: `127.0.0.1:${operationsPort}`, RILGATE_SECURITY_SECRET: 'browser-test-proof-key-with-at-least-32-bytes' },
+      // Every browser project solves many proofs from the same loopback client.
+      env: {
+        ...environment,
+        RILGATE_SERVER_OPERATIONS_LISTEN: `127.0.0.1:${operationsPort}`,
+        RILGATE_POW_RATE_LIMIT_CLIENT_BURST: '1000',
+        RILGATE_SECURITY_SECRET: 'browser-test-proof-key-with-at-least-32-bytes',
+      },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let errors = '';
@@ -151,5 +157,59 @@ test('AJAX receives JSON, solves in an iframe and retries the original request',
   expect(result.status).toBe(200);
   expect(result.body).toContain('Protected origin');
   expect(result.url).toBe('/robots.txt');
+  expect(errors).toEqual([]);
+});
+
+for (const missing of [['fetch'], ['Promise'], ['TextEncoder'], ['Worker'], ['AbortSignal.timeout'], ['Object.hasOwn'],
+  ['fetch', 'Promise', 'TextEncoder', 'Worker', 'AbortSignal.timeout', 'Object.hasOwn', 'AbortController']]) {
+  test(`fast proof completes without ${missing.join(', ')}`, async ({ page, context }) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(missing => {
+      for (const name of missing) {
+        if (name === 'AbortSignal.timeout') {
+          if (window.AbortSignal) window.AbortSignal.timeout = undefined;
+        } else if (name === 'Object.hasOwn') {
+          Object.hasOwn = undefined;
+        } else {
+          window[name] = undefined;
+        }
+      }
+    }, missing);
+    if (missing.includes('TextEncoder')) {
+      await page.route('**/static/js/solvers/fast/worker.js', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, body: `self.TextEncoder = undefined;\n${await response.text()}` });
+      });
+    }
+    await page.goto(`${base}/protected?legacy=${encodeURIComponent(missing.join(','))}`);
+    await expect(page.getByRole('heading', { name: 'Protected origin' })).toBeVisible({ timeout: 45_000 });
+    expect((await context.cookies()).some(cookie => cookie.name === 'rilgate_auth')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('RandomX without WebAssembly reaches the localized retry UI before loading a module', async ({ page, context }) => {
+  const errors = [];
+  const workRequests = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (/\/api\/(challenge|verify|exchange)$|\/solvers\/randomx\/(loader|solver)\.js/.test(request.url())) workRequests.push(request.url());
+  });
+  await page.addInitScript(() => { window.WebAssembly = undefined; });
+  await page.route('**/randomx-incapable', async route => {
+    const response = await route.fetch();
+    const html = (await response.text()).replace('window.POW_ALGORITHM = "fast"', 'window.POW_ALGORITHM = "randomx"');
+    await route.fulfill({ response, body: html });
+  });
+  await page.route('**/api/client-config', route => route.fulfill({ json: {
+    enforce: 'local_verify', algorithms: [{ id: 'randomx' }],
+  } }));
+  await page.goto(`${base}/randomx-incapable`);
+  await page.locator('#randomx-start').click();
+  await expect(page.locator('#status')).toContainText('This browser cannot run RandomX');
+  await expect(page.locator('#retry')).toBeVisible();
+  expect(workRequests).toEqual([]);
+  expect((await context.cookies()).some(cookie => cookie.name === 'rilgate_auth')).toBe(false);
   expect(errors).toEqual([]);
 });

@@ -2,6 +2,7 @@
 {% block content %}
 <main>
   <h1>{{ t("challenge.title") }}</h1>
+  <noscript><p>{{ t("challenge.javascript_required") }}</p></noscript>
   <p id="description">{{ t("challenge.description") }}</p>
   {% include "partials/pow-info.html.jinja" %}
   <button id="randomx-start" type="button" hidden>{{ t("pow.disclosure.start") }}</button>
@@ -14,5 +15,5 @@
 {% block scripts %}
 <script type="application/json" id="pow-i18n">{{ client_i18n_json }}</script>
 {{ challenge_bootstrap }}
-<script type="module" src="{{ rilgate.static_url }}/js/challenge.js"></script>
+<script defer src="{{ rilgate.static_url }}/js/challenge.bundle.js"></script>
 {% endblock %}

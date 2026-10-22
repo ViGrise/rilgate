@@ -631,3 +631,110 @@ fn invalid_json_templates_keep_the_previous_resource_snapshot() {
   manager.reload().unwrap();
   assert!(manager.current().generation > generation);
 }
+
+#[test]
+fn generated_manifest_matches_sources_and_declares_startup_order() {
+  use sha2::{Digest, Sha256};
+  let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("generated");
+  let manifest: serde_json::Value =
+    serde_json::from_slice(&fs::read(directory.join("manifest.json")).unwrap()).unwrap();
+  let members = manifest["startup"].as_array().unwrap();
+  let paths = members
+    .iter()
+    .map(|member| member["source"].as_str().unwrap())
+    .collect::<Vec<_>>();
+  assert_eq!(
+    paths,
+    [
+      "static/js/challenge/promise.js",
+      "static/js/challenge/runtime.js",
+      "static/js/challenge/registry.js",
+      "static/js/challenge/p2pool.js",
+      "static/js/solvers/fast/worker.js",
+      "static/js/solvers/fast/solver.js",
+      "static/js/solvers/fast/adapter.js",
+      "static/js/solvers/randomx/adapter.js",
+      "static/js/challenge.js",
+    ]
+  );
+  let mut expected = Vec::new();
+  for member in members {
+    let source = EmbeddedWeb::get(member["source"].as_str().unwrap()).unwrap();
+    assert_eq!(
+      hex::encode(Sha256::digest(source)),
+      member["sha256"].as_str().unwrap()
+    );
+    expected.extend(fs::read(directory.join(member["output"].as_str().unwrap())).unwrap());
+    expected.extend_from_slice(b"\n;\n");
+  }
+  let snapshot = WebSnapshot::build(&WebConfig::default(), 1, false).unwrap();
+  assert_eq!(
+    snapshot.assets["js/challenge.bundle.js"].bytes().unwrap(),
+    expected
+  );
+  let html = render(&snapshot, "en");
+  assert!(html.contains("<script defer src="));
+  assert!(html.contains("/js/challenge.bundle.js"));
+  assert!(!html.contains("type=\"module\""));
+  assert!(html.contains("<noscript><p>JavaScript is required"));
+}
+
+#[test]
+fn seeded_sources_select_generated_output_and_edits_are_served_as_authored() {
+  let root = tempfile::tempdir().unwrap();
+  seed::initialize(root.path()).unwrap();
+  let embedded = WebSnapshot::build(&WebConfig::default(), 1, false).unwrap();
+  let seeded = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
+  for name in ["js/challenge.bundle.js", "js/solvers/fast/worker.js"] {
+    assert_eq!(embedded.assets[name].etag, seeded.assets[name].etag);
+    assert_eq!(
+      embedded.assets[name].bytes().unwrap(),
+      seeded.assets[name].bytes().unwrap()
+    );
+  }
+  let authored = "const operatorMessage = 'authored bytes';\n";
+  write(root.path(), "static/js/challenge/registry.js", authored);
+  let worker = "self.onmessage = function () { self.postMessage('operator'); };\n";
+  write(root.path(), "static/js/solvers/fast/worker.js", worker);
+  let edited = WebSnapshot::build(&config(root.path()), 2, true).unwrap();
+  let bundle = String::from_utf8(edited.assets["js/challenge.bundle.js"].bytes().unwrap()).unwrap();
+  assert!(bundle.contains(authored));
+  assert!(bundle.contains(worker));
+  assert!(!bundle.contains("Duplicate solver adapter"));
+  assert_eq!(
+    edited.assets["js/solvers/fast/worker.js"].bytes().unwrap(),
+    worker.as_bytes()
+  );
+  assert_eq!(
+    edited.assets["js/challenge/registry.js"].bytes().unwrap(),
+    authored.as_bytes()
+  );
+  assert_ne!(
+    seeded.assets["js/challenge.bundle.js"].etag,
+    edited.assets["js/challenge.bundle.js"].etag
+  );
+}
+
+#[test]
+fn wasm_revision_is_shared_by_module_and_bundle_overrides() {
+  let root = tempfile::tempdir().unwrap();
+  write(
+    root.path(),
+    "static/js/challenge.js",
+    "window.operatorRevision = '__WASM_REVISION__';",
+  );
+  write(
+    root.path(),
+    "static/js/solvers/randomx/randomx_wasm.wasm",
+    "operator wasm",
+  );
+  let snapshot = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
+  let revision = snapshot.assets["js/solvers/randomx/randomx_wasm.wasm"]
+    .etag
+    .trim_matches('"');
+  for name in ["js/challenge.bundle.js", "js/solvers/randomx/solver.js"] {
+    let text = String::from_utf8(snapshot.assets[name].bytes().unwrap()).unwrap();
+    assert!(text.contains(revision));
+    assert!(!text.contains("__WASM_REVISION__"));
+  }
+}

@@ -85,6 +85,7 @@ impl WebSnapshot {
         }
       }
     }
+    crate::resources::bundle::assemble(&mut assets)?;
     let mut maps = i18n_loader::load(&sources)?;
     for (locale, keys) in i18n_loader::load(&custom_i18n)? {
       maps.entry(locale).or_default().extend(keys);
@@ -122,15 +123,30 @@ impl WebSnapshot {
     let templates = renderer::compile(&config.templates, templates, translations.clone())?;
     if let Some(wasm) = assets.get("js/solvers/randomx/randomx_wasm.wasm") {
       let revision = wasm.etag.trim_matches('"').to_string();
-      if let Some(solver) = assets.get("js/solvers/randomx/solver.js") {
-        let source = String::from_utf8(solver.bytes()?).context("Solver module is not UTF-8")?;
-        assets.insert(
-          "js/solvers/randomx/solver.js".into(),
-          AssetMetadata::memory(
-            "js/solvers/randomx/solver.js",
-            source.replace("__WASM_REVISION__", &revision).into_bytes(),
-          ),
-        );
+      for name in [
+        "js/solvers/randomx/solver.js",
+        crate::resources::bundle::BUNDLE_PATH,
+        "js/solvers/fast/worker.js",
+      ] {
+        if let Some(asset) = assets.get(name) {
+          let bytes = asset.bytes()?;
+          let source = if name == "js/solvers/randomx/solver.js" {
+            String::from_utf8(bytes).context("Solver module is not UTF-8")?
+          } else if let Ok(source) = String::from_utf8(bytes) {
+            source
+          } else {
+            continue;
+          };
+          if source.contains("__WASM_REVISION__") {
+            assets.insert(
+              name.into(),
+              AssetMetadata::memory(
+                name,
+                source.replace("__WASM_REVISION__", &revision).into_bytes(),
+              ),
+            );
+          }
+        }
       }
     }
     let supported = SupportedLocales::resolve(&config.i18n, translations.locales.keys())?;
@@ -224,6 +240,7 @@ impl WebSnapshot {
         .with_context(|| format!("Missing page {page}"))?;
     }
     for name in [
+      "js/challenge.bundle.js",
       "js/challenge.js",
       "js/challenge/runtime.js",
       "js/challenge/registry.js",
@@ -232,6 +249,7 @@ impl WebSnapshot {
       "js/solvers/fast/adapter.js",
       "js/solvers/fast/worker.js",
       "js/solvers/randomx/adapter.js",
+      "js/solvers/randomx/loader.js",
       "js/solvers/randomx/solver.js",
       "js/solvers/randomx/randomx-worker.js",
       "js/solvers/randomx/randomx_wasm.wasm",
