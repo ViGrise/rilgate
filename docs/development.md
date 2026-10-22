@@ -26,16 +26,20 @@ Edit readable sources under `web/`, then run:
 
 ```bash
 cargo xtask build-web
-cargo xtask build-web --check
 ```
 
-Commit the resulting `crates/rilgate-web/generated/` files alongside source
-changes. The manifest records execution order, SHA-256 source digests and the
-pinned SWC compiler version. The build lowers each startup member and the fast
-worker to ES5 in a strict IIFE, with helpers inlined and no property mangling.
-The check command regenerates in memory, compares every output and validates
-both the assembled bundle and worker syntax. It requires Rust and the xtask
-build dependencies; Node and a JavaScript compiler are not runtime dependencies.
+The command writes `crates/rilgate-web/generated/`, which is ignored by Git and
+embedded into the server binary. Run it before `cargo build` and after every
+source change; `scripts/build.sh`, `scripts/test.sh`, the container build and CI
+run it. A server built from stale outputs rejects the snapshot with a
+`Stale generated web source` error.
+
+The manifest records execution order, SHA-256 source digests and the pinned SWC
+compiler version. The build lowers each startup member and the fast worker to
+ES5 in a strict IIFE, with helpers inlined and no property mangling, and
+validates the syntax of every output and of the assembled bundle. It requires
+Rust and the xtask build dependencies; Node and a JavaScript compiler are not
+runtime dependencies.
 
 The fast worker source also registers the same time-sliced hashing implementation
 in the page bundle for browsers without workers. It uses no Promise, so its

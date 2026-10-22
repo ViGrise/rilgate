@@ -27,7 +27,7 @@ const STARTUP: &[&str] = &[
 const WORKER: &str = "solvers/fast/worker.js";
 const NOTICE: &str = include_str!("web-notice.txt");
 
-pub fn build(root: &Path, check: bool) -> Result<()> {
+pub fn build(root: &Path) -> Result<()> {
   let directory = root.join("crates/rilgate-web/generated");
   let compiler = Compiler::new(Lrc::<SourceMap>::default());
   let mut outputs = BTreeMap::new();
@@ -59,33 +59,18 @@ pub fn build(root: &Path, check: bool) -> Result<()> {
       .into_bytes(),
   );
   outputs.insert("NOTICE".into(), NOTICE.as_bytes().to_vec());
-  if check {
-    let actual = output_files(&directory)?;
-    ensure!(
-      actual == outputs.keys().cloned().collect::<Vec<_>>(),
-      "Generated web file list is stale; run cargo xtask build-web"
-    );
-    for (name, bytes) in outputs {
-      ensure!(
-        fs::read(directory.join(&name)).ok().as_deref() == Some(&bytes),
-        "Generated web output {name} is stale; run cargo xtask build-web"
-      );
+  fs::create_dir_all(&directory)?;
+  for name in output_files(&directory)? {
+    if !outputs.contains_key(&name) {
+      fs::remove_file(directory.join(name))?;
     }
-    println!("Generated web output and ES5 syntax are current");
-  } else {
-    fs::create_dir_all(&directory)?;
-    for name in output_files(&directory)? {
-      if !outputs.contains_key(&name) {
-        fs::remove_file(directory.join(name))?;
-      }
-    }
-    for (name, bytes) in outputs {
-      let path = directory.join(name);
-      fs::create_dir_all(path.parent().context("Generated output parent")?)?;
-      fs::write(&path, bytes).with_context(|| format!("Writing {}", path.display()))?;
-    }
-    println!("Wrote ES5 browser resources to {}", directory.display());
   }
+  for (name, bytes) in outputs {
+    let path = directory.join(name);
+    fs::create_dir_all(path.parent().context("Generated output parent")?)?;
+    fs::write(&path, bytes).with_context(|| format!("Writing {}", path.display()))?;
+  }
+  println!("Wrote ES5 browser resources to {}", directory.display());
   Ok(())
 }
 

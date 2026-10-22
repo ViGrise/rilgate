@@ -41,8 +41,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
       - name: Prepare Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
-      - name: Check generated ES5 browser resources
-        run: cargo xtask build-web --check
       - name: Test workspace and browser resources
         run: scripts/test.sh
       - name: Test production flow in real browsers over HTTPS
@@ -137,6 +135,7 @@ jobs:
       - name: Build the browser solver and release binary
         run: |
           cargo xtask build-wasm
+          cargo xtask build-web
           cargo build --release --locked -p rilgate --features vendored-openssl
       - name: Smoke test the binary
         env:

@@ -132,15 +132,15 @@ the localized failure and retry controls after consent. It never switches a
 RandomX challenge to the fast algorithm on the client.
 
 `rilgate web init` and automatic seeding retain readable source files. The server
-assembles `static/js/challenge.bundle.js` from committed ES5 outputs when each
+assembles `static/js/challenge.bundle.js` from generated ES5 outputs when each
 source matches the embedded source digest, including seeded, unedited files.
 An operator-edited startup member or fast worker is served as authored, without
 the legacy browser guarantee. Individual script routes remain available. Changing
 a source member updates the assembled bundle on resource reload; a custom template
 must load the classic bundle to use it. No JavaScript compiler runs in the server.
 
-After editing embedded browser sources, regenerate the committed outputs with
-`cargo xtask build-web`. CI checks freshness with `cargo xtask build-web --check`.
+Build the generated outputs with `cargo xtask build-web` before building the
+server, the same way `cargo xtask build-wasm` stages the RandomX WASM.
 The [development guide](development.md) describes the regeneration workflow.
 
 ## Defaults

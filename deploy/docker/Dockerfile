@@ -16,6 +16,7 @@ COPY . .
 RUN --mount=type=cache,id=rilgate-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=rilgate-target,target=/app/target,sharing=locked \
     cargo xtask build-wasm \
+    && cargo xtask build-web \
     && cargo build --release --locked \
     && cp target/release/rilgate /app/rilgate-release
 
