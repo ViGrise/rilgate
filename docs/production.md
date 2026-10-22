@@ -102,7 +102,8 @@ address such as `127.0.0.1:9090`, or an address on a private monitoring network,
 and point probes and Prometheus at that listener. Public listeners always return
 404 for these routes. Operations listeners serve only these four routes and share
 connection and request capacity with public traffic. The default empty list
-disables operational routes entirely. Container orchestrator probes need
+disables operational routes entirely. `config/rilgate.production.yml` sets
+`127.0.0.1:9090` and enables metrics. Container orchestrator probes need
 an operations address reachable by the probe, such as the pod IP; loopback is
 reachable only within the container network namespace.
 

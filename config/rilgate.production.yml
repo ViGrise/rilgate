@@ -1,5 +1,8 @@
 server:
   listen: ":8080"
+  operations:
+    listen: "127.0.0.1:9090"
+  metrics_enabled: true
   upstream:
     url: "http://127.0.0.1:3000"
 security:
