@@ -6,5 +6,5 @@ scrape_configs:
   - job_name: rilgate
     metrics_path: /.well-known/rilgate/api/metrics
     static_configs:
-      # Configure server.operations.listen on an address reachable by Prometheus.
+      # The production template serves operational routes on 127.0.0.1:9090.
       - targets: ['127.0.0.1:9090']

@@ -36,12 +36,10 @@ COPY --from=builder /app/rilgate-release /app/rilgate
 COPY --from=builder /app/LICENSE /app/LICENSE
 COPY config/rilgate.production.yml /app/config/rilgate.yml
 
-ENV RILGATE_SERVER_OPERATIONS_LISTEN=127.0.0.1:9090
-
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl --fail --silent --max-time 4 http://127.0.0.1:9090/.well-known/rilgate/api/ready || exit 1
 
-EXPOSE 8080
+EXPOSE 8080 9090
 ENTRYPOINT ["/app/rilgate"]
 CMD ["--config", "/app/config/rilgate.yml"]
