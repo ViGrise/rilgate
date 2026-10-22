@@ -1,4 +1,4 @@
-FROM rust:1-bookworm@sha256:e12566d5abc17a0da741628782cdb504b68b8961f5bfcf677936bf3e8b32de29 AS builder
+FROM rust:1-bookworm@sha256:e12566d5abc17a0da741628782cdb504b68b8961f5bfcf677936bf3e8b32de29 AS chef
 
 ARG CARGO_BUILD_JOBS=2
 ENV CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS
@@ -9,16 +9,24 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY rust-toolchain.toml ./
-RUN rustup target add wasm32-unknown-unknown
-COPY . .
+RUN rustup target add wasm32-unknown-unknown \
+  && cargo install cargo-chef --version 0.1.78 --locked
 
-# Cache mounts are build-only; the runtime binary must also exist in the image layer.
-RUN --mount=type=cache,id=rilgate-registry,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,id=rilgate-target,target=/app/target,sharing=locked \
-    cargo xtask build-wasm \
-    && cargo xtask build-web \
-    && cargo build --release --locked \
-    && cp target/release/rilgate /app/rilgate-release
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Dependency layers depend only on the recipe, so they stay cached until manifests or Cargo.lock change.
+FROM chef AS builder
+COPY .cargo .cargo
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --locked --package rilgate --recipe-path recipe.json \
+  && cargo chef cook --locked --package xtask --recipe-path recipe.json
+COPY . .
+RUN cargo xtask build-wasm \
+  && cargo xtask build-web \
+  && cargo build --release --locked \
+  && cp target/release/rilgate /app/rilgate-release
 
 # The release binary alone, for packaging with
 # `docker buildx build --target binary --output type=local,dest=<dir>`.
