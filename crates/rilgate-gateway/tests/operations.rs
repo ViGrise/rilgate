@@ -15,7 +15,10 @@ async fn readiness_tracks_required_dependencies_while_liveness_stays_available()
   config.server.metrics_enabled = true;
   let gateway = app::router(cfg).await.unwrap();
   let client = reqwest::Client::new();
-  let base = format!("http://{}/.well-known/test-pow/api", gateway.address());
+  let base = format!(
+    "http://{}/.well-known/test-pow/api",
+    gateway.operations_address()
+  );
   let ready = client.get(format!("{base}/ready")).send().await.unwrap();
   assert_eq!(ready.status(), 200);
   let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
@@ -72,7 +75,10 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
     .difficulty = Some(1000);
   let gateway = app::router(cfg).await.unwrap();
   let client = reqwest::Client::new();
-  let base = format!("http://{}/.well-known/test-pow/api", gateway.address());
+  let base = format!(
+    "http://{}/.well-known/test-pow/api",
+    gateway.operations_address()
+  );
   assert_eq!(
     client
       .get(format!("{base}/ready"))
@@ -105,7 +111,9 @@ async fn connections_are_bounded_and_capacity_is_reclaimed() {
   let mut cfg = common::config();
   Arc::get_mut(&mut cfg).unwrap().server.max_connections = 1;
   let gateway = app::router(cfg).await.unwrap();
-  let mut first = TcpStream::connect(gateway.address()).await.unwrap();
+  let mut first = TcpStream::connect(gateway.operations_address())
+    .await
+    .unwrap();
   first
     .write_all(b"GET /.well-known/test-pow/api/live HTTP/1.1\r\nHost: example.test\r\n\r\n")
     .await
@@ -125,7 +133,7 @@ async fn connections_are_bounded_and_capacity_is_reclaimed() {
       if client
         .get(format!(
           "http://{}/.well-known/test-pow/api/live",
-          gateway.address()
+          gateway.operations_address()
         ))
         .send()
         .await
@@ -176,7 +184,14 @@ async fn in_flight_requests_are_bounded_and_released_after_completion() {
   tokio::time::timeout(Duration::from_secs(2), entered.notified())
     .await
     .unwrap();
-  let excess = client.get(&url).send().await.unwrap();
+  let excess = client
+    .get(format!(
+      "http://{}/.well-known/test-pow/api/live",
+      gateway.operations_address()
+    ))
+    .send()
+    .await
+    .unwrap();
   assert_eq!(excess.status(), 503);
   assert_eq!(excess.headers()["retry-after"], "1");
   release.notify_one();
@@ -187,7 +202,7 @@ async fn in_flight_requests_are_bounded_and_released_after_completion() {
   let response = client
     .get(format!(
       "http://{}/.well-known/test-pow/api/live",
-      gateway.address()
+      gateway.operations_address()
     ))
     .send()
     .await
@@ -274,7 +289,10 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
   .await
   .unwrap();
   let client = reqwest::Client::new();
-  let base = format!("http://{}/.well-known/test-pow/api", gateway.address());
+  let base = format!(
+    "http://{}/.well-known/test-pow/api",
+    gateway.operations_address()
+  );
 
   let ready = client.get(format!("{base}/ready")).send().await.unwrap();
   assert_eq!(ready.status(), 503);
@@ -348,4 +366,87 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
     "{metrics}"
   );
   drop(origin);
+}
+
+#[tokio::test]
+async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_gating() {
+  for metrics_enabled in [false, true] {
+    let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = common::config();
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.operations_listen_addresses = vec!["127.0.0.1:0".parse().unwrap()];
+    config.server.metrics_enabled = metrics_enabled;
+    config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
+    let gateway = app::router(cfg).await.unwrap();
+    let public_address = gateway.address();
+    let operations_address = gateway.operations_address();
+    let client = reqwest::Client::new();
+    let prefix = "/.well-known/test-pow";
+    for route in ["health", "ready", "live", "metrics"] {
+      for method in [
+        reqwest::Method::GET,
+        reqwest::Method::HEAD,
+        reqwest::Method::POST,
+      ] {
+        let public = client
+          .request(
+            method.clone(),
+            format!("http://{public_address}{prefix}/api/{route}"),
+          )
+          .send()
+          .await
+          .unwrap();
+        assert_eq!(public.status(), 404);
+        assert_eq!(public.headers()["cache-control"], "no-store");
+        let response = client
+          .request(
+            method.clone(),
+            format!("http://{operations_address}{prefix}/api/{route}"),
+          )
+          .send()
+          .await
+          .unwrap();
+        let expected = if route == "metrics" && !metrics_enabled {
+          404
+        } else if method == reqwest::Method::POST {
+          405
+        } else {
+          200
+        };
+        assert_eq!(response.status(), expected, "{route} {method}");
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        if method == reqwest::Method::HEAD {
+          assert!(response.bytes().await.unwrap().is_empty());
+        }
+      }
+    }
+    assert_eq!(
+      client
+        .get(format!("http://{public_address}{prefix}/api/client-config"))
+        .send()
+        .await
+        .unwrap()
+        .status(),
+      200
+    );
+    for path in [
+      format!("{prefix}/api/client-config"),
+      format!("{prefix}/challenge"),
+      format!("{prefix}/static/style.css"),
+      "/upstream".into(),
+      "/challenge".into(),
+      "/.well-known/test-pow-other/api/live".into(),
+    ] {
+      assert_eq!(
+        client
+          .get(format!("http://{operations_address}{path}"))
+          .send()
+          .await
+          .unwrap()
+          .status(),
+        404,
+        "{path}"
+      );
+    }
+  }
 }

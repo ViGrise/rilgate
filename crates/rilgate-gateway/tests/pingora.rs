@@ -86,12 +86,14 @@ async fn truncated_upload_returns_a_client_error() {
 async fn shutdown_closes_idle_connections_and_releases_the_listener() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let address = listener.local_addr().unwrap();
+  let operations = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let operations_address = operations.local_addr().unwrap();
   let gateway = app::build(common::config()).await.unwrap();
   let (stop, stopped) = tokio::sync::oneshot::channel();
-  let server = tokio::spawn(gateway.serve(vec![listener], async {
+  let server = tokio::spawn(gateway.serve(vec![listener], vec![operations], async {
     let _ = stopped.await;
   }));
-  let mut socket = TcpStream::connect(address).await.unwrap();
+  let mut socket = TcpStream::connect(operations_address).await.unwrap();
   socket
     .write_all(b"GET /.well-known/test-pow/api/health HTTP/1.1\r\nHost: example.test\r\n\r\n")
     .await
@@ -106,6 +108,7 @@ async fn shutdown_closes_idle_connections_and_releases_the_listener() {
     .unwrap()
     .unwrap();
   assert!(TcpStream::connect(address).await.is_err());
+  assert!(TcpStream::connect(operations_address).await.is_err());
 }
 
 #[tokio::test]
@@ -169,25 +172,42 @@ async fn hostname_upstreams_can_connect_using_their_available_address_family() {
 }
 
 #[tokio::test]
-async fn serves_requests_from_every_listener() {
+async fn public_listeners_hide_operational_routes_without_operations_configured() {
   let mut listeners = vec![TcpListener::bind("127.0.0.1:0").await.unwrap()];
   if let Ok(listener) = TcpListener::bind("[::1]:0").await {
     listeners.push(listener);
   }
   let addresses: Vec<_> = listeners.iter().map(|l| l.local_addr().unwrap()).collect();
-  let gateway = app::build(common::config()).await.unwrap();
+  let mut cfg = common::config();
+  Arc::get_mut(&mut cfg).unwrap().server.metrics_enabled = true;
+  assert!(cfg.operations_listen_addresses.is_empty());
+  let gateway = app::build(cfg).await.unwrap();
   let (stop, stopped) = tokio::sync::oneshot::channel();
-  let server = tokio::spawn(gateway.serve(listeners, async {
+  let server = tokio::spawn(gateway.serve(listeners, vec![], async {
     let _ = stopped.await;
   }));
   let client = reqwest::Client::new();
   for address in addresses {
-    let response = client
-      .get(format!("http://{address}/.well-known/test-pow/api/live"))
-      .send()
-      .await
-      .unwrap();
-    assert_eq!(response.status(), 200, "{address}");
+    for route in ["live", "health", "ready", "metrics"] {
+      let response = client
+        .get(format!("http://{address}/.well-known/test-pow/api/{route}"))
+        .send()
+        .await
+        .unwrap();
+      assert_eq!(response.status(), 404, "{address} {route}");
+      assert_eq!(response.headers()["cache-control"], "no-store");
+    }
+    assert_eq!(
+      client
+        .get(format!(
+          "http://{address}/.well-known/test-pow/api/client-config"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .status(),
+      200
+    );
   }
   stop.send(()).unwrap();
   server.await.unwrap().unwrap();

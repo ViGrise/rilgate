@@ -11,6 +11,7 @@ pub type Config = Arc<Configuration>;
 pub struct Configuration {
   pub env: Environment,
   pub listen_addresses: Vec<SocketAddr>,
+  pub operations_listen_addresses: Vec<SocketAddr>,
   pub app_port: u16,
   pub server: ServerConfig,
   pub upstream: UpstreamConfig,
@@ -78,11 +79,11 @@ pub(crate) fn validate_secret(secret: &rilgate_crypto::Secret, path: &str) -> Re
 }
 pub(crate) const MAX_LISTEN_ADDRESSES: usize = 16;
 
-fn listen_path(listen: &Listen, index: usize) -> String {
+fn listen_path(listen: &Listen, index: usize, path: &str) -> String {
   if listen.0.len() == 1 {
-    "server.listen".into()
+    path.into()
   } else {
-    format!("server.listen[{index}]")
+    format!("{path}[{index}]")
   }
 }
 fn listen_address(text: &str, path: &str) -> Result<SocketAddr> {
@@ -96,27 +97,31 @@ fn listen_address(text: &str, path: &str) -> Result<SocketAddr> {
     .with_context(|| format!("{path}: expected :PORT, IPv4:PORT or [IPv6]:PORT"))
 }
 /// Parses every entry without applying list-level limits.
-pub(crate) fn parse_listen(listen: &Listen) -> Result<Vec<SocketAddr>> {
+pub(crate) fn parse_listen(listen: &Listen, path: &str) -> Result<Vec<SocketAddr>> {
   listen
     .0
     .iter()
     .enumerate()
-    .map(|(index, text)| listen_address(text, &listen_path(listen, index)))
+    .map(|(index, text)| listen_address(text, &listen_path(listen, index, path)))
     .collect()
 }
 /// Parses and validates the listen list: size limit and no duplicate addresses.
-pub(crate) fn listen_addresses(listen: &Listen) -> Result<Vec<SocketAddr>> {
+pub(crate) fn listen_addresses(
+  listen: &Listen,
+  path: &str,
+  minimum: usize,
+) -> Result<Vec<SocketAddr>> {
   ensure!(
-    (1..=MAX_LISTEN_ADDRESSES).contains(&listen.0.len()),
-    "server.listen: expected 1 to {MAX_LISTEN_ADDRESSES} addresses, found {}",
+    (minimum..=MAX_LISTEN_ADDRESSES).contains(&listen.0.len()),
+    "{path}: expected {minimum} to {MAX_LISTEN_ADDRESSES} addresses, found {}",
     listen.0.len()
   );
-  let addresses = parse_listen(listen)?;
+  let addresses = parse_listen(listen, path)?;
   for (index, address) in addresses.iter().enumerate() {
     ensure!(
       !addresses[..index].contains(address),
       "{}: duplicate address {address}",
-      listen_path(listen, index)
+      listen_path(listen, index, path)
     );
   }
   Ok(addresses)

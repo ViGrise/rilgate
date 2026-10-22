@@ -8,12 +8,29 @@ const BACKLOG: i32 = 1024;
 
 pub async fn run(config: Config) -> Result<()> {
   let gateway = crate::app::build(config.clone()).await?;
-  let listeners = bind_all(&config.listen_addresses)?;
+  let mut listeners = bind_all(
+    &[
+      config.listen_addresses.as_slice(),
+      config.operations_listen_addresses.as_slice(),
+    ]
+    .concat(),
+  )?;
+  let operations_listeners = listeners.split_off(config.listen_addresses.len());
+  for listener in &operations_listeners {
+    tracing::info!(
+      "Starting Rilgate operations endpoint on {}",
+      listener.local_addr()?
+    );
+  }
   for listener in &listeners {
     tracing::info!("Starting Rilgate on {}", listener.local_addr()?);
   }
   gateway
-    .serve(listeners, crate::shutdown::shutdown_signal())
+    .serve(
+      listeners,
+      operations_listeners,
+      crate::shutdown::shutdown_signal(),
+    )
     .await
     .context("Gateway server failed")
 }

@@ -123,7 +123,10 @@ impl Fixture {
   async fn mismatches(&self) -> u64 {
     let text = self
       .client
-      .get(self.url("/.well-known/test-pow/api/metrics"))
+      .get(format!(
+        "http://{}/.well-known/test-pow/api/metrics",
+        self._gateway.operations_address()
+      ))
       .send()
       .await
       .unwrap()

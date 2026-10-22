@@ -40,10 +40,17 @@ use tokio::{
 #[derive(Clone)]
 pub struct Gateway {
   proxy: Arc<HttpProxy<Handler>>,
+  operations_proxy: Arc<HttpProxy<Handler>>,
   state: AppState,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ListenerRole {
+  Public,
+  Operations,
 }
 struct Handler {
   state: AppState,
+  role: ListenerRole,
 }
 pub struct RequestContext {
   id: http::HeaderValue,
@@ -63,30 +70,38 @@ impl Gateway {
       max_retries: 16,
       ..Default::default()
     });
-    let mut proxy = http_proxy(
-      &conf,
-      Handler {
-        state: state.clone(),
-      },
-    );
-    let mut options = HttpServerOptions::default();
-    options.h2c = true;
-    options.keepalive_request_limit = Some(1000);
-    options.h2_idle_timeout = Some(Duration::from_secs(60));
-    proxy.server_options = Some(options);
-    let mut h2 = pingora::protocols::http::v2::server::default_h2_options();
-    h2.max_concurrent_streams(state.cfg.server.h2_max_streams);
-    proxy.h2_options = Some(h2);
+    let build_proxy = |role| {
+      let mut proxy = http_proxy(
+        &conf,
+        Handler {
+          state: state.clone(),
+          role,
+        },
+      );
+      let mut options = HttpServerOptions::default();
+      options.h2c = true;
+      options.keepalive_request_limit = Some(1000);
+      options.h2_idle_timeout = Some(Duration::from_secs(60));
+      proxy.server_options = Some(options);
+      let mut h2 = pingora::protocols::http::v2::server::default_h2_options();
+      h2.max_concurrent_streams(state.cfg.server.h2_max_streams);
+      proxy.h2_options = Some(h2);
+      Arc::new(proxy)
+    };
     Self {
-      proxy: Arc::new(proxy),
+      proxy: build_proxy(ListenerRole::Public),
+      operations_proxy: build_proxy(ListenerRole::Operations),
       state,
     }
   }
   pub async fn serve(
     self,
-    listeners: Vec<TcpListener>,
+    mut listeners: Vec<TcpListener>,
+    operations_listeners: Vec<TcpListener>,
     shutdown: impl std::future::Future<Output = ()>,
   ) -> anyhow::Result<()> {
+    let public_count = listeners.len();
+    listeners.extend(operations_listeners);
     let (stop, stopped) = watch::channel(false);
     let mut connections = JoinSet::new();
     tokio::pin!(shutdown);
@@ -95,7 +110,7 @@ impl Gateway {
       tokio::select! {
         _ = &mut shutdown => break Ok(()),
         accepted = accept_any(&listeners, &mut first) => {
-          let (socket, _) = match accepted { Ok(pair) => pair, Err(error) => break Err(error.into()) };
+          let (index, (socket, _)) = match accepted { Ok(pair) => pair, Err(error) => break Err(error.into()) };
           let permit = match self.state.connections.clone().try_acquire_owned() {
             Ok(permit) => permit,
             Err(_) => {
@@ -112,7 +127,7 @@ impl Gateway {
           let mut stream = Stream::from(socket);
           stream.set_socket_digest(digest);
           let stream = DownstreamStream::new(stream);
-          let proxy = self.proxy.clone();
+          let proxy = if index < public_count { self.proxy.clone() } else { self.operations_proxy.clone() };
           let stopped = stopped.clone();
           connections.spawn(async move { let _permit = permit; proxy.process_new(Box::new(stream), &stopped).await; });
         }
@@ -125,6 +140,7 @@ impl Gateway {
     self.state.shutdown.cancel();
     let _ = stop.send(true);
     self.proxy.cleanup().await;
+    self.operations_proxy.cleanup().await;
     if tokio::time::timeout(Duration::from_secs(30), async {
       while connections.join_next().await.is_some() {}
     })
@@ -143,14 +159,14 @@ impl Gateway {
 async fn accept_any(
   listeners: &[TcpListener],
   first: &mut usize,
-) -> std::io::Result<(tokio::net::TcpStream, std::net::SocketAddr)> {
+) -> std::io::Result<(usize, (tokio::net::TcpStream, std::net::SocketAddr))> {
   std::future::poll_fn(|cx| {
     let count = listeners.len();
     for offset in 0..count {
       let index = (*first + offset) % count;
       if let std::task::Poll::Ready(accepted) = listeners[index].poll_accept(cx) {
         *first = (index + 1) % count;
-        return std::task::Poll::Ready(accepted);
+        return std::task::Poll::Ready(accepted.map(|pair| (index, pair)));
       }
     }
     std::task::Poll::Pending
@@ -275,6 +291,23 @@ impl Handler {
     let headers = session.req_header().headers.clone();
     let uri = session.req_header().uri.clone();
     let method = session.req_header().method.clone();
+    let operational = matches!(
+      path,
+      "/api/live" | "/api/health" | "/api/ready" | "/api/metrics"
+    );
+    let hidden = match self.role {
+      ListenerRole::Public => operational,
+      ListenerRole::Operations => !operational,
+    };
+    if hidden {
+      let mut out = response(StatusCode::NOT_FOUND, "");
+      if path.starts_with("/api/") {
+        out
+          .headers_mut()
+          .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+      }
+      return Ok(Some(out));
+    }
     let proof = matches!(
       path,
       "/challenge" | "/api/challenge" | "/api/verify" | "/api/exchange" | "/api/ws"
@@ -563,6 +596,10 @@ impl ProxyHttp for Handler {
       return Ok(true);
     }
 
+    if self.role == ListenerRole::Operations {
+      send(session, response(StatusCode::NOT_FOUND, ""), ctx).await?;
+      return Ok(true);
+    }
     ctx.upstream = match self.state.proxy.request_target(&session.req_header().uri) {
       Ok(url) => Some(url),
       Err(error) => {

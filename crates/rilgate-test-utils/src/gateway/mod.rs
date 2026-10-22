@@ -50,6 +50,7 @@ pub async fn router(config: Config) -> Result<TestGateway> {
 pub struct TestGateway(Arc<RunningGateway>);
 struct RunningGateway {
   address: std::net::SocketAddr,
+  operations_address: std::net::SocketAddr,
   stop: tokio_util::sync::CancellationToken,
 }
 impl Drop for RunningGateway {
@@ -64,15 +65,28 @@ impl TestGateway {
       std::net::Ipv6Addr::LOCALHOST.into(),
       listener.local_addr()?.port(),
     );
+    let operations_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let operations_address = operations_listener.local_addr()?;
     let stop = tokio_util::sync::CancellationToken::new();
     let stopped = stop.clone();
     tokio::spawn(async move {
       gateway
-        .serve(vec![listener], stopped.cancelled())
+        .serve(
+          vec![listener],
+          vec![operations_listener],
+          stopped.cancelled(),
+        )
         .await
         .expect("test listener");
     });
-    Ok(Self(Arc::new(RunningGateway { address, stop })))
+    Ok(Self(Arc::new(RunningGateway {
+      address,
+      operations_address,
+      stop,
+    })))
+  }
+  pub fn operations_address(&self) -> std::net::SocketAddr {
+    self.0.operations_address
   }
   pub fn address(&self) -> std::net::SocketAddr {
     self.0.address

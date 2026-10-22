@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[serde(default, deny_unknown_fields)]
 pub struct Server {
   pub listen: Listen,
+  pub operations: Operations,
   pub upstream: Upstream,
   pub max_connections: usize,
   pub max_requests: usize,
@@ -17,6 +18,7 @@ impl Default for Server {
   fn default() -> Self {
     Self {
       listen: Listen::single(":8080"),
+      operations: Operations::default(),
       upstream: Upstream::default(),
       max_connections: 1024,
       max_requests: 512,
@@ -26,6 +28,11 @@ impl Default for Server {
       readiness_timeout: Time::seconds(2),
     }
   }
+}
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Operations {
+  pub listen: Listen,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -61,7 +68,7 @@ impl Default for Timeout {
 }
 
 /// One listen address or a list of them. A single address serializes as a plain string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Listen(pub Vec<String>);
 impl Listen {
   pub fn single(address: impl Into<String>) -> Self {

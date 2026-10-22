@@ -378,3 +378,102 @@ fn listen_round_trips_with_a_single_address_as_a_string() {
   assert_eq!(back.listen, many.server.listen);
   assert!(yaml.contains("- "), "{yaml}");
 }
+
+fn with_operations(listen: &str) -> String {
+  BASE.replace(
+    "  upstream:",
+    &format!("  operations:\n    listen: {listen}\n  upstream:"),
+  )
+}
+
+#[test]
+fn operations_listen_accepts_single_list_and_empty_default() {
+  assert!(
+    resolve(BASE)
+      .unwrap()
+      .operations_listen_addresses
+      .is_empty()
+  );
+  for listen in ["'127.0.0.1:9090'", "['127.0.0.1:9090']"] {
+    assert_eq!(
+      resolve(&with_operations(listen))
+        .unwrap()
+        .operations_listen_addresses,
+      ["127.0.0.1:9090".parse().unwrap()]
+    );
+  }
+  assert_eq!(
+    resolve(&with_operations("[':9090', '[::1]:9091']"))
+      .unwrap()
+      .operations_listen_addresses
+      .len(),
+    2
+  );
+  assert!(
+    resolve(&with_operations("[]"))
+      .unwrap()
+      .operations_listen_addresses
+      .is_empty()
+  );
+}
+
+#[test]
+fn operations_listen_validation_names_the_path() {
+  for (listen, path) in [
+    (
+      "[':9090', '0.0.0.0:9090']",
+      "server.operations.listen[1]: duplicate",
+    ),
+    ("[':9090', ':8080']", "server.operations.listen[1]:"),
+    ("'localhost:9090'", "server.operations.listen:"),
+  ] {
+    let error = resolve(&with_operations(listen)).unwrap_err();
+    assert!(format!("{error:#}").contains(path), "{error:#}");
+  }
+  let addresses = (1..=17)
+    .map(|port| format!("':{port}'"))
+    .collect::<Vec<_>>();
+  assert!(
+    resolve(&with_operations(&format!(
+      "[{}]",
+      addresses[..16].join(",")
+    )))
+    .is_ok()
+  );
+  let error = resolve(&with_operations(&format!("[{}]", addresses.join(",")))).unwrap_err();
+  assert!(
+    error.to_string().contains("server.operations.listen"),
+    "{error:#}"
+  );
+  assert!(
+    parse(&BASE.replace(
+      "  upstream:",
+      "  operations:\n    unknown: true\n  upstream:"
+    ))
+    .is_err()
+  );
+}
+
+#[test]
+fn port_override_preserves_operations_listen_addresses() {
+  let file = tempfile::NamedTempFile::new().unwrap();
+  std::fs::write(
+    file.path(),
+    with_operations("['127.0.0.1:9090', '[::1]:9091']"),
+  )
+  .unwrap();
+  let cfg = rilgate_config::Configuration::load(rilgate_config::Overrides {
+    config: Some(file.path().to_owned()),
+    port: Some(9000),
+    ..Default::default()
+  })
+  .unwrap();
+  assert_eq!(cfg.listen_addresses[0].port(), 9000);
+  assert_eq!(
+    cfg.operations_listen_addresses,
+    [
+      "127.0.0.1:9090".parse().unwrap(),
+      "[::1]:9091".parse().unwrap()
+    ]
+  );
+}

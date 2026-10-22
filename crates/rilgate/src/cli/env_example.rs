@@ -40,7 +40,7 @@ const PROCESS: &[(&str, &str, &str)] = &[
   (
     "RILGATE_PORT",
     "",
-    "Replaces only the port of the resolved listen address. Flag: --port",
+    "Replaces the ports of server.listen addresses; preserves operations addresses. Flag: --port",
   ),
   (
     "RUST_LOG",

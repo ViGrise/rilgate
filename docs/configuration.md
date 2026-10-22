@@ -55,6 +55,7 @@ followed by the flag in upper snake case; there are no exceptions.
 | `environment` | `--environment`, `-E` | `RILGATE_ENVIRONMENT` |
 | `server.upstream.url` | `--server-upstream-url`, `-u` | `RILGATE_SERVER_UPSTREAM_URL` |
 | `server.listen` | `--server-listen`, `-l` | `RILGATE_SERVER_LISTEN` |
+| `server.operations.listen` | `--server-operations-listen` | `RILGATE_SERVER_OPERATIONS_LISTEN` |
 | `security.secret` | `--security-secret`, `-s` | `RILGATE_SECURITY_SECRET` |
 | `server.max_connections` | `--server-max-connections` | `RILGATE_SERVER_MAX_CONNECTIONS` |
 | `site.i18n.default` | `--site-i18n-default` | `RILGATE_SITE_I18N_DEFAULT` |
@@ -77,7 +78,22 @@ system. When the list also holds `:8080` or `0.0.0.0:8080` with the same port,
 the IPv4 wildcard serves IPv4 and `[::]:8080` serves IPv6 only. Other IPv6
 addresses are IPv6 only. Duplicate addresses are rejected.
 
-`--port` (`RILGATE_PORT`) replaces the port of every listen address.
+`server.operations.listen` uses the same address syntax and accepts one address
+or a list of up to 16. It defaults to `[]` (disabled). Its flag and environment
+variable take a comma-separated list. Duplicate addresses and addresses equal
+to any `server.listen` address are rejected. Dual-stack binding considers both
+lists together.
+
+Only the operations listeners serve `/api/live`, `/api/health`, `/api/ready` and
+`/api/metrics`, relative to `site.base_path`. Public listeners return 404 for
+those paths. Operations listeners return 404 for all other paths and never
+evaluate policy or proxy upstream. These endpoints have no authentication; bind
+them to loopback or a private monitoring network. `server.metrics_enabled` still
+controls metrics availability. With the default empty list, these routes are
+served nowhere.
+
+`--port` (`RILGATE_PORT`) replaces the port of every `server.listen` address;
+it preserves operations addresses.
 `--log-level` (`RUST_LOG`) sets the log filter and `--log-format`
 (`RILGATE_LOG_FORMAT`) selects `text` or `json` output. Old automatic `POW_*`,
 `WEB_*`, `SERVE_*`, `ENV`, `PORT`, and `CONFIG` aliases are unsupported.
@@ -111,6 +127,7 @@ with `B`, `KiB`, `MiB`, or `GiB`, without rounding or overflow.
 | --- | --- |
 | `environment` | `production` |
 | `server.listen` | `:8080` (one address or a list) |
+| `server.operations.listen` | `[]` (disabled) |
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |

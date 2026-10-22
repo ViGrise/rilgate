@@ -30,6 +30,13 @@ With the default prefix:
 /.well-known/rilgate/static/js/solvers/randomx/randomx_wasm.wasm
 ```
 
+`/api/health`, `/api/live`,
+`/api/ready` and `/api/metrics` are served only on operations listeners; public
+listeners return 404 for them. Operations listeners return 404 for every other
+route. With the default empty `server.operations.listen` list, operational routes
+are disabled and are served nowhere.
+Metrics still require `server.metrics_enabled: true`.
+
 Changing `site.base_path` moves the APIs and assets. The prefix itself has no
 index page and returns `404`.
 

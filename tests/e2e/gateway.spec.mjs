@@ -40,6 +40,9 @@ test.beforeAll(async () => {
     const originPort = await listen(origin);
     const reservation = createServer();
     const port = await listen(reservation);
+    const operationsReservation = createServer();
+    const operationsPort = await listen(operationsReservation);
+    await new Promise(resolve => operationsReservation.close(resolve));
     await new Promise(resolve => reservation.close(resolve));
     const config = (await readFile(join(root, 'config/rilgate.production.yml'), 'utf8'))
       .replace('listen: ":8080"', `listen: "127.0.0.1:${port}"`)
@@ -50,14 +53,14 @@ test.beforeAll(async () => {
       !/^(RILGATE_|POW_|UPSTREAM_|WEB_|SERVE_|ENV$|APP_ENV$|CONFIG$|PORT$)/.test(key)));
     gateway = spawn(process.env.RILGATE_BINARY || join(root, 'target/debug/rilgate'), ['--config', configPath], {
       cwd: directory,
-      env: { ...environment, RILGATE_SECURITY_SECRET: 'browser-test-proof-key-with-at-least-32-bytes' },
+      env: { ...environment, RILGATE_SERVER_OPERATIONS_LISTEN: `127.0.0.1:${operationsPort}`, RILGATE_SECURITY_SECRET: 'browser-test-proof-key-with-at-least-32-bytes' },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let errors = '';
     gateway.stderr.on('data', chunk => { errors = (errors + chunk).slice(-8192); });
     for (let attempt = 0; ; attempt++) {
       try {
-        const ready = await fetch(`http://127.0.0.1:${port}/.well-known/rilgate/api/ready`, { signal: AbortSignal.timeout(500) });
+        const ready = await fetch(`http://127.0.0.1:${operationsPort}/.well-known/rilgate/api/ready`, { signal: AbortSignal.timeout(500) });
         if (ready.ok) break;
       } catch { /* Startup is asynchronous. */ }
       if (attempt >= 100 || gateway.exitCode !== null) throw new Error(`Gateway did not become ready: ${errors}`);

@@ -14,6 +14,7 @@ cd "$ROOT"
 BINARY="${PERF_GATE_BINARY:-./target/release/rilgate}"
 RUNDIR="${PERF_GATE_RUNDIR:-/tmp/rilgate-perf-gate}"
 PORT="${PERF_GATE_PORT:-8080}"
+OPERATIONS_PORT="${PERF_GATE_OPERATIONS_PORT:-9090}"
 UPSTREAM_PORT="${PERF_GATE_UPSTREAM_PORT:-3300}"
 CONNECTIONS="${PERF_GATE_CONNECTIONS:-32}"
 THREADS="${PERF_GATE_THREADS:-2}"
@@ -58,13 +59,13 @@ wait_for_http() {
 
 # p50 in microseconds, from a wrk --latency run.
 measure_latency() {
-  local path="$1" ua="$2" out p50
+  local path="$1" ua="$2" out p50 port="${4:-$PORT}"
   local request_headers=(-H "User-Agent: $ua")
   if [[ -n "${3:-}" ]]; then request_headers+=(-H "Cookie: $3"); fi
   wrk -t"$THREADS" -c"$CONNECTIONS" -d"$WARMUP" "${request_headers[@]}" \
-    "http://127.0.0.1:$PORT$path" >/dev/null 2>&1
+    "http://127.0.0.1:$port$path" >/dev/null 2>&1
   out="$(wrk -t"$THREADS" -c"$CONNECTIONS" -d"$DURATION" --latency \
-    "${request_headers[@]}" "http://127.0.0.1:$PORT$path")"
+    "${request_headers[@]}" "http://127.0.0.1:$port$path")"
   if [[ "$out" == *"Non-2xx or 3xx responses:"* || "$out" == *"Socket errors:"* ]]; then
     echo "perf-gate: unsuccessful load run for $path" >&2
     echo "$out" >&2
@@ -93,6 +94,8 @@ wait_for_http "http://127.0.0.1:$UPSTREAM_PORT/"
 cat >"$RUNDIR/rilgate.yml" <<EOF
 server:
   listen: "127.0.0.1:$PORT"
+  operations:
+    listen: "127.0.0.1:$OPERATIONS_PORT"
   upstream:
     url: "http://127.0.0.1:$UPSTREAM_PORT"
 security:
@@ -127,9 +130,9 @@ else
     >"$RUNDIR/gateway.log" 2>&1 &
 fi
 PIDS+=($!)
-wait_for_http "http://127.0.0.1:$PORT/.well-known/rilgate/api/health"
+wait_for_http "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/health"
 
-health_body="$(curl -fsS "http://127.0.0.1:$PORT/.well-known/rilgate/api/health")"
+health_body="$(curl -fsS "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/health")"
 node --input-type=module -e 'if (JSON.parse(process.argv[1]).status !== "ok") process.exit(1)' "$health_body"
 challenge_body="$(curl -fsS -H "User-Agent: $BROWSER_UA" "http://127.0.0.1:$PORT/protected")"
 if [[ "$challenge_body" != *"window.POW_PRESENTATION_TOKEN = "* ]]; then
@@ -147,7 +150,7 @@ fi
 
 log_bytes_before="$(stat -c%s "$RUNDIR/gateway.log" 2>/dev/null || stat -f%z "$RUNDIR/gateway.log" 2>/dev/null || echo 0)"
 
-health_result="$(measure_latency /.well-known/rilgate/api/health rilgate-perf-gate/1.0)"
+health_result="$(measure_latency /.well-known/rilgate/api/health rilgate-perf-gate/1.0 "" "$OPERATIONS_PORT")"
 challenge_result="$(measure_latency /protected "$BROWSER_UA")"
 authenticated_result="$(measure_latency /protected "$BROWSER_UA" "$auth_cookie")"
 allowed_result="$(measure_latency /public rilgate-perf-gate/1.0)"

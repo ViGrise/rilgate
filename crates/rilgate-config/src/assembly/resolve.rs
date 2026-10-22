@@ -7,7 +7,23 @@ use std::sync::Arc;
 
 impl Document {
   pub fn resolve(&self) -> Result<Config> {
-    let addresses = super::listen_addresses(&self.server.listen)?;
+    let addresses = super::listen_addresses(&self.server.listen, "server.listen", 1)?;
+    let operations_listen_addresses = super::listen_addresses(
+      &self.server.operations.listen,
+      "server.operations.listen",
+      0,
+    )?;
+    for (index, address) in operations_listen_addresses.iter().enumerate() {
+      ensure!(
+        !addresses.contains(address),
+        "{}: address {address} overlaps server.listen",
+        super::listen_path(
+          &self.server.operations.listen,
+          index,
+          "server.operations.listen"
+        )
+      );
+    }
     ensure!(
       !self.server.upstream.url.is_empty(),
       "server.upstream.url: required; expected an HTTP or HTTPS upstream URL"
@@ -59,6 +75,7 @@ impl Document {
       env: self.environment,
       app_port: addresses[0].port(),
       listen_addresses: addresses,
+      operations_listen_addresses,
       server: ServerConfig {
         max_connections: self.server.max_connections,
         max_requests: self.server.max_requests,

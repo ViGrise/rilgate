@@ -84,7 +84,7 @@ async fn proof_endpoints_share_quota_but_assets_and_health_remain_available() {
       .unwrap();
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
   }
-  for path in ["api/client-config", "api/health", "static/challenge.js"] {
+  for path in ["api/client-config", "static/challenge.js"] {
     let response = router
       .clone()
       .oneshot(
@@ -97,6 +97,13 @@ async fn proof_endpoints_share_quota_but_assets_and_health_remain_available() {
       .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
   }
+  let health = reqwest::get(format!(
+    "http://{}/.well-known/test-pow/api/health",
+    router.operations_address()
+  ))
+  .await
+  .unwrap();
+  assert_eq!(health.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -150,7 +157,7 @@ async fn server_connection_info_populates_the_client_bucket() {
   let gateway = app::build(cfg).await.unwrap();
   let server = tokio::spawn(async move {
     gateway
-      .serve(vec![listener], std::future::pending())
+      .serve(vec![listener], vec![], std::future::pending())
       .await
       .unwrap();
   });

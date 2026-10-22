@@ -23,7 +23,7 @@ pub fn load(args: &Overrides) -> Result<Document> {
   };
   let mut document = parse_with(&text, &args.settings)?;
   if let Some(port) = args.port {
-    let addresses = super::assembly::parse_listen(&document.server.listen)?;
+    let addresses = super::assembly::parse_listen(&document.server.listen, "server.listen")?;
     document.server.listen.0 = addresses
       .into_iter()
       .map(|mut address| {

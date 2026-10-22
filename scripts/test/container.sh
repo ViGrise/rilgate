@@ -28,16 +28,18 @@ chmod 755 "$workdir"
 chmod 644 "$workdir/origin.yml"
 docker run -d --name "$name-origin" --network "$network" --network-alias origin \
   -v "$workdir/origin.yml:/app/config/rilgate.yml:ro" \
+  -e RILGATE_SERVER_OPERATIONS_LISTEN=0.0.0.0:9090 \
   -e RILGATE_SECURITY_SECRET=container-origin-secret-with-at-least-32-bytes \
   "$image" >/dev/null
 docker run -d --name "$name" --network "$network" --publish 127.0.0.1::8080 --read-only --cap-drop ALL \
   --security-opt no-new-privileges:true --pids-limit 128 --memory 1g \
   --tmpfs /tmp:size=16m,noexec,nosuid \
   -e RILGATE_SECURITY_SECRET=container-test-secret-with-at-least-32-bytes \
-  -e RILGATE_SERVER_UPSTREAM_URL=http://origin:8080 "$image" >/dev/null
+  -e RILGATE_SERVER_OPERATIONS_LISTEN=127.0.0.1:9090 \
+  -e RILGATE_SERVER_UPSTREAM_URL=http://origin:9090 "$image" >/dev/null
 [[ "$(docker inspect --format '{{.Config.User}}' "$name")" == "10001:10001" ]]
 for attempt in $(seq 1 60); do
-  if docker exec "$name" curl -fsS --max-time 2 http://127.0.0.1:8080/.well-known/rilgate/api/ready >/dev/null; then break; fi
+  if docker exec "$name" curl -fsS --max-time 2 http://127.0.0.1:9090/.well-known/rilgate/api/ready >/dev/null; then break; fi
   if [[ "$attempt" == 60 ]]; then docker logs "$name"; exit 1; fi
   sleep 1
 done
@@ -54,11 +56,11 @@ cookie="$(node tests/container/proof.mjs "$base")"
 proxied="$(curl -fsS --max-time 10 -H "Cookie: $cookie" "$base/origin-internal/api/live")"
 [[ "$proxied" == *'"status":"ok"'* ]]
 docker stop "$name-origin" >/dev/null
-status="$(docker exec "$name" curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/.well-known/rilgate/api/ready)"
+status="$(docker exec "$name" curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:9090/.well-known/rilgate/api/ready)"
 [[ "$status" == 503 ]]
-docker exec "$name" curl -fsS http://127.0.0.1:8080/.well-known/rilgate/api/live >/dev/null
+docker exec "$name" curl -fsS http://127.0.0.1:9090/.well-known/rilgate/api/live >/dev/null
 docker start "$name-origin" >/dev/null
-docker exec "$name" curl --retry 10 --retry-all-errors --retry-delay 1 -fsS --max-time 3 http://127.0.0.1:8080/.well-known/rilgate/api/ready >/dev/null
+docker exec "$name" curl --retry 10 --retry-all-errors --retry-delay 1 -fsS --max-time 3 http://127.0.0.1:9090/.well-known/rilgate/api/ready >/dev/null
 proxied="$(curl -fsS --max-time 10 -H "Cookie: $cookie" "$base/origin-internal/api/live")"
 [[ "$proxied" == *'"status":"ok"'* ]]
 docker stop --time 45 "$name" >/dev/null

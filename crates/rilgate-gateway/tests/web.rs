@@ -98,17 +98,14 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
     .await
     .unwrap();
   assert_eq!(response.status(), StatusCode::NOT_FOUND);
-  let response = router
-    .oneshot(
-      Request::builder()
-        .uri("/shield/api/health")
-        .body(Body::empty())
-        .unwrap(),
-    )
-    .await
-    .unwrap();
-  let health: serde_json::Value =
-    serde_json::from_slice(&to_bytes(response.into_body(), 100_000).await.unwrap()).unwrap();
+  let response = reqwest::get(format!(
+    "http://{}/shield/api/health",
+    router.operations_address()
+  ))
+  .await
+  .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+  let health: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
   assert_eq!(health["web"]["generation"], 1);
   assert_eq!(health["web"]["watch_enabled"], false);
 }

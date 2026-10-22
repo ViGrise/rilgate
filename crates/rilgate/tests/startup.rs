@@ -156,7 +156,12 @@ fn environment_only_configuration_and_overrides_work_without_a_file() {
     .env("RILGATE_SECURITY_SECRET", SECRET)
     .env("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000")
     .env("RILGATE_SERVER_LISTEN", "127.0.0.1:8081")
-    .args(["--port", "9090", "config", "show", "--defaults"])
+    .env(
+      "RILGATE_SERVER_OPERATIONS_LISTEN",
+      "127.0.0.1:9091,[::1]:9092",
+    )
+    .env("RILGATE_PORT", "9090")
+    .args(["config", "show", "--defaults"])
     .output()
     .unwrap();
   assert!(
@@ -166,6 +171,8 @@ fn environment_only_configuration_and_overrides_work_without_a_file() {
   );
   let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
   assert_eq!(value["server"]["listen"], "127.0.0.1:9090");
+  assert_eq!(value["server"]["operations"]["listen"][0], "127.0.0.1:9091");
+  assert_eq!(value["server"]["operations"]["listen"][1], "[::1]:9092");
 }
 
 fn show(
@@ -196,11 +203,14 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
     directory.path(),
     &[
       ("RILGATE_SERVER_LISTEN", "127.0.0.1:7001"),
+      ("RILGATE_SERVER_OPERATIONS_LISTEN", "127.0.0.1:9091"),
       ("RILGATE_SERVER_MAX_CONNECTIONS", "20"),
     ],
     &[
       "--config",
       "rilgate.yml",
+      "--server-operations-listen",
+      "127.0.0.1:9092,[::1]:9093",
       "--server-listen",
       "127.0.0.1:7002",
       "--security-auth-ttl",
@@ -219,6 +229,8 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   );
   let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
   assert_eq!(value["server"]["listen"], "127.0.0.1:7002");
+  assert_eq!(value["server"]["operations"]["listen"][0], "127.0.0.1:9092");
+  assert_eq!(value["server"]["operations"]["listen"][1], "[::1]:9093");
   assert_eq!(value["server"]["max_connections"], 20);
   assert_eq!(value["server"]["metrics_enabled"], true);
   assert_eq!(value["server"]["trusted_proxies"][1], "192.0.2.1/32");
