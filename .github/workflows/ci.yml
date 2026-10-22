@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: ['**']
+    branches: [main]
     tags: ['v*']
   pull_request:
 concurrency:
@@ -35,35 +35,80 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
+      - name: Install native proxy dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
+      - name: Prepare Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      # Only main writes the compile cache, so pull requests restore trusted artifacts and never publish their own.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test workspace and browser resources
+        run: scripts/test.sh
+  browser:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
       - name: Install native proxy dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
       - name: Prepare Rust toolchain
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
-      - name: Test workspace and browser resources
-        run: scripts/test.sh
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: browser
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test production flow in real browsers over HTTPS
         run: |
+          cargo xtask build-wasm
+          cargo xtask build-web
           cargo build --locked
           scripts/test/browser.sh --with-deps
+  release-checks:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install native proxy dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev wrk
+      - name: Prepare Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build the release binary
+        run: scripts/build.sh --release
       - name: Test native RandomX reference vectors
         run: |
           cargo test -p randomx-core --release --locked --test vectors -- --ignored --test-threads=1
           cargo test -p rilgate-pow-randomx --release --locked --lib -- --ignored --test-threads=1
       - name: Check performance regression smoke workload
-        run: |
-          sudo apt-get update && sudo apt-get install -y wrk
-          scripts/build.sh --release
-          PERF_GATE_BINARY=target/release/rilgate PERF_GATE_DURATION=3s PERF_GATE_WARMUP=1s scripts/perf-gate.sh
+        run: PERF_GATE_BINARY=target/release/rilgate PERF_GATE_DURATION=3s PERF_GATE_WARMUP=1s scripts/perf-gate.sh
   dependencies:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Install cargo-deny
+        env:
+          CARGO_DENY_VERSION: 0.20.2
+          CARGO_DENY_SHA256: 9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+        run: |
+          archive="cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl"
+          curl -fsSL -o "$RUNNER_TEMP/$archive.tar.gz" \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/$CARGO_DENY_VERSION/$archive.tar.gz"
+          echo "$CARGO_DENY_SHA256  $RUNNER_TEMP/$archive.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/$archive/cargo-deny" "$HOME/.cargo/bin/cargo-deny"
       - name: Check advisories, licenses and dependency sources
         run: |
-          cargo install cargo-deny --version 0.20.2 --locked
           cargo deny --locked --config .config/deny.toml check advisories licenses sources bans
   container:
     runs-on: ubuntu-26.04
@@ -73,8 +118,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
+      - uses: docker/setup-buildx-action@v4
+      # Reads the layer cache that image builds on main write; this job never exports it.
       - name: Build production image
-        run: docker build -f deploy/docker/Dockerfile -t rilgate:production-check .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          tags: rilgate:production-check
+          load: true
+          build-args: CARGO_BUILD_JOBS=4
+          cache-from: type=gha,scope=linux-amd64
       - name: Validate Compose configuration
         env:
           RILGATE_SECURITY_SECRET: ci-secret-with-at-least-32-random-bytes
@@ -97,7 +151,7 @@ jobs:
   # Debian toolchain, glibc baseline and system OpenSSL 3.
   binaries:
     name: Build - ${{ matrix.platform }}
-    needs: [version, test, dependencies, container]
+    needs: [version, test, browser, release-checks, dependencies, container]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -154,7 +208,7 @@ jobs:
 
   image:
     name: Image - ${{ matrix.arch }}
-    needs: [test, dependencies, container]
+    needs: [test, browser, release-checks, dependencies, container]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
