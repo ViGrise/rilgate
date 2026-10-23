@@ -50,7 +50,8 @@ rilgate-config = { path = "crates/rilgate-config" }
 rilgate-pow = { path = "crates/rilgate-pow" }
 rilgate-web = { path = "crates/rilgate-web" }
 
-tokio = { version = "1.53.1", features = ["full"] }
+# pingora-core 0.9 creates zero-capacity stream buffers, which tokio 1.54 and later reject.
+tokio = { version = ">=1.53.3, <1.54", features = ["full"] }
 axum = { version = "0.8.9", features = ["ws"] }
 hyper = { version = "1.11.0", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
