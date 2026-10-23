@@ -239,6 +239,74 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   assert_eq!(value["pow"]["p2pool"]["sessions"]["max"], 64);
 }
 
+fn listen_file(listen: &str) -> String {
+  format!("server:\n  upstream:\n    url: http://127.0.0.1:3000\n  listen: {listen}\n")
+}
+
+#[test]
+fn default_configuration_is_found_in_the_working_directory() {
+  let directory = tempfile::tempdir().unwrap();
+  std::fs::write(
+    directory.path().join("rilgate.yml"),
+    listen_file("127.0.0.1:7010"),
+  )
+  .unwrap();
+  let result = show(directory.path(), &[], &[]);
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["listen"], "127.0.0.1:7010");
+}
+
+#[test]
+fn default_configuration_prefers_the_working_directory_and_warns() {
+  let directory = tempfile::tempdir().unwrap();
+  std::fs::create_dir(directory.path().join("config")).unwrap();
+  std::fs::write(
+    directory.path().join("config/rilgate.yml"),
+    listen_file("127.0.0.1:7011"),
+  )
+  .unwrap();
+  std::fs::write(
+    directory.path().join("rilgate.yml"),
+    listen_file("127.0.0.1:7012"),
+  )
+  .unwrap();
+  let result = show(directory.path(), &[], &[]);
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["listen"], "127.0.0.1:7012");
+  let stderr = String::from_utf8_lossy(&result.stderr);
+  assert!(
+    stderr.contains("ignoring configuration file config/rilgate.yml; using rilgate.yml"),
+    "{stderr}"
+  );
+}
+
+#[test]
+fn a_single_default_configuration_loads_without_warnings() {
+  let directory = tempfile::tempdir().unwrap();
+  std::fs::write(
+    directory.path().join("rilgate.yml"),
+    listen_file("127.0.0.1:7013"),
+  )
+  .unwrap();
+  let result = show(directory.path(), &[], &[]);
+  assert!(result.status.success());
+  assert!(
+    result.stderr.is_empty(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+}
+
 #[test]
 fn a_binding_prefix_flag_enables_client_ip_binding() {
   let directory = tempfile::tempdir().unwrap();

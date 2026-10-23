@@ -10,7 +10,7 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about)]
 pub struct Args {
-  /// YAML configuration file [default: config/rilgate.yml]
+  /// YAML configuration file [default: rilgate.yml, then config/rilgate.yml]
   #[arg(
     short,
     long,

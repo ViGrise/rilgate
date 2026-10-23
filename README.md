@@ -103,8 +103,9 @@ protocol, host binding, lifetime and enforcement details.
 
 ## Configuration
 
-Rilgate reads `config/rilgate.yml`, or a file selected by `--config` or
-`RILGATE_CONFIG`. Only the upstream URL and signing secret are required:
+Rilgate reads `rilgate.yml` or `config/rilgate.yml` from the working directory,
+or a file selected by `--config` or `RILGATE_CONFIG`. Only the upstream URL and
+signing secret are required:
 
 ```yaml
 server:

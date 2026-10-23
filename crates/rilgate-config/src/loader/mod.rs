@@ -2,24 +2,29 @@ mod value;
 use crate::{Overrides, Setting, SettingValue, schema::Document};
 use anyhow::{Context, Result, ensure};
 use serde_yaml_ng::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub fn load(args: &Overrides) -> Result<Document> {
+/// Configuration files tried in order, relative to the working directory, when
+/// neither `--config` nor `RILGATE_CONFIG` selects one.
+const DEFAULT_PATHS: &[&str] = &["rilgate.yml", "config/rilgate.yml"];
+
+/// A loaded document with warnings for the caller to report once logging is
+/// available.
+pub struct Loaded {
+  pub document: Document,
+  pub warnings: Vec<String>,
+}
+
+pub fn load(args: &Overrides) -> Result<Loaded> {
   let explicit = args
     .config
     .clone()
     .or_else(|| std::env::var_os("RILGATE_CONFIG").map(PathBuf::from));
-  let path = explicit
-    .clone()
-    .unwrap_or_else(|| PathBuf::from("config/rilgate.yml"));
-  let text = match std::fs::read_to_string(&path) {
-    Ok(text) => text,
-    Err(error) if error.kind() == std::io::ErrorKind::NotFound && explicit.is_none() => {
-      String::new()
-    }
-    Err(error) => {
-      return Err(error).with_context(|| format!("configuration file {}", path.display()));
-    }
+  let mut warnings = Vec::new();
+  let text = match explicit {
+    Some(path) => std::fs::read_to_string(&path)
+      .with_context(|| format!("configuration file {}", path.display()))?,
+    None => read_default(&mut warnings)?,
   };
   let mut document = parse_with(&text, &args.settings)?;
   if let Some(port) = args.port {
@@ -32,7 +37,33 @@ pub fn load(args: &Overrides) -> Result<Document> {
       })
       .collect();
   }
-  Ok(document)
+  Ok(Loaded { document, warnings })
+}
+
+/// Reads the first default file that exists and warns about each later one,
+/// which is ignored. No default file yields an empty document, so environment
+/// variables can supply the required values.
+fn read_default(warnings: &mut Vec<String>) -> Result<String> {
+  let mut paths = DEFAULT_PATHS.iter().map(Path::new);
+  while let Some(used) = paths.next() {
+    match std::fs::read_to_string(used) {
+      Ok(text) => {
+        for ignored in paths.filter(|path| path.is_file()) {
+          warnings.push(format!(
+            "ignoring configuration file {}; using {}. Remove one, or select one with --config",
+            ignored.display(),
+            used.display()
+          ));
+        }
+        return Ok(text);
+      }
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+      Err(error) => {
+        return Err(error).with_context(|| format!("configuration file {}", used.display()));
+      }
+    }
+  }
+  Ok(String::new())
 }
 
 pub fn parse(text: &str) -> Result<Document> {
