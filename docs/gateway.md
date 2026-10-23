@@ -146,9 +146,10 @@ verification with upstream-host SNI, independently of `preserve_host`.
 ## Resource limits and failure handling
 
 The native RandomX verifier uses one dedicated thread and a bounded queue. Requests
-beyond `pow.algorithms.randomx.verifier_queue` receive `503`. Queued work whose caller disconnects or
-exceeds its deadline is skipped. Seed changes release the old cache before allocation of
-another one.
+beyond `pow.algorithms.randomx.verifier_queue` receive `503` when the queue is full of
+live requests. Before it rejects a request, a full queue removes work whose caller
+disconnects or whose deadline passes. The worker also skips this work before hashing.
+Seed changes release the old cache before allocation of another one.
 
 Stratum pool connections share `pow.stratum_pool.sessions.max` slots across HTTP job fetches and WebSocket
 sessions. Excess requests receive `503` before upgrade or login. WebSocket

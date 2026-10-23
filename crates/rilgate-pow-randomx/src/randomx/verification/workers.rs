@@ -1,6 +1,7 @@
 use std::{
+  collections::VecDeque,
   sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
   },
   thread,
@@ -18,7 +19,7 @@ struct Stats {
 
 use anyhow::{Context, Result, anyhow};
 use randomx_core::RandomX;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, oneshot};
 
 use rilgate_core::error::CapacityExceeded;
 
@@ -31,6 +32,97 @@ struct HashTask {
   reply: oneshot::Sender<Result<[u8; 32], HashError>>,
 }
 
+#[derive(Default)]
+struct QueueState {
+  tasks: VecDeque<HashTask>,
+  closed: bool,
+}
+
+struct TaskQueue {
+  state: Mutex<QueueState>,
+  ready: Notify,
+  capacity: usize,
+}
+
+impl TaskQueue {
+  fn new(capacity: usize) -> Self {
+    Self {
+      state: Mutex::new(QueueState::default()),
+      ready: Notify::new(),
+      capacity,
+    }
+  }
+
+  async fn recv(&self) -> Option<HashTask> {
+    loop {
+      let notified = self.ready.notified();
+      {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(task) = state.tasks.pop_front() {
+          return Some(task);
+        }
+        if state.closed {
+          return None;
+        }
+      }
+      // notify_one retains a permit when enqueue runs before this await.
+      notified.await;
+    }
+  }
+
+  fn close(&self) {
+    let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+    state.closed = true;
+    state.tasks.clear();
+    self.ready.notify_one();
+  }
+}
+
+struct QueueSender {
+  queue: Arc<TaskQueue>,
+}
+
+impl QueueSender {
+  fn try_send(&self, task: HashTask) -> Result<()> {
+    let mut state = self
+      .queue
+      .state
+      .lock()
+      .unwrap_or_else(|error| error.into_inner());
+    if state.closed {
+      return Err(anyhow!("RandomX verifier thread stopped"));
+    }
+    if state.tasks.len() == self.queue.capacity {
+      let now = Instant::now();
+      state.tasks.retain(|task| {
+        !task.reply.is_closed() && !task.deadline.is_some_and(|deadline| now >= deadline)
+      });
+    }
+    if state.tasks.len() == self.queue.capacity {
+      return Err(anyhow::Error::new(CapacityExceeded));
+    }
+    state.tasks.push_back(task);
+    self.queue.ready.notify_one();
+    Ok(())
+  }
+}
+
+impl Drop for QueueSender {
+  fn drop(&mut self) {
+    self.queue.close();
+  }
+}
+
+struct QueueReceiver {
+  queue: Arc<TaskQueue>,
+}
+
+impl Drop for QueueReceiver {
+  fn drop(&mut self) {
+    self.queue.close();
+  }
+}
+
 /// Owns the Light mode RandomX cache and VM.
 ///
 /// Cache construction needs roughly 256 MiB and several seconds of Argon2d, so
@@ -38,7 +130,7 @@ struct HashTask {
 /// instead of running on a Tokio worker.
 #[derive(Clone)]
 pub struct RandomXVerifier {
-  tx: mpsc::Sender<HashTask>,
+  tx: Arc<QueueSender>,
   stats: Arc<Stats>,
 }
 
@@ -79,7 +171,11 @@ impl RandomXVerifier {
         "RandomX verifier queue capacity must be between 1 and 4096"
       ));
     }
-    let (tx, mut rx) = mpsc::channel::<HashTask>(capacity);
+    let queue = Arc::new(TaskQueue::new(capacity));
+    let tx = Arc::new(QueueSender {
+      queue: queue.clone(),
+    });
+    let rx = QueueReceiver { queue };
     let stats = Arc::new(Stats::default());
     let worker_stats = stats.clone();
     thread::Builder::new()
@@ -102,9 +198,9 @@ impl RandomXVerifier {
           let task = runtime.block_on(async {
             if !idle_timeout.is_zero() && cache.is_some() {
               let remaining = idle_timeout.saturating_sub(last_hash.elapsed());
-              tokio::time::timeout(remaining, rx.recv()).await
+              tokio::time::timeout(remaining, rx.queue.recv()).await
             } else {
-              Ok(rx.recv().await)
+              Ok(rx.queue.recv().await)
             }
           });
           let task = match task {
@@ -144,7 +240,14 @@ impl RandomXVerifier {
 
   pub fn diagnostics(&self) -> rilgate_pow::algorithm::VerifierDiagnostics {
     rilgate_pow::algorithm::VerifierDiagnostics {
-      queued: self.tx.max_capacity() - self.tx.capacity(),
+      queued: self
+        .tx
+        .queue
+        .state
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .tasks
+        .len(),
       active: self.stats.active.load(Ordering::Relaxed),
       completed: self.stats.completed.load(Ordering::Relaxed),
       rejected: self.stats.rejected.load(Ordering::Relaxed),
@@ -177,13 +280,10 @@ impl RandomXVerifier {
         reply,
       })
       .map_err(|error| {
-        HashError::Unavailable(match error {
-          mpsc::error::TrySendError::Full(_) => {
-            self.stats.rejected.fetch_add(1, Ordering::Relaxed);
-            anyhow::Error::new(CapacityExceeded)
-          }
-          mpsc::error::TrySendError::Closed(_) => anyhow!("RandomX verifier thread stopped"),
-        })
+        if error.is::<CapacityExceeded>() {
+          self.stats.rejected.fetch_add(1, Ordering::Relaxed);
+        }
+        HashError::Unavailable(error)
       })?;
 
     rx.await
@@ -195,6 +295,85 @@ impl RandomXVerifier {
 mod tests {
   use super::*;
   use crate::randomx::verification::write_nonce;
+
+  #[tokio::test]
+  async fn canceled_requests_release_queue_capacity_during_hashing() {
+    dead_requests_release_queue_capacity(false).await;
+  }
+
+  #[tokio::test]
+  async fn expired_requests_release_queue_capacity_during_hashing() {
+    dead_requests_release_queue_capacity(true).await;
+  }
+
+  async fn dead_requests_release_queue_capacity(expire: bool) {
+    let (started, wait_started) = oneshot::channel();
+    let mut started = Some(started);
+    let (release, wait) = std::sync::mpsc::channel();
+    let verifier = RandomXVerifier::spawn::<()>(3, Duration::ZERO, move |_, _, blob| {
+      if let Some(started) = started.take() {
+        started.send(()).unwrap();
+        let _ = wait.recv();
+      }
+      Ok([blob[0]; 32])
+    })
+    .unwrap();
+    let first = {
+      let verifier = verifier.clone();
+      tokio::spawn(async move { verifier.hash(vec![1], vec![1]).await })
+    };
+    wait_started.await.unwrap();
+    let deadline = expire.then(|| Instant::now() + Duration::from_millis(30));
+    let mut queued: Vec<_> = (0..3)
+      .map(|_| Box::pin(verifier.hash_with_deadline(vec![2], vec![2], deadline)))
+      .collect();
+    for request in &mut queued {
+      assert!(futures_util::poll!(request.as_mut()).is_pending());
+    }
+    assert_eq!(verifier.diagnostics().queued, 3);
+    if let Some(deadline) = deadline {
+      tokio::time::sleep_until(deadline.into()).await;
+    } else {
+      queued.clear();
+    }
+    let mut replacement = Box::pin(verifier.hash(vec![3], vec![3]));
+    assert!(futures_util::poll!(replacement.as_mut()).is_pending());
+    assert_eq!(verifier.diagnostics().rejected, 0);
+    release.send(()).unwrap();
+    assert_eq!(first.await.unwrap().unwrap(), [1; 32]);
+    assert_eq!(replacement.await.unwrap(), [3; 32]);
+    for request in queued {
+      assert!(matches!(request.await, Err(HashError::Unavailable(_))));
+    }
+    assert_eq!(verifier.diagnostics().completed, 2);
+  }
+
+  #[tokio::test]
+  async fn last_hasher_drop_releases_the_idle_cache() {
+    struct Cache(Option<oneshot::Sender<()>>);
+    impl Drop for Cache {
+      fn drop(&mut self) {
+        let _ = self.0.take().unwrap().send(());
+      }
+    }
+
+    let (released, wait_released) = oneshot::channel();
+    let mut released = Some(released);
+    let verifier = RandomXVerifier::spawn(1, Duration::ZERO, move |cache, _, _| {
+      cache.get_or_insert_with(|| Cache(released.take()));
+      Ok([0; 32])
+    })
+    .unwrap();
+    let remaining = verifier.clone();
+    verifier.hash(vec![1], vec![1]).await.unwrap();
+    drop(verifier);
+    remaining.hash(vec![1], vec![1]).await.unwrap();
+    drop(remaining);
+    tokio::time::timeout(Duration::from_secs(2), wait_released)
+      .await
+      .expect("worker stopped")
+      .expect("cache released");
+  }
 
   #[tokio::test]
   async fn idle_cache_is_released_and_rebuilt() {
@@ -255,8 +434,9 @@ mod tests {
       verifier.hash(vec![1], vec![1]).await,
       Err(HashError::Unavailable(_))
     ));
-    let (tx, rx) = mpsc::channel(1);
-    drop(rx);
+    let queue = Arc::new(TaskQueue::new(1));
+    queue.close();
+    let tx = Arc::new(QueueSender { queue });
     let stopped = RandomXVerifier {
       tx,
       stats: Arc::new(Stats::default()),
@@ -309,13 +489,12 @@ mod tests {
     let (reply, response) = oneshot::channel();
     verifier
       .tx
-      .send(HashTask {
+      .try_send(HashTask {
         seed: vec![4],
         blob: vec![4],
         deadline: None,
         reply,
       })
-      .await
       .unwrap();
     response.await.unwrap().unwrap();
     assert_eq!(count.load(Ordering::SeqCst), 2);
