@@ -1,18 +1,21 @@
 # Deployment examples
 
-Tagged releases publish binaries on GitHub Releases and multi-architecture
-images at `ghcr.io/vigrise/rilgate`; see
-[release, rollout and rollback](../docs/production.md#release-rollout-and-rollback).
-`install.sh` verifies a release archive against `SHA256SUMS` and installs it into
-`/usr/local/bin`; set `INSTALL_DIR` to choose another directory or
-`VERSION=v<version>` to pin a release. `rilgate upgrade` installs newer releases.
-Build a native binary from the repository root with `scripts/build.sh --release`.
-The Pingora transport requires OpenSSL at build time and runtime. On Debian or
-Ubuntu, install `pkg-config` and `libssl-dev` to build, and `libssl3` plus
-`ca-certificates` to run. The Docker image includes these dependencies.
+Tagged releases publish binaries on GitHub Releases and multi-architecture images at
+`ghcr.io/vigrise/rilgate`. See [release, rollout and rollback](../docs/production.md#release-rollout-and-rollback). `install.sh` verifies a
+release archive against `SHA256SUMS` and installs it into `/usr/local/bin`.
 
-For Docker Compose, review `config/rilgate.production.yml` and supply the signing
-secret through the deployment secret store:
+To choose another directory, set `INSTALL_DIR`. To pin a release, set `VERSION=v<version>`.
+`rilgate upgrade` installs newer releases.
+
+Build a native binary from the repository root with `scripts/build.sh --release`. The Pingora transport
+requires OpenSSL at build time and runtime. On Debian or Ubuntu, install `pkg-config`
+and `libssl-dev` for builds. For runtime, install `libssl3` and `ca-certificates`. The
+Docker image includes these dependencies.
+
+For Docker Compose:
+
+1. Review `config/rilgate.production.yml`.
+2. Supply the signing secret through the deployment secret store:
 
 ```bash
 export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
@@ -25,32 +28,45 @@ To build the image separately:
 docker build -f deploy/docker/Dockerfile -t rilgate:local .
 ```
 
-The Compose file mounts `config/rilgate.production.yml`, runs as a non-root user
-with a read-only filesystem, and limits memory, CPU and process count. It binds
-port 8080 only to loopback. Edit upstream addresses for the deployment and
-configure HTTPS at the edge. The image also uses the production template by
-default and refuses to start without strong signing secrets. The production
-template serves health, readiness and metrics on the operations listener at
-`127.0.0.1:9090`; Compose moves it to `0.0.0.0:9090` inside the container and
-publishes it on host loopback for Prometheus. The image healthcheck probes
-`127.0.0.1:9090` under the default web namespace; override it when a mounted
-configuration changes the operations address or namespace.
+The Compose file mounts `config/rilgate.production.yml`, runs as a non-root user with a read-only
+filesystem, and limits memory, CPU and process count. It binds port 8080 only to
+loopback.
 
-For systemd, create a `rilgate` user, install the binary under `/opt/rilgate`,
-the production configuration under `/etc/rilgate`, and a writable `/var/lib/rilgate` directory.
-Provide `/etc/rilgate/environment` with `RILGATE_SECURITY_SECRET` and any `RILGATE_*` setting variables. If filesystem web overrides are enabled, set `site.resources.directory` to
-`/var/lib/rilgate/web`. `systemctl reload rilgate` requests a web snapshot reload.
-The production template serves operational routes on `127.0.0.1:9090`, so local
-probes and a Prometheus instance on the same host can reach them.
+3. Edit upstream addresses for the deployment.
+4. Configure HTTPS at the edge.
 
-The Caddy and nginx examples forward the host and support the gateway's P2Pool
-WebSocket API and upstream application WebSockets. Set the
-public hostname and configure TLS at the edge; the nginx example only contains
-an HTTP listener. Configure `server.trusted_proxies` with only the actual proxy
-addresses to obtain independent client proof quotas. The nginx example enforces
-per-client request and connection quotas at the edge; Caddy does not add a
-shared quota service. Both examples block public operational endpoints.
+The image also uses the production template by default and refuses to start without
+strong signing secrets. The production template serves health, readiness and metrics on
+the operations listener at `127.0.0.1:9090`. Compose moves it to `0.0.0.0:9090` inside the
+container and publishes it on host loopback for Prometheus. The image healthcheck probes
+`127.0.0.1:9090` under the default web namespace. If a mounted configuration changes the
+operations address or namespace, override the healthcheck.
 
-See [production operations](../docs/production.md) for monitoring examples,
-capacity settings, key rotation, token replay semantics, release checks and
-rollback. Run `scripts/test/container.sh IMAGE` to check a built image.
+For systemd:
+
+1. Create a `rilgate` user.
+2. Install the binary under `/opt/rilgate`.
+3. Install the production configuration under `/etc/rilgate`.
+4. Create a writable `/var/lib/rilgate` directory.
+5. Provide `/etc/rilgate/environment` with `RILGATE_SECURITY_SECRET` and any `RILGATE_*` setting variables.
+6. If filesystem web overrides are enabled, set `site.resources.directory` to `/var/lib/rilgate/web`.
+
+`systemctl reload rilgate` requests a web snapshot reload. The production template serves operational
+routes on `127.0.0.1:9090`, so local probes and a Prometheus instance on the same host can
+reach them.
+
+The Caddy and nginx examples forward the host and support the gateway's P2Pool WebSocket
+API and upstream application WebSockets.
+
+1. Set the public hostname.
+2. Configure TLS at the edge.
+3. Configure `server.trusted_proxies` with only the actual proxy addresses to get independent client
+   proof quotas.
+
+The nginx example contains only an HTTP listener. It enforces per-client request and
+connection quotas at the edge. Caddy does not add a shared quota service.
+Both examples block public operational endpoints.
+
+See [production operations](../docs/production.md) for monitoring examples, capacity settings, key
+rotation, token replay semantics, release checks and rollback. Run `scripts/test/container.sh IMAGE` to check
+a built image.

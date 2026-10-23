@@ -18,15 +18,17 @@ browser completes the required work.
 
 ## Features
 
-- **Two PoW algorithms:** lightweight SHA-256 (`fast`) and memory-intensive RandomX.
-- **Request policies:** choose allow, deny, challenge or score adjustments using
-  paths, methods, user agents, headers, client IP ranges and published IP sets.
-- **Two RandomX modes:** local verification or access granted after P2Pool accepts
-  a submitted share. RandomX starts only after explicit browser consent.
-- **Shared Rust implementation:** native verification and browser WebAssembly use
-  the same RandomX core.
-- **Customizable web UI:** templates, branding, translations, cookie names and
-  internal paths come from configuration or filesystem overrides.
+- **Two PoW algorithms:** lightweight SHA-256 (`fast`) and memory-intensive
+  RandomX.
+- **Request policies:** allow, deny, challenge or adjust the score of a request.
+  Policies match paths, methods, user agents, headers, client IP ranges and
+  published IP sets.
+- **Two RandomX modes:** local verification or access granted after P2Pool accepts a
+  submitted share. RandomX starts only after explicit browser consent.
+- **Shared Rust implementation:** native verification and browser WebAssembly use the
+  same RandomX core.
+- **Customizable web UI:** templates, branding, translations, cookie names and internal
+  paths come from configuration or filesystem overrides.
 - **Bounded resources:** proof rate limits, verifier queues, pool sessions, request
   bodies and timeouts. Web resources support atomic reloads.
 
@@ -46,74 +48,75 @@ flowchart TD
     Cookie -->|Reload original URL| Browser
 ```
 
-Without a valid access cookie, protected GET/HEAD requests receive challenge
-HTML at the requested URL. Other protected methods return `401`, allowing the
-client to retry after authentication. Internal APIs and static resources live
-under `site.base_path`, which defaults to `/.well-known/rilgate`.
+Without a valid access cookie, protected GET and HEAD requests receive challenge HTML at
+the requested URL. Other protected methods return `401`. The client can retry
+after authentication. Internal APIs and static resources live under `site.base_path`, which
+defaults to `/.well-known/rilgate`.
 
-Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache,
-plus scratchpads and runtime memory, and requires WebAssembly SIMD128. Both
-RandomX modes obtain work from a P2Pool Stratum endpoint.
+Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache, plus
+scratchpads and runtime memory. It requires WebAssembly SIMD128. Both RandomX modes get
+work from a P2Pool Stratum endpoint.
 
-See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for
-protocol, host binding, lifetime and enforcement details.
+See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host
+binding, lifetime and enforcement details.
 
 ## Quick start
 
-Install the latest release on Linux or macOS (Windows archives are on the
-[releases page](https://github.com/ViGrise/rilgate/releases)):
+1. On Linux or macOS, install the latest release:
 
-```bash
-curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
-```
+   ```bash
+   curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
+   ```
 
-Create `rilgate.yml` pointing at your application. Rilgate reads it from the
-working directory:
+   Windows archives are on the [releases page](https://github.com/ViGrise/rilgate/releases).
 
-```yaml
-environment: development # allows the access cookie over plain HTTP
-server:
-  upstream:
-    url: http://127.0.0.1:3000
-security:
-  secret: "${RILGATE_SECURITY_SECRET}"
-```
+2. Create `rilgate.yml` in the working directory, with your application as the
+   upstream. Rilgate reads this file by default:
 
-Start the gateway and open <http://localhost:8080>:
+   ```yaml
+   environment: development # allows the access cookie over plain HTTP
+   server:
+     upstream:
+       url: http://127.0.0.1:3000
+   security:
+     secret: "${RILGATE_SECURITY_SECRET}"
+   ```
 
-```bash
-export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
-rilgate
-```
+3. Start the gateway:
 
-See the documentation for [other installation methods](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/installation)
-(Docker, source builds), [configuration](https://platform.vigrise.com/docs/open-source-software/rilgate/configuration/overview) and
-[deployment](https://platform.vigrise.com/docs/open-source-software/rilgate/deployment/overview).
+   ```bash
+   export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
+   rilgate
+   ```
+
+4. Open <http://localhost:8080>.
+
+See the documentation for [other installation methods](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/installation) (Docker, source
+builds), [configuration](https://platform.vigrise.com/docs/open-source-software/rilgate/configuration/overview) and [deployment](https://platform.vigrise.com/docs/open-source-software/rilgate/deployment/overview).
 
 ## Configuration
 
-Rilgate reads `rilgate.yml` from the working directory, falling back to
-`config/rilgate.yml`. Use `--config FILE` or `RILGATE_CONFIG` only for a file
-elsewhere. Only the upstream URL and signing secret are required, as in the
-quick start.
+Rilgate reads `rilgate.yml` from the working directory, with a fallback to `config/rilgate.yml`.
+Use `--config FILE` or `RILGATE_CONFIG` only for a file elsewhere. Only the upstream URL and
+signing secret are required, as in the quick start.
 
 The defaults are production, embedded resources, local Fast verification and
-`policy.mode: balanced`. HKDF derives independent purpose-specific signing keys.
-Unknown fields and conflicting settings fail validation in every environment.
-Use `rilgate config check` to validate and `rilgate config show --defaults` to
-inspect all defaults with secrets redacted. Every setting can also be given as a
-flag or `RILGATE_*` variable; see `rilgate --help`. The schema has no version
-field and replaces the unreleased previous format.
+`policy.mode: balanced`. HKDF derives independent purpose-specific signing keys. Unknown fields and
+conflicting settings fail validation in every environment.
 
-See [the commented template](config/rilgate.example.yml),
-[configuration](docs/configuration.md), [request policies](docs/policy.md),
-[web resources](docs/web.md), and [production operations](docs/production.md).
+Use `rilgate config check` to validate and `rilgate config show --defaults` to inspect all defaults with secrets
+redacted. You can also supply every setting as a flag or `RILGATE_*` variable. See
+`rilgate --help`. The schema has no version field and replaces the unreleased previous
+format.
+
+See [the commented template](config/rilgate.example.yml), [configuration](docs/configuration.md), [request
+policies](docs/policy.md), [web resources](docs/web.md), and [production
+operations](docs/production.md).
 
 ## Documentation
 
-The full documentation is published at
-[platform.vigrise.com](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction).
-The guides in this repository track the source:
+The full documentation is published at [platform.vigrise.com](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction). The guides in
+this repository track the source:
 
 | Guide                                     | Contents                                                |
 | ----------------------------------------- | ------------------------------------------------------- |
@@ -131,36 +134,36 @@ The guides in this repository track the source:
 
 ## Project status
 
-Rilgate is experimental. Fast and RandomX are implemented; GhostRider and BLAKE3
-are potential extensions. HTTP serving and upstream forwarding use Pingora, including
-application WebSocket proxying. Key rotation, Prometheus metrics and production
-deployment defaults are available.
-Rate limits remain local to each gateway instance; shared quotas can be enforced
-at the edge. See [production operations](docs/production.md) for rollout and
-validation requirements.
+Rilgate is experimental. Fast and RandomX are implemented. GhostRider and BLAKE3 are
+potential extensions.
 
-Local proofs and access tokens are reusable within their signed lifetime.
-Single-use verification across gateway instances would require shared state or a
-different protocol. RandomX solve time depends heavily on the device and
-configured difficulty; test the policy against the browsers you intend to serve.
+HTTP serving and upstream forwarding use Pingora, including application WebSocket
+proxying. Key rotation, Prometheus metrics and production deployment defaults are
+available. Rate limits remain local to each gateway instance. Shared quotas can be
+enforced at the edge. See [production operations](docs/production.md) for rollout and validation
+requirements.
+
+Local proofs and access tokens are reusable within their signed lifetime. Single-use
+verification across gateway instances would need shared state or a different protocol.
+RandomX solve time depends heavily on the device and configured difficulty. Test the
+policy against the browsers you intend to serve.
 
 ## Contributing
 
-[Bug reports](https://github.com/ViGrise/rilgate/issues), documentation improvements
-and [pull requests](https://github.com/ViGrise/rilgate/pulls) are welcome. Include
-reproduction steps, the expected and actual behavior, and relevant Rust/browser
-versions. Remove secrets from configuration and logs before sharing them.
+[Bug reports](https://github.com/ViGrise/rilgate/issues), documentation improvements and [pull requests](https://github.com/ViGrise/rilgate/pulls) are
+welcome. Include reproduction steps, the expected and actual behavior, and relevant Rust
+and browser versions. Before you share configuration and logs, remove secrets from them.
 
-For code changes, start with the [architecture](docs/architecture.md) and keep
-changes within the owning crate. New algorithms follow the
-[algorithm guide](docs/algorithms.md). Run the default checks before submitting:
+For code changes, read the [architecture](docs/architecture.md) first. Keep changes within the
+owning crate. New algorithms follow the [algorithm guide](docs/algorithms.md). Before you submit
+changes, run the default checks:
 
 ```bash
 scripts/test.sh
 ```
 
-Native RandomX reference tests are opt-in because they allocate a 256 MiB cache.
-See [development](docs/development.md) for those commands.
+Native RandomX reference tests are opt-in because they allocate a 256 MiB cache. See
+[development](docs/development.md) for those commands.
 
 ## License
 
