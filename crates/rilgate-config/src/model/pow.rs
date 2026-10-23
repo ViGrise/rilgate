@@ -28,6 +28,7 @@ pub struct PowConfig {
   pub auth_cookie_name: String,
   pub nonce_offset: usize,
   pub verifier_queue_capacity: usize,
+  pub randomx_cache_idle_timeout: std::time::Duration,
   pub rate_limit: RateLimitConfig,
   pub p2pool: P2PoolConfig,
   pub difficulty: DifficultyConfig,

@@ -9,17 +9,17 @@ use rilgate_pow::{
 };
 use rilgate_protocol::{PowEnforcement, StratumJob};
 use std::{
-  sync::{Arc, Mutex},
-  time::{Duration, SystemTime, UNIX_EPOCH},
+  sync::Arc,
+  time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
-use verification::{RandomXVerifier, hash_meets_difficulty, write_nonce};
+use verification::{HashError, LocalHasher, OrderedHasher, hash_meets_difficulty, write_nonce};
 pub struct RandomXAlgorithm {
   difficulty: DifficultyConfig,
   ttl: u64,
   nonce_offset: usize,
-  queue_capacity: usize,
-  verifier: Mutex<Option<RandomXVerifier>>,
+  hasher: OrderedHasher,
+  local_hasher: Option<Arc<LocalHasher>>,
   provider: Arc<dyn WorkProvider<Work = StratumJob>>,
 }
 #[derive(Debug, Clone)]
@@ -28,44 +28,42 @@ pub struct RandomXConfig {
   pub ttl: u64,
   pub nonce_offset: usize,
   pub queue_capacity: usize,
+  pub cache_idle_timeout: Duration,
 }
 impl RandomXAlgorithm {
   pub fn new(config: &RandomXConfig, provider: Arc<dyn WorkProvider<Work = StratumJob>>) -> Self {
+    let local = Arc::new(LocalHasher::new(
+      config.queue_capacity,
+      config.cache_idle_timeout,
+    ));
+    let mut algorithm =
+      Self::with_hasher(config, provider, OrderedHasher::new(vec![local.clone()]));
+    algorithm.local_hasher = Some(local);
+    algorithm
+  }
+
+  pub fn with_hasher(
+    config: &RandomXConfig,
+    provider: Arc<dyn WorkProvider<Work = StratumJob>>,
+    hasher: OrderedHasher,
+  ) -> Self {
     Self {
       difficulty: config.difficulty.clone(),
       ttl: config.ttl,
       nonce_offset: config.nonce_offset,
-      queue_capacity: config.queue_capacity,
-      verifier: Mutex::new(None),
+      hasher,
+      local_hasher: None,
       provider,
     }
-  }
-  fn verifier(&self) -> Result<RandomXVerifier> {
-    let mut verifier = self
-      .verifier
-      .lock()
-      .unwrap_or_else(|error| error.into_inner());
-    if verifier.is_none() {
-      *verifier = Some(RandomXVerifier::with_capacity(self.queue_capacity)?);
-    }
-    Ok(
-      verifier
-        .as_ref()
-        .expect("RandomX verifier initialized")
-        .clone(),
-    )
   }
 }
 impl Algorithm for RandomXAlgorithm {
   fn verifier_diagnostics(&self) -> Option<rilgate_pow::algorithm::VerifierDiagnostics> {
-    let verifier = self
-      .verifier
-      .lock()
-      .unwrap_or_else(|error| error.into_inner());
     Some(
-      verifier
+      self
+        .local_hasher
         .as_ref()
-        .map_or_else(Default::default, RandomXVerifier::diagnostics),
+        .map_or_else(Default::default, |local| local.diagnostics()),
     )
   }
 
@@ -161,12 +159,23 @@ impl Algorithm for RandomXAlgorithm {
       let deadline = UNIX_EPOCH
         .checked_add(Duration::from_secs(work.expires_at as u64))
         .context("Invalid challenge expiry")?;
+      let started = Instant::now();
       let remaining = deadline
         .duration_since(SystemTime::now())
         .context("Challenge expired")?;
-      let hash = tokio::time::timeout(remaining, self.verifier()?.hash(seed, blob))
+      let deadline = started + remaining;
+      let hash = tokio::time::timeout_at(deadline.into(), self.hasher.hash(seed, blob, deadline))
         .await
-        .map_err(|_| anyhow!("Challenge expired"))??;
+        .map_err(|_| anyhow!("Challenge expired"))?;
+      // Hashers can complete without yielding to the expiry timer.
+      anyhow::ensure!(Instant::now() < deadline, "Challenge expired");
+      let hash = hash.map_err(|error| match error {
+        HashError::Unavailable(error) if error.is::<rilgate_core::error::CapacityExceeded>() => {
+          error
+        }
+        HashError::Unavailable(error) => error.context(PowBackendUnavailable),
+        HashError::Invalid(error) => error,
+      })?;
       anyhow::ensure!(
         hash_meets_difficulty(&hash, *difficulty),
         "RandomX proof does not meet the required difficulty"

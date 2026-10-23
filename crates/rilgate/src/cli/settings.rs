@@ -105,6 +105,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.challenge_ttl", "pow-algorithms-randomx-challenge-ttl", "RILGATE_POW_ALGORITHMS_RANDOMX_CHALLENGE_TTL", None, "RandomX challenge lifetime"),
   spec!(POW, Text, "pow.algorithms.randomx.nonce_offset", "pow-algorithms-randomx-nonce-offset", "RILGATE_POW_ALGORITHMS_RANDOMX_NONCE_OFFSET", None, "Nonce byte offset in the RandomX blob"),
   spec!(POW, Text, "pow.algorithms.randomx.verifier_queue", "pow-algorithms-randomx-verifier-queue", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFIER_QUEUE", None, "Queued RandomX verifications"),
+  spec!(POW, Text, "pow.algorithms.randomx.cache.idle_timeout", "pow-algorithms-randomx-cache-idle-timeout", "RILGATE_POW_ALGORITHMS_RANDOMX_CACHE_IDLE_TIMEOUT", None, "Idle time before releasing the RandomX cache; 0s keeps it resident"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.base", "pow-algorithms-randomx-difficulty-base", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_BASE", None, "RandomX difficulty at score 0"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.score_step", "pow-algorithms-randomx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_SCORE_STEP", None, "Score that doubles RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),

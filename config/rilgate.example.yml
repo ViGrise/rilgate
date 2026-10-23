@@ -441,6 +441,12 @@ security:
       # Range: 1..1024. A full queue returns 503 rather than growing unbounded.
       #
       # verifier_queue: 8
+      # cache:
+        # Idle time before releasing the native cache. Range: 0s..7d;
+        # 0s keeps the cache resident. The next request rebuilds it.
+        #
+        # idle_timeout: 30m
+
       # difficulty:
         # Minimum automatic difficulty, at least 1000.
         #

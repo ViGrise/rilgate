@@ -46,6 +46,43 @@ fn durations_sizes_ipv6_and_resource_settings_resolve_without_rounding() {
 }
 
 #[test]
+fn randomx_cache_idle_timeout_resolves_without_rounding() {
+  let mut document = parse(BASE).unwrap();
+  document.pow.algorithms.randomx.cache.idle_timeout.0 = std::time::Duration::from_secs(8 * 86400);
+  assert!(document.resolve().is_err());
+  assert_eq!(
+    resolve(BASE)
+      .unwrap()
+      .pow
+      .randomx_cache_idle_timeout
+      .as_secs(),
+    1800
+  );
+  for (duration, expected) in [("0s", 0), ("300ms", 300), ("7d", 604_800_000)] {
+    let config = format!(
+      "{BASE}pow:\n  algorithms:\n    randomx:\n      cache:\n        idle_timeout: {duration}\n"
+    );
+    assert_eq!(
+      resolve(&config)
+        .unwrap()
+        .pow
+        .randomx_cache_idle_timeout
+        .as_millis(),
+      expected
+    );
+  }
+  for duration in ["8d", "garbage"] {
+    let config = format!(
+      "{BASE}pow:\n  algorithms:\n    randomx:\n      cache:\n        idle_timeout: {duration}\n"
+    );
+    assert!(
+      format!("{:#}", resolve(&config).unwrap_err())
+        .contains("pow.algorithms.randomx.cache.idle_timeout")
+    );
+  }
+}
+
+#[test]
 fn invalid_schema_fields_report_the_configuration_path() {
   for (extra, path) in [
     ("environment: staging", "environment"),

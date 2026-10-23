@@ -42,6 +42,7 @@ pub fn config() -> Config {
       auth_cookie_name: "rilgate_auth".into(),
       nonce_offset: 39,
       verifier_queue_capacity: 8,
+      randomx_cache_idle_timeout: std::time::Duration::from_secs(1800),
       rate_limit: Default::default(),
       p2pool: P2PoolConfig {
         host: "127.0.0.1".into(),

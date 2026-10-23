@@ -142,6 +142,7 @@ impl Document {
         auth_cookie_name: self.security.auth.cookie.clone(),
         nonce_offset: randomx.nonce_offset,
         verifier_queue_capacity: randomx.verifier_queue,
+        randomx_cache_idle_timeout: randomx.cache.idle_timeout.0,
         rate_limit: RateLimitConfig {
           enabled: self.pow.rate_limit.enabled,
           max_clients: self.pow.rate_limit.max_clients,

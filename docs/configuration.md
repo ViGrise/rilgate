@@ -215,6 +215,7 @@ or overflow.
 | `pow.rate_limit.client.burst`, `.refill_per_second` | `10`, `0.1` |
 | `pow.rate_limit.global.burst`, `.refill_per_second` | `64`, `16` |
 | `pow.algorithms.randomx.challenge_ttl`, `.nonce_offset`, `.verifier_queue` | `1h`, `39`, `8` |
+| `pow.algorithms.randomx.cache.idle_timeout` | `30m` (0s disables release, at most 7d) |
 | `pow.algorithms.randomx.difficulty.base`, `.score_step`, `.max` | `1000`, `10`, `32000` |
 | `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
 | `policy.mode` | `balanced` |

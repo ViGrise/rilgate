@@ -19,6 +19,7 @@ pub fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2PoolPro
       ttl: cfg.randomx_challenge_ttl_seconds,
       nonce_offset: cfg.nonce_offset,
       queue_capacity: cfg.verifier_queue_capacity,
+      cache_idle_timeout: cfg.randomx_cache_idle_timeout,
     },
     pool.clone(),
   )))?;

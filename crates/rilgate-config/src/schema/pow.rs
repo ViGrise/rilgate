@@ -1,4 +1,4 @@
-use super::value::Time;
+use super::value::{IdleTimeout, Time};
 use rilgate_crypto::Secret;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 use serde::{Deserialize, Serialize};
@@ -94,6 +94,7 @@ pub struct RandomX {
   pub challenge_ttl: Time,
   pub nonce_offset: usize,
   pub verifier_queue: usize,
+  pub cache: Cache,
   pub difficulty: Difficulty,
   pub browser: Browser,
 }
@@ -103,8 +104,21 @@ impl Default for RandomX {
       challenge_ttl: Time::seconds(3600),
       nonce_offset: 39,
       verifier_queue: 8,
+      cache: Cache::default(),
       difficulty: Difficulty::default(),
       browser: Browser::default(),
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Cache {
+  pub idle_timeout: IdleTimeout,
+}
+impl Default for Cache {
+  fn default() -> Self {
+    Self {
+      idle_timeout: IdleTimeout(std::time::Duration::from_secs(1800)),
     }
   }
 }

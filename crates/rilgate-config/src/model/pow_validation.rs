@@ -23,6 +23,10 @@ impl PowConfig {
       (1..=1024).contains(&self.verifier_queue_capacity),
       "pow.algorithms.randomx.verifier_queue must be between 1 and 1024"
     );
+    ensure!(
+      self.randomx_cache_idle_timeout <= std::time::Duration::from_secs(604_800),
+      "pow.algorithms.randomx.cache.idle_timeout must be at most 7d"
+    );
     self.auth_binding.validate()?;
     self.p2pool.validate()?;
     for (path, ttl) in [
