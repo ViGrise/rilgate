@@ -92,6 +92,26 @@ fn configuration_show_is_valid_yaml_and_redacts_expanded_secrets() {
 }
 
 #[test]
+fn weak_signing_keys_fail_in_every_environment() {
+  let strong = "explicit-test-key-with-at-least-32-bytes";
+  for environment in ["development", "production"] {
+    for (challenge, auth, previous) in [
+      ("short", strong, strong),
+      (strong, "change-me-to-a-key-of-at-least-32-bytes", strong),
+      (strong, strong, "short"),
+    ] {
+      let contents = format!(
+        "environment: {environment}\nserver:\n  upstream:\n    url: http://127.0.0.1:3000\nsecurity:\n  keys:\n    challenge: {challenge}\n    auth: {auth}\n    challenge_rotation:\n      active_id: next\n      previous:\n        current: {previous}\n"
+      );
+      let result = command(&contents, &["config", "check"], &[]);
+      let error = String::from_utf8_lossy(&result.stderr);
+      assert!(!result.status.success(), "{environment}: {contents}");
+      assert!(error.contains("security.keys"), "{error}");
+    }
+  }
+}
+
+#[test]
 fn invalid_configuration_fails_without_revealing_keys() {
   let template = include_str!("../../../config/rilgate.production.yml");
   for (contents, expected) in [
