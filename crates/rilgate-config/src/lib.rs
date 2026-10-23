@@ -1,7 +1,9 @@
 pub mod assembly;
 pub mod loader;
 pub mod runtime;
-pub use assembly::{Config, Configuration, Overrides, Setting, SettingValue, WebConfig};
+pub use assembly::{
+  Config, Configuration, Finding, Overrides, Setting, SettingValue, Severity, WebConfig,
+};
 pub mod model;
 pub use model::{BrowserConfig, PowConfig, RateLimitConfig};
 pub use rilgate_crypto::Secret;

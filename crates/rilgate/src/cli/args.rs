@@ -90,7 +90,11 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
   /// Validate the configuration without opening listeners or contacting dependencies
-  Check,
+  Check {
+    /// Fail when the configuration produces any warning
+    #[arg(long)]
+    strict: bool,
+  },
   /// Print the resolved configuration with secrets redacted
   Show {
     /// Include settings that still have their default value
@@ -194,7 +198,7 @@ mod tests {
     assert!(matches!(
       args.command,
       Some(Command::Config {
-        command: ConfigCommand::Check
+        command: ConfigCommand::Check { strict: false }
       })
     ));
   }
