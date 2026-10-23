@@ -150,27 +150,27 @@ beyond `pow.algorithms.randomx.verifier_queue` receive `503`. Queued work whose 
 exceeds its deadline is skipped. Seed changes release the old cache before allocation of
 another one.
 
-P2Pool connections share `pow.p2pool.sessions.max` slots across HTTP job fetches and WebSocket
+Stratum pool connections share `pow.stratum_pool.sessions.max` slots across HTTP job fetches and WebSocket
 sessions. Excess requests receive `503` before upgrade or login. WebSocket
-sessions expire after `pow.p2pool.sessions.ttl`, and pending submissions expire after `pow.p2pool.timeout.submit`.
+sessions expire after `pow.stratum_pool.sessions.ttl`, and pending submissions expire after `pow.stratum_pool.timeout.submit`.
 
 Job rotation does not discard an outstanding acceptance response. Shares must match the
 current job and the selected difficulty before submission. Access still requires the
-matching P2Pool acceptance. Gateway clients send the nonce as a numeric hexadecimal
+matching Stratum pool acceptance. Gateway clients send the nonce as a numeric hexadecimal
 value. The Stratum adapter converts it to the little-endian byte encoding expected by
-P2Pool.
+Stratum pool.
 
-Challenge issuance keeps its Stratum sessions open in a pool of at most `pow.p2pool.job_sessions.max`. A
+Challenge issuance keeps its Stratum sessions open in a pool of at most `pow.stratum_pool.job_sessions.max`. A
 task owns each session and tracks job rotation while idle. Challenge issuance thus
 reuses a connection.
 
 It does not open a new one. Those sessions take permits from `sessions.max`, so
 `job_sessions.max` must not exceed it and the remainder stays available to WebSocket sessions.
-A session unused for `pow.p2pool.job_sessions.idle` is closed.
+A session unused for `pow.stratum_pool.job_sessions.idle` is closed.
 
 Incoming job notifications do not extend that deadline. The idle clock starts when the
 initial job becomes available, so connection and login time does not consume it. With
-`pow.p2pool.job_sessions.mode: per_challenge`, each challenge uses one connection within the shared `sessions.max` budget.
+`pow.stratum_pool.job_sessions.mode: per_challenge`, each challenge uses one connection within the shared `sessions.max` budget.
 Zero is not a mode selector.
 
 One pooled session per difficulty publishes its latest job to all matching issuance
@@ -195,7 +195,7 @@ pow:
   algorithms:
     randomx:
       verifier_queue: 8
-  p2pool:
+  stratum_pool:
     address: 127.0.0.1:3333
     timeout:
       submit: 20s
@@ -228,11 +228,11 @@ responses and upgraded WebSocket sessions can outlive these request budgets.
 
 Startup validates policy difficulties, paths, timeouts, and queue and session
 capacities. Every environment rejects placeholder or shorter-than-32-byte signing keys.
-Production also rejects debug score headers. P2Pool passwords are redacted in
+Production also rejects debug score headers. Stratum pool passwords are redacted in
 configuration logs.
 
 RandomX requires a click before solver initialization. The page discloses CPU and memory
-use, and P2Pool mode explicitly discloses submitted mining work. Workers are terminated
+use, and Stratum pool mode explicitly discloses submitted mining work. Workers are terminated
 when the challenge completes, fails, or leaves the page. Browser API calls have a
 30-second deadline, and failures show a retry button that reloads the original URL with
 a fresh presentation token. Configure challenge and session lifetimes for the selected
@@ -264,7 +264,7 @@ pow:
 These defaults permit a burst of 10 proof requests per client and replenish one request
 every 10 seconds. The global bucket permits a burst of 64 and replenishes 16 requests
 per second. Limits are local to each gateway instance. Multiple instances have separate
-quotas. They do not replace the verifier's queue or P2Pool connection limits.
+quotas. They do not replace the verifier's queue or Stratum pool connection limits.
 
 Client identity defaults to the TCP peer address. `Forwarded` is ignored. When
 `server.trusted_proxies` contains the peer, `X-Forwarded-For` is resolved from right to left through
@@ -298,7 +298,7 @@ RUST_LOG=rilgate_gateway::transport::server=debug   # HTTP completion events
 RUST_LOG=rilgate_gateway::proxy::gate=debug          # policy decisions
 ```
 
-Startup and successful reload events use `INFO`. WebSocket P2Pool session loss
+Startup and successful reload events use `INFO`. WebSocket Stratum pool session loss
 uses `WARN`. Upstream errors are included in HTTP completion events.
 
 HTTP job-fetch failures use rate-limited `WARN` events with cumulative counters.

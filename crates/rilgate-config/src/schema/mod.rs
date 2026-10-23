@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Document {
+  #[serde(skip)]
+  pub(crate) sources: Vec<(String, String)>,
   pub environment: Environment,
   pub server: server::Server,
   pub site: site::Site,

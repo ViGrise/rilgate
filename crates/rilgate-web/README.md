@@ -59,7 +59,7 @@ scripts/build.sh --release
 
 ```js
 export async function solve(job) {
-  // job.blob        : P2Pool hashing blob, hex
+  // job.blob        : pool hashing blob, hex
   // job.seedHash    : RandomX seed, hex
   // job.difficulty  : selected fixed difficulty
   // job.nonceOffset : normally 39
@@ -72,8 +72,8 @@ export async function solve(job) {
 }
 ```
 
-`p2pool_accepted` needs both `nonce` and `result` because the gateway forwards the
-share through the active P2Pool Stratum session.
+`stratum_pool_accepted` needs both `nonce` and `result` because the gateway forwards the
+share through the active Stratum pool session.
 
 `local_verify` only requires the nonce for trust purposes: the Rust gateway reconstructs
 the blob and recomputes RandomX natively with the same `randomx-core` code the browser
@@ -133,14 +133,14 @@ failure.
 
 `cancel()` terminates the worker, releases its WASM memory, and rejects pending work
 with `AbortError`. The challenge page calls it when work finishes or the page leaves.
-The page waits for a click before it allocates the RandomX cache. P2Pool mode discloses
+The page waits for a click before it allocates the RandomX cache. Pool-accepted mode discloses
 that browser work is submitted as mining work.
 
 Local RandomX jobs carry `expires_at` in Unix seconds. The challenge page passes it as
 `expiresAt` to the solver, which refuses expired work before cache setup and before and
 after each hash. Difficulty can be a number or a decimal string. Strings preserve values
 above JavaScript's safe integer range. Local blobs include a unique challenge suffix and
-are not valid P2Pool mining submissions.
+are not valid pool mining submissions.
 
 The Rust WASM core uses exact directed SIMD rounding, public-state AES lookup tables and
 inlined SuperscalarHash kernels. Browser throughput depends on the device, browser and

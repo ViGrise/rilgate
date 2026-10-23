@@ -17,7 +17,7 @@ const STARTUP: &[&str] = &[
   "challenge/promise.js",
   "challenge/runtime.js",
   "challenge/registry.js",
-  "challenge/p2pool.js",
+  "challenge/stratum-pool.js",
   "solvers/fast/worker.js",
   "solvers/fast/solver.js",
   "solvers/fast/adapter.js",

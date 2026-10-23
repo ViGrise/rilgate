@@ -156,17 +156,17 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
     resolve(&format!("{BASE}pow:\n  default_algorithm: randomx\n"))
       .unwrap_err()
       .to_string()
-      .contains("pow.p2pool.address")
+      .contains("pow.stratum_pool.pools")
   );
   let config = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: p2pool_accepted\n  p2pool:\n    address: '[::1]:3333'\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: '[::1]:3333'}}]\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
   );
   let cfg = resolve(&config).unwrap();
   assert!(cfg.pow.randomx_enabled);
-  assert_eq!(cfg.pow.p2pool.host, "::1");
-  assert_eq!(cfg.pow.p2pool.connect_timeout.as_millis(), 300);
+  assert_eq!(cfg.pow.stratum_pool.pools[0].host, "::1");
+  assert_eq!(cfg.pow.stratum_pool.connect_timeout.as_millis(), 300);
   assert_eq!(
-    cfg.pow.p2pool.job_session_mode,
+    cfg.pow.stratum_pool.job_session_mode,
     rilgate_pool::JobSessionMode::PerChallenge
   );
   assert!(resolve(&config.replace("per_challenge", "unknown")).is_err());
@@ -185,7 +185,7 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
 fn resolved_output_redacts_every_key_and_password() {
   let config = BASE.replace("  secret: '0123456789abcdef0123456789abcdef'", "  keys:\n    challenge: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    auth: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n    challenge_rotation:\n      active_id: current\n      previous:\n        old: cccccccccccccccccccccccccccccccc");
   let document = parse(&format!(
-    "{config}pow:\n  p2pool:\n    password: private-pool-password\n"
+    "{config}pow:\n  stratum_pool:\n    pools: [{{name: primary, address: localhost:3333, login: {{password: private-pool-password}}}}]\n"
   ))
   .unwrap();
   let cfg = document.resolve().unwrap();
@@ -213,7 +213,7 @@ fn resolved_output_redacts_every_key_and_password() {
 fn all_rule_challenges_are_validated_before_runtime_construction() {
   for (algorithm, difficulty) in [("fast", 0), ("fast", 65), ("randomx", 999)] {
     let config = format!(
-      "{BASE}pow:\n  p2pool: {{address: '127.0.0.1:3333'}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
+      "{BASE}pow:\n  stratum_pool: {{}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
     );
     let error = format!("{:#}", resolve(&config).unwrap_err());
     assert!(error.contains("difficulty"), "{error}");
@@ -547,11 +547,14 @@ fn randomx_verification_rejects_invalid_order_endpoint_and_tls() {
 fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_only() {
   use rilgate_config::{PowEnforcement, schema::pow::Hasher};
   let mut document = parse(BASE).unwrap();
-  document.pow.p2pool = Some(Default::default());
+  document.pow.stratum_pool = Some(Default::default());
   let cfg = document.resolve().unwrap();
   let mut pow = cfg.pow.clone();
   pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n")).unwrap().policy;
-  for enforce in [PowEnforcement::LocalVerify, PowEnforcement::P2poolAccepted] {
+  for enforce in [
+    PowEnforcement::LocalVerify,
+    PowEnforcement::StratumPoolAccepted,
+  ] {
     for algorithm in [PowAlgorithm::Fast, PowAlgorithm::RandomX] {
       for order in [
         vec![Hasher::Local],
@@ -581,4 +584,214 @@ fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_on
   pow.default_algorithm = PowAlgorithm::Fast;
   pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: randomx\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge: {{algorithm: randomx}}\n")).unwrap().policy;
   assert!(pow.needs_remote_verifier());
+}
+
+#[test]
+fn renamed_pool_keys_fail_with_the_new_name() {
+  for (text, expected) in [
+    (
+      "pow:\n  p2pool: {}\n",
+      "pow.p2pool: renamed to pow.stratum_pool",
+    ),
+    (
+      "pow:\n  verification: p2pool_accepted\n",
+      "pow.verification: p2pool_accepted is renamed to stratum_pool_accepted",
+    ),
+  ] {
+    let error = format!("{:#}", parse(&format!("{BASE}{text}")).unwrap_err());
+    assert!(error.contains(expected), "{error}");
+  }
+}
+
+#[test]
+fn pool_login_templates_reject_ambiguous_difficulty_and_hide_operator_identity() {
+  for user in [
+    "wallet",
+    "{difficulty}{difficulty}",
+    "{wallet}+{difficulty}",
+  ] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: '{user}'}}\n"
+    );
+    let error = format!("{:#}", resolve(&text).unwrap_err());
+    assert!(error.contains("login.user"), "{error}");
+    assert!(!error.contains(user), "{error}");
+  }
+  let text = format!(
+    "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: 'private-wallet+{{difficulty}}', password: private-password}}\n"
+  );
+  let document = parse(&text).unwrap();
+  let cfg = document.resolve().unwrap();
+  for output in [document.display(true).unwrap(), format!("{cfg:?}")] {
+    assert!(!output.contains("private-wallet"), "{output}");
+    assert!(!output.contains("private-password"), "{output}");
+  }
+}
+
+#[test]
+fn pool_lists_reject_duplicate_names_invalid_addresses_and_unbounded_failover() {
+  for pools in [
+    "[]",
+    "[{name: same, address: 'localhost:1'}, {name: same, address: 'localhost:2'}]",
+    "[{name: primary, address: 'user:password@localhost:1'}]",
+    "[{name: BadName, address: 'localhost:1'}]",
+  ] {
+    assert!(
+      resolve(&format!(
+        "{BASE}pow:\n  stratum_pool:\n    pools: {pools}\n"
+      ))
+      .is_err()
+    );
+  }
+  for cooldown in ["0s", "601s"] {
+    assert!(
+      resolve(&format!(
+        "{BASE}pow:\n  stratum_pool:\n    failover: {{cooldown: {cooldown}}}\n"
+      ))
+      .is_err()
+    );
+  }
+}
+
+#[test]
+fn proxy_overrides_replace_defaults_and_hide_urls_and_credentials() {
+  let text = format!(
+    "environment: development\n{BASE}pow:\n  stratum_pool:\n    proxies:\n      - {{name: shared, url: 'socks5h://proxy.private:1080', username: private-user, password: private-pass}}\n    pools:\n      - {{name: inherited, address: localhost:3333}}\n      - {{name: direct, address: localhost:3334, proxies: []}}\n      - name: replacement\n        address: localhost:3335\n        proxies: [{{name: local, url: 'http://local.private:3128'}}]\n"
+  );
+  let document = parse(&text).unwrap();
+  let cfg = document.resolve().unwrap();
+  assert!(cfg.pow.stratum_pool.pools[0].proxies.is_none());
+  assert!(
+    cfg.pow.stratum_pool.pools[1]
+      .proxies
+      .as_ref()
+      .unwrap()
+      .is_empty()
+  );
+  assert_eq!(
+    cfg.pow.stratum_pool.pools[2].proxies.as_ref().unwrap()[0].name,
+    "local"
+  );
+  for output in [document.display(true).unwrap(), format!("{cfg:?}")] {
+    for secret in [
+      "proxy.private",
+      "local.private",
+      "private-user",
+      "private-pass",
+    ] {
+      assert!(!output.contains(secret), "{output}");
+    }
+  }
+  for replacement in [
+    "https://proxy.private:1080",
+    "socks5://user:pass@proxy.private:1080",
+    "http://proxy.private:1080/path",
+  ] {
+    assert!(resolve(&text.replace("socks5h://proxy.private:1080", replacement)).is_err());
+  }
+  assert!(resolve(&text.replace(", password: private-pass", "")).is_err());
+  assert!(
+    resolve(&text.replace("socks5h://proxy.private:1080", "http://proxy.private:80")).is_ok()
+  );
+}
+
+#[test]
+fn invalid_proxy_variables_name_the_source_without_echoing_the_url() {
+  let source = "RILGATE_POW_STRATUM_POOL_PROXIES_0_URL";
+  let document = rilgate_config::loader::parse_with(
+    &format!(
+      "{BASE}pow:\n  stratum_pool:\n    proxies: [{{name: route, url: 'http://localhost:3128'}}]\n"
+    ),
+    &[rilgate_config::Setting {
+      path: "pow.stratum_pool.proxies.0.url".into(),
+      source: source.into(),
+      value: rilgate_config::SettingValue::Scalar(
+        "http://private-user:private-pass@proxy.example:3128".into(),
+      ),
+    }],
+  )
+  .unwrap();
+  let error = format!("{:#}", document.resolve().unwrap_err());
+  assert!(error.contains(source), "{error}");
+  assert!(!error.contains("private-user"));
+  assert!(!error.contains("private-pass"));
+  assert!(!error.contains("proxy.example"));
+}
+
+#[test]
+fn maximum_length_logins_use_the_configured_difficulty_digits() {
+  let user = format!("{}{{difficulty}}", "x".repeat(252));
+  let text = format!(
+    "{BASE}pow:\n  algorithms:\n    randomx:\n      difficulty: {{base: 1000, max: 1000}}\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, login: {{user: '{user}'}}}}]\n"
+  );
+  assert!(resolve(&text).is_ok());
+  assert!(resolve(&text.replace("max: 1000", "max: 10000")).is_err());
+}
+
+#[test]
+fn tls_server_names_fail_at_startup_instead_of_on_each_challenge() {
+  let text = format!(
+    "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, tls: {{enabled: true, server_name: 'https://pool.example'}}}}]\n"
+  );
+  let error = format!("{:#}", resolve(&text).unwrap_err());
+  assert!(error.contains("tls.server_name"), "{error}");
+}
+
+#[test]
+fn resolution_errors_attribute_only_settings_inside_the_error_path() {
+  use rilgate_config::{Setting, SettingValue, loader::parse_with};
+  let setting = |path: &str, source: &str, value: &str| Setting {
+    path: path.into(),
+    source: source.into(),
+    value: SettingValue::Scalar(value.into()),
+  };
+  for (text, settings, expected, unrelated) in [
+    (
+      format!(
+        "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, login: {{user: invalid}}}}]\n"
+      ),
+      vec![
+        setting(
+          "pow.stratum_pool.pools.0.address",
+          "ADDRESS_SOURCE",
+          "localhost:3333",
+        ),
+        setting(
+          "pow.stratum_pool.pools.0.login.user",
+          "LOGIN_SOURCE",
+          "invalid",
+        ),
+        setting(
+          "pow.stratum_pool.pools.0.login.password",
+          "PASSWORD_SOURCE",
+          "secret",
+        ),
+        setting("pow.default_algorithm", "ALGORITHM_SOURCE", "fast"),
+      ],
+      vec!["LOGIN_SOURCE"],
+      vec!["ADDRESS_SOURCE", "PASSWORD_SOURCE", "ALGORITHM_SOURCE"],
+    ),
+    (
+      format!(
+        "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333}}]\n    proxies: [{{name: route, url: 'http://localhost:3128'}}]\n"
+      ),
+      vec![
+        setting("pow.stratum_pool.proxies.0.url", "PROXY_SOURCE", "invalid"),
+        setting("pow.stratum_pool.pools.0.name", "POOL_SOURCE", "pool"),
+      ],
+      vec!["PROXY_SOURCE"],
+      vec!["POOL_SOURCE"],
+    ),
+  ] {
+    let error = format!(
+      "{:#}",
+      parse_with(&text, &settings).unwrap().resolve().unwrap_err()
+    );
+    for source in expected {
+      assert!(error.contains(source), "{error}");
+    }
+    for source in unrelated {
+      assert!(!error.contains(source), "{error}");
+    }
+  }
 }

@@ -1,7 +1,7 @@
 (() => {
   const { t, status, endpoint, exchange, progressEl, once } = window.PowClient;
-  async function p2poolAccepted(solver) {
-    status(t("challenge.status.connecting", "Connecting to the P2Pool-backed proof-of-work service…"));
+  async function stratumPoolAccepted(solver) {
+    status(t("challenge.status.connecting", "Connecting to the mining pool proof-of-work service…"));
 
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const presentation = encodeURIComponent(window.POW_PRESENTATION_TOKEN);
@@ -55,7 +55,7 @@
                 result: solution.result,
               }));
 
-              status(t("challenge.status.submitted", "Proof submitted; waiting for P2Pool acceptance…"));
+              status(t("challenge.status.submitted", "Proof submitted; waiting for mining pool acceptance…"));
               return;
             }
 
@@ -69,7 +69,7 @@
 
             if (message.type === "rejected") {
               status(
-                t("challenge.status.rejected", "P2Pool rejected the proof: {reason}\nWaiting for another job…", { reason: message.reason }),
+                t("challenge.status.rejected", "The mining pool rejected the proof: {reason}\nWaiting for another job…", { reason: message.reason }),
               );
               return;
             }
@@ -103,5 +103,5 @@
   }
 
 
-  window.PowClient.p2poolAccepted = p2poolAccepted;
+  window.PowClient.stratumPoolAccepted = stratumPoolAccepted;
 })();

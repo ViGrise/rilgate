@@ -198,7 +198,7 @@ async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty()
   let port = listener.local_addr().unwrap().port();
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.p2pool.port = port;
+  pow.stratum_pool.pools[0].port = port;
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -290,7 +290,7 @@ async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
 
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.p2pool.port = port;
+  pow.stratum_pool.pools[0].port = port;
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -376,7 +376,7 @@ async fn a_fast_challenge_cannot_cross_enforcement_modes() {
   drop(service);
   let mut changed = cfg;
   let pow = &mut Arc::get_mut(&mut changed).unwrap().pow;
-  pow.enforce = PowEnforcement::P2poolAccepted;
+  pow.enforce = PowEnforcement::StratumPoolAccepted;
   let selection = pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -530,7 +530,7 @@ async fn malformed_signed_randomx_work_is_rejected_before_native_hashing() {
 async fn randomx_http_proofs_require_local_verification_even_with_signed_matching_enforcement() {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.enforce = PowEnforcement::P2poolAccepted;
+  pow.enforce = PowEnforcement::StratumPoolAccepted;
   let selection = pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -541,7 +541,7 @@ async fn randomx_http_proofs_require_local_verification_even_with_signed_matchin
   let claims = ChallengeClaims::Randomx {
     v: 1,
     challenge_id: "work".into(),
-    enforce: PowEnforcement::P2poolAccepted,
+    enforce: PowEnforcement::StratumPoolAccepted,
     host: "example.test".into(),
     blob: "00".repeat(64),
     seed_hash: "ab".repeat(32),
@@ -564,7 +564,7 @@ async fn randomx_http_proofs_require_local_verification_even_with_signed_matchin
   assert!(
     error
       .to_string()
-      .contains("disabled in p2pool_accepted mode"),
+      .contains("disabled in stratum_pool_accepted mode"),
     "{error}"
   );
 }

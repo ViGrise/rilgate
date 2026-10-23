@@ -8,6 +8,16 @@ use std::path::{Path, PathBuf};
 /// neither `--config` nor `RILGATE_CONFIG` selects one.
 const DEFAULT_PATHS: &[&str] = &["rilgate.yml", "config/rilgate.yml"];
 
+/// Configuration sections with a new name. An old name fails with the new one,
+/// so an operator does not lose a setting without notice.
+const RENAMED_SECTIONS: &[(&str, &str)] = &[("pow.p2pool", "pow.stratum_pool")];
+/// Setting values with a new name, as (setting path, old value, new value).
+const RENAMED_VALUES: &[(&str, &str, &str)] = &[(
+  "pow.verification",
+  "p2pool_accepted",
+  "stratum_pool_accepted",
+)];
+
 /// A loaded document with warnings for the caller to report once logging is
 /// available.
 pub struct Loaded {
@@ -16,6 +26,7 @@ pub struct Loaded {
 }
 
 pub fn load(args: &Overrides) -> Result<Loaded> {
+  reject_renamed_environment(std::env::vars_os().filter_map(|(name, _)| name.into_string().ok()))?;
   let explicit = args
     .config
     .clone()
@@ -82,21 +93,81 @@ pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
   } else {
     serde_yaml_ng::from_str(text).context("configuration YAML")?
   };
+  reject_renamed(&value, settings)?;
   let mut value = expand(value, "", 0)?;
   for setting in settings {
     assign(&mut value, setting)
       .with_context(|| format!("{} ({})", setting.path, setting.source))?;
   }
-  serde_path_to_error::deserialize(value).map_err(|error| {
+  let mut document: Document = serde_path_to_error::deserialize(value).map_err(|error| {
     let path = error.path().to_string();
+    let dotted = path.replace('[', ".").replace(']', "");
     let source = settings
       .iter()
       .rev()
-      .find(|setting| path == setting.path || path.starts_with(&format!("{}[", setting.path)))
+      .find(|setting| {
+        dotted == setting.path
+          || dotted.starts_with(&format!("{}.", setting.path))
+          || setting.path.starts_with(&format!("{dotted}."))
+      })
       .map(|setting| format!(" (from {})", setting.source))
       .unwrap_or_default();
     anyhow::anyhow!("Configuration error at {path}{source}: {}", error.inner())
-  })
+  })?;
+  document.sources = settings
+    .iter()
+    .map(|setting| (setting.path.clone(), setting.source.clone()))
+    .collect();
+  Ok(document)
+}
+
+fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
+  let lookup = |path: &str| {
+    path
+      .split('.')
+      .try_fold(document, |node, key| node.get(key))
+  };
+  for (old, new) in RENAMED_SECTIONS {
+    ensure!(lookup(old).is_none(), "{old}: renamed to {new}");
+  }
+  for (path, old, new) in RENAMED_VALUES {
+    let in_document = lookup(path).and_then(Value::as_str) == Some(*old);
+    let in_settings = settings.iter().any(|setting| {
+      setting.path == *path && matches!(&setting.value, SettingValue::Scalar(text) if text == old)
+    });
+    ensure!(
+      !in_document && !in_settings,
+      "{path}: {old} is renamed to {new}"
+    );
+  }
+  Ok(())
+}
+
+/// Fails for an environment variable of a renamed section. Without this check,
+/// the variable has no effect.
+fn reject_renamed_environment(names: impl Iterator<Item = String>) -> Result<()> {
+  let variable = |path: &str| format!("RILGATE_{}_", path.replace('.', "_").to_uppercase());
+  for name in names {
+    let indexed = match name.as_str() {
+      "RILGATE_POW_P2POOL_ADDRESS" | "RILGATE_POW_STRATUM_POOL_ADDRESS" => {
+        Some("RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS")
+      }
+      "RILGATE_POW_P2POOL_PASSWORD" | "RILGATE_POW_STRATUM_POOL_PASSWORD" => {
+        Some("RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_PASSWORD")
+      }
+      _ => None,
+    };
+    if let Some(indexed) = indexed {
+      anyhow::bail!("{name}: renamed to {indexed}");
+    }
+    for (old, new) in RENAMED_SECTIONS {
+      let prefix = variable(old);
+      if let Some(rest) = name.strip_prefix(&prefix) {
+        anyhow::bail!("{name}: renamed to {}{rest}", variable(new));
+      }
+    }
+  }
+  Ok(())
 }
 
 fn assign(root: &mut value::Expanded, setting: &Setting) -> Result<()> {
@@ -114,10 +185,33 @@ fn assign(root: &mut value::Expanded, setting: &Setting) -> Result<()> {
   let mut node = root;
   let mut keys = setting.path.split('.').peekable();
   while let Some(key) = keys.next() {
-    // An absent or null section becomes a mapping, so a setting can enable an
-    // optional section such as `pow.p2pool`.
+    let numeric = key.parse::<usize>().ok();
     if matches!(node, Expanded::Scalar(Value::Null)) {
-      *node = Expanded::Mapping(Vec::new());
+      *node = if numeric.is_some() {
+        Expanded::Sequence(Vec::new())
+      } else {
+        Expanded::Mapping(Vec::new())
+      };
+    }
+    if let Some(index) = numeric {
+      ensure!(index < 8, "list index must be less than 8");
+      let Expanded::Sequence(items) = node else {
+        anyhow::bail!("expected a YAML list above {key}");
+      };
+      ensure!(
+        index <= items.len(),
+        "list index {index} leaves a gap; next index is {}",
+        items.len()
+      );
+      if index == items.len() {
+        items.push(Expanded::Scalar(Value::Null));
+      }
+      if keys.peek().is_none() {
+        items[index] = replacement;
+        return Ok(());
+      }
+      node = &mut items[index];
+      continue;
     }
     let Expanded::Mapping(entries) = node else {
       anyhow::bail!("expected a YAML mapping above {key}");
@@ -213,4 +307,76 @@ fn interpolate(text: &str, path: &str) -> Result<String> {
   output.push_str(remaining);
   ensure!(output.len() <= 65_536, "{path}: value exceeds 64 KiB");
   Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn environment_variables_of_renamed_sections_fail_with_the_new_name() {
+    let error =
+      super::reject_renamed_environment(["RILGATE_POW_P2POOL_ADDRESS".to_string()].into_iter())
+        .unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "RILGATE_POW_P2POOL_ADDRESS: renamed to RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS"
+    );
+    assert!(
+      super::reject_renamed_environment(
+        ["RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS".to_string()].into_iter()
+      )
+      .is_ok()
+    );
+  }
+}
+
+#[cfg(test)]
+mod indexed_tests {
+  use super::*;
+
+  #[test]
+  fn removed_single_pool_variables_fail_with_indexed_migration_paths() {
+    for (name, field) in [
+      ("RILGATE_POW_STRATUM_POOL_ADDRESS", "ADDRESS"),
+      ("RILGATE_POW_STRATUM_POOL_PASSWORD", "LOGIN_PASSWORD"),
+    ] {
+      let error = reject_renamed_environment([name.to_string()].into_iter()).unwrap_err();
+      assert_eq!(
+        error.to_string(),
+        format!("{name}: renamed to RILGATE_POW_STRATUM_POOL_POOLS_0_{field}")
+      );
+    }
+  }
+
+  #[test]
+  fn indexed_overrides_update_yaml_items_append_contiguously_and_name_invalid_sources() {
+    let base =
+      "pow:\n  stratum_pool:\n    pools:\n      - {name: primary, address: localhost:3333}\n";
+    let setting = |path: &str, text: &str| Setting {
+      path: path.into(),
+      source: "RILGATE_POW_STRATUM_POOL_POOLS_1_ADDRESS".into(),
+      value: SettingValue::Scalar(text.into()),
+    };
+    let document = parse_with(
+      base,
+      &[
+        setting("pow.stratum_pool.pools.0.address", "localhost:4444"),
+        setting("pow.stratum_pool.pools.1.name", "backup"),
+        setting("pow.stratum_pool.pools.1.address", "localhost:5555"),
+      ],
+    )
+    .unwrap();
+    let pools = document.pow.stratum_pool.unwrap().pools;
+    assert_eq!(pools[0].address, "localhost:4444");
+    assert_eq!(pools[1].address, "localhost:5555");
+    let error = format!(
+      "{:#}",
+      parse_with(
+        base,
+        &[setting("pow.stratum_pool.pools.2.address", "localhost:1")]
+      )
+      .unwrap_err()
+    );
+    assert!(error.contains("leaves a gap"), "{error}");
+    assert!(error.contains("RILGATE_POW_STRATUM_POOL_POOLS_1_ADDRESS"));
+  }
 }

@@ -33,7 +33,7 @@ const SERVER: &str = "Server";
 const SITE: &str = "Site";
 const SECURITY: &str = "Security";
 const POW: &str = "Proof of work";
-const POOL: &str = "P2Pool";
+const POOL: &str = "Stratum pool";
 const POLICY: &str = "Policy";
 
 macro_rules! spec {
@@ -92,7 +92,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SECURITY, Text, "security.auth.bind.user_agent", "security-auth-bind-user-agent", "RILGATE_SECURITY_AUTH_BIND_USER_AGENT", None, "Bind the cookie to the User-Agent: full or family"),
   spec!(SECURITY, List, "security.auth.bind.headers", "security-auth-bind-headers", "RILGATE_SECURITY_AUTH_BIND_HEADERS", None, "Client request headers the cookie is bound to"),
   spec!(SECURITY, List, "security.auth.bind.proxy_headers", "security-auth-bind-proxy-headers", "RILGATE_SECURITY_AUTH_BIND_PROXY_HEADERS", None, "Headers set by trusted proxies the cookie is bound to"),
-  spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or p2pool_accepted"),
+  spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or stratum_pool_accepted"),
   spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast or randomx"),
   spec!(POW, Text, "pow.challenge.ttl", "pow-challenge-ttl", "RILGATE_POW_CHALLENGE_TTL", None, "Challenge lifetime"),
   spec!(POW, Text, "pow.challenge.receipt_ttl", "pow-challenge-receipt-ttl", "RILGATE_POW_CHALLENGE_RECEIPT_TTL", None, "Proof receipt lifetime"),
@@ -125,18 +125,120 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.score_step", "pow-algorithms-randomx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_SCORE_STEP", None, "Score that doubles RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.browser.module", "pow-algorithms-randomx-browser-module", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_MODULE", None, "Browser RandomX solver module path"),
-  spec!(POOL, Text, "pow.p2pool.address", "pow-p2pool-address", "RILGATE_POW_P2POOL_ADDRESS", None, "P2Pool Stratum address; setting any P2Pool value enables P2Pool"),
-  spec!(POOL, Secret, "pow.p2pool.password", "pow-p2pool-password", "RILGATE_POW_P2POOL_PASSWORD", None, "P2Pool Stratum password"),
-  spec!(POOL, Text, "pow.p2pool.agent", "pow-p2pool-agent", "RILGATE_POW_P2POOL_AGENT", None, "Stratum user agent"),
-  spec!(POOL, Text, "pow.p2pool.timeout.connect", "pow-p2pool-timeout-connect", "RILGATE_POW_P2POOL_TIMEOUT_CONNECT", None, "P2Pool connect timeout"),
-  spec!(POOL, Text, "pow.p2pool.timeout.submit", "pow-p2pool-timeout-submit", "RILGATE_POW_P2POOL_TIMEOUT_SUBMIT", None, "P2Pool share submit timeout"),
-  spec!(POOL, Text, "pow.p2pool.sessions.max", "pow-p2pool-sessions-max", "RILGATE_POW_P2POOL_SESSIONS_MAX", None, "Concurrent browser mining sessions"),
-  spec!(POOL, Text, "pow.p2pool.sessions.ttl", "pow-p2pool-sessions-ttl", "RILGATE_POW_P2POOL_SESSIONS_TTL", None, "Browser mining session lifetime"),
-  spec!(POOL, Text, "pow.p2pool.job_sessions.mode", "pow-p2pool-job-sessions-mode", "RILGATE_POW_P2POOL_JOB_SESSIONS_MODE", None, "Job connections: pooled or per_challenge"),
-  spec!(POOL, Text, "pow.p2pool.job_sessions.max", "pow-p2pool-job-sessions-max", "RILGATE_POW_P2POOL_JOB_SESSIONS_MAX", None, "Pooled job connections"),
-  spec!(POOL, Text, "pow.p2pool.job_sessions.idle", "pow-p2pool-job-sessions-idle", "RILGATE_POW_P2POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
+  spec!(POOL, Text, "pow.stratum_pool.failover.cooldown", "pow-stratum-pool-failover-cooldown", "RILGATE_POW_STRATUM_POOL_FAILOVER_COOLDOWN", None, "Pool and proxy connection failure cooldown"),
+  spec!(POOL, Text, "pow.stratum_pool.agent", "pow-stratum-pool-agent", "RILGATE_POW_STRATUM_POOL_AGENT", None, "Stratum user agent"),
+  spec!(POOL, Text, "pow.stratum_pool.timeout.connect", "pow-stratum-pool-timeout-connect", "RILGATE_POW_STRATUM_POOL_TIMEOUT_CONNECT", None, "Stratum pool connect timeout"),
+  spec!(POOL, Text, "pow.stratum_pool.timeout.submit", "pow-stratum-pool-timeout-submit", "RILGATE_POW_STRATUM_POOL_TIMEOUT_SUBMIT", None, "Stratum pool share submit timeout"),
+  spec!(POOL, Text, "pow.stratum_pool.sessions.max", "pow-stratum-pool-sessions-max", "RILGATE_POW_STRATUM_POOL_SESSIONS_MAX", None, "Concurrent browser mining sessions"),
+  spec!(POOL, Text, "pow.stratum_pool.sessions.ttl", "pow-stratum-pool-sessions-ttl", "RILGATE_POW_STRATUM_POOL_SESSIONS_TTL", None, "Browser mining session lifetime"),
+  spec!(POOL, Text, "pow.stratum_pool.job_sessions.mode", "pow-stratum-pool-job-sessions-mode", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MODE", None, "Job connections: pooled or per_challenge"),
+  spec!(POOL, Text, "pow.stratum_pool.job_sessions.max", "pow-stratum-pool-job-sessions-max", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MAX", None, "Pooled job connections"),
+  spec!(POOL, Text, "pow.stratum_pool.job_sessions.idle", "pow-stratum-pool-job-sessions-idle", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
   spec!(POLICY, Text, "policy.mode", "policy-mode", "RILGATE_POLICY_MODE", None, "Policy preset: off, light, balanced, strict or custom"),
 ];
+
+pub(crate) const POOL_FIELDS: &[(&str, &str)] = &[
+  ("NAME", "name"),
+  ("ADDRESS", "address"),
+  ("LOGIN_USER", "login.user"),
+  ("LOGIN_PASSWORD", "login.password"),
+  ("TLS_ENABLED", "tls.enabled"),
+  ("TLS_SERVER_NAME", "tls.server_name"),
+  ("TLS_CA", "tls.ca"),
+  ("PROXIES", "proxies"),
+];
+
+pub(crate) const PROXY_FIELDS: &[(&str, &str)] = &[
+  ("NAME", "name"),
+  ("URL", "url"),
+  ("USERNAME", "username"),
+  ("PASSWORD", "password"),
+];
+
+fn indexed_item<'a>(name: &str, rest: &'a str) -> Result<(usize, &'a str), String> {
+  let (index, field) = rest
+    .split_once('_')
+    .ok_or_else(|| format!("{name}: expected an index and a field"))?;
+  let index: usize = index
+    .parse()
+    .map_err(|_| format!("{name}: expected a numeric index"))?;
+  if index >= 8 {
+    return Err(format!("{name}: index must be 0 to 7"));
+  }
+  Ok((index, field))
+}
+
+fn indexed_field(name: &str, field: &str, fields: &[(&str, &str)]) -> Result<String, String> {
+  fields
+    .iter()
+    .find(|(key, _)| *key == field)
+    .map(|(_, path)| path.to_string())
+    .ok_or_else(|| {
+      format!(
+        "{name}: unknown field; valid fields: {}",
+        fields
+          .iter()
+          .map(|(key, _)| *key)
+          .collect::<Vec<_>>()
+          .join(", ")
+      )
+    })
+}
+
+fn indexed_settings(
+  variables: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<Vec<Setting>, String> {
+  let mut settings = Vec::new();
+  for (name, value) in variables {
+    let Some(name) = name.to_str() else {
+      continue;
+    };
+    let Some(rest) = name.strip_prefix("RILGATE_POW_STRATUM_POOL_") else {
+      continue;
+    };
+    let path = if let Some(rest) = rest.strip_prefix("POOLS_") {
+      let (index, field) = indexed_item(name, rest)?;
+      let field = if let Some(rest) = field.strip_prefix("PROXIES_") {
+        let (proxy, field) = indexed_item(name, rest)?;
+        format!(
+          "proxies.{proxy}.{}",
+          indexed_field(name, field, PROXY_FIELDS)?
+        )
+      } else {
+        indexed_field(name, field, POOL_FIELDS)?
+      };
+      format!("pow.stratum_pool.pools.{index}.{field}")
+    } else if let Some(rest) = rest.strip_prefix("PROXIES_") {
+      let (index, field) = indexed_item(name, rest)?;
+      format!(
+        "pow.stratum_pool.proxies.{index}.{}",
+        indexed_field(name, field, PROXY_FIELDS)?
+      )
+    } else {
+      continue;
+    };
+    let value = value
+      .into_string()
+      .map_err(|_| format!("{name}: expected a UTF-8 value"))?;
+    let value = if path.ends_with(".proxies") {
+      if !value.is_empty() {
+        return Err(format!(
+          "{name}: use an empty value for a direct connection, or indexed proxy fields"
+        ));
+      }
+      SettingValue::List(Vec::new())
+    } else {
+      SettingValue::Scalar(value)
+    };
+    settings.push(Setting {
+      path,
+      source: name.into(),
+      value,
+    });
+  }
+  settings.sort_by(|a, b| a.path.cmp(&b.path));
+  Ok(settings)
+}
 
 /// The flag values present on the command line or in the environment.
 #[derive(Debug, Default)]
@@ -213,12 +315,16 @@ impl FromArgMatches for Settings {
           _ => format!("--{}", spec.flag),
         };
         values.push(Setting {
-          path: spec.path,
+          path: spec.path.into(),
           source,
           value,
         });
       }
     }
+    values.extend(
+      indexed_settings(std::env::vars_os())
+        .map_err(|message| clap::Error::raw(clap::error::ErrorKind::ValueValidation, message))?,
+    );
     Ok(Self { values })
   }
   fn update_from_arg_matches(&mut self, matches: &ArgMatches) -> Result<(), clap::Error> {
@@ -228,7 +334,7 @@ impl FromArgMatches for Settings {
 }
 
 /// A document that enables the optional sections whose defaults are shown.
-const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  p2pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
+const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
 
 /// The schema defaults, with the optional sections present so their defaults
 /// are shown too.
@@ -283,7 +389,7 @@ mod tests {
   #[test]
   fn every_path_exists_in_the_schema() {
     let defaults = defaults_of(
-      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  p2pool: {}\n",
+      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\n",
     )
     .unwrap();
     for spec in SPECS {
@@ -340,5 +446,107 @@ mod tests {
     flags.sort_unstable();
     flags.dedup();
     assert_eq!(flags.len(), SPECS.len());
+  }
+}
+
+#[cfg(test)]
+mod indexed_tests {
+  use super::*;
+
+  #[test]
+  fn mistyped_indexed_fields_fail_instead_of_silently_using_a_default() {
+    let error = indexed_settings(
+      [(
+        "RILGATE_POW_STRATUM_POOL_POOLS_0_ADRESS".into(),
+        "secret".into(),
+      )]
+      .into_iter(),
+    )
+    .unwrap_err();
+    assert!(error.contains("RILGATE_POW_STRATUM_POOL_POOLS_0_ADRESS"));
+    assert!(error.contains("valid fields: NAME, ADDRESS, LOGIN_USER, LOGIN_PASSWORD"));
+    assert!(!error.contains("secret"));
+  }
+}
+
+#[cfg(test)]
+mod proxy_indexed_tests {
+  use super::*;
+
+  #[test]
+  fn indexed_proxy_override_can_clear_inheritance_and_build_a_nested_route() {
+    let values = indexed_settings(
+      [
+        ("RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES".into(), "".into()),
+        (
+          "RILGATE_POW_STRATUM_POOL_POOLS_1_PROXIES_0_URL".into(),
+          "socks5h://localhost:1080".into(),
+        ),
+        (
+          "RILGATE_POW_STRATUM_POOL_PROXIES_0_NAME".into(),
+          "default".into(),
+        ),
+      ]
+      .into_iter(),
+    )
+    .unwrap();
+    assert!(
+      values
+        .iter()
+        .any(|setting| setting.path == "pow.stratum_pool.pools.0.proxies"
+          && setting.value == SettingValue::List(Vec::new()))
+    );
+    assert!(
+      values
+        .iter()
+        .any(|setting| setting.path == "pow.stratum_pool.pools.1.proxies.0.url")
+    );
+    assert!(
+      values
+        .iter()
+        .any(|setting| setting.path == "pow.stratum_pool.proxies.0.name")
+    );
+    let error = indexed_settings(
+      [(
+        "RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES_0_URI".into(),
+        "secret".into(),
+      )]
+      .into_iter(),
+    )
+    .unwrap_err();
+    assert!(error.contains("valid fields: NAME, URL, USERNAME, PASSWORD"));
+  }
+}
+
+#[cfg(all(test, unix))]
+mod environment_encoding_tests {
+  use super::*;
+  use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+  #[test]
+  fn unrelated_non_utf8_environment_entries_are_ignored() {
+    let invalid = OsString::from_vec(vec![0xff]);
+    assert!(
+      indexed_settings(
+        [
+          (invalid.clone(), invalid.clone()),
+          (OsString::from("UNRELATED"), invalid.clone()),
+          (OsString::from("RILGATE_POW_STRATUM_POOL_AGENT"), invalid),
+        ]
+        .into_iter()
+      )
+      .unwrap()
+      .is_empty()
+    );
+  }
+
+  #[test]
+  fn indexed_non_utf8_values_report_the_variable() {
+    let name = "RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_PASSWORD";
+    let error =
+      indexed_settings([(OsString::from(name), OsString::from_vec(vec![0xff]))].into_iter())
+        .unwrap_err();
+    assert!(error.contains(name), "{error}");
+    assert!(error.contains("UTF-8"), "{error}");
   }
 }

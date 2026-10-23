@@ -75,7 +75,7 @@ fn verifier_display_contains_only_its_settings() {
     assert!(!text.contains("upstream"));
     assert!(!text.contains("security"));
     assert!(!text.contains("verify:"));
-    assert!(!text.contains("p2pool"));
+    assert!(!text.contains("stratum_pool"));
     assert!(!text.contains("site:"));
     parse(&text).unwrap().resolve_verifier().unwrap();
   }

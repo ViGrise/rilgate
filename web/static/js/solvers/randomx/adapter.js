@@ -49,7 +49,7 @@
     );
   }
 
-  // The solver abandons an in-flight attempt when P2Pool publishes a newer job,
+  // The solver abandons an in-flight attempt when the pool publishes a newer job,
   // so a superseded solve is not a challenge failure.
   async function solveRandomX(solver, job) {
     try {
@@ -97,8 +97,8 @@
 
   async function run(config) {
       const description = document.querySelector("#description");
-      description.textContent = config.enforce === "p2pool_accepted"
-        ? t("pow.disclosure.mining", "Your browser will perform RandomX mining work submitted to the gateway's P2Pool mining setup. This uses about 256 MiB of memory and CPU time, and can take a long time. Start only if you agree to contribute this work.")
+      description.textContent = config.enforce === "stratum_pool_accepted"
+        ? t("pow.disclosure.mining", "Your browser will perform RandomX mining work submitted to the gateway's mining pool. This uses about 256 MiB of memory and CPU time, and can take a long time. Start only if you agree to contribute this work.")
         : t("pow.disclosure.randomx", "Your browser will calculate a RandomX proof using about 256 MiB of memory and CPU time. This can take a long time.");
       status(t("challenge.status.waiting", "Waiting for you to start RandomX work."));
       const startButton = document.querySelector("#randomx-start");
@@ -110,8 +110,8 @@
       try {
         if (config.enforce === "local_verify") {
           await randomxLocalVerify(solver);
-        } else if (config.enforce === "p2pool_accepted") {
-          await window.PowClient.p2poolAccepted(solver);
+        } else if (config.enforce === "stratum_pool_accepted") {
+          await window.PowClient.stratumPoolAccepted(solver);
         } else {
           throw new Error(
             `Unsupported enforcement mode: ${config.enforce}`,

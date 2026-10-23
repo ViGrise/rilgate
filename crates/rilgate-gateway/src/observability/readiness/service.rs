@@ -29,7 +29,7 @@ pub async fn check(state: &AppState) -> Response {
   );
   let pool = async {
     if needs_pool {
-      Some(connect(state.cfg.pow.p2pool.host.clone(), state.cfg.pow.p2pool.port).await)
+      Some(state.pool.readiness(timeout).await)
     } else {
       None
     }
@@ -42,6 +42,10 @@ pub async fn check(state: &AppState) -> Response {
     }
   };
   let (upstream, pool, remote) = tokio::join!(upstream, pool, remote);
+  let pools = pool;
+  let pool = pools
+    .as_ref()
+    .map(|pools| pools.iter().any(|(_, ready)| *ready));
   let ip_sets = state.pow.ip_sets().all_remote_loaded();
   let ready = upstream
     && pool.unwrap_or(true)
@@ -58,6 +62,7 @@ pub async fn check(state: &AppState) -> Response {
       ready,
       upstream,
       pool,
+      pools,
       remote,
       ip_sets,
     },

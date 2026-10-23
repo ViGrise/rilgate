@@ -5,3 +5,7 @@ pub use config::StratumConfig;
 
 mod codec;
 mod job;
+
+pub mod transport;
+
+mod proxy;

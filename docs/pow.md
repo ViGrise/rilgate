@@ -42,7 +42,7 @@ challenge:
   difficulty: 8000
 ```
 
-Both RandomX modes get work from a configured P2Pool Stratum endpoint. Difficulty is a
+Both RandomX modes get work from a configured Stratum endpoint. Difficulty is a
 positive integer of at least 1000. A result must be no greater than `floor((2^256 - 1) / difficulty)` when
 interpreted as a little-endian integer.
 
@@ -59,24 +59,46 @@ With:
 
 ```yaml
 pow:
-  verification: p2pool_accepted
+  verification: stratum_pool_accepted
 ```
 
-RandomX uses the WebSocket + retained Stratum session and succeeds only after P2Pool
+RandomX uses the WebSocket + retained Stratum session and succeeds only after Stratum pool
 accepts the share.
 
-`fast` supports only local verification. Policies that select it with `p2pool_accepted`
-are rejected. P2Pool-accepted deployments must select RandomX.
+`fast` supports only local verification. Policies that select it with `stratum_pool_accepted`
+are rejected. Pool-accepted deployments must select RandomX.
+
+### Pool selection
+
+Configure a pool list with ordered backups. A pooled job session stays on the
+pool that supplied its jobs. In `stratum_pool_accepted` mode, the browser
+WebSocket submits shares on that same pool connection. A new session can use a
+backup pool. With `local_verify`, verification does not contact the pool and
+submits no shares. This mode earns no mining reward.
+
+A pool can change the requested difficulty. Rilgate keeps the target from the
+pool job. It reports one warning and one mismatch count per connection. The
+warning contains the pool name and requested and received difficulty.
+
+Use pools that you trust for `stratum_pool_accepted`. A pool that accepts every
+share can grant access to every client. Each failover pool can pay a different
+wallet. See [pool configuration](configuration.md#stratum-pools-and-proxies).
+
+P2Pool sets the payout wallet on the node with `--wallet` and ignores a login
+wallet. Use `x+{difficulty}` with P2Pool. Other pools can require a wallet in
+`login.user`. Copy the login format from that pool's setup instructions.
 
 ### Hybrid escalation
 
 With local verification, a custom policy can reserve RandomX for higher scores.
-Configure `pow.p2pool` explicitly for RandomX work:
+Configure `pow.stratum_pool` explicitly for RandomX work:
 
 ```yaml
 pow:
-  p2pool:
-    address: 127.0.0.1:3333
+  stratum_pool:
+    pools:
+      - name: local
+        address: 127.0.0.1:3333
 policy:
   mode: custom
   score:
@@ -121,7 +143,7 @@ gateway
   +--> challenge page at requested URL
           |
           v
-      P2Pool-derived job
+      Pool-derived job
           |
           v
       RandomX in browser
@@ -158,13 +180,13 @@ No Redis, coordinator, sticky session or special load-balancer configuration is
 required.
 
 A locally accepted result proves the requested RandomX difficulty. It is a different
-protocol event from a P2Pool Stratum `accepted` response.
+protocol event from a Stratum `accepted` response.
 
-### P2Pool-accepted enforcement
+### Pool-accepted enforcement
 
 ```yaml
 pow:
-  verification: p2pool_accepted
+  verification: stratum_pool_accepted
 ```
 
 Flow:
@@ -179,7 +201,7 @@ WebSocket under site.base_path
 one gateway instance
   |
   v
-matching P2Pool Stratum session
+matching Stratum pool session
   |
   v
 browser solves current job
@@ -188,7 +210,7 @@ browser solves current job
 gateway submits job_id + nonce + result
   |
   v
-P2Pool returns accepted
+Stratum pool returns accepted
   |
   v
 signed receipt
@@ -276,10 +298,10 @@ cookie only when its algorithm and enforcement mode match and its difficulty is 
 the policy's requirement. `DENY` rules still deny access with a valid cookie.
 
 Local RandomX work appends a domain marker and a random 16-byte challenge ID to the
-P2Pool-derived blob. Identical pool jobs therefore yield distinct proofs without a
+Pool-derived blob. Identical pool jobs therefore yield distinct proofs without a
 rebuild of the seed cache. Pool blobs must fit in 233 bytes before the 23-byte suffix.
-Larger jobs return 503. This local work cannot be submitted as a P2Pool share. The
-`p2pool_accepted` mode uses the original pool blob unchanged.
+Larger jobs return 503. This local work cannot be submitted as a Stratum pool share. The
+`stratum_pool_accepted` mode uses the original pool blob unchanged.
 
 `pow.challenge.ttl` controls presentations and fast challenges. `pow.algorithms.randomx.challenge_ttl` controls local
 RandomX solving and defaults to 3600 seconds. Tune it for browser hash rates and policy
@@ -348,9 +370,9 @@ artifact without the validation export.
 
 `pow.verification` sets the proof requirement. With `local_verify`, the gateway
 checks a hash against the difficulty target. The hash can come from a local
-worker or a remote verifier. With `p2pool_accepted`, the gateway waits for P2Pool
+worker or a remote verifier. With `stratum_pool_accepted`, the gateway waits for Stratum pool
 to accept the share. A remote verifier does not replace pool acceptance. Both
-modes still need `pow.p2pool.address` to get work.
+modes still need `pow.stratum_pool.pools[].address` to get work.
 
 Set `pow.algorithms.randomx.verify.order` to select the hash location:
 
@@ -385,8 +407,11 @@ Use a custom policy to select RandomX. Presets select Fast explicitly, so
 pow:
   verification: local_verify
   default_algorithm: randomx
-  p2pool:
-    address: pool.internal:3333
+  stratum_pool:
+    pools:
+      - name: internal
+        address: pool.internal:3333
+        tls: {enabled: true}
 policy:
   mode: custom
   default_action: challenge

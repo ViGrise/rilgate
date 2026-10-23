@@ -23,7 +23,7 @@ browser completes the required work.
 - **Request policies:** allow, deny, challenge or adjust the score of a request.
   Policies match paths, methods, user agents, headers, client IP ranges and
   published IP sets.
-- **Two RandomX modes:** local verification or access granted after P2Pool accepts a
+- **Two RandomX modes:** local verification or access granted after Stratum pool accepts a
   submitted share. RandomX starts only after explicit browser consent.
 - **Shared Rust implementation:** native verification and browser WebAssembly use the
   same RandomX core.
@@ -55,7 +55,7 @@ defaults to `/.well-known/rilgate`.
 
 Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache, plus
 scratchpads and runtime memory. It requires WebAssembly SIMD128. Both RandomX modes get
-work from a P2Pool Stratum endpoint.
+work from a Stratum pool Stratum endpoint.
 
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host
 binding, lifetime and enforcement details.
@@ -124,7 +124,7 @@ this repository track the source:
 | [Configuration](docs/configuration.md)    | Loading, precedence, scaling and a full example         |
 | [Gateway](docs/gateway.md)                | Routing, reverse proxy behavior and resource limits     |
 | [Policies](docs/policy.md)                | Matchers, IP sets, request weights and algorithm selection |
-| [Proof of work](docs/pow.md)              | Fast, RandomX, P2Pool modes and token lifecycle         |
+| [Proof of work](docs/pow.md)              | Fast, RandomX, Stratum pool modes and token lifecycle         |
 | [Web resources](docs/web.md)              | Branding, templates, translation fallback and reloads   |
 | [AJAX and API integration](docs/api-integration.md) | JSON challenge responses and iframe completion |
 | [Adding an algorithm](docs/algorithms.md) | Backend, provider and browser contracts                 |

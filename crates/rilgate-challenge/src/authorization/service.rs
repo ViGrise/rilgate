@@ -7,13 +7,13 @@ use anyhow::{Context, Result, anyhow};
 use rilgate_protocol::{PowAlgorithm, PowEnforcement, claims::*};
 use uuid::Uuid;
 impl ChallengeService {
-  pub fn issue_p2pool_receipt(&self, difficulty: u64, host: String) -> Result<String> {
+  pub fn issue_stratum_pool_receipt(&self, difficulty: u64, host: String) -> Result<String> {
     self.issue_receipt(
       host,
       Uuid::now_v7().to_string(),
       PowAlgorithm::RandomX,
       difficulty,
-      PowEnforcement::P2poolAccepted,
+      PowEnforcement::StratumPoolAccepted,
     )
   }
 

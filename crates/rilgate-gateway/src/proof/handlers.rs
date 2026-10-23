@@ -81,9 +81,9 @@ pub fn websocket_admission(
   headers: &HeaderMap,
   uri: &Uri,
 ) -> Result<rilgate_protocol::claims::PresentationClaims, ApiError> {
-  if state.pow.enforcement() != PowEnforcement::P2poolAccepted {
+  if state.pow.enforcement() != PowEnforcement::StratumPoolAccepted {
     return Err(ApiError::InvalidRequest(
-      "WebSocket P2Pool enforcement is disabled".into(),
+      "WebSocket Stratum pool enforcement is disabled".into(),
     ));
   }
   let token = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())

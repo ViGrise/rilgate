@@ -1,12 +1,10 @@
 use std::time::Duration;
 
+use crate::transport::{Stream, connect_via};
 use anyhow::{Context, Result, anyhow};
 use serde_json::{Value, json};
 use tokio::{
-  net::{
-    TcpStream,
-    tcp::{OwnedReadHalf, OwnedWriteHalf},
-  },
+  io::{ReadHalf, WriteHalf},
   time::timeout,
 };
 
@@ -28,38 +26,59 @@ pub enum StratumEvent {
 }
 
 pub struct StratumSession {
-  reader: JsonLineReader<OwnedReadHalf>,
-  writer: OwnedWriteHalf,
+  reader: JsonLineReader<ReadHalf<Stream>>,
+  writer: WriteHalf<Stream>,
   pub rpc_id: String,
   next_request_id: u64,
   pub current_job: StratumJob,
   submit_timeout: Duration,
+  pool_name: String,
+  requested_difficulty: u64,
+  mismatch_reported: bool,
+  mismatch_counter: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl StratumSession {
   pub async fn connect(cfg: &StratumConfig, difficulty: u64) -> Result<Self> {
-    if difficulty < 1000 {
-      return Err(anyhow!("P2Pool difficulty must be at least 1000"));
-    }
-    let address = format!("{}:{}", cfg.host, cfg.port);
-    let stream = timeout(
-      cfg.connect_timeout,
-      TcpStream::connect((cfg.host.as_str(), cfg.port)),
-    )
-    .await
-    .context("P2Pool connection timed out")?
-    .with_context(|| format!("Unable to connect to P2Pool at {address}"))?;
+    Self::connect_via(cfg, None, difficulty).await
+  }
 
-    let (read_half, write_half) = stream.into_split();
+  pub async fn connect_via(
+    cfg: &StratumConfig,
+    proxy: Option<&crate::config::Proxy>,
+    difficulty: u64,
+  ) -> Result<Self> {
+    if difficulty < 1000 {
+      return Err(anyhow!("Stratum pool difficulty must be at least 1000"));
+    }
+    let stream = timeout(cfg.connect_timeout, connect_via(cfg, proxy))
+      .await
+      .context("Stratum pool connection timed out")??;
+    Self::login(cfg, stream, difficulty).await
+  }
+
+  pub async fn login(cfg: &StratumConfig, stream: Stream, difficulty: u64) -> Result<Self> {
+    if difficulty < 1000 {
+      return Err(anyhow!("Stratum pool difficulty must be at least 1000"));
+    }
+    let (read_half, write_half) = tokio::io::split(stream);
     let mut reader = JsonLineReader::new(read_half);
     let mut writer = write_half;
 
+    let user = cfg
+      .user
+      .expose()
+      .replace("{difficulty}", &difficulty.to_string());
+    anyhow::ensure!(
+      (1..=256).contains(&user.len()),
+      "Stratum pool login must be 1 to 256 bytes"
+    );
     let login = json!({
       "id": 1,
       "jsonrpc": "2.0",
       "method": "login",
       "params": {
-        "login": format!("x+{difficulty}"),
+        "login": user,
         "pass": cfg.password.expose(),
         "agent": cfg.agent.clone(),
       }
@@ -70,42 +89,74 @@ impl StratumSession {
       reader.next_json().await
     })
     .await
-    .context("P2Pool login timed out")??;
+    .context("Stratum pool login timed out")??;
 
     if response.get("id").and_then(Value::as_u64) != Some(1) {
       return Err(anyhow!(
-        "P2Pool login response has an unexpected request id"
+        "Stratum pool login response has an unexpected request id"
       ));
     }
 
-    if let Some(error) = response.get("error").filter(|value| !value.is_null()) {
-      return Err(anyhow!("P2Pool login rejected: {error}"));
+    if response.get("error").is_some_and(|value| !value.is_null()) {
+      return Err(anyhow!("Stratum pool login rejected"));
     }
 
     let result = response
       .get("result")
-      .ok_or_else(|| anyhow!("P2Pool login response has no result"))?;
+      .ok_or_else(|| anyhow!("Stratum pool login response has no result"))?;
 
     let rpc_id = result
       .get("id")
       .and_then(Value::as_str)
-      .ok_or_else(|| anyhow!("P2Pool login response has no miner id"))?
+      .ok_or_else(|| anyhow!("Stratum pool login response has no miner id"))?
       .to_string();
 
     let job = result
       .get("job")
-      .ok_or_else(|| anyhow!("P2Pool login response has no job"))?;
+      .ok_or_else(|| anyhow!("Stratum pool login response has no job"))?;
 
     let current_job = parse_job(job)?;
 
-    Ok(Self {
+    let mut session = Self {
       reader,
       writer,
       rpc_id,
       next_request_id: 2,
       current_job,
       submit_timeout: cfg.submit_timeout,
-    })
+      pool_name: cfg.name.clone(),
+      requested_difficulty: difficulty,
+      mismatch_reported: false,
+      mismatch_counter: cfg.difficulty_mismatches.clone(),
+    };
+    session.observe_difficulty();
+    Ok(session)
+  }
+
+  fn observe_difficulty(&mut self) {
+    if self.mismatch_reported {
+      return;
+    }
+    let bytes = hex::decode(&self.current_job.target).expect("validated target");
+    let (target, maximum) = if bytes.len() == 4 {
+      (
+        u64::from(u32::from_le_bytes(bytes.try_into().expect("4 byte target"))),
+        u64::from(u32::MAX),
+      )
+    } else {
+      (
+        u64::from_le_bytes(bytes.try_into().expect("8 byte target")),
+        u64::MAX,
+      )
+    };
+    if target != maximum / self.requested_difficulty {
+      let received = maximum.checked_div(target).unwrap_or(u64::MAX);
+      self.mismatch_reported = true;
+      self
+        .mismatch_counter
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      tracing::warn!(pool = %self.pool_name, requested = self.requested_difficulty, received, "Stratum pool difficulty differs from the request");
+    }
   }
 
   pub async fn read_event(&mut self) -> Result<StratumEvent> {
@@ -118,6 +169,7 @@ impl StratumSession {
           .ok_or_else(|| anyhow!("Stratum job notification has no params"))?;
         let job = parse_job(params)?;
         self.current_job = job.clone();
+        self.observe_difficulty();
         return Ok(StratumEvent::Job(job));
       }
 
@@ -155,7 +207,7 @@ impl StratumSession {
     }
 
     if job_id != self.current_job.job_id {
-      return Err(anyhow!("Share refers to a stale P2Pool job"));
+      return Err(anyhow!("Share refers to a stale Stratum pool job"));
     }
     // Stratum encodes the nonce's little-endian bytes, while gateway clients use a numeric hex value.
     let nonce = u32::from_str_radix(nonce, 16).context("Invalid share nonce")?;
@@ -182,7 +234,7 @@ impl StratumSession {
       write_json_line(&mut self.writer, &submit),
     )
     .await
-    .context("P2Pool share write timed out")??;
+    .context("Stratum pool share write timed out")??;
     Ok(id)
   }
 }

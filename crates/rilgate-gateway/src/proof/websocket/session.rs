@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 type WebSocket = WebSocketStream<tokio::io::DuplexStream>;
 use futures_util::{SinkExt, StreamExt};
-use rilgate_pool::{StratumEvent, StratumSession};
+use rilgate_pool::StratumEvent;
 use rilgate_pow::target::hash_meets_difficulty;
 use rilgate_protocol::PowEnforcement;
 use std::time::Duration;
@@ -17,26 +17,25 @@ pub async fn handle(socket: WebSocket, state: AppState, difficulty: u64, host: S
 }
 
 async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) -> Result<()> {
-  if state.pow.enforcement() != PowEnforcement::P2poolAccepted {
+  if state.pow.enforcement() != PowEnforcement::StratumPoolAccepted {
     return Err(anyhow!("WebSocket enforcement is disabled"));
   }
 
   let (mut ws_tx, mut ws_rx) = socket.split();
-  let mut stratum = match StratumSession::connect(&state.cfg.pow.p2pool.stratum(), difficulty).await
-  {
+  let mut stratum = match state.pool.connect(difficulty).await {
     Ok(session) => session,
     Err(error) => {
       send_ws(
         &mut ws_tx,
         ServerWsMessage::Error {
-          message: "P2Pool connection unavailable".into(),
+          message: "Stratum pool connection unavailable".into(),
         },
       )
       .await?;
       return Err(error);
     }
   };
-  let session_deadline = Instant::now() + state.cfg.pow.p2pool.session_ttl;
+  let session_deadline = Instant::now() + state.cfg.pow.stratum_pool.session_ttl;
 
   send_ws(
     &mut ws_tx,
@@ -63,7 +62,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
           std::future::pending::<()>().await;
         }
       } => {
-        send_ws(&mut ws_tx, ServerWsMessage::Error { message: "P2Pool share acceptance timed out".into() }).await?;
+        send_ws(&mut ws_tx, ServerWsMessage::Error { message: "Stratum pool share acceptance timed out".into() }).await?;
         return Ok(());
       }
       browser = ws_rx.next() => {
@@ -100,7 +99,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               continue;
             }
             let request_id = stratum.submit_share(&job_id, &nonce, &result).await?;
-            pending_submit = Some((request_id, Instant::now() + state.cfg.pow.p2pool.submit_timeout));
+            pending_submit = Some((request_id, Instant::now() + state.cfg.pow.stratum_pool.submit_timeout));
           }
         }
       }
@@ -110,7 +109,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
 
         match event {
           StratumEvent::Job(job) => {
-            // Submissions remain pending until P2Pool responds, even during job rotation.
+            // Submissions remain pending until the pool responds, even during job rotation.
             send_ws(
               &mut ws_tx,
               messages::job(job,difficulty,state.cfg.pow.nonce_offset),
@@ -125,7 +124,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
             pending_submit = None;
 
             if accepted {
-              let receipt = state.pow.issue_p2pool_receipt(difficulty, host.clone())?;
+              let receipt = state.pow.issue_stratum_pool_receipt(difficulty, host.clone())?;
               send_ws(&mut ws_tx, ServerWsMessage::Accepted { receipt }).await?;
               return Ok(());
             }
@@ -134,7 +133,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               &mut ws_tx,
               ServerWsMessage::Rejected {
                 reason: error
-                  .unwrap_or_else(|| "P2Pool rejected the share".to_string()),
+                  .unwrap_or_else(|| "Stratum pool rejected the share".to_string()),
               },
             )
             .await?;

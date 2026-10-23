@@ -158,6 +158,64 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
       );
     }
   }
+  let transport_severity = if production {
+    Severity::Error
+  } else {
+    Severity::Warning
+  };
+  let pools = &config.pow.stratum_pool;
+  for (index, pool) in pools.pools.iter().enumerate() {
+    if host_is_public(&pool.host) {
+      if !pool.tls.enabled {
+        report(
+          "stratum-pool-plain-tcp",
+          transport_severity,
+          format!(
+            "pow.stratum_pool.pools[{index}].tls.enabled: pool {} requires TLS outside loopback and private networks",
+            pool.name
+          ),
+        );
+      }
+      if pools.job_session_mode == rilgate_pool::JobSessionMode::PerChallenge {
+        report(
+          "stratum-pool-per-challenge-public",
+          Severity::Warning,
+          format!(
+            "pow.stratum_pool.job_sessions.mode: pool {} opens a public connection for each challenge; use pooled sessions",
+            pool.name
+          ),
+        );
+      }
+    }
+  }
+  let proxy_lists = std::iter::once((
+    "pow.stratum_pool.proxies".to_string(),
+    pools.proxies.as_slice(),
+  ))
+  .chain(pools.pools.iter().enumerate().filter_map(|(index, pool)| {
+    pool
+      .proxies
+      .as_deref()
+      .map(|proxies| (format!("pow.stratum_pool.pools[{index}].proxies"), proxies))
+  }));
+  for (path, proxies) in proxy_lists {
+    for (index, proxy) in proxies.iter().enumerate() {
+      if proxy.username.is_some()
+        && proxy
+          .endpoint()
+          .is_ok_and(|url| host_is_public(url.host_str().unwrap().trim_matches(['[', ']'])))
+      {
+        report(
+          "stratum-proxy-plain-credentials",
+          transport_severity,
+          format!(
+            "{path}[{index}]: proxy {} sends credentials outside loopback and private networks; use a private network or a tunnel",
+            proxy.name
+          ),
+        );
+      }
+    }
+  }
   let verify = &config.pow.randomx_verify;
   let remote = &verify.remote;
   if production && (remote.endpoint.is_some() || verify.order.contains(&Hasher::Remote)) {
@@ -192,7 +250,8 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
       report("verifier-local-fallback", Severity::Warning,
         "pow.algorithms.randomx.verify.order: remote outages can build a 256 MiB cache on every gateway".into());
     }
-    if !config.pow.selects_randomx() || config.pow.enforce == crate::PowEnforcement::P2poolAccepted
+    if !config.pow.selects_randomx()
+      || config.pow.enforce == crate::PowEnforcement::StratumPoolAccepted
     {
       report("verifier-remote-unused", Severity::Warning,
         "pow.algorithms.randomx.verify.order: remote hashing is unused by the configured challenges and verification mode".into());
@@ -230,4 +289,22 @@ pub(super) fn public(addresses: &[SocketAddr]) -> impl Iterator<Item = &SocketAd
   addresses
     .iter()
     .filter(|address| !is_non_public(&IpNet::from(address.ip().to_canonical())))
+}
+
+fn host_is_public(host: &str) -> bool {
+  if let Ok(ip) = host.parse::<IpAddr>() {
+    return !is_non_public(&IpNet::from(ip.to_canonical()));
+  }
+  let host = host.trim_end_matches('.').to_ascii_lowercase();
+  host.contains('.')
+    && ![
+      ".local",
+      ".internal",
+      ".lan",
+      ".home.arpa",
+      ".svc",
+      ".cluster.local",
+    ]
+    .iter()
+    .any(|suffix| host.ends_with(suffix))
 }

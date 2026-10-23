@@ -48,7 +48,7 @@ challenge presentation metadata and proof API endpoints. `challenge.token` is a 
 token. Clients that implement a native solver first exchange it at the advertised
 challenge endpoint to get actual work.
 
-RandomX with P2Pool acceptance uses the advertised WebSocket endpoint. It does not use
+RandomX with Stratum pool acceptance uses the advertised WebSocket endpoint. It does not use
 HTTP proof issuance and verification. A policy denial returns 403 with `code: access_denied` and
 no challenge notification headers. A PoW solution cannot override a deny policy. HEAD
 has the same status and headers with no response body.
@@ -147,3 +147,8 @@ The application still owns its normal idempotency and retry rules. Use HTTPS in
 production so the Secure auth cookie can be sent. This flow supports a gateway and
 application that share an origin. Cross-origin embedding, CORS exposure and third-party
 cookie flows are not configured by these settings.
+
+Pool failover does not change the client API. A WebSocket job and its share
+submission use one pool session. A closed session requires a new WebSocket.
+Clients must not move a job ID to another connection. Operational readiness
+lists configured pool names and results, without addresses or credentials.

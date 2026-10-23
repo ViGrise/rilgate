@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 
 pub fn exposition(state: &AppState) -> Response {
   let mut text = state.metrics.render();
+  text.push_str(&state.pool.connection_metrics());
   let (fetch, capacity) = state.pool.failures();
   let web = state.web.diagnostics();
   for (name, value) in [

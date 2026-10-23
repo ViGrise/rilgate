@@ -248,6 +248,8 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
       ("RILGATE_SERVER_LISTEN", "127.0.0.1:7001"),
       ("RILGATE_SERVER_OPERATIONS_LISTEN", "127.0.0.1:9091"),
       ("RILGATE_SERVER_MAX_CONNECTIONS", "20"),
+      ("RILGATE_POW_STRATUM_POOL_POOLS_0_NAME", "primary"),
+      ("RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS", "127.0.0.1:3334"),
     ],
     &[
       "--config",
@@ -261,8 +263,6 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
       "--server-trusted-proxies",
       "10.0.0.0/8,192.0.2.1/32",
       "--server-metrics-enabled",
-      "--pow-p2pool-address",
-      "127.0.0.1:3334",
     ],
   );
   assert!(
@@ -278,8 +278,11 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   assert_eq!(value["server"]["metrics_enabled"], true);
   assert_eq!(value["server"]["trusted_proxies"][1], "192.0.2.1/32");
   assert_eq!(value["security"]["auth"]["ttl"], "2h");
-  assert_eq!(value["pow"]["p2pool"]["address"], "127.0.0.1:3334");
-  assert_eq!(value["pow"]["p2pool"]["sessions"]["max"], 64);
+  assert_eq!(
+    value["pow"]["stratum_pool"]["pools"][0]["address"],
+    "127.0.0.1:3334"
+  );
+  assert_eq!(value["pow"]["stratum_pool"]["sessions"]["max"], 64);
 }
 
 fn listen_file(listen: &str) -> String {

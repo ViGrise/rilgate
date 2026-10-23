@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
-use tokio::net::tcp::OwnedWriteHalf;
 const MAX_STRATUM_LINE_BYTES: usize = 64 * 1024;
 
 pub(crate) struct JsonLineReader<R> {
@@ -22,19 +21,19 @@ impl<R: AsyncRead + Unpin> JsonLineReader<R> {
       let available = self.reader.fill_buf().await?;
       if available.is_empty() {
         return Err(anyhow!(
-          "P2Pool Stratum connection closed before a complete message"
+          "Stratum pool connection closed before a complete message"
         ));
       }
       let newline = available.iter().position(|byte| *byte == b'\n');
       let count = newline.map_or(available.len(), |index| index + 1);
       if self.pending.len() + count > MAX_STRATUM_LINE_BYTES {
-        return Err(anyhow!("P2Pool Stratum message exceeds 64 KiB"));
+        return Err(anyhow!("Stratum pool message exceeds 64 KiB"));
       }
       // Partial frames remain buffered when a caller cancels a read.
       self.pending.extend_from_slice(&available[..count]);
       self.reader.consume(count);
       if newline.is_some() {
-        let message = serde_json::from_slice(&self.pending).context("Invalid P2Pool Stratum JSON");
+        let message = serde_json::from_slice(&self.pending).context("Invalid Stratum pool JSON");
         self.pending.clear();
         return message;
       }
@@ -42,7 +41,10 @@ impl<R: AsyncRead + Unpin> JsonLineReader<R> {
   }
 }
 
-pub(crate) async fn write_json_line(writer: &mut OwnedWriteHalf, value: &Value) -> Result<()> {
+pub(crate) async fn write_json_line<W: tokio::io::AsyncWrite + Unpin>(
+  writer: &mut W,
+  value: &Value,
+) -> Result<()> {
   let mut encoded = serde_json::to_vec(value)?;
   encoded.push(b'\n');
   writer.write_all(&encoded).await?;

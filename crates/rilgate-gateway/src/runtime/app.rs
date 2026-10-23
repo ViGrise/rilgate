@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub async fn build(
   cfg: Config,
   pow: Arc<rilgate_challenge::ChallengeService>,
-  pool: Arc<rilgate_pool::P2PoolProvider>,
+  pool: Arc<rilgate_pool::StratumPoolProvider>,
 ) -> Result<Gateway> {
   cfg.validate()?;
   let proxy = Arc::new(ProxyService::new(cfg.upstream.clone())?);

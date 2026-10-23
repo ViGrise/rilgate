@@ -10,7 +10,7 @@ edge, upstream and client devices.
 Use `config/rilgate.production.yml` or the commented distribution template. Both use the balanced preset:
 Fast difficulty 2 for application traffic, with robots.txt, favicon.ico and ACME
 exceptions, and a six-hour access lifetime. Review these settings and exceptions for
-your expected clients and abuse model. RandomX requires explicit policies and P2Pool
+your expected clients and abuse model. RandomX requires explicit policies and Stratum pool
 configuration.
 
 1. Generate a random secret with `openssl rand -hex 32`.
@@ -27,8 +27,8 @@ reject unknown fields and conflicting configuration. Production forbids debug sc
 ```
 
 These commands validate keys, limits, policies and algorithm selection. They do not open
-a listener or contact the upstream or P2Pool. Resolved output redacts all keys and pool
-passwords.
+a listener or contact the upstream or pool. Resolved output masks keys, pool
+logins, proxy URLs and credentials.
 
 Validate filesystem overrides with `web validate`. `--strict` also fails on [environment
 check](configuration.md#environment-checks) warnings. Run it in the deployment pipeline so a warning blocks
@@ -64,6 +64,44 @@ must overwrite incoming client headers as the examples do. An upstream that
 independently trusts forwarded headers must also configure its own trust boundary.
 Rilgate does not rewrite the application's forwarding headers.
 
+## Pool network access
+
+Some networks and hosting providers block Stratum traffic or known pool hosts.
+Test outbound access from the gateway host before deployment. A working DNS
+lookup does not prove that the Stratum port is reachable.
+
+Use one of these routes when direct access is blocked:
+
+- Put the pool behind a WireGuard tunnel or an SSH local port forward. Point the
+  pool address at the private tunnel endpoint.
+- Configure SOCKS5, SOCKS5h or HTTP CONNECT proxies. An SSH dynamic forward can
+  supply a local SOCKS5 proxy, for example `ssh -N -D 127.0.0.1:1080 tunnel-host`.
+- Run the gateway or a pool relay on a separate host with permitted pool access.
+
+Keep proxy credentials on a private network or tunnel. Proxy authentication
+uses plain text on this hop. Pool TLS remains end to end through a proxy. A
+public pool requires TLS in production. The gateway always verifies its
+certificate. Use `tls.ca` for a private CA and `tls.server_name` when the tunnel
+address differs from the pool certificate name.
+
+If you use xmrig-proxy, select simple mode. NiceHash mode reserves nonce bytes,
+which prevents the browser from using the full nonce field.
+
+Use pooled job sessions with public pools. Per-challenge sessions open one
+connection for each job and can reach the pool's connection limit. Check that
+backup logins pay the intended wallets. Monitor connection, failover and
+mismatch counters by configured name:
+
+| Counter | Labels |
+| --- | --- |
+| `rilgate_stratum_pool_connections_total` | `pool`, `outcome`: connected or failed |
+| `rilgate_stratum_pool_failover_total` | `from`: pool name |
+| `rilgate_stratum_proxy_connections_total` | `proxy`, `outcome`: connected or failed |
+| `rilgate_stratum_pool_difficulty_mismatch_total` | `pool` |
+
+Logs, metrics and readiness responses exclude pool logins, passwords, proxy URLs
+and proxy credentials. Keep names free of private information.
+
 ## Capacity and quotas
 
 `server.max_connections` bounds accepted TCP connections, including idle clients. Excess connections
@@ -72,7 +110,7 @@ WebSockets.
 
 Excess requests receive `503` and `Retry-After: 1`. HTTP/2 streams per connection are
 bounded by `server.h2_max_streams`. Existing body limits, deadlines, verifier queue capacity and
-P2Pool session limits remain enforced. Size OS file limits and container memory for
+Stratum pool session limits remain enforced. Size OS file limits and container memory for
 these settings and the roughly 256 MiB RandomX cache.
 
 Per-client proof quotas use the resolved client IP, but both client and global quotas
@@ -94,14 +132,17 @@ The following routes are relative to `site.base_path`:
 | --- | --- |
 | `/api/live` | The process can serve HTTP requests |
 | `/api/health` | Existing web diagnostics and cumulative pool failures |
-| `/api/ready` | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, it also checks P2Pool TCP connectivity. Returns 503 when unavailable or during drain |
+| `/api/ready` | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS. Returns 503 when unavailable or during drain |
 | `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true` |
 
 Readiness probes have a positive timeout up to 30s (default 2s). They probe dependencies
 concurrently. Only one probe runs at a time per instance.
 
-TCP readiness does not assert successful application HTTP responses, TLS handshakes,
-Stratum login, available mining jobs or proof acceptance. Monitor real request errors
+Upstream TCP readiness does not check application HTTP responses. Pool readiness
+checks proxy and TLS handshakes. It does not check Stratum login, available jobs
+or proof acceptance. Each response lists pool names and results. Pool probes run
+concurrently. Each pool probe has its own readiness timeout and does not change
+cooldowns or failover counters. Monitor real request errors
 and pool failures as well. Saturated request capacity can also produce 503 for probes.
 Operational endpoints do not reserve unlimited resources during overload.
 

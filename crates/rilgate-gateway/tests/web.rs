@@ -70,7 +70,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
     "/shield/static/js/challenge.js",
     "/shield/static/js/challenge/runtime.js",
     "/shield/static/js/challenge/registry.js",
-    "/shield/static/js/challenge/p2pool.js",
+    "/shield/static/js/challenge/stratum-pool.js",
     "/shield/static/js/solvers/fast/adapter.js",
     "/shield/static/js/solvers/fast/solver.js",
     "/shield/static/js/solvers/fast/worker.js",

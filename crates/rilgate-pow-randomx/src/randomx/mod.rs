@@ -157,14 +157,14 @@ impl Algorithm for RandomXAlgorithm {
   fn validate_difficulty(&self, difficulty: u64) -> Result<()> {
     anyhow::ensure!(
       difficulty >= 1000,
-      "RandomX/P2Pool difficulty must be at least 1000"
+      "RandomX pool difficulty must be at least 1000"
     );
     Ok(())
   }
   fn validate_enforcement(&self, enforce: PowEnforcement) -> Result<()> {
     anyhow::ensure!(
       enforce == PowEnforcement::LocalVerify,
-      "RandomX HTTP challenge is disabled in p2pool_accepted mode"
+      "RandomX HTTP challenge is disabled in stratum_pool_accepted mode"
     );
     Ok(())
   }
@@ -186,7 +186,7 @@ impl Algorithm for RandomXAlgorithm {
       let id = Uuid::new_v4();
       // Local work is unique while the seed cache remains shared.
       job.blob = work::bind_randomx_work(&job.blob, &id).map_err(|error| {
-        tracing::warn!(?error, "P2Pool challenge unavailable");
+        tracing::warn!(?error, "Stratum pool challenge unavailable");
         PowBackendUnavailable
       })?;
       let now = unix_now()?;

@@ -280,7 +280,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
       .unwrap();
     let service =
       Arc::new(ChallengeService::with_registry(Arc::new(cfg.challenge()), registry).unwrap());
-    let pool = Arc::new(rilgate_pool::P2PoolProvider::new(cfg.p2pool.clone()).unwrap());
+    let pool = Arc::new(rilgate_pool::StratumPoolProvider::new(cfg.stratum_pool.clone()).unwrap());
     let web = rilgate_web::WebManager::new(config.web.clone()).unwrap();
     let state = AppState {
       connections: Arc::new(tokio::sync::Semaphore::new(config.server.max_connections)),

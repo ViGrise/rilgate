@@ -244,7 +244,7 @@ impl WebSnapshot {
       "js/challenge.js",
       "js/challenge/runtime.js",
       "js/challenge/registry.js",
-      "js/challenge/p2pool.js",
+      "js/challenge/stratum-pool.js",
       "js/solvers/fast/solver.js",
       "js/solvers/fast/adapter.js",
       "js/solvers/fast/worker.js",

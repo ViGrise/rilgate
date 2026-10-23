@@ -11,7 +11,7 @@ pub struct Pow {
   pub challenge: Challenge,
   pub rate_limit: RateLimit,
   pub algorithms: Algorithms,
-  pub p2pool: Option<P2Pool>,
+  pub stratum_pool: Option<StratumPool>,
 }
 impl Default for Pow {
   fn default() -> Self {
@@ -21,7 +21,7 @@ impl Default for Pow {
       challenge: Challenge::default(),
       rate_limit: RateLimit::default(),
       algorithms: Algorithms::default(),
-      p2pool: None,
+      stratum_pool: None,
     }
   }
 }
@@ -156,19 +156,27 @@ impl Default for Browser {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct P2Pool {
-  pub address: String,
-  pub password: Secret,
+pub struct StratumPool {
+  pub pools: Vec<Pool>,
+  pub proxies: Vec<rilgate_pool::Proxy>,
+  pub failover: Failover,
   pub agent: String,
   pub timeout: PoolTimeout,
   pub sessions: Sessions,
   pub job_sessions: JobSessions,
 }
-impl Default for P2Pool {
+impl Default for StratumPool {
   fn default() -> Self {
     Self {
-      address: "127.0.0.1:3333".into(),
-      password: Secret("x".into()),
+      proxies: Vec::new(),
+      pools: vec![Pool {
+        name: "default".into(),
+        address: "127.0.0.1:3333".into(),
+        login: Login::default(),
+        tls: Default::default(),
+        proxies: None,
+      }],
+      failover: Failover::default(),
       agent: concat!("rilgate/", env!("CARGO_PKG_VERSION")).into(),
       timeout: PoolTimeout::default(),
       sessions: Sessions::default(),
@@ -176,6 +184,47 @@ impl Default for P2Pool {
     }
   }
 }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pool {
+  pub name: String,
+  pub address: String,
+  #[serde(default)]
+  pub login: Login,
+  #[serde(default)]
+  pub tls: rilgate_pool::TlsConfig,
+  #[serde(default)]
+  pub proxies: Option<Vec<rilgate_pool::Proxy>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Login {
+  pub user: Secret,
+  pub password: Secret,
+}
+impl Default for Login {
+  fn default() -> Self {
+    Self {
+      user: Secret("x+{difficulty}".into()),
+      password: Secret("x".into()),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Failover {
+  pub cooldown: Time,
+}
+impl Default for Failover {
+  fn default() -> Self {
+    Self {
+      cooldown: Time::seconds(30),
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PoolTimeout {

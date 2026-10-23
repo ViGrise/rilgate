@@ -23,8 +23,8 @@ impl ChallengeService {
         .get(selection.algorithm.unwrap_or(cfg.default_algorithm))
         .with_context(|| format!("Invalid challenge policy in {name}"))?;
       anyhow::ensure!(
-        cfg.enforce != PowEnforcement::P2poolAccepted || backend.id() == PowAlgorithm::RandomX,
-        "policy ({name}): p2pool_accepted requires RandomX challenges"
+        cfg.enforce != PowEnforcement::StratumPoolAccepted || backend.id() == PowAlgorithm::RandomX,
+        "policy ({name}): stratum_pool_accepted requires RandomX challenges"
       );
       if let Some(difficulty) = selection.difficulty {
         backend

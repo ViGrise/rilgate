@@ -4,11 +4,14 @@ server:
 security:
   secret: "${RILGATE_SECURITY_SECRET}"
 pow:
-  # p2pool_accepted requires actual share acceptance over the owning WebSocket.
+  # stratum_pool_accepted requires actual share acceptance over the owning WebSocket.
   verification: local_verify
   default_algorithm: randomx
-  p2pool:
-    address: "127.0.0.1:3333"
+  stratum_pool:
+    pools:
+      - name: local
+        address: "127.0.0.1:3333"
+        login: {user: "x+{difficulty}", password: x}
     job_sessions:
       mode: pooled
       max: 16

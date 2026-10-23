@@ -16,7 +16,7 @@ pub struct Overrides {
 /// duration accepts `5s` and a list replaces the whole sequence.
 #[derive(Debug, Clone)]
 pub struct Setting {
-  pub path: &'static str,
+  pub path: String,
   /// The flag or variable that supplied the value, for error messages.
   pub source: String,
   pub value: SettingValue,

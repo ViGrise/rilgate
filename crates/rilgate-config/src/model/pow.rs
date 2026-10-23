@@ -2,7 +2,7 @@ use crate::model::gateway::RateLimitConfig;
 use rilgate_challenge::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
 use rilgate_policy::policy::schema::Definition;
-use rilgate_pool::P2PoolConfig;
+use rilgate_pool::StratumPoolConfig;
 use rilgate_pow::difficulty::DifficultyConfig;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 #[derive(Debug, Clone)]
@@ -31,7 +31,7 @@ pub struct PowConfig {
   pub randomx_verify: crate::schema::pow::Verify,
   pub randomx_cache_idle_timeout: std::time::Duration,
   pub rate_limit: RateLimitConfig,
-  pub p2pool: P2PoolConfig,
+  pub stratum_pool: StratumPoolConfig,
   pub difficulty: DifficultyConfig,
   pub policy: Definition,
   pub browser: BrowserConfig,

@@ -42,8 +42,8 @@ When work comes from an external source, implement `rilgate_pool::WorkProvider`.
 algorithm adapter.
 
 Keep network protocols outside the hash engine. RandomX consumes Stratum jobs from the
-P2Pool provider. Fast creates local random challenges without an external provider.
-Stratum owns framing and sessions. P2Pool owns provider capacity and deployment policy.
+Stratum pool provider. Fast creates local random challenges without an external provider.
+Stratum owns framing and sessions. Stratum pool owns provider capacity and deployment policy.
 
 ## Browser contract
 
@@ -65,7 +65,7 @@ worker.js    performs expensive calculation off the page thread
 as WebAssembly loads as a separate module after the adapter checks browser capabilities,
 as RandomX does. The page entrypoint selects an adapter through the registry and checks
 the algorithm list returned by client-config. Shared fetch, translation, exchange, and
-status helpers belong to the challenge runtime. Mining transport belongs to the P2Pool
+status helpers belong to the challenge runtime. Mining transport belongs to the Stratum pool
 browser module. Keep resource paths in the server descriptor and configuration aligned
 with packaged assets.
 
@@ -84,3 +84,7 @@ lifecycle checks.
 ```sh
 scripts/test.sh
 ```
+
+The pool provider selects named pools and proxies in order. Stratum transport
+owns SOCKS5, HTTP CONNECT and verified TLS. A live job session retains one pool
+connection. Pool difficulty diagnostics keep the job target unchanged.
