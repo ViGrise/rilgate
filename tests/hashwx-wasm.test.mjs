@@ -131,3 +131,17 @@ test("ABI rejects invalid handles and seed lengths and keeps instances independe
     assert.equal(second.destroy(), 0);
   }
 });
+
+test('seed derivation uses the exact little-endian u64 batch above the JavaScript integer limit', async () => {
+  const { createHash } = await import('node:crypto');
+  const api = await loadHashWx();
+  const input = api.hx_alloc(), output = api.hx_alloc();
+  try {
+    new Uint8Array(api.memory.buffer, input, 32).set(seedA);
+    for (const batch of [0n, 1n, 0x123456789abcdef0n, 0xffffffffffffffffn]) {
+      const suffix = Buffer.alloc(8); suffix.writeBigUInt64LE(batch);
+      api.hx_seed(input, Number(batch & 0xffffffffn), Number(batch >> 32n), output);
+      assert.deepEqual(Buffer.from(api.memory.buffer, output, 32), createHash('sha256').update(seedA).update(suffix).digest());
+    }
+  } finally { api.hx_free(output); api.hx_free(input); }
+});

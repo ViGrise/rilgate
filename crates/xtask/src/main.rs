@@ -6,17 +6,16 @@ use std::{
 
 mod web;
 
-const WASM_TARGET: &str = "wasm32-unknown-unknown";
-const ARTIFACTS: [(&str, &str, bool); 2] = [
+const ARTIFACTS: [(&str, &str, &str); 2] = [
   (
     "randomx-wasm",
     "web/static/js/solvers/randomx/randomx_wasm.wasm",
-    false,
+    "wasm32-unknown-unknown",
   ),
   (
     "hashwx-wasm",
     "web/static/js/solvers/hashwx/hashwx_wasm.wasm",
-    true,
+    "wasm32v1-none",
   ),
 ];
 
@@ -63,20 +62,17 @@ fn target_directory(root: &Path) -> Option<PathBuf> {
 /// native server build keeps its own panic and codegen behaviour.
 fn build_wasm() -> ExitCode {
   let root = workspace_root();
-  for (package, output, mvp_only) in ARTIFACTS {
-    if !build_artifact(&root, package, output, mvp_only) {
+  for (package, output, target) in ARTIFACTS {
+    if !build_artifact(&root, package, output, target) {
       return ExitCode::FAILURE;
     }
   }
   ExitCode::SUCCESS
 }
 
-fn build_artifact(root: &Path, package: &str, output: &str, mvp_only: bool) -> bool {
+fn build_artifact(root: &Path, package: &str, output: &str, target: &str) -> bool {
   let output = root.join(output);
   let mut command = Command::new(cargo());
-  if mvp_only {
-    command.env("CARGO_ENCODED_RUSTFLAGS", "-C\x1ftarget-cpu=mvp\x1f-C\x1ftarget-feature=-simd128,-bulk-memory,-reference-types,-multivalue,-nontrapping-fptoint,-sign-ext");
-  }
 
   let status = command
     .current_dir(root)
@@ -90,7 +86,7 @@ fn build_artifact(root: &Path, package: &str, output: &str, mvp_only: bool) -> b
       package,
       "--release",
       "--target",
-      WASM_TARGET,
+      target,
       "--",
       "-C",
       "link-arg=--export-table",
@@ -113,7 +109,7 @@ fn build_artifact(root: &Path, package: &str, output: &str, mvp_only: bool) -> b
     return false;
   };
   let built = target_dir
-    .join(WASM_TARGET)
+    .join(target)
     .join("release")
     .join(format!("{}.wasm", package.replace('-', "_")));
 

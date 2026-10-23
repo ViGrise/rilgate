@@ -9,7 +9,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY rust-toolchain.toml ./
-RUN rustup target add wasm32-unknown-unknown \
+RUN rustup target add wasm32-unknown-unknown wasm32v1-none \
   && cargo install cargo-chef --version 0.1.78 --locked
 
 FROM chef AS planner

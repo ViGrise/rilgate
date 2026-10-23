@@ -11,3 +11,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 hashwx-core = { path = "../hashwx-core" }
+sha2.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+dlmalloc = { version = "0.2", features = ["global"] }
+
+[dev-dependencies]
+wasmparser = "0.240"

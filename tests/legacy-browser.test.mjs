@@ -78,7 +78,7 @@ async function until(predicate) {
   assert.fail('challenge did not settle');
 }
 
-function legacyPage(failureStatus = 200, randomx = null) {
+function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? 'randomx' : 'fast') {
   const elements = new Map();
   const requests = [];
   const errors = [];
@@ -99,7 +99,7 @@ function legacyPage(failureStatus = 200, randomx = null) {
     send(body) {
       requests.push({ url: this.url, method: this.method, body, timeout: this.timeout, headers: this.headers });
       this.status = failureStatus;
-      this.responseText = JSON.stringify(this.url.endsWith('client-config') ? { enforce: 'local_verify', algorithms: [{ id: randomx ? 'randomx' : 'fast' }] }
+      this.responseText = JSON.stringify(this.url.endsWith('client-config') ? { enforce: 'local_verify', algorithms: [{ id: algorithm }] }
         : this.url.endsWith('challenge') ? { algorithm: 'fast', challenge: 'fallback-😀', difficulty: 1, challenge_token: 'signed-challenge' }
         : this.url.endsWith('verify') ? { receipt: 'signed-receipt' } : {});
       setTimeout(() => this.onload(), 0);
@@ -108,7 +108,7 @@ function legacyPage(failureStatus = 200, randomx = null) {
   const context = vm.createContext({
     Promise: undefined, Worker: undefined, TextEncoder: undefined, fetch: undefined,
     AbortController: undefined, AbortSignal: undefined, XMLHttpRequest, setTimeout, clearTimeout,
-    POW_ALGORITHM: randomx ? 'randomx' : 'fast', POW_INTERNAL_PREFIX: '/gate', POW_PRESENTATION_TOKEN: 'presentation',
+    POW_ALGORITHM: algorithm, POW_INTERNAL_PREFIX: '/gate', POW_PRESENTATION_TOKEN: 'presentation',
     POW_SOLVER_MODULE_URL: '/gate/static/js/solvers/randomx/solver.js',
     addEventListener() {}, removeEventListener() {},
     location: { reload() { reloads++; } },
@@ -123,6 +123,13 @@ function legacyPage(failureStatus = 200, randomx = null) {
     context.WebAssembly = randomx === 'unsupported' ? undefined : WebAssembly;
     element('#pow-i18n').textContent = JSON.stringify({
       'challenge.randomx_unsupported': 'Localized RandomX requirements',
+      'challenge.failed': 'Localized failure: {message}',
+    });
+  }
+  if (algorithm === 'hashwx') {
+    context.WebAssembly = undefined;
+    element('#pow-i18n').textContent = JSON.stringify({
+      'challenge.hashwx_unsupported': 'Localized HashWX requirements',
       'challenge.failed': 'Localized failure: {message}',
     });
   }
@@ -185,4 +192,12 @@ test('standalone generated fast worker solves with no TextEncoder or Promise', a
   await until(() => messages.some(message => message.type === 'solved'));
   const solution = messages.find(message => message.type === 'solved');
   assert.match(createHash('sha256').update(`worker-😀${solution.nonce}`).digest('hex'), /^0/);
+});
+
+test('HashWX capability failure uses localized retry controls without requesting other work', async () => {
+  const state = legacyPage(200, null, 'hashwx');
+  await until(() => state.elements.get('#retry')?.hidden === false);
+  assert.equal(state.elements.get('#status').textContent, 'Localized failure: Localized HashWX requirements');
+  assert.equal(state.requests.length, 1);
+  assert.equal(state.reloads(), 0);
 });

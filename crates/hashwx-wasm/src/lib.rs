@@ -1,20 +1,60 @@
 //! Raw browser ABI with u32 halves for every 64-bit value.
 
-use std::cell::RefCell;
+#![cfg_attr(target_arch = "wasm32", no_std)]
+
+extern crate alloc;
+use alloc::{boxed::Box, vec::Vec};
+use core::cell::RefCell;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOCATOR: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
+
+#[cfg(target_arch = "wasm32")]
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
+  core::arch::wasm32::unreachable()
+}
 
 use hashwx_core::HashWx;
+use sha2::{Digest, Sha256};
 
 struct Instance {
   hasher: HashWx,
   module: Vec<u8>,
 }
 
+type InstanceTable = RefCell<Vec<Option<Box<Instance>>>>;
+
+#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
-  static INSTANCES: RefCell<Vec<Option<Box<Instance>>>> = const { RefCell::new(Vec::new()) };
+  static INSTANCES: InstanceTable = const { RefCell::new(Vec::new()) };
+}
+
+#[cfg(target_arch = "wasm32")]
+struct InstanceStorage(core::cell::UnsafeCell<InstanceTable>);
+
+// WASM instances have unshared memory and synchronous exports with no imports.
+#[cfg(target_arch = "wasm32")]
+unsafe impl Sync for InstanceStorage {}
+
+#[cfg(target_arch = "wasm32")]
+static INSTANCES: InstanceStorage =
+  InstanceStorage(core::cell::UnsafeCell::new(RefCell::new(Vec::new())));
+
+fn with_instances<R>(access: impl FnOnce(&InstanceTable) -> R) -> R {
+  #[cfg(not(target_arch = "wasm32"))]
+  {
+    INSTANCES.with(access)
+  }
+  #[cfg(target_arch = "wasm32")]
+  {
+    access(unsafe { &*INSTANCES.0.get() })
+  }
 }
 
 fn with_instance(handle: i32, f: impl FnOnce(&mut Instance) -> i32) -> i32 {
-  INSTANCES.with(|instances| {
+  with_instances(|instances| {
     let mut instances = instances.borrow_mut();
     match instances.get_mut(handle as usize).and_then(Option::as_mut) {
       Some(instance) => f(instance),
@@ -55,7 +95,7 @@ pub unsafe extern "C" fn hx_create(seed: *const u8, len: u32) -> i32 {
   let hasher = HashWx::new(seed);
   let module = hasher.wasm_module();
   let instance = Box::new(Instance { hasher, module });
-  INSTANCES.with(|instances| {
+  with_instances(|instances| {
     let mut instances = instances.borrow_mut();
     if let Some(index) = instances.iter().position(Option::is_none) {
       instances[index] = Some(instance);
@@ -70,7 +110,7 @@ pub unsafe extern "C" fn hx_create(seed: *const u8, len: u32) -> i32 {
 /// Destroys a live instance, returning 0 or -1 for an invalid handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn hx_destroy(handle: i32) -> i32 {
-  INSTANCES.with(
+  with_instances(
     |instances| match instances.borrow_mut().get_mut(handle as usize) {
       Some(slot) if slot.is_some() => {
         *slot = None;
@@ -149,4 +189,23 @@ pub extern "C" fn hx_module_len(handle: i32) -> usize {
     0
   });
   len
+}
+
+/// Derives the seed from a challenge and a little-endian batch number.
+///
+/// # Safety
+/// `challenge` must reference 32 readable bytes and `output` 32 writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hx_seed(
+  challenge: *const u8,
+  batch_lo: u32,
+  batch_hi: u32,
+  output: *mut u8,
+) {
+  let challenge = unsafe { core::slice::from_raw_parts(challenge, 32) };
+  let mut hash = Sha256::new();
+  hash.update(challenge);
+  hash.update(join(batch_lo, batch_hi).to_le_bytes());
+  let seed = hash.finalize();
+  unsafe { output.copy_from_nonoverlapping(seed.as_ptr(), 32) };
 }

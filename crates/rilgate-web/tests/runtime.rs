@@ -654,6 +654,7 @@ fn generated_manifest_matches_sources_and_declares_startup_order() {
       "static/js/solvers/fast/solver.js",
       "static/js/solvers/fast/adapter.js",
       "static/js/solvers/randomx/adapter.js",
+      "static/js/solvers/hashwx/adapter.js",
       "static/js/challenge.js",
     ]
   );

@@ -8,8 +8,9 @@ low half first. Hash and nonce buffers are little endian.
 
 Build and stage with `cargo xtask build-wasm`. The artifact is
 `web/static/js/solvers/hashwx/hashwx_wasm.wasm`, alongside RandomX. This build
-disables SIMD and post-MVP target features for HashWX. The artifact is ignored
-by git and has no server resource registration or browser solver integration.
+uses `wasm32v1-none`, `no_std` and the `dlmalloc` allocator for a WebAssembly
+1.0 baseline. Install the target with `rustup target add wasm32v1-none`. The artifact is ignored
+by git. The browser adapter, solver and worker are in the same directory.
 
 ## ABI
 
@@ -22,6 +23,7 @@ or an exhausted range. Module accessors return zero for invalid handles.
 | `memory` | - | Interpreter linear memory |
 | `hx_alloc` | - | Pointer to a zeroed 32-byte caller buffer |
 | `hx_free` | `ptr` | Frees that buffer; no result |
+| `hx_seed` | `challenge_ptr, batch_lo, batch_hi, out_ptr` | Writes 32 seed bytes as SHA-256(challenge || batch in little endian) |
 | `hx_create` | `seed_ptr, seed_len` | Instance handle, or -1; seed_len must be 32 |
 | `hx_hash` | `handle, nonce_lo, nonce_hi, out_ptr` | Status; eight-byte hash at out_ptr |
 | `hx_search` | `handle, nonce_lo, nonce_hi, count, target_lo, target_hi, out_ptr` | Status; 16-byte nonce followed by hash on success |
@@ -53,13 +55,15 @@ See the core README and `HashWx::wasm_module` for the complete memory layout.
 ## Validation and benchmark
 
 ```sh
-cargo test -p hashwx-core --locked
 cargo xtask build-wasm
+cargo xtask build-web
+cargo test -p hashwx-core -p hashwx-wasm --locked
 node --test tests/hashwx-wasm.test.mjs
 node scripts/bench-hashwx-wasm.mjs
 ```
 
-Tests run all four Appendix F vectors through both paths, then compare 4096
+A strict validator checks the staged artifact against WebAssembly 1.0 and
+checks that it has no host imports. Tests run all four Appendix F vectors through both paths, then compare 4096
 hashes across 64 pseudorandom seeds and exercise range-search boundaries.
 The benchmark reports 463 and 65536 nonces per seed, including per-seed
 generation and generated-module compilation/instantiation costs. Initial
