@@ -372,3 +372,58 @@ async fn proxy_failover_skips_failed_routes_and_empty_override_connects_directly
   forwarding.await.unwrap();
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn difficulty_changes_count_once_per_connection_and_preserve_pool_targets() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut config = common::config().pow.stratum_pool.clone();
+  config.pools[0].port = listener.local_addr().unwrap().port();
+  let server = tokio::spawn(async move {
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut stream = BufReader::new(stream);
+    let mut line = String::new();
+    stream.read_line(&mut line).await.unwrap();
+    let mut initial = job("initial");
+    initial["target"] = hex::encode((u32::MAX / 1000).to_le_bytes()).into();
+    stream
+      .get_mut()
+      .write_all(
+        format!(
+          "{}\n",
+          json!({"id": 1, "result": {"id": "miner", "job": initial}})
+        )
+        .as_bytes(),
+      )
+      .await
+      .unwrap();
+    for difficulty in [2000, 4000] {
+      let mut next = job("changed");
+      next["target"] = hex::encode((u32::MAX / difficulty).to_le_bytes()).into();
+      stream
+        .get_mut()
+        .write_all(format!("{}\n", json!({"method": "job", "params": next})).as_bytes())
+        .await
+        .unwrap();
+    }
+  });
+  let provider = StratumPoolProvider::new(config).unwrap();
+  let mut session = provider.connect(1000).await.unwrap();
+  assert!(
+    provider
+      .connection_metrics()
+      .contains("rilgate_stratum_pool_difficulty_mismatch_total{pool=\"default\"} 0")
+  );
+  for difficulty in [2000, 4000] {
+    session.read_event().await.unwrap();
+    assert_eq!(
+      session.current_job.target,
+      hex::encode((u32::MAX / difficulty).to_le_bytes())
+    );
+  }
+  assert!(
+    provider
+      .connection_metrics()
+      .contains("rilgate_stratum_pool_difficulty_mismatch_total{pool=\"default\"} 1")
+  );
+  server.await.unwrap();
+}

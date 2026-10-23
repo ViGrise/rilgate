@@ -24,6 +24,7 @@ pub(super) struct Connections {
 impl Connections {
   pub fn new(mut config: StratumPoolConfig) -> Self {
     for pool in &mut config.pools {
+      pool.difficulty_mismatches = Default::default();
       pool.agent = config.agent.clone();
       pool.connect_timeout = config.connect_timeout;
       pool.submit_timeout = config.submit_timeout;
@@ -114,8 +115,14 @@ impl Connections {
           state.failed_at = Some(Instant::now());
         }
       }
-      if let Ok(Ok(session)) = result {
-        return Ok(session);
+      match result {
+        Ok(Ok(session)) => return Ok(session),
+        Ok(Err(error)) => {
+          tracing::warn!(pool = %pool.name, proxy = proxy.map(|proxy| proxy.name.as_str()), error = %error, "Stratum connection attempt failed")
+        }
+        Err(_) => {
+          tracing::warn!(pool = %pool.name, proxy = proxy.map(|proxy| proxy.name.as_str()), "Stratum connection attempt timed out")
+        }
       }
     }
     Err(anyhow!("Pool connection attempts failed"))
@@ -154,7 +161,8 @@ impl Connections {
       .iter()
       .map(|pool| (pool.name.clone(), false))
       .collect();
-    for index in self.order() {
+    let order = self.order();
+    for (position, &index) in order.iter().enumerate() {
       let connected = self.attempt(index, None).await.is_ok();
       {
         let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
@@ -165,6 +173,9 @@ impl Connections {
         } else {
           state.failed += 1;
           state.failed_at = Some(Instant::now());
+          if position + 1 < order.len() {
+            state.failover += 1;
+          }
         }
       }
       results[index].1 = connected;
@@ -193,6 +204,17 @@ impl Connections {
         text,
         "rilgate_stratum_pool_failover_total{{from=\"{}\"}} {}",
         pool.name, state.failover
+      );
+    }
+    text.push_str("# TYPE rilgate_stratum_pool_difficulty_mismatch_total counter\n");
+    for pool in &self.config.pools {
+      let _ = writeln!(
+        text,
+        "rilgate_stratum_pool_difficulty_mismatch_total{{pool=\"{}\"}} {}",
+        pool.name,
+        pool
+          .difficulty_mismatches
+          .load(std::sync::atomic::Ordering::Relaxed)
       );
     }
     text.push_str("# TYPE rilgate_stratum_proxy_connections_total counter\n");

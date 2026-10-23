@@ -25,6 +25,9 @@ impl Document {
             out
           });
           message.contains(&normalized)
+            || normalized
+              .rsplit_once('.')
+              .is_some_and(|(parent, _)| message.contains(parent))
         })
         .map(|(_, source)| source.as_str())
         .collect();
@@ -92,6 +95,19 @@ impl Document {
     let fallback = StratumPool::default();
     let pool = self.pow.stratum_pool.as_ref().unwrap_or(&fallback);
     validate_proxies(&pool.proxies, "pow.stratum_pool.proxies")?;
+    let largest_difficulty = self
+      .policy
+      .challenges()?
+      .iter()
+      .filter(|(_, challenge)| {
+        challenge.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::RandomX
+      })
+      .filter_map(|(_, challenge)| challenge.difficulty)
+      .fold(
+        self.pow.algorithms.randomx.difficulty.max.max(1000),
+        u64::max,
+      );
+    let difficulty_digits = largest_difficulty.to_string().len();
     let mut names = std::collections::HashSet::new();
     let pools = pool.pools.iter().enumerate().map(|(index, entry)| {
       let path = format!("pow.stratum_pool.pools[{index}]");
@@ -99,12 +115,14 @@ impl Document {
       let url = url::Url::parse(&format!("tcp://{}", entry.address))
         .map_err(|_| anyhow::anyhow!("{path}.address: expected HOST:PORT or [IPv6]:PORT"))?;
       ensure!(url.host_str().is_some() && url.port().is_some() && url.username().is_empty() && url.password().is_none() && url.path().is_empty() && url.query().is_none() && url.fragment().is_none(), "{path}.address: expected HOST:PORT without credentials or a path");
+      entry.tls.validate().with_context(|| format!("{path}.tls.server_name"))?;
       let user = entry.login.user.expose();
       let remainder = user.replace("{difficulty}", "");
-      ensure!(user.matches("{difficulty}").count() == 1 && !remainder.contains(['{', '}']) && remainder.len() + 20 <= 256, "{path}.login.user: expected exactly one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
+      ensure!(user.matches("{difficulty}").count() == 1 && !remainder.contains(['{', '}']) && remainder.len() + difficulty_digits <= 256, "{path}.login.user: expected exactly one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
       if let Some(proxies) = &entry.proxies { validate_proxies(proxies, &format!("{path}.proxies"))?; }
       Ok(rilgate_pool::StratumConfig {
         name: entry.name.clone(),
+    difficulty_mismatches: Default::default(),
         tls: entry.tls.clone(),
         proxies: entry.proxies.clone(),
         host: url.host_str().unwrap().trim_matches(['[', ']']).into(),

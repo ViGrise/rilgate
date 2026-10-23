@@ -82,6 +82,7 @@ fn certificate(
 pub fn config(port: u16) -> StratumConfig {
   StratumConfig {
     name: "pool".into(),
+    difficulty_mismatches: Default::default(),
     host: "127.0.0.1".into(),
     port,
     user: Secret("x+{difficulty}".into()),

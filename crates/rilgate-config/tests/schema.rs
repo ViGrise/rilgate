@@ -690,4 +690,49 @@ fn proxy_overrides_replace_defaults_and_hide_urls_and_credentials() {
     assert!(resolve(&text.replace("socks5h://proxy.private:1080", replacement)).is_err());
   }
   assert!(resolve(&text.replace(", password: private-pass", "")).is_err());
+  assert!(
+    resolve(&text.replace("socks5h://proxy.private:1080", "http://proxy.private:80")).is_ok()
+  );
+}
+
+#[test]
+fn invalid_proxy_variables_name_the_source_without_echoing_the_url() {
+  let source = "RILGATE_POW_STRATUM_POOL_PROXIES_0_URL";
+  let document = rilgate_config::loader::parse_with(
+    &format!(
+      "{BASE}pow:\n  stratum_pool:\n    proxies: [{{name: route, url: 'http://localhost:3128'}}]\n"
+    ),
+    &[rilgate_config::Setting {
+      path: "pow.stratum_pool.proxies.0.url".into(),
+      source: source.into(),
+      value: rilgate_config::SettingValue::Scalar(
+        "http://private-user:private-pass@proxy.example:3128".into(),
+      ),
+    }],
+  )
+  .unwrap();
+  let error = format!("{:#}", document.resolve().unwrap_err());
+  assert!(error.contains(source), "{error}");
+  assert!(!error.contains("private-user"));
+  assert!(!error.contains("private-pass"));
+  assert!(!error.contains("proxy.example"));
+}
+
+#[test]
+fn maximum_length_logins_use_the_configured_difficulty_digits() {
+  let user = format!("{}{{difficulty}}", "x".repeat(252));
+  let text = format!(
+    "{BASE}pow:\n  algorithms:\n    randomx:\n      difficulty: {{base: 1000, max: 1000}}\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, login: {{user: '{user}'}}}}]\n"
+  );
+  assert!(resolve(&text).is_ok());
+  assert!(resolve(&text.replace("max: 1000", "max: 10000")).is_err());
+}
+
+#[test]
+fn tls_server_names_fail_at_startup_instead_of_on_each_challenge() {
+  let text = format!(
+    "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, tls: {{enabled: true, server_name: 'https://pool.example'}}}}]\n"
+  );
+  let error = format!("{:#}", resolve(&text).unwrap_err());
+  assert!(error.contains("tls.server_name"), "{error}");
 }

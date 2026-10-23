@@ -49,6 +49,7 @@ pub fn config() -> Config {
         proxies: Vec::new(),
         pools: vec![rilgate_pool::StratumConfig {
           name: "default".into(),
+          difficulty_mismatches: Default::default(),
           tls: Default::default(),
           proxies: None,
           host: "127.0.0.1".into(),

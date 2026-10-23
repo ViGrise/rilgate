@@ -32,6 +32,10 @@ pub struct StratumSession {
   next_request_id: u64,
   pub current_job: StratumJob,
   submit_timeout: Duration,
+  pool_name: String,
+  requested_difficulty: u64,
+  mismatch_reported: bool,
+  mismatch_counter: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl StratumSession {
@@ -54,12 +58,20 @@ impl StratumSession {
     let mut reader = JsonLineReader::new(read_half);
     let mut writer = write_half;
 
+    let user = cfg
+      .user
+      .expose()
+      .replace("{difficulty}", &difficulty.to_string());
+    anyhow::ensure!(
+      (1..=256).contains(&user.len()),
+      "Stratum pool login must be 1 to 256 bytes"
+    );
     let login = json!({
       "id": 1,
       "jsonrpc": "2.0",
       "method": "login",
       "params": {
-        "login": cfg.user.expose().replace("{difficulty}", &difficulty.to_string()),
+        "login": user,
         "pass": cfg.password.expose(),
         "agent": cfg.agent.clone(),
       }
@@ -98,14 +110,46 @@ impl StratumSession {
 
     let current_job = parse_job(job)?;
 
-    Ok(Self {
+    let mut session = Self {
       reader,
       writer,
       rpc_id,
       next_request_id: 2,
       current_job,
       submit_timeout: cfg.submit_timeout,
-    })
+      pool_name: cfg.name.clone(),
+      requested_difficulty: difficulty,
+      mismatch_reported: false,
+      mismatch_counter: cfg.difficulty_mismatches.clone(),
+    };
+    session.observe_difficulty();
+    Ok(session)
+  }
+
+  fn observe_difficulty(&mut self) {
+    if self.mismatch_reported {
+      return;
+    }
+    let bytes = hex::decode(&self.current_job.target).expect("validated target");
+    let (target, maximum) = if bytes.len() == 4 {
+      (
+        u64::from(u32::from_le_bytes(bytes.try_into().expect("4 byte target"))),
+        u64::from(u32::MAX),
+      )
+    } else {
+      (
+        u64::from_le_bytes(bytes.try_into().expect("8 byte target")),
+        u64::MAX,
+      )
+    };
+    if target != maximum / self.requested_difficulty {
+      let received = maximum.checked_div(target).unwrap_or(u64::MAX);
+      self.mismatch_reported = true;
+      self
+        .mismatch_counter
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      tracing::warn!(pool = %self.pool_name, requested = self.requested_difficulty, received, "Stratum pool difficulty differs from the request");
+    }
   }
 
   pub async fn read_event(&mut self) -> Result<StratumEvent> {
@@ -118,6 +162,7 @@ impl StratumSession {
           .ok_or_else(|| anyhow!("Stratum job notification has no params"))?;
         let job = parse_job(params)?;
         self.current_job = job.clone();
+        self.observe_difficulty();
         return Ok(StratumEvent::Job(job));
       }
 

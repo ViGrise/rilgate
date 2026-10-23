@@ -10,7 +10,7 @@ use tokio_socks::{TargetAddr, tcp::Socks5Stream};
 pub(crate) async fn connect(config: &StratumConfig, proxy: &Proxy) -> Result<TcpStream> {
   let endpoint = proxy.endpoint()?;
   let host = endpoint.host_str().unwrap().trim_matches(['[', ']']);
-  let stream = TcpStream::connect((host, endpoint.port().unwrap()))
+  let stream = TcpStream::connect((host, endpoint.port_or_known_default().unwrap()))
     .await
     .context("Proxy TCP connection failed")?;
   if endpoint.scheme() == "http" {
