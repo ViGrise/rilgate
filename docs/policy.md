@@ -18,7 +18,7 @@ is never forwarded by an allow rule.
 Light matches User-Agents containing bot, crawler, spider, curl, wget, python, or
 scrapy, case-insensitively, or an empty User-Agent. Light, balanced and strict allow
 exact `/robots.txt`, `/favicon.ico`, and the `/.well-known/acme-challenge/` prefix. Presets never need
-RandomX or P2Pool. Any custom `rules`, `score`, or `default_action` in a preset is
+RandomX or Stratum pool. Any custom `rules`, `score`, or `default_action` in a preset is
 rejected. Such settings are not silently ignored.
 
 ## Custom evaluation
@@ -196,7 +196,7 @@ The deny downgrade bounds the impact of a feed outage on a denylist. A decision 
 unresolved when any rule evaluated on the way to it, including the deciding rule, had an
 unknown condition. Logs and metrics report unresolved decisions so the cause stays
 visible. Configuration validation treats a deny rule that references a remote set as a
-possible default challenge for algorithm and P2Pool checks.
+possible default challenge for algorithm and Stratum pool checks.
 
 A match of both a published range and a declared User-Agent confirms that the request
 comes from the publisher's network. It also confirms that the request claims the

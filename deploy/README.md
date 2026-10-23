@@ -55,7 +55,7 @@ For systemd:
 routes on `127.0.0.1:9090`, so local probes and a Prometheus instance on the same host can
 reach them.
 
-The Caddy and nginx examples forward the host and support the gateway's P2Pool WebSocket
+The Caddy and nginx examples forward the host and support the gateway's Stratum pool WebSocket
 API and upstream application WebSockets.
 
 1. Set the public hostname.

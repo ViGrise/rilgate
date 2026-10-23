@@ -24,7 +24,7 @@ separate context identifiers. Secret length is checked. Inspection of a string c
 establish randomness. Never commit a real secret.
 
 The defaults are production mode, an IPv4 wildcard listener at `:8080`, embedded
-site resources, local Fast verification, and the balanced policy. RandomX and P2Pool are
+site resources, local Fast verification, and the balanced policy. RandomX and pool access are
 opt-in. The balanced preset challenges application traffic at Fast difficulty 2
 regardless of User-Agent, with public exceptions described in [policies](policy.md).
 HTTPS is required for production authentication cookies.
@@ -53,7 +53,7 @@ variable. Shell substitution and default-value syntax are unsupported.
 Every scalar and list setting also has a flag and an environment variable. Precedence is
 flag, then variable, then YAML, then the default. The flag is the YAML path with
 `.` and `_` replaced by `-`. The variable is `RILGATE_`
-followed by the flag in upper snake case. There are no exceptions.
+followed by the flag in upper snake case. Indexed pool and proxy entries use variables without flags.
 [`.env.example`](../.env.example) lists every variable with its default.
 
 | YAML path | Flag | Variable |
@@ -65,16 +65,16 @@ followed by the flag in upper snake case. There are no exceptions.
 | `security.secret` | `--security-secret`, `-s` | `RILGATE_SECURITY_SECRET` |
 | `server.max_connections` | `--server-max-connections` | `RILGATE_SERVER_MAX_CONNECTIONS` |
 | `site.i18n.default` | `--site-i18n-default` | `RILGATE_SITE_I18N_DEFAULT` |
-| `pow.stratum_pool.address` | `--pow-stratum-pool-address` | `RILGATE_POW_STRATUM_POOL_ADDRESS` |
+| `pow.stratum_pool.pools[0].address` | none | `RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS` |
 
-`rilgate --help` lists every setting with its YAML path and default. Values are validated by
+`rilgate --help` lists shared scalar settings with their YAML paths and defaults. Values are validated by
 the schema exactly like `${VARIABLE_NAME}` references, so durations take `5s` and
 sizes take `16MiB`. An invalid value names its flag or variable.
 
 Boolean flags alone mean `true` and accept `--flag=false`. Lists are comma-separated
 or repeated and replace the YAML list. An empty value clears it.
 
-Any `pow.stratum_pool.*` value enables P2Pool with defaults for the rest. Policy rules, IP sets
+Any `pow.stratum_pool.*` value enables pool access with defaults for the rest. Policy rules, IP sets
 and signing key rotation (`security.keys`) are YAML only. Pass the secret through
 `RILGATE_SECURITY_SECRET`. Do not use `--security-secret`, because process arguments are visible to other
 local users.
@@ -143,6 +143,9 @@ warning-free configuration, run it in CI or before deployment.
 | `verifier-remote-missing` | both | error | Order selects remote without an endpoint |
 | `verifier-local-fallback` | both | warning | Local follows remote; outages can build a 256 MiB cache on every gateway |
 | `verifier-remote-unused` | both | warning | Order selects remote while no challenge selects RandomX or verification is stratum_pool_accepted |
+| `stratum-pool-plain-tcp` | both | production error, development warning | A public pool has TLS disabled |
+| `stratum-proxy-plain-credentials` | both | production error, development warning | A public proxy has credentials |
+| `stratum-pool-per-challenge-public` | both | warning | A public pool uses per-challenge job sessions |
 | `trusted-proxy-broad` | production | error | A public `server.trusted_proxies` network is broader than `/8` (IPv4) or `/16` (IPv6) |
 | `debug-score-header` | production | error | `policy.score.debug_header.enabled` is `true` |
 | `ip-set-plain-http` | production | error | A remote IP set `url` does not use `https` |
@@ -234,7 +237,8 @@ or overflow.
 
 When `pow.stratum_pool` is enabled, its defaults are:
 
-- Address `127.0.0.1:3333`, password `x`, and agent `rilgate/<version>`.
+- One pool named `default`, at `127.0.0.1:3333`, with login `x+{difficulty}` and password `x`.
+- No proxies, TLS disabled, failover cooldown `30s`, and agent `rilgate/<version>`.
 - Connect timeout `5s` and submit timeout `20s`.
 - Session capacity `64` and session TTL `15m`.
 - Job-session mode `pooled`, maximum `16`, and idle `1m`.
@@ -247,6 +251,73 @@ Custom policies default to `default_action: allow`, no rules, no IP sets, score 
 settings are rejected in preset modes. An IP set feed `url` must use `https`
 in production. Development also accepts `http`. Debug headers are forbidden in
 production.
+
+## Stratum pools and proxies
+
+The old `pow.p2pool` section, `p2pool_accepted` configuration value and
+`RILGATE_POW_P2POOL_*` variables fail at startup with the new names. Old flags
+are unknown arguments. Existing tokens accept `p2pool_accepted` for one release.
+New tokens contain only `stratum_pool_accepted`.
+
+Set `pow.stratum_pool.pools` to a list of 1 to 8 pools. The gateway tries them
+in order. Each entry requires a unique `name` and an `address`. Names use 1 to
+64 lowercase ASCII letters, digits, hyphens or underscores. An address is
+`HOST:PORT` or `[IPv6]:PORT`. It has no scheme, credentials or path.
+
+`login.user` defaults to `x+{difficulty}`. It must contain `{difficulty}` exactly
+once, with no other placeholders. The substituted value must fit in 256 bytes.
+Environment references resolve first. `login.password` defaults to `x`.
+Both login fields are secrets in displayed configuration.
+
+| Pool field | Default | Operation |
+| --- | --- | --- |
+| `tls.enabled` | `false` | Verify TLS from the gateway to the pool |
+| `tls.server_name` | address host | Verify this DNS name or IP address |
+| `tls.ca` | none | Trust a PEM CA file; otherwise use webpki roots |
+| `proxies` | shared list | Replace `pow.stratum_pool.proxies`; `[]` connects directly |
+
+Each proxy list has 0 to 8 entries. Each proxy requires a unique `name` and a
+`url`. Proxy names follow the pool name rules. URLs use `socks5://HOST:PORT`,
+`socks5h://HOST:PORT` or `http://HOST:PORT`, with no credentials, path, query or
+fragment. Set `username` and `password` together, or omit both. Displayed
+configuration masks URLs and credentials.
+
+`socks5` resolves the pool host on the gateway. `socks5h` resolves it on the
+proxy. `http` uses CONNECT. TLS verifies the pool certificate through the proxy.
+Certificate verification is always on. HTTP response headers are limited to 8 KiB.
+
+`failover.cooldown` defaults to `30s` and accepts `1s` to `10m`. A failed TCP,
+proxy, TLS or login attempt puts that route in cooldown. The gateway tries the
+next proxy, then the next pool. If all entries of a list are in cooldown, it
+tries them in order anyway. `timeout.connect` limits each attempt.
+
+### Indexed environment variables
+
+Pool and proxy entries have no CLI flags. Use indexed variables or YAML:
+
+```bash
+RILGATE_POW_STRATUM_POOL_POOLS_0_NAME=local
+RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS=127.0.0.1:3333
+RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_USER=x+{difficulty}
+RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES=
+RILGATE_POW_STRATUM_POOL_POOLS_1_NAME=backup
+RILGATE_POW_STRATUM_POOL_POOLS_1_ADDRESS=pool.example:443
+RILGATE_POW_STRATUM_POOL_POOLS_1_TLS_ENABLED=true
+RILGATE_POW_STRATUM_POOL_PROXIES_0_NAME=tunnel
+RILGATE_POW_STRATUM_POOL_PROXIES_0_URL=socks5h://127.0.0.1:1080
+```
+
+| Variable prefix | Fields |
+| --- | --- |
+| `RILGATE_POW_STRATUM_POOL_POOLS_<N>_` | `NAME`, `ADDRESS`, `LOGIN_USER`, `LOGIN_PASSWORD`, `TLS_ENABLED`, `TLS_SERVER_NAME`, `TLS_CA`, `PROXIES` |
+| `RILGATE_POW_STRATUM_POOL_PROXIES_<N>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
+| `RILGATE_POW_STRATUM_POOL_POOLS_<N>_PROXIES_<M>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
+
+Indexes start at 0 and have no gaps. A variable changes one field of the YAML
+item with that index. The next index adds one item at the end. An unknown field
+fails with the valid field list. Invalid values name their source variable.
+An empty `POOLS_<N>_PROXIES` value sets an empty proxy list for that pool.
+Shared settings keep their flags, including `--pow-stratum-pool-failover-cooldown`.
 
 ## Separate keys and rotation
 

@@ -93,7 +93,7 @@ mock origins and clients.
 
 Gateway tests cover cross-instance proofs, token purpose, expiry, in-place challenges,
 path normalization, overload, proxy failures, and response streaming and header
-filtering. Mock P2Pool tests cover share acceptance, job rotation, submission timeouts,
+filtering. Mock Stratum pool tests cover share acceptance, job rotation, submission timeouts,
 connection reuse, unpooled fetches, and idle session expiry. Reader tests cover
 interrupted and oversized Stratum frames. Signatures bind tokens to presentation,
 challenge, receipt, or authentication purpose, even when signing keys are shared.

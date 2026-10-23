@@ -71,7 +71,7 @@ config/             Production, commented, custom and RandomX configuration exam
 deploy/             Docker, systemd, edge proxy and monitoring examples
 ```
 
-Other domain crates own algorithms, shared work and claim models, P2Pool sessions,
+Other domain crates own algorithms, shared work and claim models, Stratum pool sessions,
 Stratum framing, web resources and telemetry. Integration tests live with their owning
 crate. Logs and temporary build and test artifacts live outside the project.
 
@@ -104,7 +104,7 @@ beneath the configured `site.base_path`. Policy rules choose algorithms and diff
 independently of the global default.
 
 Fast and RandomX local proofs can cross gateway instances that share signing keys and
-compatible configuration. P2Pool acceptance remains attached to one browser WebSocket
+compatible configuration. Stratum pool acceptance remains attached to one browser WebSocket
 and its retained gateway Stratum session. RandomX work requires the configured
 disclosure and explicit browser consent.
 
@@ -135,7 +135,7 @@ write directly to the downstream session. The proof WebSocket uses a bounded in-
 duplex adapter with tungstenite framing and the shared Stratum session logic. There is
 no internal HTTP listener or Unix socket.
 
-Application state owns the policy and challenge services, P2Pool provider, limiter, web
+Application state owns the policy and challenge services, Stratum pool provider, limiter, web
 snapshot manager, and reload watcher handles. Shutdown stops acceptance, cancels proof
 WebSockets, notifies Pingora, and drains connections for up to 30 seconds. The socket
 digest supplies peer addresses for rate limiting. Forwarded chains influence client IP
@@ -163,6 +163,18 @@ the caller leaves or the deadline passes. Started native hashes finish on the
 worker thread. Idle release drops the cache.
 
 The verifier operations listener has its own state. Its readiness checks the
-worker, with no gateway upstream or P2Pool dependency. Its metrics use bounded
+worker, with no gateway upstream or Stratum pool dependency. Its metrics use bounded
 outcome labels. Combined gateway and verifier operation, shared caches and
 several workers are reserved for phase 2.
+
+## Pool connection ownership
+
+The pool provider owns ordered pool and proxy failover and their cooldowns.
+Each connection attempt includes TCP, proxy negotiation, optional TLS and
+Stratum login. The readiness probe uses the same route selection and transport,
+without login, under one total timeout.
+
+Each pooled job session owns one pool connection. Its job stream cannot move to
+a backup pool. A new session selects a route again. A browser WebSocket owns
+its Stratum connection until acceptance or closure. Shares return on that
+connection, so job IDs and miner IDs stay with their pool.

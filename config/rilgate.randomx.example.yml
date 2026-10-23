@@ -8,7 +8,10 @@ pow:
   verification: local_verify
   default_algorithm: randomx
   stratum_pool:
-    address: "127.0.0.1:3333"
+    pools:
+      - name: local
+        address: "127.0.0.1:3333"
+        login: {user: "x+{difficulty}", password: x}
     job_sessions:
       mode: pooled
       max: 16

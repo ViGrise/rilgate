@@ -8,7 +8,7 @@
 #   4. Run: rilgate config check
 
 # Only the upstream URL and signing secret are required. Embedded pages, assets,
-# translations, Fast SHA-256 proofs and the balanced policy work without P2Pool.
+# translations, Fast SHA-256 proofs and the balanced policy work without Stratum pool.
 # Optional settings are commented out. Remove the comment marker from the YAML
 # setting and its parent mappings to enable it; retain the YAML indentation.
 # Descriptions appear immediately above their settings, separated by a blank
@@ -131,7 +131,8 @@ server:
 
   # Dependency-probe timeout for <site.base_path>/api/ready. Maximum: 30s.
   # Readiness probes TCP reachability of the upstream and, when required by the
-  # selected challenges, P2Pool. This does not check application response health.
+  # selected challenges, a Stratum pool through its proxies and TLS. This does
+  # not check application response health or Stratum login.
   # <site.base_path>/api/live only reports process liveness.
   #
   # readiness_timeout: 2s
@@ -369,14 +370,14 @@ security:
   # local_verify checks Fast SHA-256 or RandomX proofs on this gateway.
   # Compatible signed local proofs can be verified across instances.
   # stratum_pool_accepted requires RandomX challenges and an actual accepted share
-  # response from P2Pool, through a retained WebSocket/Stratum session. HTTP
+  # response from the mining pool, through a retained WebSocket/Stratum session. HTTP
   # RandomX issue/verify is unavailable in that mode. Route sessions back to
   # their owning gateway; there is no distributed session store.
   #
   # verification: local_verify
 
   # Algorithm when a challenge action omits algorithm: fast or randomx.
-  # Presets explicitly select fast. Selecting RandomX requires explicit P2Pool
+  # Presets explicitly select fast. Selecting RandomX requires explicit Stratum pool
   # configuration for jobs, including when verification is local.
   #
   # default_algorithm: fast
@@ -433,7 +434,7 @@ security:
       # challenge_ttl: 1h
 
       # Byte offset of the 4-byte nonce in the mining blob. Range: 0..252;
-      # it must also fit the actual P2Pool job blob. 39 is the Monero layout.
+      # it must also fit the actual Stratum pool job blob. 39 is the Monero layout.
       #
       # nonce_offset: 39
 
@@ -518,14 +519,47 @@ security:
   # selected. Merely adding this section does not switch the policy to RandomX.
   #
   # stratum_pool:
-    # Stratum host:port or [IPv6]:port. No URL scheme, credentials or path.
+    # Pools are tried in this order. Set 1 to 8 entries. Each name must be
+    # unique, with 1 to 64 lowercase letters, digits, hyphens or underscores.
+    # Each address is HOST:PORT or [IPv6]:PORT, with no scheme or credentials.
     #
-    # address: 127.0.0.1:3333
+    # pools:
+      # - name: local
+        # address: 127.0.0.1:3333
+        # login:
+          # Exactly one {difficulty} is required. No other placeholders are
+          # allowed. The substituted login must fit in 256 bytes.
+          # P2Pool sets its wallet on the node. Other pools can need a wallet
+          # in this template. Use an environment reference for private data.
+          # user: "x+{difficulty}"
+          # password: x
+        # tls:
+          # Production requires TLS for hosts outside private networks.
+          # Certificate verification is always on. The address host is the
+          # default server_name. Without ca, Rilgate uses webpki roots.
+          # enabled: false
+          # server_name: pool.example
+          # ca: /etc/rilgate/pool-ca.pem
+        # An empty list connects directly. An omitted list uses the shared
+        # proxies below. A nonempty list replaces the shared list.
+        # proxies: []
 
-    # Pool login password. 'x' is the default, not a Rilgate signing key.
-    # Use an environment reference if your pool requires a private credential.
+    # Shared proxies, tried in order. Set 0 to 8 entries. Each name follows
+    # the pool name rules. Credentials must be in both fields, or neither.
+    # URL schemes: socks5 (local DNS), socks5h (proxy DNS), http (CONNECT).
+    # TLS to the pool stays end to end through the proxy.
     #
-    # password: x
+    # proxies:
+      # - name: tunnel
+        # url: socks5h://127.0.0.1:1080
+        # username: "${RILGATE_STRATUM_PROXY_USERNAME}"
+        # password: "${RILGATE_STRATUM_PROXY_PASSWORD}"
+
+    # Skip a failed pool or proxy for this duration, from 1s to 10m.
+    # If every entry is in cooldown, try the list in order again.
+    #
+    # failover:
+      # cooldown: 30s
 
     # Client agent identifier sent in the Stratum login.
     #

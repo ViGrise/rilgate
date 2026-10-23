@@ -2,7 +2,7 @@
 //! setting descriptions in `config/rilgate.example.yml`, and checks the
 //! committed file matches. Set `RILGATE_UPDATE_ENV_EXAMPLE=1` when running the
 //! test to rewrite the file.
-use super::settings::{Kind, SPECS};
+use super::settings::{Kind, POOL_FIELDS, PROXY_FIELDS, SPECS};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -106,6 +106,22 @@ pub(crate) fn render(yaml_example: &str) -> String {
       }
     }
   }
+  section(&mut out, "INDEXED POOLS AND PROXIES");
+  out.push_str("\n# Indexed variables have no flags. Indexes start at 0, with no gaps.\n# Each field overrides one YAML item. The next index appends one item.\n# Names are required. Pool addresses and proxy URLs are required.\n# Empty POOLS_<N>_PROXIES means a direct connection.\n");
+  for (prefix, fields) in [
+    ("RILGATE_POW_STRATUM_POOL_POOLS_<N>_", POOL_FIELDS),
+    ("RILGATE_POW_STRATUM_POOL_PROXIES_<N>_", PROXY_FIELDS),
+    (
+      "RILGATE_POW_STRATUM_POOL_POOLS_<N>_PROXIES_<M>_",
+      PROXY_FIELDS,
+    ),
+  ] {
+    out.push('\n');
+    for (field, _) in fields {
+      let _ = writeln!(out, "# {prefix}{field}=");
+    }
+  }
+  out.push_str("\n# Numbered example: one local pool, with a direct connection.\n# RILGATE_POW_STRATUM_POOL_POOLS_0_NAME=local\n# RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS=127.0.0.1:3333\n# RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_USER=x+{difficulty}\n# RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES=\n");
   out
 }
 
