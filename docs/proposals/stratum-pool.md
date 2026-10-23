@@ -66,7 +66,7 @@ Non-goals:
 | Login template with a required `{difficulty}` | Pools put the difficulty in different places. A template supports all of them without code for each pool |
 | No separate `wallet` setting | P2Pool ignores a login wallet. The operator writes the wallet in the template or in an environment reference |
 | Optional TLS with system roots | Public pools offer TLS ports. Without TLS, the wallet and password cross the network as plain text |
-| Pools and proxies are YAML only | A list of objects does not fit one flag or one environment variable. Shared settings keep their flags and variables |
+| Indexed environment variables for pools and proxies | A list of objects does not fit one variable. Variables such as `RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS` set one field of one item, and the same schema validates them |
 
 ## 4. Configuration
 
@@ -141,8 +141,42 @@ The minimum difficulty of `1000` does not change. Environment references such as
 
 The shared settings keep their CLI flags and environment variables, for example
 `--pow-stratum-pool-timeout-connect` and `RILGATE_POW_STRATUM_POOL_TIMEOUT_CONNECT`.
-`pools` and `proxies` are YAML only. A secret in a pool or a proxy can use an
-environment reference. `.env.example` is generated again from the settings.
+`.env.example` is generated again from the settings.
+
+### Indexed environment variables
+
+One variable sets one field of one list item:
+
+```bash
+RILGATE_POW_STRATUM_POOL_POOLS_0_NAME=home-p2pool
+RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS=10.0.0.5:3333
+RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES=
+RILGATE_POW_STRATUM_POOL_POOLS_1_NAME=supportxmr
+RILGATE_POW_STRATUM_POOL_POOLS_1_ADDRESS=pool.supportxmr.com:443
+RILGATE_POW_STRATUM_POOL_POOLS_1_LOGIN_USER=4Abc...rilgate+{difficulty}
+RILGATE_POW_STRATUM_POOL_POOLS_1_TLS_ENABLED=true
+RILGATE_POW_STRATUM_POOL_PROXIES_0_NAME=office-socks
+RILGATE_POW_STRATUM_POOL_PROXIES_0_URL=socks5h://10.0.0.2:1080
+```
+
+| List | Variable prefix | Fields |
+| --- | --- | --- |
+| Pools | `RILGATE_POW_STRATUM_POOL_POOLS_<n>_` | `NAME`, `ADDRESS`, `LOGIN_USER`, `LOGIN_PASSWORD`, `TLS_ENABLED`, `TLS_SERVER_NAME`, `TLS_CA`, `PROXIES` |
+| Default proxies | `RILGATE_POW_STRATUM_POOL_PROXIES_<n>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
+| Proxies of a pool | `RILGATE_POW_STRATUM_POOL_POOLS_<n>_PROXIES_<m>_` | The proxy fields |
+
+- The loader changes each variable into a setting path, for example
+  `pow.stratum_pool.pools.1.login.user`. The settings then go through the same
+  schema, resolution and environment checks as YAML.
+- A variable sets one field of the YAML item with the same index. An index
+  after the last YAML item adds a new item at the end of the list.
+- The indexes start at `0` and have no gaps. The YAML items count.
+- An unknown field, for example `POOLS_0_ADRESS`, stops startup. The error lists
+  the valid fields.
+- `POOLS_<n>_PROXIES` with an empty value sets `proxies: []`.
+- An error names the variable that supplied the value.
+- Indexed settings have no CLI flags. A flag set is fixed when the program
+  starts, and the number of pools is not.
 
 ### Pool examples
 
@@ -251,7 +285,8 @@ The rename covers all public names in one release:
 | YAML password | `pow.p2pool.password` | `pow.stratum_pool.pools[].login.password` |
 | Verification value | `p2pool_accepted` | `stratum_pool_accepted` |
 | CLI flags | `--pow-p2pool-*` | `--pow-stratum-pool-*`, shared settings only |
-| Environment variables | `RILGATE_POW_P2POOL_*` | `RILGATE_POW_STRATUM_POOL_*`, shared settings only |
+| Environment variables | `RILGATE_POW_P2POOL_ADDRESS`, `RILGATE_POW_P2POOL_PASSWORD` | `RILGATE_POW_STRATUM_POOL_POOLS_<n>_ADDRESS`, `RILGATE_POW_STRATUM_POOL_POOLS_<n>_LOGIN_PASSWORD` |
+| Other environment variables | `RILGATE_POW_P2POOL_*` | `RILGATE_POW_STRATUM_POOL_*` |
 | Browser client value | `enforce: "p2pool_accepted"` | `enforce: "stratum_pool_accepted"` |
 | Browser module | `js/challenge/p2pool.js` | `js/challenge/stratum-pool.js` |
 | User text | "P2Pool" in status and disclosure strings | "the mining pool" |
@@ -334,7 +369,7 @@ configuration that breaks them does not load.
 | Area | Result |
 | --- | --- |
 | Configuration files | Must change. The startup error names each new key |
-| Environment variables and flags | Must change. The pool address and password have no variable or flag |
+| Environment variables and flags | Must change. The pool address and password use indexed variables and have no flag |
 | Challenge, presentation and receipt tokens | Tokens from the previous version stay valid until they expire |
 | Auth cookies | No change |
 | Browser solvers | Ship with the gateway. The new `enforce` value and module path change together |
@@ -348,6 +383,7 @@ configuration that breaks them does not load.
 | Pool order | A failed first pool gives a session on the second pool and one failover count. A pool in its cooldown is skipped. When all pools are in their cooldown, the first pool is tried |
 | Affinity | A share goes to the pool of its job |
 | Proxy inheritance | A pool without `proxies` uses the default list. `proxies: []` connects directly. A pool list replaces the default list |
+| Indexed variables | A variable sets one field of a YAML item and adds an item at the end. A gap, an unknown field and an index over the limit fail. An invalid value fails with the variable name. An empty `PROXIES` value connects directly |
 | Proxy order | A failed first proxy gives a connection through the second proxy |
 | SOCKS5 | `socks5` sends an address, and `socks5h` sends the host name. Credentials work. A refused request fails over |
 | HTTP CONNECT | A `200` response connects. Another status, a response over 8 KiB and a closed connection fail over |
@@ -365,10 +401,12 @@ configuration that breaks them does not load.
    variables, the browser module and the user text. Add the token alias and the
    startup errors for old names.
 2. Replace `address` and `password` with the `pools` list and its login template.
-   Add ordered failover with the cooldown, pool affinity and the pool metrics.
+   Add ordered failover with the cooldown, pool affinity, the pool metrics and the
+   indexed environment variables for pools.
 3. Add TLS for the Stratum client and the readiness probe.
-4. Add the proxy lists with SOCKS5, SOCKS5h and HTTP `CONNECT`, inheritance,
-   ordered failover and the proxy metrics.
+4. Add the proxy lists with SOCKS5, SOCKS5h and HTTP `CONNECT`, inheritance and
+   ordered failover. Add the proxy metrics and the indexed environment variables
+   for proxies.
 5. Add the difficulty mismatch warning and counter.
 6. Add the environment checks.
 7. Update `docs/pow.md`, `docs/configuration.md`, `docs/production.md`,
