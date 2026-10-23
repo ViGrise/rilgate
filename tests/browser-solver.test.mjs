@@ -246,7 +246,7 @@ test("decimal strings preserve the full unsigned 64-bit difficulty", async () =>
 test("expired work is rejected before downloading or allocating the cache", async () => {
   let downloads = 0;
   const { self, messages, memory } = await workerHarness(async () => { downloads += 1; throw new Error("use buffer path"); });
-  self.onmessage({ data: { type: "solve", requestId: 1, job: { ...job, seedHash: job.seed_hash, expiresAt: Math.floor(Date.now() / 1000), wasmUrl: "test.wasm" } } });
+  self.onmessage({ data: { type: "solve", requestId: 1, job: { ...job, seedHash: job.seed_hash, deadline: Date.now(), wasmUrl: "test.wasm" } } });
   await until(() => messages.length > 0);
   assert.equal(messages[0].type, "error");
   assert.match(messages[0].message, /expired/);
@@ -261,7 +261,7 @@ test("work that expires during initialization cannot return a solution", async (
     wall = expiresAt * 1000;
     throw new Error("use buffer path");
   }, { now: () => wall });
-  self.onmessage({ data: { type: "solve", requestId: 1, job: { ...job, seedHash: job.seed_hash, expiresAt, wasmUrl: "test.wasm" } } });
+  self.onmessage({ data: { type: "solve", requestId: 1, job: { ...job, seedHash: job.seed_hash, deadline: expiresAt * 1000, wasmUrl: "test.wasm" } } });
   await until(() => messages.length > 0);
   assert.equal(messages[0].type, "error");
   assert.match(messages[0].message, /expired/);
@@ -278,7 +278,7 @@ test("a hash finishing at the deadline cannot return a solution", async () => {
     wall = expiresAt * 1000;
     return hash(...args);
   };
-  self.onmessage({ data: { type: "solve", requestId: 1, job: { ...job, seedHash: job.seed_hash, expiresAt, wasmUrl: "test.wasm" } } });
+  self.onmessage({ data: { type: "solve", requestId: 1, job: { ...job, seedHash: job.seed_hash, deadline: expiresAt * 1000, wasmUrl: "test.wasm" } } });
   await until(() => messages.length > 0);
   assert.equal(messages[0].type, "error");
   assert.match(messages[0].message, /expired/);
@@ -389,7 +389,7 @@ test("paired work finishing at the deadline cannot return either solution", asyn
   pairedSupport(exports);
   const hash = exports.rx_hash_pair;
   exports.rx_hash_pair = (...args) => { wall = expiresAt * 1000; return hash(...args); };
-  self.onmessage({data:{type:"solve", requestId:1, job:{...job,seedHash:job.seed_hash,expiresAt,wasmUrl:"test.wasm"}}});
+  self.onmessage({data:{type:"solve", requestId:1, job:{...job,seedHash:job.seed_hash,deadline:expiresAt * 1000,wasmUrl:"test.wasm"}}});
   await until(() => messages.length > 0);
   assert.equal(messages[0].type, "error");
   assert.match(messages[0].message, /expired/);
@@ -451,7 +451,7 @@ test("triple work finishing at the deadline cannot return a solution", async () 
   tripleSupport(exports);
   const hash = exports.rx_hash_triple;
   exports.rx_hash_triple = (...args) => { wall = expiresAt * 1000; return hash(...args); };
-  self.onmessage({data:{type:"solve",requestId:1,job:{...job,seedHash:job.seed_hash,expiresAt,wasmUrl:"test.wasm"}}});
+  self.onmessage({data:{type:"solve",requestId:1,job:{...job,seedHash:job.seed_hash,deadline:expiresAt * 1000,wasmUrl:"test.wasm"}}});
   await until(() => messages.length > 0);
   assert.equal(messages[0].type, "error");
   assert.match(messages[0].message, /expired/);
@@ -472,4 +472,22 @@ test("triple search hashes the final 32-bit nonce singly without wrapping", asyn
   const solved = messages.find(message => message.type === "solved");
   assert.equal(solved?.nonce, "ffffffff");
   assert.equal(singleCalls, 1);
+});
+
+
+test("relative lifetime permits RandomX work with a client clock one day ahead", async t => {
+  const serverNow = Date.now(), clientNow = serverNow + 86400000;
+  const { solve, cancel, instances } = await solver(t);
+  t.after(cancel);
+  const { self, messages } = await workerHarness(async () => { throw new Error("use buffer path"); }, { now: () => clientNow });
+  const pending = solve({ ...job, expiresAt: Math.floor(serverNow / 1000) + 60, expiresIn: 60, receivedAt: clientNow - 1000 });
+  pending.catch(() => {});
+  const request = lastRequest(instances[0]);
+  assert.equal(request.job.deadline, clientNow + 59000);
+  self.onmessage({ data: request });
+  await until(() => messages.some(message => message.type !== 'progress'));
+  const result = messages.find(message => message.type !== 'progress');
+  assert.equal(result.type, 'solved', result.message);
+  instances[0].emit(result);
+  await pending;
 });

@@ -30,7 +30,8 @@ regardless of User-Agent, with public exceptions described in [policies](policy.
 HTTPS is required for production authentication cookies.
 
 Use [the commented distribution template](../config/rilgate.example.yml), [custom policy
-example](../config/rilgate.custom.example.yml), or [RandomX example](../config/rilgate.randomx.example.yml).
+example](../config/rilgate.custom.example.yml), [HashWX example](../config/rilgate.hashwx.example.yml), or
+[RandomX example](../config/rilgate.randomx.example.yml).
 
 ## Loading and validation
 
@@ -482,3 +483,50 @@ Production rejects a missing client CA with
 `verifier-serve-public` warning. Public operations addresses also produce a
 warning. A gateway configuration with `serve` is rejected. Run a dedicated
 verifier process; combined mode is reserved for phase 2.
+
+## HashWX configuration
+
+Use a custom policy to select HashWX. Presets select Fast explicitly. HashWX
+is registered and its cost settings are validated only when a challenge rule
+selects it with local verification.
+
+```yaml
+pow:
+  verification: local_verify
+  default_algorithm: hashwx
+  algorithms:
+    hashwx:
+      nonces_per_seed: 65536
+      difficulty:
+        base: 50000
+        score_step: 10
+        max: 5000000
+policy:
+  mode: custom
+  default_action: challenge
+```
+
+| YAML path under `pow.algorithms.hashwx` | Default | Valid values |
+| --- | ---: | --- |
+| `nonces_per_seed` | 65536 | 463 to 1048576 |
+| `difficulty.base` | 50000 | 1 to 2^40 |
+| `difficulty.score_step` | 10 | Positive i32 |
+| `difficulty.max` | 5000000 | `base` to 2^40 |
+
+The base and max defaults are placeholders until a mid-range phone is measured.
+The iPhone 15 Pro Max result does not supply that calibration. An explicit
+rule difficulty must be between 1 and 2^40 and overrides the score mapping,
+including its `max` cap. `pow.challenge.ttl` controls the work lifetime.
+
+Each setting has the corresponding CLI flag and environment variable:
+
+| Flag | Environment variable |
+| --- | --- |
+| `--pow-algorithms-hashwx-nonces-per-seed` | `RILGATE_POW_ALGORITHMS_HASHWX_NONCES_PER_SEED` |
+| `--pow-algorithms-hashwx-difficulty-base` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_BASE` |
+| `--pow-algorithms-hashwx-difficulty-score-step` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_SCORE_STEP` |
+| `--pow-algorithms-hashwx-difficulty-max` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_MAX` |
+
+`--pow-default-algorithm hashwx` and `RILGATE_POW_DEFAULT_ALGORITHM=hashwx`
+select it for challenge actions that omit an algorithm. HashWX work is local.
+It needs no `pow.stratum_pool` entry or dedicated verifier queue.

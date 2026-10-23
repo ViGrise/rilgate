@@ -267,6 +267,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
         &RandomXConfig {
           difficulty: cfg.difficulty.clone(),
           ttl: cfg.randomx_challenge_ttl_seconds,
+          solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
           nonce_offset: cfg.nonce_offset,
           queue_capacity: cfg.verifier_queue_capacity,
           cache_idle_timeout: cfg.randomx_cache_idle_timeout,

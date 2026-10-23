@@ -81,7 +81,7 @@ async fn challenge_assets_revalidate_the_bundle_and_individual_scripts() {
     "js/solvers/fast/solver.js",
     "js/solvers/fast/adapter.js",
     "js/solvers/randomx/adapter.js",
-    "js/solvers/randomx/loader.js",
+    "js/solvers/loader.js",
     "js/solvers/randomx/solver.js",
     "challenge.js",
     "hash-worker.js",

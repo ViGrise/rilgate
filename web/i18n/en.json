@@ -30,5 +30,6 @@
   "denied.description": "This request was denied by the site policy.",
   "error.title": "Unable to continue",
   "error.description": "The request could not be completed. Please try again.",
-  "challenge.expires_in": "Challenge expires in {seconds} seconds."
+  "challenge.expires_in": "Challenge expires in {seconds} seconds.",
+  "challenge.hashwx_unsupported": "This browser cannot run HashWX. WebAssembly and workers are required."
 }

@@ -1,0 +1,6 @@
+[package]
+name = "hashwx-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Portable allocation-free HashWX interpreter from the published specification"

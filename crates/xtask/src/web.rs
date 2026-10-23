@@ -22,6 +22,7 @@ const STARTUP: &[&str] = &[
   "solvers/fast/solver.js",
   "solvers/fast/adapter.js",
   "solvers/randomx/adapter.js",
+  "solvers/hashwx/adapter.js",
   "challenge.js",
 ];
 const WORKER: &str = "solvers/fast/worker.js";

@@ -38,7 +38,7 @@ jobs:
       - name: Install native proxy dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
       - name: Prepare Rust toolchain
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown --target wasm32v1-none
       # Only main writes the compile cache, so pull requests restore trusted artifacts and never publish their own.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
@@ -59,7 +59,7 @@ jobs:
       - name: Install native proxy dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
       - name: Prepare Rust toolchain
-        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown --target wasm32v1-none
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: browser
@@ -78,7 +78,7 @@ jobs:
       - name: Install native proxy dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev wrk
       - name: Prepare Rust toolchain
-        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown --target wasm32v1-none
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: release

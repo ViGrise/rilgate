@@ -18,10 +18,12 @@ CPU, memory, queue capacity and execution time. RandomX initializes its native v
 only on the first valid hashing request.
 
 The current protocol uses explicit `PowAlgorithm`, `ChallengeClaims`, and `ChallengeResponse` variants
-for Fast and RandomX. A new wire format requires an ID and payload in `rilgate-protocol`,
+for Fast, HashWX and RandomX. A new wire format requires an ID and payload in `rilgate-protocol`,
 unsigned work in `rilgate-pow`, and mappings in `rilgate-challenge/src/challenge/work.rs`. Before you expose the new
 payload, define version compatibility and validation. Descriptor versions are metadata.
-Current tokens use version 1.
+Current tokens use version 1. HashWX uses that version with the explicit `hashwx`
+tag. Older builds reject the tag. Enable a new algorithm only after every
+gateway instance supports its token variants.
 
 Register the backend in `crates/rilgate/src/app/bootstrap.rs`. Duplicate IDs are rejected. Startup checks every
 configured algorithm and validates policy difficulties through the registered
@@ -69,7 +71,9 @@ status helpers belong to the challenge runtime. Mining transport belongs to the 
 browser module. Keep resource paths in the server descriptor and configuration aligned
 with packaged assets.
 
-Get explicit consent for expensive or mining work. Release workers on page exit,
+Declare consent and memory requirements in the algorithm descriptor. Fast and
+HashWX start automatically. RandomX requires consent before calculation or
+mining work. Release workers on page exit,
 completion, and error. Job rotation must discard superseded results. The server must
 enforce expiry even if the browser stops its work.
 

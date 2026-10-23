@@ -15,22 +15,22 @@ pub fn render_challenge_page(
     .duration_since(std::time::UNIX_EPOCH)
     .unwrap_or_default()
     .as_secs() as i64;
+  let solver_module_path =
+    solver_module_path(state, issued.claims.algorithm).expect("Registered challenge algorithm");
   let challenge = PublicChallengeInfo {
     url: challenge_url(&snapshot.config.base_path, &issued.token),
     embedded,
     token: issued.token,
     algorithm: match issued.claims.algorithm {
       rilgate_protocol::PowAlgorithm::Fast => "fast",
+      rilgate_protocol::PowAlgorithm::Hashwx => "hashwx",
       rilgate_protocol::PowAlgorithm::RandomX => "randomx",
     }
     .into(),
     difficulty: Some(issued.claims.difficulty),
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
-    solver_module_url: resolve_gateway_asset(
-      &snapshot.config.base_path,
-      &state.cfg.pow.browser.solver_module_path,
-    ),
+    solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
     ..Default::default()
   };
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
@@ -144,6 +144,11 @@ pub fn render_page(
     .translations
     .translate(&locale, description_key, &Default::default())
     .unwrap_or_else(|_| description_key.into());
+  let solver_module_path = algorithm
+    .parse()
+    .ok()
+    .and_then(|algorithm| solver_module_path(state, algorithm).ok())
+    .unwrap_or_default();
   let public = TemplateContext {
     rilgate: snapshot.public.clone(),
     page: PageInfo { title, description },
@@ -159,10 +164,7 @@ pub fn render_page(
           .as_secs() as i64;
         claims.expires_at.saturating_sub(now).max(0) as u64
       }),
-      solver_module_url: resolve_gateway_asset(
-        &snapshot.config.base_path,
-        &state.cfg.pow.browser.solver_module_path,
-      ),
+      solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
       ..Default::default()
     },
   };
@@ -200,4 +202,12 @@ fn query_language(query: &str) -> Option<String> {
     .find(|(name, _)| name == "lang")
     .map(|(_, value)| value.into_owned())
     .filter(|value| !value.is_empty())
+}
+
+fn solver_module_path(
+  state: &AppState,
+  algorithm: rilgate_protocol::PowAlgorithm,
+) -> anyhow::Result<String> {
+  let descriptor = state.pow.algorithm_descriptor(algorithm)?;
+  Ok(descriptor.solver_module_path)
 }

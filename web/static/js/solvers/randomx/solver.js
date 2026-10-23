@@ -17,7 +17,8 @@ export async function solve(job) {
     seedHash: job.seedHash || job.seed_hash,
     difficulty: job.difficulty,
     nonceOffset: job.nonceOffset,
-    expiresAt: job.expiresAt,
+    deadline: job.expiresIn === undefined ? undefined :
+      (job.receivedAt ?? Date.now()) + job.expiresIn * 1000,
     wasmUrl: job.wasmUrl || WASM_URL.href,
     onProgress: job.onProgress,
   };

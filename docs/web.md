@@ -131,3 +131,50 @@ site:
 Mount that directory read-only in the deployment. Site settings use the same YAML
 structure in development and production. Environment variables can supply individual
 values through `${VARIABLE_NAME}` string references.
+
+## HashWX browser requirements
+
+HashWX uses the classic adapter in `challenge.bundle.js` to load its modern
+solver. It requires WebAssembly 1.0, workers and a modern JavaScript module
+runtime. The solver assets use ES2020 syntax. BigInt and SIMD are optional
+browser features for HashWX; the solver uses u32 halves at the WASM boundary.
+
+The embedded assets are under `static/js/solvers/hashwx/`:
+
+| File | Role |
+| --- | --- |
+| `adapter.js` | Classic adapter, compiled into the startup bundle |
+| `solver.js` | Allocates workers, combines progress and controls cancellation |
+| `worker.js` | Derives seeds, compiles modules and searches nonce ranges |
+| `hashwx_wasm.wasm` | Interpreter, instance generator, seed hash and WASM generator |
+
+The shared `static/js/solvers/loader.js` imports the descriptor-selected
+`window.POW_SOLVER_MODULE_URL` for HashWX and RandomX. The Fast solver stays
+in the classic startup bundle for legacy browsers.
+
+Each VM has 16392 scratch bytes. Total browser memory also includes Rust WASM
+memory and stack, generated modules and JavaScript state. The default solver
+uses up to two workers. All workers are terminated on success, error, expiry,
+cancellation or page exit. It uses the signed batch size and covers distinct
+batches in each worker. The classic adapter reports unavailable capabilities
+through localized failure and retry controls. It never selects another algorithm.
+
+Rilgate's challenge response sets `frame-ancestors 'self'`. An operator or edge
+can add a more restrictive CSP. Permit worker creation under `worker-src` and
+permit WASM compilation in the worker's own CSP, for example with
+`script-src 'self' 'wasm-unsafe-eval'` on the worker response. A network worker
+has its own policy context. A page policy alone does not establish its WASM
+policy.
+
+If a generated module cannot compile after the interpreter loads, calculation
+continues with that interpreter. A worker CSP that denies all WASM also denies
+the interpreter's initial compilation, so calculation fails. Browser modes
+that disable WASM also make HashWX unavailable.
+
+After changing web sources or either HashWX crate, build both generated asset
+sets before building or testing the gateway:
+
+```sh
+export CARGO_BUILD_BUILD_DIR="$PWD/target" CARGO_TARGET_DIR="$PWD/target"
+cargo xtask build-wasm && cargo xtask build-web
+```

@@ -30,6 +30,18 @@ pub enum ChallengeClaims {
     expires_at: i64,
   },
 
+  Hashwx {
+    v: u8,
+    enforce: PowEnforcement,
+    challenge_id: String,
+    host: String,
+    challenge: String,
+    difficulty: u64,
+    nonces_per_seed: u32,
+    issued_at: i64,
+    expires_at: i64,
+  },
+
   Randomx {
     v: u8,
     challenge_id: String,
@@ -84,6 +96,25 @@ impl ChallengeClaims {
         ..
       } => ChallengeMetadata {
         algorithm: PowAlgorithm::Fast,
+        version: *v,
+        enforce: *enforce,
+        challenge_id,
+        host,
+        difficulty: *difficulty,
+        issued_at: *issued_at,
+        expires_at: *expires_at,
+      },
+      Self::Hashwx {
+        v,
+        enforce,
+        challenge_id,
+        host,
+        difficulty,
+        issued_at,
+        expires_at,
+        ..
+      } => ChallengeMetadata {
+        algorithm: PowAlgorithm::Hashwx,
         version: *v,
         enforce: *enforce,
         challenge_id,

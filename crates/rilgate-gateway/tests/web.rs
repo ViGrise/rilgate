@@ -75,7 +75,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
     "/shield/static/js/solvers/fast/solver.js",
     "/shield/static/js/solvers/fast/worker.js",
     "/shield/static/js/solvers/randomx/adapter.js",
-    "/shield/static/js/solvers/randomx/loader.js",
+    "/shield/static/js/solvers/loader.js",
     "/shield/static/js/solvers/randomx/solver.js",
     "/shield/static/randomx/randomx-worker.js",
   ] {

@@ -1,7 +1,7 @@
 # Development
 
 The workspace uses the stable Rust toolchain in `rust-toolchain.toml`, including Clippy, rustfmt
-and the `wasm32-unknown-unknown` target. CI uses Node.js 24.
+and the `wasm32-unknown-unknown` and `wasm32v1-none` targets. CI uses Node.js 24.
 
 Pingora uses OpenSSL for upstream TLS. Native builds need a C/C++ toolchain, CMake,
 pkg-config, and OpenSSL development headers. On Debian or Ubuntu, install `build-essential cmake clang pkg-config libssl-dev`.

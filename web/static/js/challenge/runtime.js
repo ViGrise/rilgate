@@ -111,11 +111,41 @@
   }
 
   async function requestChallenge() {
-    return jsonFetch(endpoint("/api/challenge"), {
+    const challenge = await jsonFetch(endpoint("/api/challenge"), {
       method: "POST",
       body: JSON.stringify({ presentation_token: window.POW_PRESENTATION_TOKEN }),
     });
+    challenge.received_at = Date.now();
+    return challenge;
   }
 
-  window.PowClient = { t, status, endpoint, jsonFetch, exchange, requestChallenge, progressEl, once };
+  let nextSolverRequest = 0;
+  const solverRequests = {};
+  function solverLoaded(request, module, error) {
+    solverRequests[request]?.(module, error);
+  }
+  function loadSolver(moduleUrl) {
+    if (!moduleUrl) return Promise.reject(new Error("Solver module URL is empty"));
+    return new Promise((resolve, reject) => {
+      const request = String(++nextSolverRequest);
+      const script = document.createElement("script");
+      const timer = setTimeout(() => finish(null, new Error("Solver module load timed out")), 30000);
+      function finish(module, error) {
+        clearTimeout(timer);
+        delete solverRequests[request];
+        script.onerror = null;
+        if (script.parentNode) script.parentNode.removeChild(script);
+        if (error) reject(error);
+        else if (!module || typeof module.solve !== "function") reject(new Error("Solver module must export solve"));
+        else resolve(module);
+      }
+      solverRequests[request] = finish;
+      script.type = "module";
+      script.src = endpoint("/static/js/solvers/loader.js") + "?request=" + request + "&module=" + encodeURIComponent(moduleUrl);
+      script.onerror = () => finish(null, new Error("Solver module failed to load"));
+      try { document.head.appendChild(script); } catch (error) { finish(null, error); }
+    });
+  }
+
+  window.PowClient = { loadSolver, solverLoaded, t, status, endpoint, jsonFetch, exchange, requestChallenge, progressEl, once };
 })();

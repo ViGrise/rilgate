@@ -24,7 +24,7 @@ impl Algorithm for FastAlgorithm {
       id: PowAlgorithm::Fast,
       version: 1,
       display_name: "SHA-256",
-      solver_module_path: "/static/js/solvers/fast/solver.js",
+      solver_module_path: "/static/js/solvers/fast/solver.js".into(),
       requires_consent: false,
       memory_bytes: 0,
     }

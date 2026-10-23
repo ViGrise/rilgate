@@ -13,3 +13,5 @@ pub use rilgate_pool::StratumPoolConfig;
 pub use rilgate_pow::difficulty::DifficultyConfig;
 pub use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 pub use runtime::*;
+
+pub use rilgate_pow_hashwx::HashWxConfig;

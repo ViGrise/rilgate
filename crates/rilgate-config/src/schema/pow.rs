@@ -86,6 +86,7 @@ quota!(GlobalQuota, 64, 16.0);
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Algorithms {
+  pub hashwx: HashWx,
   pub randomx: RandomX,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -354,4 +355,36 @@ pub struct ServeTls {
   pub cert: Option<std::path::PathBuf>,
   pub key: Option<std::path::PathBuf>,
   pub client_ca: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HashWx {
+  pub nonces_per_seed: u32,
+  pub difficulty: HashWxDifficulty,
+}
+impl Default for HashWx {
+  fn default() -> Self {
+    Self {
+      nonces_per_seed: 65536,
+      difficulty: HashWxDifficulty::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HashWxDifficulty {
+  pub base: u64,
+  pub score_step: i32,
+  pub max: u64,
+}
+impl Default for HashWxDifficulty {
+  fn default() -> Self {
+    Self {
+      base: 50000,
+      score_step: 10,
+      max: 5000000,
+    }
+  }
 }

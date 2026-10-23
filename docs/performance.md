@@ -142,3 +142,48 @@ their ownership or validation. The rate limiter serializes token updates under o
 mutex. This preserves its global quota. Before you change its synchronization, measure
 contention. RandomX has its own throughput benchmark and reference vectors, and requires
 separate analysis from HTTP response performance.
+
+## HashWX measurements
+
+Measured on 2026-10-23 with three seeds per row and one worker. The Mac is an
+Apple M4 Pro, arm64, running macOS 26.4.1. Chrome 155.0.8059.86 ran headless;
+Safari 26.4 ran in its application. Native results use Rust 1.98.0 and the
+release profile. The phone is an iPhone 15 Pro Max. Its user agent reports
+Safari 17.5, iOS 17.5.1 and hardware concurrency 4.
+
+These rates use the prototype artifact recorded in proposal section 8.
+Rates below include per-seed generation and compilation at 65536 nonces per
+seed. They exclude initial WASM loading, SHA-256 challenge seed derivation,
+network traffic and token verification. The native path uses interpretation.
+The browser generated path compiles the generated WASM. A native code generator
+was not measured.
+
+| Runtime | Interpreter total H/s | Generated WASM total H/s |
+| --- | ---: | ---: |
+| M4 Pro, native | 71224 | Not measured |
+| M4 Pro, Chrome | 64997 | 323475 |
+| M4 Pro, Safari | 69917 | 306721 |
+| iPhone 15 Pro Max, Safari | 62814 | 386263 |
+
+Native instance generation plus one hash averaged 25.9 microseconds. This
+kernel measurement excludes the proof API, seed derivation, signature checks
+and blocking-task scheduling. It does not establish server request latency.
+The native interpreter / iPhone generated-WASM rate ratio is 0.184; the
+native interpreter / iPhone interpreter ratio is 1.134. These compare different
+machines. They do not measure a native JIT or GPU advantage.
+
+The iPhone 15 Pro Max is high-end. It does not satisfy the mid-range phone
+requirement. The default base of 50000 and max of 5000000 stay placeholders
+until that measurement is available. The native-to-mid-range-phone ratio
+remains pending.
+
+Three trials per difficulty give a wide solve-time spread. On the iPhone at
+50000 difficulty and 463 nonces per seed, generated trials were 20663, 310 and
+589 ms. Hash rates are the reliable figures for these samples. Use more trials
+on a mid-range phone before selecting defaults. The prototype uses deterministic
+synthetic seeds; the production solver uses the signed SHA-256 seed scheme
+and up to two workers. Prototype solve medians are not production medians.
+
+See [proposal section 8](proposals/browser-pow-algorithms.md#8-measurement-before-defaults)
+for full rates, individual-result file names, solve medians and benchmark
+commands. Result JSON stays in the ignored `target/hashwx-bench/` directory.

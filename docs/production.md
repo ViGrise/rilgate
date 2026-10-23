@@ -222,7 +222,7 @@ Third stage:
 1. After the longest accepted token lifetime elapses since the last old signer stopped, remove the old verification keys.
 
 The `previous` map accepts staged future keys as well as historical keys. Proof keys
-must cover presentations, Fast and RandomX challenges and receipts. Auth keys must cover
+must cover presentations, Fast, HashWX and RandomX challenges and receipts. Auth keys must cover
 the auth lifetime. Include clock skew and rollout time in the window.
 
 Unversioned tokens can be retained with a verification entry named `legacy`. Before
@@ -377,3 +377,35 @@ exposes its request counter only on its operations listener when
 `server.metrics_enabled` is true. Readiness of a remote-only gateway probes the
 verifier only when a rule selects RandomX and `pow.verification` is
 `local_verify`. The probe uses `server.readiness_timeout`.
+
+## HashWX deployment
+
+Use [the HashWX example](../config/rilgate.hashwx.example.yml) with a custom
+policy and local verification. Deploy HashWX support on all gateway instances
+before changing the policy. Older builds reject the `hashwx` token variant.
+Keep shared signing keys and compatible lifetimes across instances.
+
+The gateway creates each HashWX challenge locally. It verifies one interpreted
+hash on a blocking task after signature, version, lifetime, enforcement and
+host checks. The normal proof API quotas and request limits stay in front of
+this work. It needs no pool or dedicated verifier queue. The measured 25.9
+microsecond kernel cost excludes the HTTP handler, signature checks, seed
+hash and blocking-task scheduling. It is not a production latency guarantee.
+
+The base and max defaults are placeholders. The measured iPhone 15 Pro Max is
+a high-end phone. Measure a mid-range device and representative traffic before
+choosing production costs. Three fixed solve trials have wide variation;
+use hash rates and more trials to assess the expected cost. Set challenge TTL
+for the chosen cost and keep explicit policy difficulties within the intended
+budget. An explicit difficulty overrides the mapped max.
+
+HashWX requires WASM, workers and a modern JavaScript module runtime. Review
+edge CSP headers on worker responses. Allow worker creation and WASM
+compilation as described in [web resources](web.md#hashwx-browser-requirements).
+Generated-module failure can retain the loaded interpreter. A worker policy
+that blocks all WASM makes HashWX unavailable. The client reports failure and
+retry controls; it does not downgrade the algorithm.
+
+The [license review](hashwx-license-review.md) records the specification input,
+earlier fetch and independent implementation. The dependency checks retain the
+repository's LGPL exclusion.
