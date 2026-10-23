@@ -141,3 +141,28 @@ WebSockets, notifies Pingora, and drains connections for up to 30 seconds. The s
 digest supplies peer addresses for rate limiting. Forwarded chains influence client IP
 only when the socket peer belongs to an explicit trusted proxy network. Policies and
 quotas share that resolved IP.
+
+## Remote RandomX verifier
+
+`RandomXAlgorithm` keeps the seed check, target comparison and challenge expiry.
+It receives an `OrderedHasher`. The ordered hasher calls `LocalHasher` or
+`RemoteHasher` in configuration order. Only an unavailable result advances the
+sequence. A hash result or invalid request ends it. An outer deadline bounds all
+attempts.
+
+The remote client uses reqwest with rustls, client certificates and redirects
+disabled. It sends a seed, input and absolute Unix deadline to
+`POST /v1/randomx/hash`. It bounds the response at 4 KiB and requires a 32-byte
+hash. The verifier holds no challenge or authentication state.
+
+`rilgate verifier serve` uses a separate configuration resolution path and a
+Hyper listener with tokio-rustls. It does not start Pingora. Connection and
+certificate admission limits apply before hash work enters the worker queue.
+One dedicated thread owns one cache and VM. Queued requests are cancelled when
+the caller leaves or the deadline passes. Started native hashes finish on the
+worker thread. Idle release drops the cache.
+
+The verifier operations listener has its own state. Its readiness checks the
+worker, with no gateway upstream or P2Pool dependency. Its metrics use bounded
+outcome labels. Combined gateway and verifier operation, shared caches and
+several workers are reserved for phase 2.

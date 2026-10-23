@@ -441,6 +441,57 @@ security:
       # Range: 1..1024. A full queue returns 503 rather than growing unbounded.
       #
       # verifier_queue: 8
+      # Dedicated verifier settings. Use `rilgate verifier serve` and keep this
+      # section absent when this process runs the gateway. Worker count must be 1.
+      #
+      # serve:
+      #   listen: 127.0.0.1:9443
+      #   workers: 1
+      #   queue: 64
+      #   max_connections: 256
+      #   tls:
+      #     cert: /etc/rilgate/verifier.pem
+      #     key: /etc/rilgate/verifier.key
+      #     client_ca: /etc/rilgate/gateway-ca.pem
+      # cache:
+        # Idle time before releasing the native cache. Range: 0s..7d;
+        # 0s keeps the cache resident. The next request rebuilds it.
+        #
+        # idle_timeout: 30m
+
+      # verify:
+        # One or two distinct hashers, tried in order on unavailability.
+        # A returned hash or invalid request ends the sequence.
+        #
+        # order: [local]
+        # remote:
+          # Required when order contains remote. HTTPS origin without a path,
+          # query or credentials. Development also accepts HTTP.
+          #
+          # endpoint: https://verifier.internal:9443
+          # Certificate name to verify; defaults to the endpoint host.
+          #
+          # server_name: verifier.internal
+          # Total request budget, including response reads. Range: 100ms..30s.
+          # The challenge expiry also limits the request.
+          #
+          # timeout: 2s
+          # Action when the verifier rejects the request deadline: fallback or reject.
+          # fallback tries the next hasher; reject returns 401.
+          #
+          # on_deadline_rejected: fallback
+          # tls:
+            # Private trust roots in PEM format. Required in production.
+            #
+            # ca: /etc/rilgate/verifier-ca.pem
+            # Gateway identity PEM files. Set both or neither;
+            # production requires both.
+            #
+            # client_cert: /etc/rilgate/gateway.pem
+            # Private key for the gateway identity, in PEM format.
+            #
+            # client_key: /etc/rilgate/gateway.key
+
       # difficulty:
         # Minimum automatic difficulty, at least 1000.
         #

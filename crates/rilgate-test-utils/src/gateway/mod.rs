@@ -13,15 +13,17 @@ pub fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2PoolPro
   registry.register(Arc::new(FastAlgorithm::new(&FastConfig {
     ttl: cfg.challenge_ttl_seconds,
   })))?;
-  registry.register(Arc::new(RandomXAlgorithm::new(
+  registry.register(Arc::new(RandomXAlgorithm::with_order(
     &RandomXConfig {
       difficulty: cfg.difficulty.clone(),
       ttl: cfg.randomx_challenge_ttl_seconds,
       nonce_offset: cfg.nonce_offset,
       queue_capacity: cfg.verifier_queue_capacity,
+      cache_idle_timeout: cfg.randomx_cache_idle_timeout,
     },
     pool.clone(),
-  )))?;
+    &cfg.randomx_verify.hashers(),
+  )?))?;
   Ok((
     Arc::new(ChallengeService::with_registry(
       Arc::new(cfg.challenge()),

@@ -5,7 +5,7 @@
 //! some deployments, so they are reported without stopping startup.
 
 use super::Configuration;
-use crate::Environment;
+use crate::{Environment, schema::pow::Hasher};
 use ipnet::IpNet;
 use std::net::{IpAddr, SocketAddr};
 
@@ -158,6 +158,46 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
       );
     }
   }
+  let verify = &config.pow.randomx_verify;
+  let remote = &verify.remote;
+  if production && (remote.endpoint.is_some() || verify.order.contains(&Hasher::Remote)) {
+    if remote
+      .endpoint
+      .as_ref()
+      .is_some_and(|endpoint| !endpoint.to_ascii_lowercase().starts_with("https://"))
+    {
+      report(
+        "verifier-remote-plain-http",
+        Severity::Error,
+        "pow.algorithms.randomx.verify.remote.endpoint: production requires https".into(),
+      );
+    }
+    if remote.tls.ca.is_none()
+      || remote.tls.client_cert.is_none()
+      || remote.tls.client_key.is_none()
+    {
+      report("verifier-remote-credentials", Severity::Error,
+          "pow.algorithms.randomx.verify.remote.tls: production requires ca, client_cert and client_key".into());
+    }
+  }
+  if verify.order.contains(&Hasher::Remote) {
+    if remote.endpoint.is_none() {
+      report(
+        "verifier-remote-missing",
+        Severity::Error,
+        "pow.algorithms.randomx.verify.remote.endpoint: required when order contains remote".into(),
+      );
+    }
+    if verify.order == [Hasher::Remote, Hasher::Local] {
+      report("verifier-local-fallback", Severity::Warning,
+        "pow.algorithms.randomx.verify.order: remote outages can build a 256 MiB cache on every gateway".into());
+    }
+    if !config.pow.selects_randomx() || config.pow.enforce == crate::PowEnforcement::P2poolAccepted
+    {
+      report("verifier-remote-unused", Severity::Warning,
+        "pow.algorithms.randomx.verify.order: remote hashing is unused by the configured challenges and verification mode".into());
+    }
+  }
   if config.server.metrics_enabled && config.operations_listen_addresses.is_empty() {
     report(
       "metrics-unreachable",
@@ -186,7 +226,7 @@ fn is_non_public(network: &IpNet) -> bool {
 }
 
 /// Addresses outside loopback and private networks, including unspecified wildcards.
-fn public(addresses: &[SocketAddr]) -> impl Iterator<Item = &SocketAddr> {
+pub(super) fn public(addresses: &[SocketAddr]) -> impl Iterator<Item = &SocketAddr> {
   addresses
     .iter()
     .filter(|address| !is_non_public(&IpNet::from(address.ip().to_canonical())))

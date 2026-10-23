@@ -4,7 +4,6 @@ use crate::{
   transport::response::{Response, json},
 };
 use http::StatusCode;
-use rilgate_config::PowAlgorithm;
 
 pub async fn check(state: &AppState) -> Response {
   let Ok(_permit) = state.probes.try_acquire() else {
@@ -14,19 +13,7 @@ pub async fn check(state: &AppState) -> Response {
     );
   };
   let url = url::Url::parse(&state.cfg.upstream.url).expect("validated upstream URL");
-  let needs_pool = state
-    .cfg
-    .pow
-    .policy
-    .challenges()
-    .expect("validated policy")
-    .iter()
-    .any(|(_, selection)| {
-      selection
-        .algorithm
-        .unwrap_or(state.cfg.pow.default_algorithm)
-        == PowAlgorithm::RandomX
-    });
+  let needs_pool = state.cfg.pow.selects_randomx();
   let timeout = state.cfg.server.readiness_timeout;
   let connect = |host: String, port| async move {
     tokio::time::timeout(
@@ -47,9 +34,20 @@ pub async fn check(state: &AppState) -> Response {
       None
     }
   };
-  let (upstream, pool) = tokio::join!(upstream, pool);
+  let remote = async {
+    if state.cfg.pow.needs_remote_verifier() {
+      Some(state.pow.remote_ready(timeout).await)
+    } else {
+      None
+    }
+  };
+  let (upstream, pool, remote) = tokio::join!(upstream, pool, remote);
   let ip_sets = state.pow.ip_sets().all_remote_loaded();
-  let ready = upstream && pool.unwrap_or(true) && ip_sets && !state.shutdown.is_cancelled();
+  let ready = upstream
+    && pool.unwrap_or(true)
+    && remote.unwrap_or(true)
+    && ip_sets
+    && !state.shutdown.is_cancelled();
   json(
     if ready {
       StatusCode::OK
@@ -60,6 +58,7 @@ pub async fn check(state: &AppState) -> Response {
       ready,
       upstream,
       pool,
+      remote,
       ip_sets,
     },
   )

@@ -174,3 +174,165 @@ fn startup_uses_registered_backend_validation_and_rejects_missing_algorithms() {
   configuration.default_algorithm = PowAlgorithm::RandomX;
   assert!(ChallengeService::with_registry(Arc::new(configuration.challenge()), registry).is_err());
 }
+
+struct UnusedWorkProvider;
+
+impl rilgate_pool::WorkProvider for UnusedWorkProvider {
+  type Work = rilgate_protocol::StratumJob;
+
+  fn fetch(&self, _: u64) -> rilgate_core::BoxFuture<'_, Self::Work> {
+    Box::pin(async { unreachable!("Signed work does not fetch a pool job") })
+  }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum VerifierOutcome {
+  Unavailable,
+  Overloaded,
+  Invalid,
+  TargetMiss,
+  Verified,
+  Pending,
+}
+
+struct FakeRandomXHasher {
+  outcome: VerifierOutcome,
+  calls: Arc<AtomicUsize>,
+}
+
+impl rilgate_pow_randomx::RandomXHasher for FakeRandomXHasher {
+  fn kind(&self) -> rilgate_pow_randomx::HasherKind {
+    rilgate_pow_randomx::HasherKind::Local
+  }
+
+  fn hash(
+    &self,
+    _: Vec<u8>,
+    _: Vec<u8>,
+    _: std::time::Instant,
+  ) -> futures_util::future::BoxFuture<'_, Result<[u8; 32], rilgate_pow_randomx::HashError>> {
+    use rilgate_pow_randomx::HashError;
+    self.calls.fetch_add(1, Ordering::SeqCst);
+    Box::pin(async move {
+      match self.outcome {
+        VerifierOutcome::Unavailable => {
+          Err(HashError::Unavailable(anyhow::anyhow!("Verifier stopped")))
+        }
+        VerifierOutcome::Overloaded => Err(HashError::Unavailable(
+          rilgate_core::error::CapacityExceeded.into(),
+        )),
+        VerifierOutcome::Invalid => Err(HashError::Invalid(anyhow::anyhow!("Invalid input"))),
+        VerifierOutcome::TargetMiss => Ok([255; 32]),
+        VerifierOutcome::Verified => Ok([0; 32]),
+        VerifierOutcome::Pending => std::future::pending().await,
+      }
+    })
+  }
+}
+
+#[tokio::test]
+async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
+  use http::{HeaderMap, StatusCode};
+  use rilgate_gateway::{
+    proof::{dto::VerifyRequest, handlers},
+    proxy::client::ProxyService,
+    runtime::state::AppState,
+    transport::{errors::ApiError, rate_limit::RateLimiter},
+  };
+  use rilgate_pow_randomx::{OrderedHasher, RandomXAlgorithm, RandomXConfig};
+  use rilgate_protocol::PowEnforcement;
+
+  for (outcome, expected) in [
+    (
+      VerifierOutcome::Unavailable,
+      StatusCode::SERVICE_UNAVAILABLE,
+    ),
+    (VerifierOutcome::Overloaded, StatusCode::SERVICE_UNAVAILABLE),
+    (VerifierOutcome::Invalid, StatusCode::UNAUTHORIZED),
+    (VerifierOutcome::TargetMiss, StatusCode::UNAUTHORIZED),
+    (VerifierOutcome::Verified, StatusCode::OK),
+    (VerifierOutcome::Pending, StatusCode::UNAUTHORIZED),
+  ] {
+    let config = common::config();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let cfg = &config.pow;
+    let mut registry = AlgorithmRegistry::default();
+    registry
+      .register(Arc::new(FastAlgorithm::new(&FastConfig {
+        ttl: cfg.challenge_ttl_seconds,
+      })))
+      .unwrap();
+    registry
+      .register(Arc::new(RandomXAlgorithm::with_hasher(
+        &RandomXConfig {
+          difficulty: cfg.difficulty.clone(),
+          ttl: cfg.randomx_challenge_ttl_seconds,
+          nonce_offset: cfg.nonce_offset,
+          queue_capacity: cfg.verifier_queue_capacity,
+          cache_idle_timeout: cfg.randomx_cache_idle_timeout,
+        },
+        Arc::new(UnusedWorkProvider),
+        OrderedHasher::new(vec![Arc::new(FakeRandomXHasher {
+          outcome,
+          calls: calls.clone(),
+        })]),
+      )))
+      .unwrap();
+    let service =
+      Arc::new(ChallengeService::with_registry(Arc::new(cfg.challenge()), registry).unwrap());
+    let pool = Arc::new(rilgate_pool::P2PoolProvider::new(cfg.p2pool.clone()).unwrap());
+    let web = rilgate_web::WebManager::new(config.web.clone()).unwrap();
+    let state = AppState {
+      connections: Arc::new(tokio::sync::Semaphore::new(config.server.max_connections)),
+      requests: Arc::new(tokio::sync::Semaphore::new(config.server.max_requests)),
+      probes: Arc::new(tokio::sync::Semaphore::new(1)),
+      metrics: Arc::new(Default::default()),
+      cfg: config.clone(),
+      pow: service,
+      pool,
+      proxy: Arc::new(ProxyService::new(config.upstream.clone()).unwrap()),
+      limiter: Arc::new(RateLimiter::new(config.pow.rate_limit.clone()).unwrap()),
+      web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),
+      web,
+      shutdown: tokio_util::sync::CancellationToken::new(),
+    };
+    let now = rilgate_core::time::unix_now().unwrap();
+    let claims = ChallengeClaims::Randomx {
+      v: 1,
+      challenge_id: "work".into(),
+      enforce: PowEnforcement::LocalVerify,
+      host: "example.test".into(),
+      blob: "00".repeat(64),
+      seed_hash: "ab".repeat(32),
+      target: "ffffffff".into(),
+      difficulty: 1000,
+      nonce_offset: 39,
+      issued_at: now,
+      expires_at: now
+        + if matches!(outcome, VerifierOutcome::Pending) {
+          1
+        } else {
+          60
+        },
+    };
+    let token = signer::sign_json(
+      &claims,
+      cfg.signing_key.expose().as_bytes(),
+      TokenPurpose::Challenge,
+    )
+    .unwrap();
+    let uri = format!("https://example.test{}/api/verify", config.web.base_path)
+      .parse()
+      .unwrap();
+    let request: VerifyRequest = serde_json::from_value(serde_json::json!({
+      "challenge_token": token,
+      "nonce": "00000000",
+    }))
+    .unwrap();
+    let response = handlers::verify(&state, &HeaderMap::new(), &uri, request)
+      .await
+      .unwrap_or_else(ApiError::into_response);
+    assert_eq!(response.status(), expected, "outcome {outcome:?}");
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "outcome {outcome:?}");
+  }
+}

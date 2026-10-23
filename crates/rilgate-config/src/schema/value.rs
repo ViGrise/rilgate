@@ -34,6 +34,24 @@ impl<'de> Deserialize<'de> for Time {
   }
 }
 #[derive(Debug, Clone, Copy)]
+pub struct IdleTimeout(pub Duration);
+impl Serialize for IdleTimeout {
+  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&humantime::format_duration(self.0).to_string())
+  }
+}
+impl<'de> Deserialize<'de> for IdleTimeout {
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    let value = String::deserialize(deserializer)?;
+    let duration = humantime::parse_duration(&value)
+      .map_err(|_| D::Error::custom("expected a duration such as 0s, 300ms, 5s, 1m or 7d"))?;
+    if duration > Duration::from_secs(604_800) {
+      return Err(D::Error::custom("idle timeout must be at most 7d"));
+    }
+    Ok(Self(duration))
+  }
+}
+#[derive(Debug, Clone, Copy)]
 pub struct Size(pub usize);
 impl Serialize for Size {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -66,5 +84,29 @@ impl<'de> Deserialize<'de> for Size {
       .filter(|v| *v > 0)
       .ok_or_else(|| D::Error::custom("size must be a positive integer that fits this platform"))?;
     Ok(Self(bytes))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn idle_timeout_accepts_zero_and_seven_days() {
+    for (text, seconds) in [("0s", 0), ("7d", 604800), ("300ms", 0)] {
+      let timeout: IdleTimeout = serde_yaml_ng::from_str(text).unwrap();
+      assert_eq!(timeout.0.as_secs(), seconds);
+      let serialized = serde_yaml_ng::to_string(&timeout).unwrap();
+      let repeated: IdleTimeout = serde_yaml_ng::from_str(&serialized).unwrap();
+      assert_eq!(timeout.0, repeated.0);
+    }
+  }
+
+  #[test]
+  fn idle_timeout_rejects_excessive_and_invalid_durations() {
+    for text in ["8d", "garbage"] {
+      assert!(serde_yaml_ng::from_str::<IdleTimeout>(text).is_err());
+    }
+    assert!(serde_yaml_ng::from_str::<Time>("0s").is_err());
   }
 }

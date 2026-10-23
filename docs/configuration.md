@@ -138,6 +138,11 @@ warning-free configuration, run it in CI or before deployment.
 
 | Identifier | Environment | Level | Condition |
 | --- | --- | --- | --- |
+| `verifier-remote-plain-http` | production | error | A selected remote endpoint uses HTTP |
+| `verifier-remote-credentials` | production | error | Remote hashing lacks CA, client certificate or client key |
+| `verifier-remote-missing` | both | error | Order selects remote without an endpoint |
+| `verifier-local-fallback` | both | warning | Local follows remote; outages can build a 256 MiB cache on every gateway |
+| `verifier-remote-unused` | both | warning | Order selects remote while no challenge selects RandomX or verification is p2pool_accepted |
 | `trusted-proxy-broad` | production | error | A public `server.trusted_proxies` network is broader than `/8` (IPv4) or `/16` (IPv6) |
 | `debug-score-header` | production | error | `policy.score.debug_header.enabled` is `true` |
 | `ip-set-plain-http` | production | error | A remote IP set `url` does not use `https` |
@@ -215,6 +220,13 @@ or overflow.
 | `pow.rate_limit.client.burst`, `.refill_per_second` | `10`, `0.1` |
 | `pow.rate_limit.global.burst`, `.refill_per_second` | `64`, `16` |
 | `pow.algorithms.randomx.challenge_ttl`, `.nonce_offset`, `.verifier_queue` | `1h`, `39`, `8` |
+| `pow.algorithms.randomx.cache.idle_timeout` | `30m` (0s disables release, at most 7d) |
+| `pow.algorithms.randomx.verify.order` | `[local]` (1-2 distinct entries: local, remote) |
+| `pow.algorithms.randomx.verify.remote.endpoint` | none (required for remote; HTTPS origin, HTTP only in development) |
+| `pow.algorithms.randomx.verify.remote.server_name` | endpoint host |
+| `pow.algorithms.randomx.verify.remote.on_deadline_rejected` | `fallback` (`fallback` tries the next hasher; `reject` returns 401) |
+| `pow.algorithms.randomx.verify.remote.timeout` | `2s` (100ms to 30s, also bounded by challenge expiry) |
+| `pow.algorithms.randomx.verify.remote.tls.ca`, `.client_cert`, `.client_key` | none (all required in production; client cert and key must be paired; absent CA uses webpki roots in development) |
 | `pow.algorithms.randomx.difficulty.base`, `.score_step`, `.max` | `1000`, `10`, `32000` |
 | `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
 | `policy.mode` | `balanced` |
@@ -312,3 +324,70 @@ negotiates request headers. `site.responses.json_paths` can force JSON for API p
 JSON templates under the external web resource directory can match an
 application-specific envelope. See [AJAX and API integration](api-integration.md) for
 notification headers, JSON body templates and iframe completion.
+
+## Dedicated RandomX verifier
+
+Run the hash service with a separate command:
+
+```sh
+rilgate verifier config check --config /etc/rilgate/verifier.yml --strict
+rilgate verifier config show --config /etc/rilgate/verifier.yml --defaults
+rilgate verifier serve --config /etc/rilgate/verifier.yml
+```
+
+This command resolves only `environment`, `pow.algorithms.randomx.cache`,
+`pow.algorithms.randomx.serve`, `server.operations` and `server.metrics_enabled`.
+It uses the same YAML loader, environment variables, flags and logging options
+as the gateway. It needs no upstream URL, signing secret, policy or pool.
+Configuration checks load TLS files but do not open a listener.
+
+```yaml
+server:
+  operations:
+    listen: 127.0.0.1:9091
+  metrics_enabled: true
+pow:
+  algorithms:
+    randomx:
+      cache:
+        idle_timeout: 30m
+      serve:
+        listen: 10.0.0.5:9443
+        workers: 1
+        queue: 64
+        max_connections: 256
+        tls:
+          cert: /etc/rilgate/verifier.pem
+          key: /etc/rilgate/verifier.key
+          client_ca: /etc/rilgate/gateway-ca.pem
+```
+
+| Setting under `pow.algorithms.randomx.serve` | Default | Requirement |
+| --- | --- | --- |
+| `listen` | none | One socket address. Must differ from gateway and operations addresses. |
+| `workers` | `1` | Must be `1`. Several workers are reserved for phase 2. |
+| `queue` | `64` | `1` to `4096` admitted hash requests. |
+| `max_connections` | `256` | `1` to `65536` hash connections. |
+| `tls.cert`, `tls.key` | none | Both files are required in every environment. |
+| `tls.client_ca` | none | Required in production. Authenticates gateway certificates. |
+
+Each client certificate can hold half the admission limit, rounded down, with a
+minimum of one request. Gateways that share one certificate share this half, so
+give each gateway its own certificate. Requests without a client certificate use
+only the total limit. Admission applies before the service reads a body.
+Excess hash requests receive `503` with `Retry-After: 1`. Excess connections are
+closed. The service accepts JSON bodies of at most 4 KiB.
+
+The verifier listener serves only `POST /v1/randomx/hash` and `GET /v1/ready`.
+The operations listener serves `GET /api/live`, `GET /api/ready` and, when metrics
+are enabled, `GET /api/metrics`. These routes do not check an upstream or pool.
+A cold worker is ready. A worker failure makes it not ready for one second.
+The next hash can retry initialization. During shutdown, it stays not ready.
+The verifier stops new hash connections and allows up to 30 seconds for active
+requests to finish. Each operations listener has a separate limit of 16 connections.
+
+Production rejects a missing client CA with
+`verifier-serve-unauthenticated`. A public verifier address produces the
+`verifier-serve-public` warning. Public operations addresses also produce a
+warning. A gateway configuration with `serve` is rejected. Run a dedicated
+verifier process; combined mode is reserved for phase 2.

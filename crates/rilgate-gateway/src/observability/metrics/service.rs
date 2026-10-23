@@ -82,6 +82,9 @@ pub fn exposition(state: &AppState) -> Response {
       }
     }
   }
+  if let Some(stats) = state.pow.hash_diagnostics() {
+    render_hash_metrics(&mut text, stats);
+  }
   if let Some(stats) = state.pow.verifier_diagnostics() {
     for (name, value) in [
       ("queue_depth", stats.queued as u64),
@@ -106,4 +109,105 @@ pub fn exposition(state: &AppState) -> Response {
     "text/plain; version=0.0.4; charset=utf-8".parse().unwrap(),
   );
   out
+}
+
+fn render_hash_metrics(text: &mut String, stats: rilgate_pow::algorithm::HashDiagnostics) {
+  text.push_str("# TYPE rilgate_randomx_hash_total counter\n");
+  for (hasher, name) in ["local", "remote"].iter().enumerate() {
+    for (outcome, label) in ["hashed", "unavailable", "invalid"].iter().enumerate() {
+      let _ = writeln!(
+        text,
+        "rilgate_randomx_hash_total{{hasher=\"{name}\",outcome=\"{label}\"}} {}",
+        stats.outcomes[hasher][outcome]
+      );
+    }
+  }
+  text.push_str("# TYPE rilgate_randomx_hash_fallback_total counter\n");
+  for (hasher, name) in ["local", "remote"].iter().enumerate() {
+    for (reason, label) in [
+      "timeout",
+      "connection",
+      "overloaded",
+      "protocol",
+      "deadline",
+    ]
+    .iter()
+    .enumerate()
+    {
+      let _ = writeln!(
+        text,
+        "rilgate_randomx_hash_fallback_total{{from=\"{name}\",reason=\"{label}\"}} {}",
+        stats.fallbacks[hasher][reason]
+      );
+    }
+  }
+  text.push_str("# TYPE rilgate_randomx_remote_duration_seconds histogram\n");
+  let mut count = 0;
+  for (index, value) in stats.remote_duration.iter().enumerate() {
+    count += value;
+    let bound = rilgate_pow::algorithm::HashDiagnostics::DURATION_BOUNDS
+      .get(index)
+      .map_or_else(
+        || "+Inf".into(),
+        |micros| (*micros as f64 / 1_000_000.0).to_string(),
+      );
+    let _ = writeln!(
+      text,
+      "rilgate_randomx_remote_duration_seconds_bucket{{le=\"{bound}\"}} {count}"
+    );
+  }
+  let _ = writeln!(
+    text,
+    "rilgate_randomx_remote_duration_seconds_count {count}\nrilgate_randomx_remote_duration_seconds_sum {}",
+    stats.remote_micros as f64 / 1_000_000.0
+  );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn randomx_metrics_render_bounded_labels_and_cumulative_buckets() {
+    let mut text = String::new();
+    render_hash_metrics(
+      &mut text,
+      rilgate_pow::algorithm::HashDiagnostics {
+        outcomes: [[1, 2, 3], [4, 5, 6]],
+        fallbacks: [[1; 5]; 2],
+        remote_duration: [1; 8],
+        remote_micros: 2_000_000,
+      },
+    );
+    let mut family = "";
+    let mut closed = std::collections::HashSet::new();
+    for line in text.lines() {
+      let name = if let Some(rest) = line.strip_prefix("# TYPE ") {
+        rest.split_whitespace().next().unwrap()
+      } else {
+        line.split(['{', ' ']).next().unwrap()
+      };
+      let name = name
+        .strip_suffix("_bucket")
+        .or_else(|| name.strip_suffix("_count"))
+        .or_else(|| name.strip_suffix("_sum"))
+        .unwrap_or(name);
+      if name != family {
+        closed.insert(family);
+        assert!(
+          !closed.contains(name),
+          "metric family {name} is interleaved"
+        );
+        family = name;
+      }
+    }
+    assert!(
+      text.contains("rilgate_randomx_hash_total{hasher=\"remote\",outcome=\"unavailable\"} 5")
+    );
+    assert!(
+      text.contains("rilgate_randomx_hash_fallback_total{from=\"local\",reason=\"overloaded\"} 1")
+    );
+    assert!(text.contains("rilgate_randomx_remote_duration_seconds_bucket{le=\"+Inf\"} 8"));
+    assert!(text.contains("rilgate_randomx_remote_duration_seconds_sum 2"));
+  }
 }

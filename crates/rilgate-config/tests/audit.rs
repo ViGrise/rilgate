@@ -132,3 +132,67 @@ fn findings_display_their_identifier() {
   assert!(text.starts_with("server.metrics_enabled:"), "{text}");
   assert!(text.ends_with("[metrics-unreachable]"), "{text}");
 }
+
+#[test]
+fn remote_verifier_environment_errors_have_stable_identifiers() {
+  let configured = "pow:\n  algorithms:\n    randomx:\n      verify:\n        order: [remote]\n        remote:\n          endpoint: https://verifier.test\n          tls: {ca: ca.pem, client_cert: cert.pem, client_key: key.pem}\n";
+  assert!(resolve(&format!("{BASE}{configured}")).is_ok());
+  for (text, id) in [
+    (
+      configured.replace("https://", "http://"),
+      "verifier-remote-plain-http",
+    ),
+    (
+      configured.replace("ca: ca.pem, ", ""),
+      "verifier-remote-credentials",
+    ),
+    (
+      configured.replace(", client_cert: cert.pem, client_key: key.pem", ""),
+      "verifier-remote-credentials",
+    ),
+    (
+      configured.replace("          endpoint: https://verifier.test\n", ""),
+      "verifier-remote-missing",
+    ),
+  ] {
+    let error = format!("{:#}", resolve(&format!("{BASE}{text}")).unwrap_err());
+    assert!(error.contains(id), "{error}");
+    if id == "verifier-remote-missing" {
+      assert!(
+        format!(
+          "{:#}",
+          resolve(&format!("{DEVELOPMENT}{BASE}{text}")).unwrap_err()
+        )
+        .contains(id)
+      );
+    } else {
+      assert!(resolve(&format!("{DEVELOPMENT}{BASE}{text}")).is_ok());
+    }
+  }
+}
+
+#[test]
+fn remote_verifier_warnings_follow_order_rules_and_enforcement() {
+  let configured = "pow:\n  p2pool: {}\n  algorithms:\n    randomx:\n      verify:\n        order: [remote, local]\n        remote:\n          endpoint: https://verifier.test\n          tls: {ca: ca.pem, client_cert: cert.pem, client_key: key.pem}\n";
+  for environment in ["", DEVELOPMENT] {
+    let text = format!("{environment}{BASE}{configured}");
+    let findings = warnings(&text);
+    assert!(findings.contains(&"verifier-local-fallback"));
+    assert!(findings.contains(&"verifier-remote-unused"));
+    for order in ["local, remote", "remote", "local"] {
+      let findings = warnings(&text.replace("remote, local", order));
+      assert!(!findings.contains(&"verifier-local-fallback"));
+      assert_eq!(
+        findings.contains(&"verifier-remote-unused"),
+        order.contains("remote")
+      );
+    }
+    let randomx = format!(
+      "{}policy:\n  mode: custom\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n",
+      text.replace("  p2pool:", "  default_algorithm: randomx\n  p2pool:")
+    );
+    assert!(!warnings(&randomx).contains(&"verifier-remote-unused"));
+    let pool_accepted = randomx.replace("  p2pool:", "  verification: p2pool_accepted\n  p2pool:");
+    assert!(warnings(&pool_accepted).contains(&"verifier-remote-unused"));
+  }
+}

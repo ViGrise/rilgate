@@ -21,6 +21,7 @@ rilgate-web.workspace = true
 rilgate-challenge.workspace = true
 rilgate-policy.workspace = true
 rilgate-pool.workspace = true
+rilgate-pow-randomx.workspace = true
 rilgate-protocol.workspace = true
 rilgate-crypto.workspace = true
 

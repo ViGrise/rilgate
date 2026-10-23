@@ -105,6 +105,22 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.challenge_ttl", "pow-algorithms-randomx-challenge-ttl", "RILGATE_POW_ALGORITHMS_RANDOMX_CHALLENGE_TTL", None, "RandomX challenge lifetime"),
   spec!(POW, Text, "pow.algorithms.randomx.nonce_offset", "pow-algorithms-randomx-nonce-offset", "RILGATE_POW_ALGORITHMS_RANDOMX_NONCE_OFFSET", None, "Nonce byte offset in the RandomX blob"),
   spec!(POW, Text, "pow.algorithms.randomx.verifier_queue", "pow-algorithms-randomx-verifier-queue", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFIER_QUEUE", None, "Queued RandomX verifications"),
+  spec!(POW, Text, "pow.algorithms.randomx.cache.idle_timeout", "pow-algorithms-randomx-cache-idle-timeout", "RILGATE_POW_ALGORITHMS_RANDOMX_CACHE_IDLE_TIMEOUT", None, "Idle time before releasing the RandomX cache; 0s keeps it resident"),
+  spec!(POW, List, "pow.algorithms.randomx.verify.order", "pow-algorithms-randomx-verify-order", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_ORDER", None, "Ordered RandomX hashers: local, remote"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.endpoint", "pow-algorithms-randomx-verify-remote-endpoint", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_ENDPOINT", None, "Remote verifier HTTP or HTTPS origin"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.server_name", "pow-algorithms-randomx-verify-remote-server-name", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_SERVER_NAME", None, "Remote verifier certificate name; defaults to endpoint host"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.timeout", "pow-algorithms-randomx-verify-remote-timeout", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_TIMEOUT", None, "Remote hash request timeout"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.on_deadline_rejected", "pow-algorithms-randomx-verify-remote-on-deadline-rejected", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_ON_DEADLINE_REJECTED", None, "Rejected deadline policy: fallback or reject"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.tls.ca", "pow-algorithms-randomx-verify-remote-tls-ca", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_TLS_CA", None, "Private CA PEM file for the remote verifier"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.tls.client_cert", "pow-algorithms-randomx-verify-remote-tls-client-cert", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_TLS_CLIENT_CERT", None, "Gateway client certificate PEM file"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.remote.tls.client_key", "pow-algorithms-randomx-verify-remote-tls-client-key", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_TLS_CLIENT_KEY", None, "Gateway client private key PEM file"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.listen", "pow-algorithms-randomx-serve-listen", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_LISTEN", None, "Dedicated verifier TLS listen address"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.workers", "pow-algorithms-randomx-serve-workers", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_WORKERS", None, "Verifier worker count; must be 1"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.queue", "pow-algorithms-randomx-serve-queue", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_QUEUE", None, "Verifier admission limit, from 1 to 4096"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.max_connections", "pow-algorithms-randomx-serve-max-connections", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_MAX_CONNECTIONS", None, "Maximum verifier connections, from 1 to 65536"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.tls.cert", "pow-algorithms-randomx-serve-tls-cert", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_TLS_CERT", None, "Verifier TLS certificate PEM file"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.tls.key", "pow-algorithms-randomx-serve-tls-key", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_TLS_KEY", None, "Verifier TLS private key PEM file"),
+  spec!(POW, Text, "pow.algorithms.randomx.serve.tls.client_ca", "pow-algorithms-randomx-serve-tls-client-ca", "RILGATE_POW_ALGORITHMS_RANDOMX_SERVE_TLS_CLIENT_CA", None, "CA file for gateway client certificates"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.base", "pow-algorithms-randomx-difficulty-base", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_BASE", None, "RandomX difficulty at score 0"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.score_step", "pow-algorithms-randomx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_SCORE_STEP", None, "Score that doubles RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),
@@ -212,8 +228,7 @@ impl FromArgMatches for Settings {
 }
 
 /// A document that enables the optional sections whose defaults are shown.
-const OPTIONAL_SECTIONS: &str =
-  "pow:\n  p2pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
+const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  p2pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
 
 /// The schema defaults, with the optional sections present so their defaults
 /// are shown too.
@@ -268,7 +283,7 @@ mod tests {
   #[test]
   fn every_path_exists_in_the_schema() {
     let defaults = defaults_of(
-      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  p2pool: {}\n",
+      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  p2pool: {}\n",
     )
     .unwrap();
     for spec in SPECS {
@@ -282,6 +297,41 @@ mod tests {
         spec.path
       );
     }
+  }
+
+  #[test]
+  fn remote_order_and_endpoint_flags_parse_lists_and_origins() {
+    use clap::Parser;
+    #[derive(Parser)]
+    struct CommandLine {
+      #[command(flatten)]
+      settings: Settings,
+    }
+    let args = CommandLine::try_parse_from([
+      "rilgate",
+      "--pow-algorithms-randomx-verify-order",
+      "remote,local",
+      "--pow-algorithms-randomx-verify-remote-endpoint",
+      "https://flag.test:9443",
+    ])
+    .unwrap();
+    let values = args.settings.into_settings();
+    assert_eq!(
+      values
+        .iter()
+        .find(|v| v.path.ends_with("verify.order"))
+        .unwrap()
+        .value,
+      SettingValue::List(vec!["remote".into(), "local".into()])
+    );
+    assert_eq!(
+      values
+        .iter()
+        .find(|v| v.path.ends_with("remote.endpoint"))
+        .unwrap()
+        .value,
+      SettingValue::Scalar("https://flag.test:9443".into())
+    );
   }
 
   #[test]

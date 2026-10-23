@@ -1,5 +1,5 @@
 use clap::Parser;
-use rilgate::cli::{Args, Command, ConfigCommand, LogFormat};
+use rilgate::cli::{Args, Command, ConfigCommand, LogFormat, VerifierCommand};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -22,6 +22,40 @@ async fn main() -> anyhow::Result<()> {
     document,
     mut warnings,
   } = rilgate_config::loader::load(&args.overrides())?;
+  if let Some(Command::Verifier { command }) = command {
+    let config = document.resolve_verifier()?;
+    warnings.extend(config.warnings().iter().map(ToString::to_string));
+    rilgate::verifier::validate(&config)?;
+    return match command {
+      VerifierCommand::Serve => {
+        rilgate_telemetry::setup_tracing(
+          args.log_level.as_deref(),
+          args.log_format == LogFormat::Json,
+        );
+        for warning in warnings {
+          tracing::warn!("{warning}");
+        }
+        rilgate::verifier::run(config).await
+      }
+      VerifierCommand::Config { command } => {
+        for warning in &warnings {
+          eprintln!("warning: {warning}");
+        }
+        match command {
+          ConfigCommand::Check { strict } => {
+            anyhow::ensure!(
+              !strict || warnings.is_empty(),
+              "configuration has {} warning(s)",
+              warnings.len()
+            );
+            println!("Configuration is valid");
+          }
+          ConfigCommand::Show { defaults } => print!("{}", document.display_verifier(defaults)?),
+        }
+        Ok(())
+      }
+    };
+  }
   let config = document.resolve()?;
   warnings.extend(config.warnings().iter().map(ToString::to_string));
   // Standard output carries command results and serve logs, so command
@@ -48,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
       Ok(())
     }
     Some(Command::Web { command }) => rilgate::cli::web::run(&config.web, command),
+    Some(Command::Verifier { .. }) => unreachable!("handled before gateway configuration"),
     Some(Command::Upgrade { .. }) => unreachable!("handled before configuration loading"),
     None | Some(Command::Serve) => {
       rilgate_telemetry::setup_tracing(

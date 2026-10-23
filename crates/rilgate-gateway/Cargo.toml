@@ -43,3 +43,4 @@ sha2.workspace = true
 tempfile.workspace = true
 rilgate-test-utils.workspace = true
 rilgate-pow-hash.workspace = true
+rilgate-pow-randomx.workspace = true
