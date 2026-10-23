@@ -1219,6 +1219,13 @@ name = "hashwx-core"
 version = "0.2.0"
 
 [[package]]
+name = "hashwx-wasm"
+version = "0.2.0"
+dependencies = [
+ "hashwx-core",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

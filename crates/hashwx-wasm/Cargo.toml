@@ -1,0 +1,13 @@
+[package]
+name = "hashwx-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Raw wasm32 ABI for HashWX interpretation and module generation"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hashwx-core = { path = "../hashwx-core" }

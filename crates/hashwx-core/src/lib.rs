@@ -1,8 +1,11 @@
-//! Allocation-free HashWX instance generation and interpreted hashing.
+//! HashWX instance generation, interpreted hashing, and seed-specialized WASM emission.
 #![no_std]
 #![forbid(unsafe_code)]
 
+extern crate alloc;
+
 mod tables;
+mod wasm;
 
 use tables::{DEEP, SHALLOW, TEMPLATES};
 
@@ -251,6 +254,11 @@ impl HashWx {
       key: [load64(&seed[16..]), load64(&seed[24..])],
       vm: Vm::new(),
     }
+  }
+
+  /// Emits a self-contained WebAssembly 1.0 module. See the crate README for its ABI.
+  pub fn wasm_module(&self) -> alloc::vec::Vec<u8> {
+    wasm::generate(self)
   }
 
   /// Calculates the 64-bit hash of a nonce, reusing this instance's VM storage.

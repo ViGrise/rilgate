@@ -1,8 +1,9 @@
 # hashwx-core
 
-An allocation-free, `no_std` HashWX instance generator and interpreter. It uses
-fixed-size inline program and VM buffers, has no dependencies, and forbids unsafe
-code. The crate inherits the workspace Apache-2.0 license.
+A `no_std` HashWX instance generator, interpreter, and WASM code generator.
+Instance construction and interpretation use fixed-size inline buffers without
+allocation. Code generation uses `alloc::Vec`. The crate has no dependencies and
+forbids unsafe code. It inherits the workspace Apache-2.0 license.
 
 ## Specification and provenance
 
@@ -26,7 +27,42 @@ assert_eq!(first, instance.hash(0));
 `HashWx::new(seed: &[u8; 32]) -> HashWx` generates the 32 programs and key.
 `HashWx::hash(&mut self, nonce: u64) -> u64` reuses the instance's 16392-byte VM
 memory. Neither operation allocates. Hashing needs exclusive access; independent
-instances can be used concurrently. This crate implements interpreted mode only.
+instances can be used concurrently.
+
+## WASM code generation
+
+`HashWx::wasm_module(&self) -> Vec<u8>` emits deterministic WebAssembly 1.0 bytes
+specialized to the instance's 32 programs and key. It uses a small internal binary
+encoder, with no runtime dependency. The emitted module has no imports, SIMD,
+BigInt boundary values, or post-MVP instructions. Its size is below 32 KiB.
+
+Each instantiated module owns one fixed 64 KiB memory page. Bytes 0..16392 hold
+VM memory (specification section 1.3), 16400..16408 hold the last successful hash,
+and 16408..16416 hold the last matching nonce. Outputs are little endian.
+The remaining bytes are unused. Exports:
+
+| Export | Arguments | Result |
+| --- | --- | --- |
+| `memory` | - | Private linear memory |
+| `hash` | `nonce_lo, nonce_hi` | 0; writes hash at 16400 |
+| `search` | `nonce_lo, nonce_hi, count, target_lo, target_hi` | 0 for first hash < target; -1 if exhausted |
+
+All function parameters are unsigned u32 values carried in WASM i32 slots.
+Search advances the nonce modulo 2^64. A zero count searches nothing; a zero
+target exhausts the range. Search writes hash and nonce only on success.
+Repeated calls reuse VM memory and fully overwrite it during the write phase.
+Each module supports sequential calls; instantiate separate modules for workers.
+
+The generator emits separate register-source and memory-source bodies, with
+eight VM arithmetic registers and R8 in i64 locals. Each program becomes a
+structured loop sharing the phase's branch budget. Destination permutation
+uniqueness (section 2.3.3) preserves the RMCG destination through the branch,
+allowing its bit 5 to serve as BF without a separate flag local. The key and
+instruction operands are constants. Siphash initialization and finalization are
+emitted directly from Appendix A and section 3.4.
+
+The raw interpreter ABI and build instructions are in
+[`hashwx-wasm`](../hashwx-wasm/README.md).
 
 ## Conformance
 
@@ -38,6 +74,15 @@ All four Appendix F vectors pass:
 | F.2 | 123456 | `401983bb07d69b07` | Pass |
 | F.3 | 123456 | `4af38d834a9a8d3d` | Pass |
 | F.4 | 987654321123456789 | `6a8a5514432e17a3` | Pass |
+
+`cargo test -p hashwx-core --locked` also validates modules for 32 seeds using
+Node's WebAssembly engine and checks deterministic emission across fresh and
+reused instances. Node must be on PATH; no validator crate is required.
+After `cargo xtask build-wasm`, `node --test tests/hashwx-wasm.test.mjs` checks
+each Appendix F vector through the interpreted ABI and generated module, compares
+4096 nonces across 64 pseudorandom seeds, and exercises strict range searches,
+zero counts, nonce carries, wraparound, invalid handles, and instance isolation.
+The browser-shaped test harness uses u32 halves throughout and requires no BigInt.
 
 Additional tests cover deterministic reuse against fresh instances, 4096 hashes
 across 256 pseudorandom seeds, every arithmetic opcode in both operand modes,
@@ -59,3 +104,8 @@ cargo run -p hashwx-core --release --example throughput -- 10000
 
 Prints instance generation time in microseconds, elapsed hashing time, hashes per
 second, and a checksum. The optional argument specifies the number of hashes.
+
+`node scripts/bench-hashwx-wasm.mjs` measures single-thread WASM interpreter and
+generated-module throughput for 463 and 65536 nonces per seed. It reports setup,
+module compilation/instantiation, hash-only throughput, and total throughput
+including per-seed setup and compilation. Each row averages three distinct seeds.

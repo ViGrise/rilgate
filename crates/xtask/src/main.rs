@@ -7,7 +7,18 @@ use std::{
 mod web;
 
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
-const OUTPUT: &str = "web/static/js/solvers/randomx/randomx_wasm.wasm";
+const ARTIFACTS: [(&str, &str, bool); 2] = [
+  (
+    "randomx-wasm",
+    "web/static/js/solvers/randomx/randomx_wasm.wasm",
+    false,
+  ),
+  (
+    "hashwx-wasm",
+    "web/static/js/solvers/hashwx/hashwx_wasm.wasm",
+    true,
+  ),
+];
 
 fn main() -> ExitCode {
   match env::args().nth(1).as_deref() {
@@ -46,17 +57,29 @@ fn target_directory(root: &Path) -> Option<PathBuf> {
   metadata["target_directory"].as_str().map(PathBuf::from)
 }
 
-/// Builds `randomx-wasm` for wasm32 and stages the artifact where the server
-/// embeds it.
+/// Builds and stages browser WASM artifacts.
 ///
 /// The release profile settings are passed as environment overrides so the
 /// native server build keeps its own panic and codegen behaviour.
 fn build_wasm() -> ExitCode {
   let root = workspace_root();
-  let output = root.join(OUTPUT);
+  for (package, output, mvp_only) in ARTIFACTS {
+    if !build_artifact(&root, package, output, mvp_only) {
+      return ExitCode::FAILURE;
+    }
+  }
+  ExitCode::SUCCESS
+}
 
-  let status = Command::new(cargo())
-    .current_dir(&root)
+fn build_artifact(root: &Path, package: &str, output: &str, mvp_only: bool) -> bool {
+  let output = root.join(output);
+  let mut command = Command::new(cargo());
+  if mvp_only {
+    command.env("CARGO_ENCODED_RUSTFLAGS", "-C\x1ftarget-cpu=mvp\x1f-C\x1ftarget-feature=-simd128,-bulk-memory,-reference-types,-multivalue,-nontrapping-fptoint,-sign-ext");
+  }
+
+  let status = command
+    .current_dir(root)
     .env("CARGO_PROFILE_RELEASE_LTO", "fat")
     .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "1")
     .env("CARGO_PROFILE_RELEASE_OPT_LEVEL", "3")
@@ -64,7 +87,7 @@ fn build_wasm() -> ExitCode {
     .args([
       "rustc",
       "--package",
-      "randomx-wasm",
+      package,
       "--release",
       "--target",
       WASM_TARGET,
@@ -78,28 +101,28 @@ fn build_wasm() -> ExitCode {
 
   let Ok(status) = status else {
     eprintln!("failed to run cargo");
-    return ExitCode::FAILURE;
+    return false;
   };
 
   if !status.success() {
-    return ExitCode::from(1);
+    return false;
   }
 
-  let Some(target_dir) = target_directory(&root) else {
+  let Some(target_dir) = target_directory(root) else {
     eprintln!("failed to read the target directory from cargo metadata");
-    return ExitCode::FAILURE;
+    return false;
   };
   let built = target_dir
     .join(WASM_TARGET)
     .join("release")
-    .join("randomx_wasm.wasm");
+    .join(format!("{}.wasm", package.replace('-', "_")));
 
   if let Some(parent) = output.parent()
     && !parent.exists()
     && let Err(error) = fs::create_dir_all(parent)
   {
     eprintln!("failed to create {}: {error}", parent.display());
-    return ExitCode::FAILURE;
+    return false;
   }
 
   if let Err(error) = fs::copy(&built, &output) {
@@ -108,13 +131,13 @@ fn build_wasm() -> ExitCode {
       built.display(),
       output.display()
     );
-    return ExitCode::FAILURE;
+    return false;
   }
 
   let size = fs::metadata(&output).map(|meta| meta.len()).unwrap_or(0);
   println!("wrote {} ({size} bytes)", output.display());
 
-  ExitCode::SUCCESS
+  true
 }
 
 fn cargo() -> PathBuf {
