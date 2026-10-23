@@ -70,7 +70,7 @@ live in `metrics/collector.rs`. The transport router dispatches to these service
 
 Production verification runners live in `scripts/test/`. Browser scenarios and Playwright
 configuration and npm manifests live together in `tests/e2e/`. Container proof helpers
-live in `tests/container/`. Dependency audit policy lives in `.config/deny.toml`. Deployment examples
+live in `tests/container/`. Dependency audit policy lives in `.config/deny.toml`, and `scripts/advisories.sh` checks that each advisory has a tracking issue. Deployment examples
 and monitoring configuration live under `deploy/`, with the operator guide in
 `docs/production.md`.
 

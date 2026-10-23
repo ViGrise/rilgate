@@ -94,6 +94,9 @@ jobs:
   dependencies:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v7
       - name: Install cargo-deny
@@ -107,9 +110,12 @@ jobs:
           echo "$CARGO_DENY_SHA256  $RUNNER_TEMP/$archive.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
           install -m 0755 "$RUNNER_TEMP/$archive/cargo-deny" "$HOME/.cargo/bin/cargo-deny"
-      - name: Check advisories, licenses and dependency sources
-        run: |
-          cargo deny --locked --config .config/deny.toml check advisories licenses sources bans
+      - name: Check licenses, bans and dependency sources
+        run: cargo deny --locked --config .config/deny.toml check licenses sources bans
+      - name: Check that each advisory has a tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/advisories.sh
   container:
     runs-on: ubuntu-26.04
     timeout-minutes: 40
