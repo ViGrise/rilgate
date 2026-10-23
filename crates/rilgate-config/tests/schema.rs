@@ -656,7 +656,7 @@ fn pool_lists_reject_duplicate_names_invalid_addresses_and_unbounded_failover() 
 #[test]
 fn proxy_overrides_replace_defaults_and_hide_urls_and_credentials() {
   let text = format!(
-    "{BASE}pow:\n  stratum_pool:\n    proxies:\n      - {{name: shared, url: 'socks5h://proxy.private:1080', username: private-user, password: private-pass}}\n    pools:\n      - {{name: inherited, address: localhost:3333}}\n      - {{name: direct, address: localhost:3334, proxies: []}}\n      - name: replacement\n        address: localhost:3335\n        proxies: [{{name: local, url: 'http://local.private:3128'}}]\n"
+    "environment: development\n{BASE}pow:\n  stratum_pool:\n    proxies:\n      - {{name: shared, url: 'socks5h://proxy.private:1080', username: private-user, password: private-pass}}\n    pools:\n      - {{name: inherited, address: localhost:3333}}\n      - {{name: direct, address: localhost:3334, proxies: []}}\n      - name: replacement\n        address: localhost:3335\n        proxies: [{{name: local, url: 'http://local.private:3128'}}]\n"
   );
   let document = parse(&text).unwrap();
   let cfg = document.resolve().unwrap();

@@ -202,3 +202,91 @@ fn remote_verifier_warnings_follow_order_rules_and_enforcement() {
     assert!(warnings(&pool_accepted).contains(&"verifier-remote-unused"));
   }
 }
+
+#[test]
+fn public_plain_pool_transport_fails_production_and_warns_development() {
+  for host in ["203.0.113.1", "pool.example", "[2001:db8::1]"] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: public, address: '{host}:3333'}}]\n"
+    );
+    let error = format!("{:#}", resolve(&text).unwrap_err());
+    assert!(error.contains("stratum-pool-plain-tcp"), "{error}");
+    assert!(warnings(&format!("{DEVELOPMENT}{text}")).contains(&"stratum-pool-plain-tcp"));
+    assert!(
+      !warnings(&text.replace("address:", "tls: {enabled: true}, address:"))
+        .contains(&"stratum-pool-plain-tcp")
+    );
+  }
+  for host in [
+    "localhost",
+    "127.0.0.1",
+    "10.1.2.3",
+    "192.168.1.2",
+    "[::1]",
+    "[::ffff:127.0.0.1]",
+    "[fd00::1]",
+  ] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: private, address: '{host}:3333'}}]\n"
+    );
+    assert!(
+      !warnings(&text).contains(&"stratum-pool-plain-tcp"),
+      "{host}"
+    );
+  }
+}
+
+#[test]
+fn public_proxy_credentials_fail_even_with_pool_tls_and_private_credentials_pass() {
+  for scope in [
+    "    proxies:",
+    "    pools:\n      - name: primary\n        address: localhost:3333\n        proxies:",
+  ] {
+    let indentation = if scope.ends_with("        proxies:") {
+      "          "
+    } else {
+      "      "
+    };
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n{scope}\n{indentation}- {{name: route, url: 'socks5h://proxy.example:1080', username: private-user, password: private-pass}}\n"
+    );
+    let error = format!("{:#}", resolve(&text).unwrap_err());
+    assert!(error.contains("stratum-proxy-plain-credentials"), "{error}");
+    for secret in ["private-user", "private-pass", "proxy.example"] {
+      assert!(!error.contains(secret));
+    }
+    assert!(warnings(&format!("{DEVELOPMENT}{text}")).contains(&"stratum-proxy-plain-credentials"));
+    assert!(
+      !warnings(&text.replace("proxy.example", "127.0.0.1"))
+        .contains(&"stratum-proxy-plain-credentials")
+    );
+    assert!(
+      !warnings(&text.replace(", username: private-user, password: private-pass", ""))
+        .contains(&"stratum-proxy-plain-credentials")
+    );
+  }
+}
+
+#[test]
+fn public_per_challenge_connections_warn_in_both_environments_even_with_tls() {
+  let text = format!(
+    "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: public, address: 'pool.example:443', tls: {{enabled: true}}}}]\n    job_sessions: {{mode: per_challenge}}\n"
+  );
+  for prefix in ["", DEVELOPMENT] {
+    assert!(warnings(&format!("{prefix}{text}")).contains(&"stratum-pool-per-challenge-public"));
+    assert!(
+      !warnings(&format!(
+        "{prefix}{}",
+        text.replace("per_challenge", "pooled")
+      ))
+      .contains(&"stratum-pool-per-challenge-public")
+    );
+    assert!(
+      !warnings(&format!(
+        "{prefix}{}",
+        text.replace("pool.example", "localhost")
+      ))
+      .contains(&"stratum-pool-per-challenge-public")
+    );
+  }
+}
