@@ -3,7 +3,9 @@ impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::{Context, ensure};
     self.rate_limit.validate()?;
-    self.hashwx.validate().context("pow.algorithms.hashwx")?;
+    if self.hashwx_enabled {
+      self.hashwx.validate().context("pow.algorithms.hashwx")?;
+    }
     let verify = &self.randomx_verify;
     ensure!(
       (1..=2).contains(&verify.order.len())

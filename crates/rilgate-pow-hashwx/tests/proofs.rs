@@ -64,14 +64,6 @@ async fn proof_binds_the_challenge_seed_batch_and_target() {
         .is_err()
     );
   }
-  let mut expired = work();
-  expired.expires_at = expired.issued_at;
-  assert!(
-    algorithm
-      .verify(&expired, Proof { nonce: "1159" })
-      .await
-      .is_err()
-  );
 }
 
 #[tokio::test]

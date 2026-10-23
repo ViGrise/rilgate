@@ -301,7 +301,7 @@ The browser gets these modern assets, loaded only after the classic adapter in t
 startup bundle confirms browser capabilities and consent:
 
 ```text
-static/js/solvers/randomx/loader.js          ES module importing the configured solver
+static/js/solvers/loader.js          ES module importing the configured solver
 static/js/solvers/randomx/solver.js          ES module exporting solve(job)
 static/js/solvers/randomx/randomx-worker.js  Web Worker owning the WASM instance
 static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32
@@ -356,10 +356,14 @@ Larger jobs return 503. This local work cannot be submitted as a Stratum pool sh
 RandomX solving and defaults to 3600 seconds. Tune it for browser hash rates and policy
 difficulty.
 
-The HTTP RandomX response includes `expires_at` in Unix seconds. The browser checks it
-before initialization and before and after each hash. Native verification reaches its
-timeout at the deadline and abandons queued work. It rechecks expiration before it
-issues a receipt. An already running native hash finishes on its verifier thread.
+HashWX and RandomX HTTP responses include `expires_in`, the seconds remaining
+at issuance, and retain `expires_at` in Unix seconds for compatibility. The client
+records the local response time. Each solver derives a local deadline from that
+time and the relative lifetime, so server and client clocks can differ. RandomX
+checks the local deadline before initialization and before and after each hash.
+Native verification uses the signed server lifetime. RandomX abandons queued
+work at its server deadline. The challenge service checks lifetime before and
+after backend verification. An already running native hash finishes on its verifier thread.
 
 RandomX difficulty remains a JSON number through JavaScript's largest safe integer.
 Above that limit, it becomes a decimal string. This preserves all u64 values in HTTP and
@@ -468,3 +472,7 @@ policy:
 
 For a dedicated verifier, see [configuration](configuration.md#dedicated-randomx-verifier)
 and [production operations](production.md#remote-randomx-verification).
+
+HashWX reserves one verification slot per available CPU. When all slots are
+reserved, verification returns the capacity error (HTTP 503). A slot stays
+reserved until its blocking task completes, including after request cancellation.

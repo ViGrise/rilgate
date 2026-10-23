@@ -5,24 +5,7 @@
         typeof WebAssembly.instantiate !== 'function') {
       return Promise.reject(new Error(t('challenge.hashwx_unsupported', 'This browser cannot run HashWX. WebAssembly and workers are required.')));
     }
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      const timer = setTimeout(() => finish(new Error('HashWX module load timed out')), 30000);
-      function finish(error, module) {
-        clearTimeout(timer);
-        script.onerror = null;
-        if (script.parentNode) script.parentNode.removeChild(script);
-        delete window.PowClient.hashwxLoaded;
-        if (error) reject(error);
-        else if (!module || typeof module.solve !== 'function') reject(new Error('Invalid HashWX solver module'));
-        else resolve(module);
-      }
-      window.PowClient.hashwxLoaded = (module, error) => finish(error, module);
-      script.type = 'module';
-      script.src = endpoint('/static/js/solvers/hashwx/loader.js');
-      script.onerror = () => finish(new Error('HashWX solver module failed to load'));
-      document.head.appendChild(script);
-    });
+    return window.PowClient.loadSolver(window.POW_SOLVER_MODULE_URL);
   }
   async function run() {
     const solver = await loadSolver();

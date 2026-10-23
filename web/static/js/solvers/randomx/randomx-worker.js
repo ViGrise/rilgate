@@ -335,13 +335,13 @@ function bytesToHex(bytes) {
 }
 
 function checkDeadline(job) {
-  if (job.expiresAt === undefined) {
+  if (job.deadline === undefined) {
     return;
   }
-  if (!Number.isSafeInteger(job.expiresAt) || job.expiresAt <= 0) {
+  if (!Number.isSafeInteger(job.deadline) || job.deadline <= 0) {
     throw new Error("RandomX challenge has an invalid expiration");
   }
-  if (Date.now() >= job.expiresAt * 1000) {
+  if (Date.now() >= job.deadline) {
     throw new Error("RandomX challenge expired. Retry to request new work.");
   }
 }

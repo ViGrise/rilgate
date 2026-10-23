@@ -25,18 +25,18 @@ function decimal(lo, hi) {
 }
 
 self.onmessage = async ({ data }) => {
-  const { challenge, wasmUrl, startBatch, batchStride } = data;
+  const { challenge, deadline, wasmUrl, startBatch, batchStride } = data;
   try {
     if (!/^[0-9a-f]{64}$/.test(challenge.challenge) ||
         !Number.isSafeInteger(challenge.difficulty) || challenge.difficulty < 1 || challenge.difficulty > 2 ** 40 ||
         !Number.isInteger(challenge.nonces_per_seed) || challenge.nonces_per_seed < 463 || challenge.nonces_per_seed > 1048576 ||
-        !Number.isSafeInteger(challenge.expires_at) || challenge.expires_at < 1 ||
+        !Number.isSafeInteger(deadline) || deadline < 1 ||
         !Number.isInteger(startBatch) || startBatch < 0 || startBatch >= batchStride ||
         !Number.isInteger(batchStride) || batchStride < 1 || batchStride > 8) {
       throw new Error('Invalid HashWX challenge');
     }
     const alive = () => {
-      if (Date.now() / 1000 >= challenge.expires_at) throw new Error('HashWX challenge expired');
+      if (Date.now() >= deadline) throw new Error('HashWX challenge expired');
     };
     alive();
     const response = await fetch(wasmUrl);

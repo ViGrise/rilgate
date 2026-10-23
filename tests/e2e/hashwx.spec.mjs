@@ -38,7 +38,7 @@ for (const fallback of [false, true]) {
     });
     await page.goto(base);
     await page.waitForFunction(() => window.solver);
-    const nonceText = await page.evaluate(work => window.solver.solve({ ...work, expires_at: Math.floor(Date.now() / 1000) + 60 }, { workers: 2 }).then(result => result.nonce), challenge);
+    const nonceText = await page.evaluate(work => window.solver.solve({ ...work, expires_in: 60, expires_at: Math.floor(Date.now() / 1000) + 60 }, { workers: 2 }).then(result => result.nonce), challenge);
     const nonce = BigInt(nonceText), batch = Buffer.alloc(8);
     batch.writeBigUInt64LE(nonce / 463n);
     const seed = createHash('sha256').update(Buffer.from(challenge.challenge, 'hex')).update(batch).digest();
@@ -60,7 +60,7 @@ test('a worker CSP that denies all WASM rejects calculation', async ({ page }) =
   await page.waitForFunction(() => window.solver);
   const error = await page.evaluate(async work => {
     try {
-      await window.solver.solve({ ...work, expires_at: Math.floor(Date.now() / 1000) + 60 }, { workers: 1 });
+      await window.solver.solve({ ...work, expires_in: 60, expires_at: Math.floor(Date.now() / 1000) + 60 }, { workers: 1 });
       return '';
     } catch (error) { return error.message; }
   }, challenge);

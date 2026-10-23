@@ -24,7 +24,7 @@ impl ChallengeService {
     );
     let claims = work::claims(&prepared, presentation.host, presentation.enforce);
     let token = self.tokens.challenge.sign_json(&claims)?;
-    Ok(work::response(prepared, token))
+    work::response(prepared, token)
   }
   pub async fn verify_challenge(
     &self,

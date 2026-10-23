@@ -66,7 +66,8 @@ self.onmessage = async ({ data: parameters }) => {
         search: (start, count, target) => compiled.search(start >>> 0, Math.floor(start / 4294967296), count, ...target),
         nonce: () => {
           const view = new DataView(compiled.memory.buffer);
-          return view.getUint32(16408, true) + view.getUint32(16412, true) * 4294967296;
+          const result = compiled.result_ptr.value;
+          return view.getUint32(result, true) + view.getUint32(result + 4, true) * 4294967296;
         },
       };
     };

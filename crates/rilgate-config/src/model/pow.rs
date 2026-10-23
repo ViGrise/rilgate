@@ -13,6 +13,7 @@ pub struct BrowserConfig {
 
 #[derive(Debug, Clone)]
 pub struct PowConfig {
+  pub hashwx_enabled: bool,
   pub hashwx: rilgate_pow_hashwx::HashWxConfig,
   pub enforce: PowEnforcement,
   pub randomx_enabled: bool,

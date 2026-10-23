@@ -20,3 +20,6 @@ rilgate-protocol.workspace = true
 rilgate-pow.workspace = true
 rilgate-policy.workspace = true
 rilgate-crypto.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

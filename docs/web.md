@@ -144,10 +144,13 @@ The embedded assets are under `static/js/solvers/hashwx/`:
 | File | Role |
 | --- | --- |
 | `adapter.js` | Classic adapter, compiled into the startup bundle |
-| `loader.js` | Loads the solver module |
 | `solver.js` | Allocates workers, combines progress and controls cancellation |
 | `worker.js` | Derives seeds, compiles modules and searches nonce ranges |
 | `hashwx_wasm.wasm` | Interpreter, instance generator, seed hash and WASM generator |
+
+The shared `static/js/solvers/loader.js` imports the descriptor-selected
+`window.POW_SOLVER_MODULE_URL` for HashWX and RandomX. The Fast solver stays
+in the classic startup bundle for legacy browsers.
 
 Each VM has 16392 scratch bytes. Total browser memory also includes Rust WASM
 memory and stack, generated modules and JavaScript state. The default solver

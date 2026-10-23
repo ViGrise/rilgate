@@ -176,7 +176,7 @@ test('RandomX module load failures reach retry controls without requesting fast 
   await until(() => state.elements.get('#randomx-start')?.hidden === false);
   state.elements.get('#randomx-start').click();
   await until(() => state.elements.get('#retry')?.hidden === false);
-  assert.match(state.elements.get('#status').textContent, /Localized failure: RandomX solver module failed to load/);
+  assert.match(state.elements.get('#status').textContent, /Localized failure: Solver module failed to load/);
   assert.equal(state.requests.length, 1);
   assert.equal(state.reloads(), 0);
 });

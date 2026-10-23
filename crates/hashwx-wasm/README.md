@@ -39,7 +39,7 @@ implement these rules.
 
 The caller must provide valid readable/writable memory for each pointer and
 free each hx_alloc buffer exactly once. Refresh JavaScript memory views after
-allocations or instance creation, because linear memory can grow. Code generation runs when `hx_module_ptr` or `hx_module_len` first requests it.
+allocations, instance creation or module requests, because linear memory can grow. Code generation runs when `hx_module_ptr` or `hx_module_len` first requests it.
 The instance
 copies the seed; the seed buffer can be freed after creation. Module bytes are
 owned by the handle until destruction. Copy them before retaining a JavaScript

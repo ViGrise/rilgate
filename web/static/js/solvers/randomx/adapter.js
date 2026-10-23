@@ -9,32 +9,16 @@
       return Promise.reject(new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly SIMD, BigInt, and workers is required.")));
     }
     if (!moduleUrl) return Promise.reject(new Error("RandomX solver module URL is empty"));
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      const timer = setTimeout(() => finish(new Error("RandomX solver module load timed out")), 30000);
-      function finish(error, module) {
-        clearTimeout(timer);
-        script.onerror = null;
-        if (script.parentNode) script.parentNode.removeChild(script);
-        delete window.PowClient.randomxLoaded;
-        if (error) reject(error);
-        else if (!module || typeof module.solve !== "function") reject(new Error("RandomX solver module must export async solve(job, options)"));
-        else resolve(module);
-      }
-      window.PowClient.randomxLoaded = (module, error) => finish(error, module);
-      script.type = "module";
-      script.src = endpoint("/static/js/solvers/randomx/loader.js");
-      script.onerror = () => finish(new Error("RandomX solver module failed to load"));
-      document.head.appendChild(script);
-    });
+    return window.PowClient.loadSolver(window.POW_SOLVER_MODULE_URL);
   }
 
-  function randomxJob(job, difficulty, nonceOffset, expiresAt) {
+  function randomxJob(job, difficulty, nonceOffset, expiresIn, receivedAt) {
     return {
       ...job,
       difficulty,
       nonceOffset,
-      expiresAt,
+      expiresIn,
+      receivedAt,
       onProgress: reportRandomxProgress,
     };
   }
@@ -78,7 +62,7 @@
     progressEl.removeAttribute("value");
 
     const solution = await solver.solve(
-      randomxJob(challenge.job, challenge.difficulty, challenge.nonce_offset, challenge.expires_at),
+      randomxJob(challenge.job, challenge.difficulty, challenge.nonce_offset, challenge.expires_in, challenge.received_at),
     );
 
     status(t("challenge.status.verifying", "Verifying {algorithm} proof…", { algorithm: "RandomX" }));

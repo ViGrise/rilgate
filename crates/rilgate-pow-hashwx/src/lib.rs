@@ -13,6 +13,7 @@ use rilgate_protocol::PowEnforcement;
 
 pub struct HashWxAlgorithm {
   config: HashWxConfig,
+  verification_slots: std::sync::Arc<tokio::sync::Semaphore>,
 }
 
 impl HashWxAlgorithm {
@@ -20,6 +21,9 @@ impl HashWxAlgorithm {
     config.validate()?;
     Ok(Self {
       config: config.clone(),
+      verification_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(
+        std::thread::available_parallelism().map_or(1, usize::from),
+      )),
     })
   }
 }
@@ -30,7 +34,7 @@ impl Algorithm for HashWxAlgorithm {
       id: PowAlgorithm::Hashwx,
       version: 1,
       display_name: "HashWX",
-      solver_module_path: "/static/js/solvers/hashwx/solver.js",
+      solver_module_path: "/static/js/solvers/hashwx/solver.js".into(),
       requires_consent: false,
       memory_bytes: 16392,
     }
@@ -103,20 +107,67 @@ impl Algorithm for HashWxAlgorithm {
       let nonce = proof::nonce(proof.nonce)?;
       let seed = proof::seed(&challenge, nonce / u64::from(*nonces_per_seed));
       let target = u64::MAX / difficulty;
-      let expires_at = work.expires_at;
-      ensure!(unix_now()? < expires_at, "HashWX challenge expired");
+      let permit = self
+        .verification_slots
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| anyhow::Error::new(rilgate_core::error::CapacityExceeded))?;
       tokio::task::spawn_blocking(move || -> Result<()> {
-        ensure!(unix_now()? < expires_at, "HashWX challenge expired");
+        let _permit = permit;
         let hash = HashWx::new(&seed).hash(nonce);
         ensure!(
           hash < target,
           "HashWX proof does not meet the required difficulty"
         );
-        ensure!(unix_now()? < expires_at, "HashWX challenge expired");
         Ok(())
       })
       .await
       .context("HashWX verification task failed")?
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::task::{Context, Poll, Waker};
+
+  #[test]
+  fn verification_capacity_stays_reserved_until_canceled_blocking_work_finishes() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+      .max_blocking_threads(1)
+      .build()
+      .unwrap();
+    runtime.block_on(async {
+      let (release, wait) = std::sync::mpsc::channel::<()>();
+      let (started, entered) = std::sync::mpsc::channel();
+      let blocker = tokio::task::spawn_blocking(move || {
+        started.send(()).unwrap();
+        let _ = wait.recv();
+      });
+      entered.recv().unwrap();
+      let algorithm = HashWxAlgorithm::new(&HashWxConfig {
+        nonces_per_seed: 463,
+        difficulty: rilgate_pow::difficulty::DifficultyConfig { base: 1, weight_step: 1, max: 1 },
+        ttl: 60,
+      }).unwrap();
+      let work = PreparedWork {
+        challenge_id: "capacity".into(), issued_at: unix_now().unwrap(), expires_at: unix_now().unwrap() + 60,
+        work: Work::Hashwx { challenge: "00".repeat(32), difficulty: 1, nonces_per_seed: 463 },
+      };
+      let mut context = Context::from_waker(Waker::noop());
+      let capacity = std::thread::available_parallelism().map_or(1, usize::from);
+      let mut queued: Vec<_> = (0..capacity).map(|_| algorithm.verify(&work, Proof { nonce: "0" })).collect();
+      for request in &mut queued { assert!(request.as_mut().poll(&mut context).is_pending()); }
+      let saturated = algorithm.verify(&work, Proof { nonce: "0" }).as_mut().poll(&mut context);
+      drop(queued.remove(0));
+      let canceled = algorithm.verify(&work, Proof { nonce: "0" }).as_mut().poll(&mut context);
+      drop(release);
+      blocker.await.unwrap();
+      for request in queued { request.await.unwrap(); }
+      for result in [saturated, canceled] {
+        assert!(matches!(result, Poll::Ready(Err(error)) if error.is::<rilgate_core::error::CapacityExceeded>()));
+      }
+    });
   }
 }

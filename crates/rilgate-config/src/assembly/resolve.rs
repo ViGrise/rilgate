@@ -196,6 +196,10 @@ impl Document {
         },
       },
       pow: PowConfig {
+        hashwx_enabled: self.pow.verification == PowEnforcement::LocalVerify
+          && self.policy.challenges()?.iter().any(|(_, choice)| {
+            choice.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::Hashwx
+          }),
         hashwx: rilgate_pow_hashwx::HashWxConfig {
           nonces_per_seed: self.pow.algorithms.hashwx.nonces_per_seed,
           difficulty: DifficultyConfig {

@@ -486,7 +486,9 @@ verifier process; combined mode is reserved for phase 2.
 
 ## HashWX configuration
 
-Use a custom policy to select HashWX. Presets select Fast explicitly.
+Use a custom policy to select HashWX. Presets select Fast explicitly. HashWX
+is registered and its cost settings are validated only when a challenge rule
+selects it with local verification.
 
 ```yaml
 pow:

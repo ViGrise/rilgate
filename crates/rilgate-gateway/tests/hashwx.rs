@@ -81,6 +81,7 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
     difficulty,
     nonces_per_seed,
     expires_at,
+    expires_in,
   } = service
     .issue_challenge(&presentation, "example.test")
     .await
@@ -90,6 +91,7 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
   };
   assert_eq!(nonces_per_seed, 463);
   assert!(expires_at > rilgate_core::time::unix_now().unwrap());
+  assert!((1..=config.pow.hashwx.ttl).contains(&expires_in));
   let bytes: [u8; 32] = hex::decode(challenge).unwrap().try_into().unwrap();
   let mut hasher = hashwx_core::HashWx::new(&seed(&bytes, 0));
   let nonce = (0..100_000u64)

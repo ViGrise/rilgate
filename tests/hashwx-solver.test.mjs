@@ -8,7 +8,7 @@ import { loadHashWx, createHashWx } from '../scripts/lib/hashwx-wasm.mjs';
 const directory = new URL('../web/static/js/solvers/hashwx/', import.meta.url);
 const source = await readFile(new URL('worker.js', directory), 'utf8');
 const bytes = await readFile(new URL('hashwx_wasm.wasm', directory));
-const challenge = { challenge: 'ab'.repeat(32), difficulty: 1000, nonces_per_seed: 463, expires_at: Math.floor(Date.now() / 1000) + 60 };
+const challenge = { challenge: 'ab'.repeat(32), difficulty: 1000, nonces_per_seed: 463, expires_in: 60, expires_at: Math.floor(Date.now() / 1000) + 60 };
 
 for (const fallback of [false, true]) {
   test(`worker solves signed seed batches without BigInt, fallback=${fallback}`, async () => {
@@ -24,7 +24,7 @@ for (const fallback of [false, true]) {
       BigInt: undefined,
     });
     vm.runInContext(source, context);
-    await context.self.onmessage({ data: { challenge, startBatch: 1, batchStride: 2, wasmUrl: 'local' } });
+    await context.self.onmessage({ data: { challenge, deadline: Date.now() + 60000, startBatch: 1, batchStride: 2, wasmUrl: 'local' } });
     const solved = messages.at(-1);
     assert.equal(solved.type, 'solved', solved.message);
     const nonce = BigInt(solved.nonce), batch = nonce / 463n;
@@ -57,7 +57,7 @@ test('expired and malformed work fails before downloading WASM', async () => {
   const context = vm.createContext({ self: { postMessage: message => messages.push(message) }, fetch: () => { throw new Error('Unexpected download'); } });
   vm.runInContext(source, context);
   for (const work of [{ ...challenge, expires_at: 1 }, { ...challenge, nonces_per_seed: 0 }]) {
-    await context.self.onmessage({ data: { challenge: work, startBatch: 0, batchStride: 1 } });
+    await context.self.onmessage({ data: { challenge: work, deadline: work.expires_at === 1 ? 1 : Date.now() + 60000, startBatch: 0, batchStride: 1 } });
     assert.equal(messages.at(-1).type, 'error');
     assert.match(messages.at(-1).message, /expired|Invalid/);
   }
@@ -127,6 +127,33 @@ test('worker reads the generated module result through its exported location', a
       { instance: { exports: { memory, result_ptr: { value: 128 }, search: () => 0 } } } },
   });
   vm.runInContext(source, context);
-  await context.self.onmessage({ data: { challenge, startBatch: 0, batchStride: 1 } });
+  await context.self.onmessage({ data: { challenge, deadline: Date.now() + 60000, startBatch: 0, batchStride: 1 } });
   assert.equal(messages.at(-1).nonce, '987');
+});
+
+
+test('relative lifetime permits a HashWX solve with a client clock one day ahead', async t => {
+  const now = Date.now() + 86400000;
+  const original = Date.now;
+  Date.now = () => now;
+  t.after(() => { Date.now = original; });
+  const { module, instances } = await solver(t);
+  t.after(() => module.cancel());
+  const work = { ...challenge, received_at: now - 1000, expires_in: 60 };
+  const pending = module.solve(work, { workers: 1 });
+  pending.catch(() => {});
+  if (!instances.length) await pending;
+  assert.equal(instances[0].request.deadline, now + 59000);
+  const messages = [];
+  const context = vm.createContext({
+    Date: { now: () => now },
+    self: { postMessage: message => messages.push(message) },
+    fetch: async () => ({ ok: true, arrayBuffer: async () => bytes }),
+    WebAssembly,
+  });
+  vm.runInContext(source, context);
+  await context.self.onmessage({ data: instances[0].request });
+  assert.equal(messages.at(-1).type, 'solved', messages.at(-1).message);
+  instances[0].emit(messages.at(-1));
+  assert.match((await pending).nonce, /^\d+$/);
 });

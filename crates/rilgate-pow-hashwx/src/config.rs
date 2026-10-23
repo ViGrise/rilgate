@@ -19,10 +19,6 @@ impl HashWxConfig {
         && self.difficulty.weight_step > 0,
       "difficulty requires 1 <= base <= max <= 2^40 and a positive score_step"
     );
-    ensure!(
-      (1..=31_536_000).contains(&self.ttl),
-      "HashWX TTL must be between 1s and one year"
-    );
     Ok(())
   }
 }

@@ -30,7 +30,7 @@ pub fn render_challenge_page(
     difficulty: Some(issued.claims.difficulty),
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
-    solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, solver_module_path),
+    solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
     ..Default::default()
   };
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
@@ -148,7 +148,7 @@ pub fn render_page(
     .parse()
     .ok()
     .and_then(|algorithm| solver_module_path(state, algorithm).ok())
-    .unwrap_or("");
+    .unwrap_or_default();
   let public = TemplateContext {
     rilgate: snapshot.public.clone(),
     page: PageInfo { title, description },
@@ -164,7 +164,7 @@ pub fn render_page(
           .as_secs() as i64;
         claims.expires_at.saturating_sub(now).max(0) as u64
       }),
-      solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, solver_module_path),
+      solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
       ..Default::default()
     },
   };
@@ -207,11 +207,7 @@ fn query_language(query: &str) -> Option<String> {
 fn solver_module_path(
   state: &AppState,
   algorithm: rilgate_protocol::PowAlgorithm,
-) -> anyhow::Result<&str> {
+) -> anyhow::Result<String> {
   let descriptor = state.pow.algorithm_descriptor(algorithm)?;
-  Ok(if algorithm == rilgate_protocol::PowAlgorithm::RandomX {
-    state.cfg.pow.browser.solver_module_path.as_str()
-  } else {
-    descriptor.solver_module_path
-  })
+  Ok(descriptor.solver_module_path)
 }

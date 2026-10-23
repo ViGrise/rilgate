@@ -15,6 +15,7 @@ pub enum ChallengeResponse {
     difficulty: u64,
     nonces_per_seed: u32,
     expires_at: i64,
+    expires_in: u64,
   },
 
   Randomx {
@@ -24,5 +25,6 @@ pub enum ChallengeResponse {
     difficulty: u64,
     nonce_offset: usize,
     expires_at: i64,
+    expires_in: u64,
   },
 }

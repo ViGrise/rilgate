@@ -145,7 +145,10 @@ placeholders until a mid-range phone measurement is recorded in section 8.
 Explicit rule difficulties override this mapping, including its max cap.
 
 Verification is cheap, so HashWX needs no dedicated verifier pool. It runs on a
-blocking task with the proof API rate limits in front.
+blocking task with the proof API rate limits in front. A semaphore sized from
+available parallelism bounds outstanding verifications. When all slots are
+reserved, the gateway returns the capacity error (HTTP 503). A canceled
+request retains its slot until the blocking work completes.
 
 ### Browser solver
 
