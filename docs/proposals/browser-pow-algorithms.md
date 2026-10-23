@@ -142,17 +142,47 @@ placeholders until the measurements in section 8.
 Verification is cheap, so HashWX needs no dedicated verifier pool. It runs on a
 blocking task with the proof API rate limits in front.
 
-### Browser
+### Browser solver
 
-- The solver needs WebAssembly and workers. The classic adapter in the startup
-  bundle checks these capabilities. On an incapable browser, it shows the
-  localized failure and retry controls. The client never switches algorithms.
 - For each batch, `hashwx-core` generates the 32 programs and emits a WASM module.
-  The worker compiles the module and hashes the batch. `randomx-core` uses the
-  same technique for its SuperscalarHash kernels.
+  The worker compiles the module with `WebAssembly.instantiate` and hashes the
+  batch. The RandomX worker already instantiates generated modules in the same way
+  (`web/static/js/solvers/randomx/randomx-worker.js`).
 - If the compilation of a generated module fails, the worker uses the interpreter.
 - The solver can use several workers, one batch for each worker. It reports
   progress after each batch and supports cancellation.
+- HashWX starts without a consent step. Each VM uses 16 KiB, and the default
+  difficulty targets a solve of 1 to 3 seconds. RandomX keeps its consent step,
+  because it allocates about 256 MiB and can run for much longer.
+
+### Browser requirements
+
+| Requirement | Rule |
+| --- | --- |
+| WebAssembly 1.0 | Required. SIMD is not required. The classic adapter checks `WebAssembly.instantiate` before it loads the solver |
+| Workers | Required. The adapter checks `Worker` |
+| BigInt | Not required. The `hashwx-wasm` ABI passes each 64-bit nonce and hash as two 32-bit values |
+| Memory | 16 KiB per VM, plus the WASM module and the generated code |
+| Runtime compilation | Required for full speed. Rilgate sends only `frame-ancestors 'self'` as its content security policy, so it does not block generated modules |
+
+On an incapable browser, the adapter shows the localized failure and retry
+controls. The client never switches algorithms. Section 7 describes the optional
+fallback.
+
+Known limits:
+
+- IE11 and other browsers without WebAssembly cannot solve HashWX challenges.
+- Safari Lockdown Mode disables WebAssembly, so it cannot solve HashWX challenges.
+- A content security policy from the operator or an edge proxy can block runtime
+  compilation. It must allow `'wasm-unsafe-eval'` for the challenge page. Without
+  it, the solver uses the interpreter, which is about 5 times slower. Documentation
+  in `docs/web.md` and `docs/production.md` states this.
+- Phones have fewer cores and lower speed per core than the desktop in the
+  published benchmark. The measurements in section 8 set the default difficulty.
+- Module compilation costs time for each batch. The default `nonces_per_seed` of
+  65536 spreads this cost over many hashes.
+- Long solves use battery and heat on phones. `difficulty.max` limits the longest
+  expected solve.
 
 ### Conformance
 
@@ -286,6 +316,7 @@ algorithm and enforcement match and its difficulty is at least the required one.
 | Order of checks | An invalid token signature fails without a hash computation |
 | Capacity | For Argon2id, a full verifier queue returns `503`, and peak memory stays within `verifier_workers × memory` |
 | Browser | The Playwright suite solves a HashWX challenge in Chromium, Firefox and WebKit. An incapable browser shows the failure controls |
+| Browser limits | A page with a content security policy that blocks `'wasm-unsafe-eval'` solves with the interpreter. The solver runs without `BigInt` |
 | Fallback | A presentation token without a fallback cannot get a fallback challenge |
 
 ## 11. Delivery sequence
