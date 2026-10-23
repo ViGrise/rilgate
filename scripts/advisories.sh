@@ -24,14 +24,17 @@ for arg in "$@"; do
   esac
 done
 
+output="$(mktemp)"
 report="$(mktemp)"
-trap 'rm -f "$report"' EXIT
+trap 'rm -f "$output" "$report"' EXIT
 # cargo-deny exits non-zero for any finding. The JSON summary decides the result.
-cargo deny --locked --format json --config .config/deny.toml check advisories 2>"$report" || true
+cargo deny --locked --format json --config .config/deny.toml check advisories 2>"$output" || true
+# The same stream carries plain-text toolchain messages, for example from rustup.
+grep '^{' "$output" >"$report" || true
 
 if ! jq -e 'select(.type == "summary")' "$report" >/dev/null 2>&1; then
   echo "::error::cargo deny did not produce a summary" >&2
-  cat "$report" >&2
+  cat "$output" >&2
   exit 1
 fi
 
@@ -79,7 +82,7 @@ open_issue() {
   if [[ -z "$upstream" ]]; then
     upstream="- [ ] Link the upstream issue or pull request that removes or replaces \`${package}\`."
   fi
-  path="$(cargo tree --locked -e normal -i "$package" 2>&1 | head -n 40)"
+  path="$(cargo tree --locked -e normal -i "$package" 2>&1 | sed "s# (${ROOT}/[^)]*)##" | head -n 40)"
   body="$(jq -r --arg version "$version" --arg path "$path" --arg upstream "$upstream" '
     .fields as $f | $f.advisory as $a
     | "> \($a.title)\n\n"
