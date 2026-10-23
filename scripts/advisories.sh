@@ -24,14 +24,17 @@ for arg in "$@"; do
   esac
 done
 
+output="$(mktemp)"
 report="$(mktemp)"
-trap 'rm -f "$report"' EXIT
+trap 'rm -f "$output" "$report"' EXIT
 # cargo-deny exits non-zero for any finding. The JSON summary decides the result.
-cargo deny --locked --format json --config .config/deny.toml check advisories 2>"$report" || true
+cargo deny --locked --format json --config .config/deny.toml check advisories 2>"$output" || true
+# The same stream carries plain-text toolchain messages, for example from rustup.
+grep '^{' "$output" >"$report" || true
 
 if ! jq -e 'select(.type == "summary")' "$report" >/dev/null 2>&1; then
   echo "::error::cargo deny did not produce a summary" >&2
-  cat "$report" >&2
+  cat "$output" >&2
   exit 1
 fi
 
