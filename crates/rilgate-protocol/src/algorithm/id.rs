@@ -5,6 +5,9 @@ pub enum PowAlgorithm {
   #[serde(rename = "fast")]
   Fast,
 
+  #[serde(rename = "hashwx")]
+  Hashwx,
+
   #[serde(rename = "randomx")]
   RandomX,
 }
@@ -15,9 +18,10 @@ impl FromStr for PowAlgorithm {
   fn from_str(value: &str) -> Result<Self, Self::Err> {
     match value {
       "fast" => Ok(Self::Fast),
+      "hashwx" => Ok(Self::Hashwx),
       "randomx" => Ok(Self::RandomX),
       other => Err(format!(
-        "Invalid PoW algorithm {other:?}; expected fast or randomx"
+        "Invalid PoW algorithm {other:?}; expected fast, hashwx or randomx"
       )),
     }
   }

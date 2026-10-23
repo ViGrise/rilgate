@@ -376,7 +376,7 @@ security:
   #
   # verification: local_verify
 
-  # Algorithm when a challenge action omits algorithm: fast or randomx.
+  # Algorithm when a challenge action omits algorithm: fast, hashwx or randomx.
   # Presets explicitly select fast. Selecting RandomX requires explicit Stratum pool
   # configuration for jobs, including when verification is local.
   #
@@ -427,6 +427,18 @@ security:
     # Fast has no algorithm-specific configuration. RandomX is opt-in and uses
     # substantially more browser/server memory and CPU than Fast.
     #
+    # hashwx:
+      # Signed batch size. Range: 463..1048576.
+      # nonces_per_seed: 65536
+      # Difficulty defaults stay provisional until a mid-range phone is measured.
+      # difficulty:
+        # Positive base difficulty, at most 2^40.
+        # base: 50000
+        # Positive score interval that doubles difficulty.
+        # score_step: 10
+        # At least base and at most 2^40.
+        # max: 5000000
+
     # randomx:
       # Signed RandomX work lifetime for local verification, separate from the
       # shorter presentation-token TTL. Positive whole seconds, at most 365d.
@@ -687,7 +699,7 @@ security:
       # to use the default algorithm or score-derived difficulty, respectively.
       #
       # challenge:
-        # fast or randomx. RandomX also requires pow.stratum_pool.
+        # fast, hashwx or randomx. RandomX also requires pow.stratum_pool.
         #
         # algorithm: fast
 

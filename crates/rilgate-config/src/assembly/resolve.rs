@@ -196,6 +196,15 @@ impl Document {
         },
       },
       pow: PowConfig {
+        hashwx: rilgate_pow_hashwx::HashWxConfig {
+          nonces_per_seed: self.pow.algorithms.hashwx.nonces_per_seed,
+          difficulty: DifficultyConfig {
+            base: self.pow.algorithms.hashwx.difficulty.base,
+            weight_step: self.pow.algorithms.hashwx.difficulty.score_step,
+            max: self.pow.algorithms.hashwx.difficulty.max,
+          },
+          ttl: self.pow.challenge.ttl.whole_seconds("pow.challenge.ttl")?,
+        },
         randomx_enabled: needs_pool,
         enforce: self.pow.verification,
         default_algorithm: self.pow.default_algorithm,

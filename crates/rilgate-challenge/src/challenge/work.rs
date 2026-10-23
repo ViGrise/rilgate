@@ -19,6 +19,21 @@ pub(super) fn claims(
       issued_at: work.issued_at,
       expires_at: work.expires_at,
     },
+    Work::Hashwx {
+      challenge,
+      difficulty,
+      nonces_per_seed,
+    } => ChallengeClaims::Hashwx {
+      v: 1,
+      enforce,
+      challenge_id: work.challenge_id.clone(),
+      host,
+      challenge: challenge.clone(),
+      difficulty: *difficulty,
+      nonces_per_seed: *nonces_per_seed,
+      issued_at: work.issued_at,
+      expires_at: work.expires_at,
+    },
     Work::Randomx {
       job,
       difficulty,
@@ -48,6 +63,16 @@ pub(super) fn prepared(claims: &ChallengeClaims) -> PreparedWork {
     } => Work::Fast {
       challenge: challenge.clone(),
       difficulty: *difficulty,
+    },
+    ChallengeClaims::Hashwx {
+      challenge,
+      difficulty,
+      nonces_per_seed,
+      ..
+    } => Work::Hashwx {
+      challenge: challenge.clone(),
+      difficulty: *difficulty,
+      nonces_per_seed: *nonces_per_seed,
     },
     ChallengeClaims::Randomx {
       blob,
@@ -85,6 +110,17 @@ pub(super) fn response(work: PreparedWork, challenge_token: String) -> Challenge
       challenge_token,
       challenge,
       difficulty,
+    },
+    Work::Hashwx {
+      challenge,
+      difficulty,
+      nonces_per_seed,
+    } => ChallengeResponse::Hashwx {
+      challenge_token,
+      challenge,
+      difficulty,
+      nonces_per_seed,
+      expires_at: work.expires_at,
     },
     Work::Randomx {
       job,

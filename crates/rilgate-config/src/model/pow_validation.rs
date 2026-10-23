@@ -3,6 +3,7 @@ impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::{Context, ensure};
     self.rate_limit.validate()?;
+    self.hashwx.validate().context("pow.algorithms.hashwx")?;
     let verify = &self.randomx_verify;
     ensure!(
       (1..=2).contains(&verify.order.len())
@@ -120,12 +121,15 @@ impl PowConfig {
       );
       if let Some(difficulty) = selection.difficulty {
         let valid = match algorithm {
+          crate::PowAlgorithm::Hashwx => {
+            (1..=rilgate_pow_hashwx::MAX_DIFFICULTY).contains(&difficulty)
+          }
           crate::PowAlgorithm::Fast => (1..=64).contains(&difficulty),
           crate::PowAlgorithm::RandomX => difficulty >= 1000,
         };
         ensure!(
           valid,
-          "policy ({name}).challenge.difficulty: fast requires 1..64; randomx requires at least 1000"
+          "policy ({name}).challenge.difficulty: fast requires 1..64; hashwx requires 1..2^40; randomx requires at least 1000"
         );
       }
     }

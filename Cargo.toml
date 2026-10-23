@@ -7,6 +7,7 @@ members = [
   "crates/rilgate-ip-feeds",
   "crates/rilgate-pow-randomx",
   "crates/rilgate-pow-hash",
+  "crates/rilgate-pow-hashwx",
   "crates/rilgate-pool",
   "crates/rilgate-stratum",
   "crates/rilgate-policy",
@@ -38,6 +39,7 @@ rilgate-challenge = { path = "crates/rilgate-challenge" }
 rilgate-ip-feeds = { path = "crates/rilgate-ip-feeds" }
 rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx" }
 rilgate-pow-hash = { path = "crates/rilgate-pow-hash" }
+rilgate-pow-hashwx = { path = "crates/rilgate-pow-hashwx" }
 rilgate-pool = { path = "crates/rilgate-pool" }
 rilgate-stratum = { path = "crates/rilgate-stratum" }
 rilgate-policy = { path = "crates/rilgate-policy" }

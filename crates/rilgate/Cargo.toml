@@ -15,6 +15,7 @@ path = "src/main.rs"
 vendored-openssl = ["dep:openssl"]
 
 [dependencies]
+rilgate-pow-hashwx.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 dotenvy.workspace = true

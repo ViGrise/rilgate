@@ -27,6 +27,15 @@ pub fn config() -> Config {
       ..Default::default()
     },
     pow: PowConfig {
+      hashwx: rilgate_config::HashWxConfig {
+        nonces_per_seed: 65536,
+        difficulty: DifficultyConfig {
+          base: 50000,
+          weight_step: 10,
+          max: 5000000,
+        },
+        ttl: 60,
+      },
       enforce: PowEnforcement::LocalVerify,
       randomx_enabled: true,
       default_algorithm: PowAlgorithm::Fast,

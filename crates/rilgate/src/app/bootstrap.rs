@@ -4,6 +4,7 @@ use rilgate_config::Config;
 use rilgate_pool::StratumPoolProvider;
 use rilgate_pow::AlgorithmRegistry;
 use rilgate_pow_hash::{FastAlgorithm, FastConfig};
+use rilgate_pow_hashwx::HashWxAlgorithm;
 use rilgate_pow_randomx::{RandomXAlgorithm, RandomXConfig};
 use std::sync::Arc;
 pub(super) fn services(
@@ -15,6 +16,7 @@ pub(super) fn services(
   registry.register(Arc::new(FastAlgorithm::new(&FastConfig {
     ttl: cfg.challenge_ttl_seconds,
   })))?;
+  registry.register(Arc::new(HashWxAlgorithm::new(&cfg.hashwx)?))?;
   if cfg.randomx_enabled {
     registry.register(Arc::new(RandomXAlgorithm::with_order(
       &RandomXConfig {
@@ -54,6 +56,6 @@ mod tests {
         .algorithm_descriptor(rilgate_config::PowAlgorithm::RandomX)
         .is_err()
     );
-    assert_eq!(service.algorithm_descriptors().len(), 1);
+    assert_eq!(service.algorithm_descriptors().len(), 2);
   }
 }

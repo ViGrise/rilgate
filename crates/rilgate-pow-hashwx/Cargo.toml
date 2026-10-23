@@ -1,0 +1,18 @@
+[package]
+name = "rilgate-pow-hashwx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+hex.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+getrandom = "0.4"
+hashwx-core = { path = "../hashwx-core" }
+rilgate-core.workspace = true
+rilgate-pow.workspace = true
+rilgate-protocol.workspace = true

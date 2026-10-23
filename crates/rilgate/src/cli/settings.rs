@@ -93,7 +93,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SECURITY, List, "security.auth.bind.headers", "security-auth-bind-headers", "RILGATE_SECURITY_AUTH_BIND_HEADERS", None, "Client request headers the cookie is bound to"),
   spec!(SECURITY, List, "security.auth.bind.proxy_headers", "security-auth-bind-proxy-headers", "RILGATE_SECURITY_AUTH_BIND_PROXY_HEADERS", None, "Headers set by trusted proxies the cookie is bound to"),
   spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or stratum_pool_accepted"),
-  spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast or randomx"),
+  spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast, hashwx or randomx"),
   spec!(POW, Text, "pow.challenge.ttl", "pow-challenge-ttl", "RILGATE_POW_CHALLENGE_TTL", None, "Challenge lifetime"),
   spec!(POW, Text, "pow.challenge.receipt_ttl", "pow-challenge-receipt-ttl", "RILGATE_POW_CHALLENGE_RECEIPT_TTL", None, "Proof receipt lifetime"),
   spec!(POW, Switch, "pow.rate_limit.enabled", "pow-rate-limit-enabled", "RILGATE_POW_RATE_LIMIT_ENABLED", None, "Rate limit proof API requests"),
@@ -102,6 +102,10 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.rate_limit.client.refill_per_second", "pow-rate-limit-client-refill-per-second", "RILGATE_POW_RATE_LIMIT_CLIENT_REFILL_PER_SECOND", None, "Client proof request refill rate"),
   spec!(POW, Text, "pow.rate_limit.global.burst", "pow-rate-limit-global-burst", "RILGATE_POW_RATE_LIMIT_GLOBAL_BURST", None, "Proof requests all clients may burst"),
   spec!(POW, Text, "pow.rate_limit.global.refill_per_second", "pow-rate-limit-global-refill-per-second", "RILGATE_POW_RATE_LIMIT_GLOBAL_REFILL_PER_SECOND", None, "Global proof request refill rate"),
+  spec!(POW, Text, "pow.algorithms.hashwx.nonces_per_seed", "pow-algorithms-hashwx-nonces-per-seed", "RILGATE_POW_ALGORITHMS_HASHWX_NONCES_PER_SEED", None, "HashWX nonces per seed: 463 to 1048576"),
+  spec!(POW, Text, "pow.algorithms.hashwx.difficulty.base", "pow-algorithms-hashwx-difficulty-base", "RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_BASE", None, "HashWX base difficulty: 1 to 2^40; provisional default"),
+  spec!(POW, Text, "pow.algorithms.hashwx.difficulty.score_step", "pow-algorithms-hashwx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_SCORE_STEP", None, "Positive score interval that doubles HashWX difficulty"),
+  spec!(POW, Text, "pow.algorithms.hashwx.difficulty.max", "pow-algorithms-hashwx-difficulty-max", "RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_MAX", None, "Maximum mapped HashWX difficulty, from base to 2^40; provisional default"),
   spec!(POW, Text, "pow.algorithms.randomx.challenge_ttl", "pow-algorithms-randomx-challenge-ttl", "RILGATE_POW_ALGORITHMS_RANDOMX_CHALLENGE_TTL", None, "RandomX challenge lifetime"),
   spec!(POW, Text, "pow.algorithms.randomx.nonce_offset", "pow-algorithms-randomx-nonce-offset", "RILGATE_POW_ALGORITHMS_RANDOMX_NONCE_OFFSET", None, "Nonce byte offset in the RandomX blob"),
   spec!(POW, Text, "pow.algorithms.randomx.verifier_queue", "pow-algorithms-randomx-verifier-queue", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFIER_QUEUE", None, "Queued RandomX verifications"),
@@ -549,5 +553,59 @@ mod environment_encoding_tests {
         .unwrap_err();
     assert!(error.contains(name), "{error}");
     assert!(error.contains("UTF-8"), "{error}");
+  }
+}
+
+#[cfg(test)]
+mod hashwx_tests {
+  use super::*;
+  use clap::Parser;
+  use rilgate_pow::{Algorithm, Work, WorkRequest};
+
+  #[tokio::test]
+  async fn hashwx_flags_change_issued_batches_and_score_mapping() {
+    #[derive(Parser)]
+    struct CommandLine {
+      #[command(flatten)]
+      settings: Settings,
+    }
+    let command = CommandLine::try_parse_from([
+      "rilgate",
+      "--pow-default-algorithm",
+      "hashwx",
+      "--pow-algorithms-hashwx-nonces-per-seed",
+      "1024",
+      "--pow-algorithms-hashwx-difficulty-base",
+      "123",
+      "--pow-algorithms-hashwx-difficulty-score-step",
+      "7",
+      "--pow-algorithms-hashwx-difficulty-max",
+      "999",
+    ])
+    .unwrap();
+    let document = rilgate_config::loader::parse_with(
+      "server:\n  upstream:\n    url: http://127.0.0.1:3000\nsecurity:\n  secret: '0123456789abcdef0123456789abcdef'\n",
+      &command.settings.into_settings(),
+    ).unwrap();
+    let config = document.resolve().unwrap();
+    assert!(!config.pow.randomx_enabled);
+    let algorithm = rilgate_pow_hashwx::HashWxAlgorithm::new(&config.pow.hashwx).unwrap();
+    assert_eq!(algorithm.difficulty_for_weight(7), 246);
+    assert_eq!(algorithm.difficulty_for_weight(i32::MAX), 999);
+    let prepared = algorithm
+      .issue(WorkRequest {
+        difficulty: algorithm.difficulty_for_weight(7),
+        enforce: config.pow.enforce,
+      })
+      .await
+      .unwrap();
+    assert!(matches!(
+      prepared.work,
+      Work::Hashwx {
+        nonces_per_seed: 1024,
+        difficulty: 246,
+        ..
+      }
+    ));
   }
 }

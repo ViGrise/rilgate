@@ -1,0 +1,19 @@
+server:
+  upstream:
+    url: "http://127.0.0.1:3000"
+security:
+  secret: "${RILGATE_SECURITY_SECRET}"
+pow:
+  verification: local_verify
+  default_algorithm: hashwx
+  algorithms:
+    hashwx:
+      nonces_per_seed: 65536
+      # Difficulty defaults stay provisional until a mid-range phone is measured.
+      difficulty:
+        base: 50000
+        score_step: 10
+        max: 5000000
+policy:
+  mode: custom
+  default_action: challenge

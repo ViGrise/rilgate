@@ -10,6 +10,11 @@ pub enum Work {
     challenge: String,
     difficulty: u64,
   },
+  Hashwx {
+    challenge: String,
+    difficulty: u64,
+    nonces_per_seed: u32,
+  },
   Randomx {
     job: StratumJob,
     difficulty: u64,
@@ -27,6 +32,7 @@ impl PreparedWork {
   pub fn algorithm(&self) -> PowAlgorithm {
     match self.work {
       Work::Fast { .. } => PowAlgorithm::Fast,
+      Work::Hashwx { .. } => PowAlgorithm::Hashwx,
       Work::Randomx { .. } => PowAlgorithm::RandomX,
     }
   }

@@ -812,3 +812,51 @@ fn failover_budget_rejects_values_below_connect_timeout_or_outside_range() {
     assert!(message.contains(expected), "{message}");
   }
 }
+
+#[test]
+fn hashwx_resolves_without_a_pool_and_rejects_invalid_cost_bounds() {
+  let mut document = parse(BASE).unwrap();
+  document.pow.default_algorithm = PowAlgorithm::Hashwx;
+  document.pow.algorithms.hashwx.nonces_per_seed = 463;
+  document.pow.algorithms.hashwx.difficulty.base = 123;
+  document.pow.algorithms.hashwx.difficulty.score_step = 7;
+  document.pow.algorithms.hashwx.difficulty.max = 999;
+  let resolved = document.resolve().unwrap();
+  assert!(!resolved.pow.randomx_enabled);
+  assert_eq!(resolved.pow.hashwx.nonces_per_seed, 463);
+  assert_eq!(resolved.pow.hashwx.difficulty.base, 123);
+  assert_eq!(resolved.pow.hashwx.difficulty.weight_step, 7);
+  assert_eq!(resolved.pow.hashwx.difficulty.max, 999);
+  for count in [0, 462, 1048577] {
+    let mut invalid = document.clone();
+    invalid.pow.algorithms.hashwx.nonces_per_seed = count;
+    assert!(format!("{:#}", invalid.resolve().unwrap_err()).contains("pow.algorithms.hashwx"));
+  }
+  for (base, step, max) in [
+    (0, 1, 999),
+    (123, 0, 999),
+    (123, 1, 122),
+    (123, 1, (1 << 40) + 1),
+  ] {
+    let mut invalid = document.clone();
+    invalid.pow.algorithms.hashwx.difficulty.base = base;
+    invalid.pow.algorithms.hashwx.difficulty.score_step = step;
+    invalid.pow.algorithms.hashwx.difficulty.max = max;
+    assert!(invalid.resolve().is_err());
+  }
+  document.pow.verification = rilgate_config::PowEnforcement::StratumPoolAccepted;
+  assert!(document.resolve().is_err());
+}
+
+#[test]
+fn hashwx_partial_difficulty_settings_keep_algorithm_defaults() {
+  use rilgate_pow::Algorithm;
+  let text =
+    format!("{BASE}pow:\n  algorithms:\n    hashwx:\n      difficulty:\n        base: 60000\n");
+  let config = resolve(&text).unwrap();
+  let algorithm = rilgate_pow_hashwx::HashWxAlgorithm::new(&config.pow.hashwx).unwrap();
+  assert_eq!(algorithm.difficulty_for_weight(10), 120000);
+  let invalid =
+    format!("{BASE}pow:\n  algorithms:\n    hashwx:\n      difficulty:\n        max: 40000\n");
+  assert!(resolve(&invalid).is_err());
+}
