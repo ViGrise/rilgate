@@ -18,8 +18,16 @@ async fn main() -> anyhow::Result<()> {
   if let Some(Command::Upgrade { version, force }) = command {
     return rilgate::cli::upgrade::run(version, force).await;
   }
-  let document = rilgate_config::loader::load(&args.overrides())?;
+  let rilgate_config::loader::Loaded { document, warnings } =
+    rilgate_config::loader::load(&args.overrides())?;
   let config = document.resolve()?;
+  // Standard output carries command results and serve logs, so command
+  // warnings go to standard error and serve warnings go through tracing.
+  if !matches!(command, None | Some(Command::Serve)) {
+    for warning in &warnings {
+      eprintln!("warning: {warning}");
+    }
+  }
   match command {
     Some(Command::Config { command }) => {
       rilgate::app::validate(&config)?;
@@ -36,6 +44,9 @@ async fn main() -> anyhow::Result<()> {
         args.log_level.as_deref(),
         args.log_format == LogFormat::Json,
       );
+      for warning in &warnings {
+        tracing::warn!("{warning}");
+      }
       rilgate::cli::serve::run(config).await
     }
   }

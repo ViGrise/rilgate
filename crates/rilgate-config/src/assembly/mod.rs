@@ -65,7 +65,7 @@ impl Configuration {
     Ok(())
   }
   pub fn load(args: Overrides) -> Result<Config> {
-    crate::loader::load(&args)?.resolve()
+    crate::loader::load(&args)?.document.resolve()
   }
 }
 pub(crate) fn validate_secret(secret: &rilgate_crypto::Secret, path: &str) -> Result<()> {

@@ -32,10 +32,11 @@ const HEADER: &str = "\
 const PROCESS: &[(&str, &str, &str)] = &[
   (
     "RILGATE_CONFIG",
-    "config/rilgate.yml",
-    "YAML configuration file. An explicitly selected missing file fails; a\n\
-     missing default file is allowed when variables supply the required values.\n\
-     Flag: --config",
+    "rilgate.yml",
+    "YAML configuration file. Without this, Rilgate reads the first of\n\
+     rilgate.yml and config/rilgate.yml that exists and warns when both exist.\n\
+     An explicitly selected missing file fails; missing default files are\n\
+     allowed when variables supply the required values. Flag: --config",
   ),
   (
     "RILGATE_PORT",

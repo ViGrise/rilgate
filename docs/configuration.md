@@ -34,8 +34,10 @@ Use [the commented distribution template](../config/rilgate.example.yml),
 
 ## Loading and validation
 
-Rilgate reads `--config FILE`, then `RILGATE_CONFIG`, then `config/rilgate.yml`.
-An explicitly selected missing file fails. If the default file is absent,
+Rilgate reads `--config FILE`, then `RILGATE_CONFIG`. Without either, it reads
+the first of `rilgate.yml` and `config/rilgate.yml` in the working directory
+that exists, and warns when both exist. An explicitly selected missing file
+fails. If no default file exists,
 `RILGATE_SERVER_UPSTREAM_URL` and `RILGATE_SECURITY_SECRET` can supply the essentials.
 `.env` is loaded from the working directory, or the file named by `--env-file`,
 without replacing existing process variables. YAML is parsed before string interpolation, so environment values
