@@ -2,10 +2,6 @@
 all-features = true
 
 [advisories]
-ignore = [
-  { id = "RUSTSEC-2024-0388", reason = "Pingora requires derivative; replacing its derive implementation requires upstream support. This is a maintenance advisory." },
-  { id = "RUSTSEC-2024-0449", reason = "YAML is restricted to operator-owned startup configuration. Pingora and serde_yaml_ng retain unsafe-libyaml; no patched version exists for this maintenance advisory." },
-]
 
 [licenses]
 confidence-threshold = 0.8

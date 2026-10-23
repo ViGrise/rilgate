@@ -211,13 +211,13 @@ advisories, licenses and sources, production container smoke tests, edge config
 validation, and fixable high or critical image vulnerabilities. Unfixed OS
 vulnerabilities need separate review.
 
-Image scanning does not prove safety. `.config/deny.toml` records two explicit maintenance-only
-exceptions: derivative (RUSTSEC-2024-0388), retained by Pingora, and unsafe-libyaml
-(RUSTSEC-2024-0449), retained by Pingora and the operator configuration parser. No known
-vulnerability advisory is exempted. On each release, review these dependencies.
-When their upstream dependency chains change, remove the exceptions. A scheduled workflow also
-checks advisories against the committed lockfile daily, so new advisories surface
-between pushes.
+Image scanning does not prove safety. `.config/deny.toml` ignores no advisory.
+`scripts/advisories.sh` requires an open GitHub issue with the label
+`dependency-advisory` for each advisory in the lockfile. Each issue links the
+upstream issues and states when to close it. CI fails when an advisory has no
+open issue. A scheduled workflow checks the committed lockfile daily and opens
+an issue for each new advisory. On each release, review the open
+`dependency-advisory` issues.
 
 After these checks pass, pushes to `main` publish a multi-architecture image
 (`linux/amd64`, `linux/arm64`) to `ghcr.io/vigrise/rilgate`. Its tags are `main` and

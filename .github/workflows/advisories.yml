@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  issues: write
 jobs:
   advisories:
     name: Check dependency advisories
@@ -23,5 +24,7 @@ jobs:
           echo "$CARGO_DENY_SHA256  $RUNNER_TEMP/$archive.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
           install -m 0755 "$RUNNER_TEMP/$archive/cargo-deny" "$HOME/.cargo/bin/cargo-deny"
-      - name: Check advisories against the committed lockfile
-        run: cargo deny --locked --config .config/deny.toml check advisories
+      - name: Check advisories and open an issue for each new advisory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/advisories.sh --open-issues
