@@ -271,20 +271,159 @@ challenge:
 
 ## 8. Measurement before defaults
 
-The values in sections 3 and 4 are from the HashWX authors. Before the defaults
-are fixed, measure these values with the Rilgate implementation. Use a mid-range
-phone, a desktop browser, and a native solver on a server CPU:
+### Desktop measurements, 2026-10-23
 
-- HashWX hashes per second with generated WASM, with the WASM interpreter, and
-  natively, for `nonces_per_seed` of 463 and 65536.
-- HashWX server verification time with the interpreter.
-- Fast hashes per second, as the baseline.
-- If Argon2id is added: evaluations per second for `memory` of 4, 16 and 64 MiB,
-  and server verification time and peak memory.
+Measured on an Apple M4 Pro Mac, macOS 26.4.1 (25E253), arm64. The browser
+runs used one worker. Chrome was 155.0.8059.86 in headless mode, driven by
+Playwright. Safari was 26.4 (21624.1.16.11.4), run in the Safari application.
+Their reported `navigator.hardwareConcurrency` values were 12 and 8,
+respectively. These values are browser reports, not physical core counts.
+The native run used Rust 1.98.0 (88d9e12ae), with the release profile and one
+thread. All builds used this worktree's `target` directory.
 
-Set the default difficulty so that the median solve on the phone takes 1 to 3
-seconds. Record the ratio between the native solver and the phone for each
-algorithm in `docs/performance.md`.
+The prototype uses deterministic xorshift32 seeds. A seed produces one HashWX
+instance. The native and browser runs use the same seeds, nonce ranges and
+strict `hash < floor((2^64 - 1) / difficulty)` target. Every browser solve
+matched the native attempt count and batch count. This measures calculation,
+instance generation and compilation. It excludes SHA-256 challenge seed
+derivation, challenge issuance, proof submission and token checks. It is not
+a measurement of the complete server challenge protocol.
+
+Each throughput row averages three seeds after one browser warmup seed.
+The zero target forces each search to exhaust its nonce range. Native hashing
+also has a warmup. Hash-only rates exclude setup. Total rates include instance
+setup and, for generated WASM, compilation and instantiation. The browser
+interpreter setup also emits the generated module. Initial artifact download
+and instantiation are separate in the JSON results. The staged artifact was
+43550 bytes. Browser clock precision can round short setup times to zero.
+The recorded Safari run used a raised benchmark window. Another Safari run,
+whose page focus was not recorded, gave 112155 H/s for generated WASM at
+65536 nonces per seed and 82228 H/s for Fast. The variation is a reason to
+keep the benchmark page in the foreground and repeat measurements before
+selecting defaults.
+
+| Runtime | Nonces per seed | Hash-only H/s | Total H/s | Compile and instantiate ms per seed |
+| --- | ---: | ---: | ---: | ---: |
+| Chrome, WASM interpreter | 463 | 64009 | 63716 | 0.000 |
+| Chrome, generated WASM | 463 | 163412 | 154333 | 0.133 |
+| Chrome, WASM interpreter | 65536 | 65001 | 64997 | 0.000 |
+| Chrome, generated WASM | 65536 | 323901 | 323475 | 0.133 |
+| Safari, WASM interpreter | 463 | 66143 | 66143 | 0.000 |
+| Safari, generated WASM | 463 | 106846 | 92600 | 0.667 |
+| Safari, WASM interpreter | 65536 | 69917 | 69917 | 0.000 |
+| Safari, generated WASM | 65536 | 307681 | 306721 | 0.667 |
+| Native interpreter | 463 | 71608 | 71576 | Not applicable |
+| Native interpreter | 65536 | 71225 | 71224 | Not applicable |
+| iPhone 15 Pro Max, WASM interpreter | 463 | 55560 | 55560 | 0.000 |
+| iPhone 15 Pro Max, generated WASM | 463 | 69450 | 66143 | 0.333 |
+| iPhone 15 Pro Max, WASM interpreter | 65536 | 62814 | 62814 | 0.000 |
+| iPhone 15 Pro Max, generated WASM | 65536 | 387024 | 386263 | 0.333 |
+
+For the Fast baseline, the browser worker ran the existing JavaScript SHA-256
+function on `benchmark` plus a decimal nonce. After 1000 warmup hashes, 65536
+hashes gave 502192 H/s in Chrome and 352344 H/s in Safari.
+The results include a checksum of the computed hashes.
+
+A native loop generated an instance and computed one hash for each of 10000
+seed/nonce pairs. Its mean was 25.903 microseconds in the 463 run and 25.885
+microseconds in the 65536 run. This excludes challenge seed derivation and the
+proof API. It is the measured interpreter verification kernel cost, not a
+server latency claim. No separate server CPU or native code generator was
+measured.
+
+### Solve times
+
+Each cell below is the median elapsed time in milliseconds for three fixed
+trials. The JSON files contain each trial's time, attempt count and batch
+count. Times include generation, module compilation and range search. Browser
+search calls cover at most 256 nonces. The initial artifact load is excluded.
+The prototype uses the same deterministic trials on each runtime, so it is
+useful for comparisons. Three trials do not establish a population median;
+random proof lengths can make a higher difficulty finish sooner in this sample.
+
+| Runtime | Nonces per seed | Difficulty 1000 | Difficulty 10000 | Difficulty 50000 |
+| --- | ---: | ---: | ---: | ---: |
+| Chrome, WASM interpreter | 463 | 7.7 | 676.7 | 527.2 |
+| Chrome, generated WASM | 463 | 3.5 | 275.2 | 219.2 |
+| Chrome, WASM interpreter | 65536 | 16.4 | 118.6 | 594.4 |
+| Chrome, generated WASM | 65536 | 6.0 | 25.4 | 122.6 |
+| Safari, WASM interpreter | 463 | 8.0 | 638.0 | 488.0 |
+| Safari, generated WASM | 463 | 6.0 | 403.0 | 312.0 |
+| Safari, WASM interpreter | 65536 | 15.0 | 110.0 | 557.0 |
+| Safari, generated WASM | 65536 | 10.0 | 31.0 | 131.0 |
+| Native interpreter | 463 | 6.895 | 615.497 | 480.221 |
+| Native interpreter | 65536 | 14.985 | 108.836 | 547.617 |
+| iPhone 15 Pro Max, WASM interpreter | 463 | 8.0 | 688.0 | 536.0 |
+| iPhone 15 Pro Max, generated WASM | 463 | 9.0 | 666.0 | 589.0 |
+| iPhone 15 Pro Max, WASM interpreter | 65536 | 17.0 | 125.0 | 624.0 |
+| iPhone 15 Pro Max, generated WASM | 65536 | 6.0 | 29.0 | 107.0 |
+
+The iPhone run was recorded at 2026-10-23T17:07:17Z on an iPhone 15 Pro Max.
+Its user agent reports Safari 17.5 and iOS 17.5.1. It reports
+`hardwareConcurrency: 4`. The Fast baseline was 448877 H/s.
+The source file is `target/hashwx-bench/2026-10-23T17-07-16.766Z-204e5542-2fbf-45d5-8e46-b7f30cf0b3a2.json`.
+
+The iPhone 15 Pro Max is a high-end device. It does not meet the mid-range
+phone requirement in sections 2 and 8. The section 4 defaults stay
+placeholders until a mid-range phone is measured. Three trials per difficulty
+have a wide solve-time spread. The hash rates are the reliable figures for
+these comparisons. The solve medians describe these fixed samples only.
+Use a mid-range phone to select the target of 1 to 3 seconds. Record that
+phone's native-to-browser ratio in `docs/performance.md`.
+
+### Run the prototype on the LAN
+
+From the worktree root:
+
+```sh
+export CARGO_BUILD_BUILD_DIR="$PWD/target" CARGO_TARGET_DIR="$PWD/target"
+cargo xtask build-wasm && cargo xtask build-web
+node scripts/bench-hashwx-browser.mjs
+```
+
+The server binds `0.0.0.0` and selects a free port. It prints localhost and LAN
+URLs. `RILGATE_HASHWX_BENCH_PORT=8787 node scripts/bench-hashwx-browser.mjs` selects a fixed port
+when that port is free. The page path is `/`; `/?autorun=1` starts a run when
+the page loads. The server serves only the benchmark page, its worker, the
+HashWX artifact and the Fast worker. It accepts result JSON at `POST /results`.
+
+On the iPhone, connect to the Mac's LAN, open the printed LAN URL in Safari,
+and select **Start benchmark**. Keep Safari in the foreground and the screen
+awake until the page shows **Complete. Saved to ...**. The page shows progress
+and has a Cancel button. It stops after ten minutes. The default run uses
+both engines, both batch sizes, three trials per difficulty, and difficulties
+1000, 10000 and 50000. Leave those values unchanged for the first comparison.
+The user agent, reported hardware concurrency, parameters, throughput and
+individual solve times are saved automatically on the Mac. If upload fails,
+the page retains the JSON for manual recovery.
+
+Results are written to the ignored `target/hashwx-bench/` directory with a
+server-generated timestamp and random file name. Native commands are:
+
+```sh
+cargo run -p hashwx-core --release --example hashwx-throughput -- 463
+cargo run -p hashwx-core --release --example hashwx-throughput -- 65536
+```
+
+The recorded files for the tables above are:
+
+- Chrome: `target/hashwx-bench/2026-10-23T16-54-27.780Z-f8e32828-5d55-46a3-9dab-3d07cff04b87.json`
+- Safari: `target/hashwx-bench/2026-10-23T16-57-44.811Z-cfd4da1d-e2fc-40b3-8e46-94774d5e938a.json`
+- Native: `target/hashwx-bench/native-463.json` and `target/hashwx-bench/native-65536.json`
+
+### Input record for the later license review
+
+The successful upstream retrieval in this continuation was a `curl` download
+of `doc/specification.md` at revision
+`fde6d2ae34dce266497aed5c093ff7b40a933c3a`, from
+`https://raw.githubusercontent.com/tevador/hashwx/fde6d2ae34dce266497aed5c093ff7b40a933c3a/doc/specification.md`.
+It was saved outside the repository. No upstream implementation code was
+copied into the repository. Use the specification and published design
+document as inputs from this point. The user also reported one upstream
+source fetch during the earlier review. Its exact source file was not
+identified in the available fetch record. The step 5 license review must
+resolve that record and check provenance before release. That review has
+not started in step 2.
 
 ## 9. Integration
 

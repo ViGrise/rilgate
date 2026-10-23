@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HashWX browser benchmark</title>
+<style>
+  body { font: 16px system-ui; max-width: 65rem; margin: 2rem auto; padding: 0 1rem; }
+  label { display: block; margin: 1rem 0; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  button, input { font: inherit; padding: .4rem; }
+</style>
+<h1>HashWX browser benchmark</h1>
+<p>This test uses one worker. It measures both engines at 463 and 65536 nonces per seed.
+Keep the page open and the screen awake. A phone can need several minutes. The test stops after ten minutes.
+The prototype uses synthetic seeds. It excludes challenge seed derivation and network verification.</p>
+<form id="settings">
+  <label>Difficulties <input id="difficulties" value="1000,10000,50000" required></label>
+  <label>Trials per difficulty <input id="trials" type="number" min="1" max="10" value="3" required></label>
+  <button id="start">Start benchmark</button>
+  <button id="cancel" type="button" disabled>Cancel</button>
+</form>
+<p id="progress" role="status" aria-live="polite">Ready. Results stay on this benchmark server.</p>
+<pre id="result"></pre>
+<script>
+  let worker;
+  const progress = document.querySelector('#progress');
+  const result = document.querySelector('#result');
+  const start = document.querySelector('#start');
+  const cancel = document.querySelector('#cancel');
+  function stop() {
+    if (worker) worker.terminate();
+    worker = null;
+    start.disabled = false;
+    cancel.disabled = true;
+  }
+  cancel.onclick = () => { stop(); progress.textContent = 'Canceled. No results were saved.'; };
+  window.addEventListener('pagehide', stop);
+  document.querySelector('#settings').onsubmit = (event) => {
+    event.preventDefault();
+    stop();
+    result.textContent = '';
+    start.disabled = true;
+    cancel.disabled = false;
+    worker = new Worker('/worker.js');
+    worker.onerror = (event) => { progress.textContent = event.message; stop(); };
+    worker.onmessage = async ({ data }) => {
+      if (data.type === 'progress') { progress.textContent = data.message; return; }
+      if (data.type === 'error') { progress.textContent = data.message; stop(); return; }
+      stop();
+      result.textContent = JSON.stringify(data.result, null, 2);
+      progress.textContent = 'Saving results';
+      try {
+        const response = await fetch('/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data.result) });
+        if (!response.ok) throw new Error('Result upload failed');
+        const saved = await response.json();
+        progress.textContent = `Complete. Saved to ${saved.path}`;
+        result.dataset.saved = saved.path;
+      } catch (error) { progress.textContent = `${error.message}. Keep the JSON below to save it by hand.`; }
+    };
+    worker.postMessage({ difficulties: document.querySelector('#difficulties').value.split(',').map(Number), trials: Number(document.querySelector('#trials').value), repetitions: 3, counts: [463, 65536] });
+  };
+  if (new URLSearchParams(location.search).get('autorun') === '1') document.querySelector('#settings').requestSubmit();
+</script>

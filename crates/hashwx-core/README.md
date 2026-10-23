@@ -9,7 +9,7 @@ forbids unsafe code. It inherits the workspace Apache-2.0 license.
 
 Implemented from the [HashWX specification](https://github.com/tevador/hashwx/blob/fde6d2ae34dce266497aed5c093ff7b40a933c3a/doc/specification.md),
 revision `fde6d2ae34dce266497aed5c093ff7b40a933c3a`.
-The implementation was written from that specification without reading, copying,
+The implementation was written from that specification without copying,
 translating, or adapting the upstream LGPL code. Opcode templates and source
 permutation tables come from specification Appendices B and D.
 
@@ -99,13 +99,20 @@ before evaluating its branch, so the initial value does not affect the hash.
 ## Benchmark
 
 ```sh
-cargo run -p hashwx-core --release --example throughput -- 10000
+cargo run -p hashwx-core --release --example hashwx-throughput -- 10000
 ```
 
-Prints instance generation time in microseconds, elapsed hashing time, hashes per
-second, and a checksum. The optional argument specifies the number of hashes.
+Prints JSON with mean generation time, hash throughput, generation plus one
+hash cost, a checksum, and individual solve times at difficulties 1000, 10000
+and 50000. The optional argument sets the nonces per seed. Throughput averages
+three seeds. Solve measurements use three deterministic trials per difficulty.
 
 `node scripts/bench-hashwx-wasm.mjs` measures single-thread WASM interpreter and
 generated-module throughput for 463 and 65536 nonces per seed. It reports setup,
 module compilation/instantiation, hash-only throughput, and total throughput
 including per-seed setup and compilation. Each row averages three distinct seeds.
+
+`node scripts/bench-hashwx-browser.mjs` starts the LAN prototype benchmark on a
+free port. Open its printed LAN URL on the device and select Start benchmark.
+The page reports progress and saves each completed result to
+`target/hashwx-bench/`. See proposal section 8 for the measured values and limits.
