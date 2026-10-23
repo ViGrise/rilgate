@@ -33,7 +33,7 @@ const SERVER: &str = "Server";
 const SITE: &str = "Site";
 const SECURITY: &str = "Security";
 const POW: &str = "Proof of work";
-const POOL: &str = "P2Pool";
+const POOL: &str = "Stratum pool";
 const POLICY: &str = "Policy";
 
 macro_rules! spec {
@@ -92,7 +92,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SECURITY, Text, "security.auth.bind.user_agent", "security-auth-bind-user-agent", "RILGATE_SECURITY_AUTH_BIND_USER_AGENT", None, "Bind the cookie to the User-Agent: full or family"),
   spec!(SECURITY, List, "security.auth.bind.headers", "security-auth-bind-headers", "RILGATE_SECURITY_AUTH_BIND_HEADERS", None, "Client request headers the cookie is bound to"),
   spec!(SECURITY, List, "security.auth.bind.proxy_headers", "security-auth-bind-proxy-headers", "RILGATE_SECURITY_AUTH_BIND_PROXY_HEADERS", None, "Headers set by trusted proxies the cookie is bound to"),
-  spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or p2pool_accepted"),
+  spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or stratum_pool_accepted"),
   spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast or randomx"),
   spec!(POW, Text, "pow.challenge.ttl", "pow-challenge-ttl", "RILGATE_POW_CHALLENGE_TTL", None, "Challenge lifetime"),
   spec!(POW, Text, "pow.challenge.receipt_ttl", "pow-challenge-receipt-ttl", "RILGATE_POW_CHALLENGE_RECEIPT_TTL", None, "Proof receipt lifetime"),
@@ -125,16 +125,16 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.score_step", "pow-algorithms-randomx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_SCORE_STEP", None, "Score that doubles RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.browser.module", "pow-algorithms-randomx-browser-module", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_MODULE", None, "Browser RandomX solver module path"),
-  spec!(POOL, Text, "pow.p2pool.address", "pow-p2pool-address", "RILGATE_POW_P2POOL_ADDRESS", None, "P2Pool Stratum address; setting any P2Pool value enables P2Pool"),
-  spec!(POOL, Secret, "pow.p2pool.password", "pow-p2pool-password", "RILGATE_POW_P2POOL_PASSWORD", None, "P2Pool Stratum password"),
-  spec!(POOL, Text, "pow.p2pool.agent", "pow-p2pool-agent", "RILGATE_POW_P2POOL_AGENT", None, "Stratum user agent"),
-  spec!(POOL, Text, "pow.p2pool.timeout.connect", "pow-p2pool-timeout-connect", "RILGATE_POW_P2POOL_TIMEOUT_CONNECT", None, "P2Pool connect timeout"),
-  spec!(POOL, Text, "pow.p2pool.timeout.submit", "pow-p2pool-timeout-submit", "RILGATE_POW_P2POOL_TIMEOUT_SUBMIT", None, "P2Pool share submit timeout"),
-  spec!(POOL, Text, "pow.p2pool.sessions.max", "pow-p2pool-sessions-max", "RILGATE_POW_P2POOL_SESSIONS_MAX", None, "Concurrent browser mining sessions"),
-  spec!(POOL, Text, "pow.p2pool.sessions.ttl", "pow-p2pool-sessions-ttl", "RILGATE_POW_P2POOL_SESSIONS_TTL", None, "Browser mining session lifetime"),
-  spec!(POOL, Text, "pow.p2pool.job_sessions.mode", "pow-p2pool-job-sessions-mode", "RILGATE_POW_P2POOL_JOB_SESSIONS_MODE", None, "Job connections: pooled or per_challenge"),
-  spec!(POOL, Text, "pow.p2pool.job_sessions.max", "pow-p2pool-job-sessions-max", "RILGATE_POW_P2POOL_JOB_SESSIONS_MAX", None, "Pooled job connections"),
-  spec!(POOL, Text, "pow.p2pool.job_sessions.idle", "pow-p2pool-job-sessions-idle", "RILGATE_POW_P2POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
+  spec!(POOL, Text, "pow.stratum_pool.address", "pow-stratum-pool-address", "RILGATE_POW_STRATUM_POOL_ADDRESS", None, "Stratum pool address; setting any Stratum pool value enables the pool"),
+  spec!(POOL, Secret, "pow.stratum_pool.password", "pow-stratum-pool-password", "RILGATE_POW_STRATUM_POOL_PASSWORD", None, "Stratum pool Stratum password"),
+  spec!(POOL, Text, "pow.stratum_pool.agent", "pow-stratum-pool-agent", "RILGATE_POW_STRATUM_POOL_AGENT", None, "Stratum user agent"),
+  spec!(POOL, Text, "pow.stratum_pool.timeout.connect", "pow-stratum-pool-timeout-connect", "RILGATE_POW_STRATUM_POOL_TIMEOUT_CONNECT", None, "Stratum pool connect timeout"),
+  spec!(POOL, Text, "pow.stratum_pool.timeout.submit", "pow-stratum-pool-timeout-submit", "RILGATE_POW_STRATUM_POOL_TIMEOUT_SUBMIT", None, "Stratum pool share submit timeout"),
+  spec!(POOL, Text, "pow.stratum_pool.sessions.max", "pow-stratum-pool-sessions-max", "RILGATE_POW_STRATUM_POOL_SESSIONS_MAX", None, "Concurrent browser mining sessions"),
+  spec!(POOL, Text, "pow.stratum_pool.sessions.ttl", "pow-stratum-pool-sessions-ttl", "RILGATE_POW_STRATUM_POOL_SESSIONS_TTL", None, "Browser mining session lifetime"),
+  spec!(POOL, Text, "pow.stratum_pool.job_sessions.mode", "pow-stratum-pool-job-sessions-mode", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MODE", None, "Job connections: pooled or per_challenge"),
+  spec!(POOL, Text, "pow.stratum_pool.job_sessions.max", "pow-stratum-pool-job-sessions-max", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MAX", None, "Pooled job connections"),
+  spec!(POOL, Text, "pow.stratum_pool.job_sessions.idle", "pow-stratum-pool-job-sessions-idle", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
   spec!(POLICY, Text, "policy.mode", "policy-mode", "RILGATE_POLICY_MODE", None, "Policy preset: off, light, balanced, strict or custom"),
 ];
 
@@ -228,7 +228,7 @@ impl FromArgMatches for Settings {
 }
 
 /// A document that enables the optional sections whose defaults are shown.
-const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  p2pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
+const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
 
 /// The schema defaults, with the optional sections present so their defaults
 /// are shown too.
@@ -283,7 +283,7 @@ mod tests {
   #[test]
   fn every_path_exists_in_the_schema() {
     let defaults = defaults_of(
-      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  p2pool: {}\n",
+      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\n",
     )
     .unwrap();
     for spec in SPECS {

@@ -215,8 +215,8 @@ difficulty = base * 2^(score / score_step)
 
 The exponent uses integer division and is clamped to 0..63. Multiplication saturates and
 the result is bounded by `pow.algorithms.randomx.difficulty.max`. Fast fallback difficulty is 1 below score 10,
-otherwise `2 * (score / 10)`, bounded to 1..64. RandomX rules need explicit `pow.p2pool`
-infrastructure. `p2pool_accepted` permits only RandomX challenges and grants access only
+otherwise `2 * (score / 10)`, bounded to 1..64. RandomX rules need explicit `pow.stratum_pool`
+infrastructure. `stratum_pool_accepted` permits only RandomX challenges and grants access only
 after an actual accepted Stratum response on the owning session.
 
 In development only, set `policy.score.debug_header.enabled: true` to let the configured header replace the initial

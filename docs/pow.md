@@ -59,23 +59,23 @@ With:
 
 ```yaml
 pow:
-  verification: p2pool_accepted
+  verification: stratum_pool_accepted
 ```
 
 RandomX uses the WebSocket + retained Stratum session and succeeds only after P2Pool
 accepts the share.
 
-`fast` supports only local verification. Policies that select it with `p2pool_accepted`
+`fast` supports only local verification. Policies that select it with `stratum_pool_accepted`
 are rejected. P2Pool-accepted deployments must select RandomX.
 
 ### Hybrid escalation
 
 With local verification, a custom policy can reserve RandomX for higher scores.
-Configure `pow.p2pool` explicitly for RandomX work:
+Configure `pow.stratum_pool` explicitly for RandomX work:
 
 ```yaml
 pow:
-  p2pool:
+  stratum_pool:
     address: 127.0.0.1:3333
 policy:
   mode: custom
@@ -164,7 +164,7 @@ protocol event from a P2Pool Stratum `accepted` response.
 
 ```yaml
 pow:
-  verification: p2pool_accepted
+  verification: stratum_pool_accepted
 ```
 
 Flow:
@@ -279,7 +279,7 @@ Local RandomX work appends a domain marker and a random 16-byte challenge ID to 
 P2Pool-derived blob. Identical pool jobs therefore yield distinct proofs without a
 rebuild of the seed cache. Pool blobs must fit in 233 bytes before the 23-byte suffix.
 Larger jobs return 503. This local work cannot be submitted as a P2Pool share. The
-`p2pool_accepted` mode uses the original pool blob unchanged.
+`stratum_pool_accepted` mode uses the original pool blob unchanged.
 
 `pow.challenge.ttl` controls presentations and fast challenges. `pow.algorithms.randomx.challenge_ttl` controls local
 RandomX solving and defaults to 3600 seconds. Tune it for browser hash rates and policy
@@ -348,9 +348,9 @@ artifact without the validation export.
 
 `pow.verification` sets the proof requirement. With `local_verify`, the gateway
 checks a hash against the difficulty target. The hash can come from a local
-worker or a remote verifier. With `p2pool_accepted`, the gateway waits for P2Pool
+worker or a remote verifier. With `stratum_pool_accepted`, the gateway waits for P2Pool
 to accept the share. A remote verifier does not replace pool acceptance. Both
-modes still need `pow.p2pool.address` to get work.
+modes still need `pow.stratum_pool.address` to get work.
 
 Set `pow.algorithms.randomx.verify.order` to select the hash location:
 
@@ -385,7 +385,7 @@ Use a custom policy to select RandomX. Presets select Fast explicitly, so
 pow:
   verification: local_verify
   default_algorithm: randomx
-  p2pool:
+  stratum_pool:
     address: pool.internal:3333
 policy:
   mode: custom

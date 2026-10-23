@@ -9,7 +9,7 @@ pub use model::{BrowserConfig, PowConfig, RateLimitConfig};
 pub use rilgate_crypto::Secret;
 pub use rilgate_policy::{ChallengePolicy, PolicyAction};
 pub mod schema;
-pub use rilgate_pool::P2PoolConfig;
+pub use rilgate_pool::StratumPoolConfig;
 pub use rilgate_pow::difficulty::DifficultyConfig;
 pub use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 pub use runtime::*;

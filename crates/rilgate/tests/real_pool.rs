@@ -73,7 +73,7 @@ async fn real_pool_challenge_and_upstream() -> Result<()> {
       .bytes()
       .await?,
   )?;
-  let receipt = if config["enforce"] == "p2pool_accepted" {
+  let receipt = if config["enforce"] == "stratum_pool_accepted" {
     let url = format!(
       "{}{prefix}/api/ws?presentation_token={token}",
       base.replacen("http", "ws", 1)

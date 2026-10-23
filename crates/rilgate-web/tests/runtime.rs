@@ -649,7 +649,7 @@ fn generated_manifest_matches_sources_and_declares_startup_order() {
       "static/js/challenge/promise.js",
       "static/js/challenge/runtime.js",
       "static/js/challenge/registry.js",
-      "static/js/challenge/p2pool.js",
+      "static/js/challenge/stratum-pool.js",
       "static/js/solvers/fast/worker.js",
       "static/js/solvers/fast/solver.js",
       "static/js/solvers/fast/adapter.js",

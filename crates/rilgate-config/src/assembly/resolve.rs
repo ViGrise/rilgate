@@ -1,5 +1,5 @@
 use crate::{
-  schema::{Document, pow::P2Pool, site::Seed},
+  schema::{Document, pow::StratumPool, site::Seed},
   *,
 };
 use anyhow::{Context, Result, ensure};
@@ -49,20 +49,20 @@ impl Document {
         (None, None) => anyhow::bail!("security: set secret or both keys.challenge and keys.auth"),
       };
     let needs_pool = self.pow.default_algorithm == PowAlgorithm::RandomX
-      || self.pow.verification == PowEnforcement::P2poolAccepted
+      || self.pow.verification == PowEnforcement::StratumPoolAccepted
       || self
         .policy
         .challenges()?
         .iter()
         .any(|(_, c)| c.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::RandomX);
     ensure!(
-      !needs_pool || self.pow.p2pool.is_some(),
-      "pow.p2pool.address: required when RandomX jobs or p2pool_accepted verification are enabled"
+      !needs_pool || self.pow.stratum_pool.is_some(),
+      "pow.stratum_pool.address: required when RandomX jobs or stratum_pool_accepted verification are enabled"
     );
-    let fallback = P2Pool::default();
-    let pool = self.pow.p2pool.as_ref().unwrap_or(&fallback);
+    let fallback = StratumPool::default();
+    let pool = self.pow.stratum_pool.as_ref().unwrap_or(&fallback);
     let url = url::Url::parse(&format!("tcp://{}", pool.address))
-      .context("pow.p2pool.address: expected HOST:PORT or [IPv6]:PORT")?;
+      .context("pow.stratum_pool.address: expected HOST:PORT or [IPv6]:PORT")?;
     ensure!(
       url.host_str().is_some()
         && url.port().is_some()
@@ -71,7 +71,7 @@ impl Document {
         && url.path().is_empty()
         && url.query().is_none()
         && url.fragment().is_none(),
-      "pow.p2pool.address: expected HOST:PORT without credentials or a path"
+      "pow.stratum_pool.address: expected HOST:PORT without credentials or a path"
     );
     let randomx = &self.pow.algorithms.randomx;
     let mut verify = randomx.verify.clone();
@@ -158,7 +158,7 @@ impl Document {
           global_burst: self.pow.rate_limit.global.burst,
           global_refill_per_second: self.pow.rate_limit.global.refill_per_second,
         },
-        p2pool: P2PoolConfig {
+        stratum_pool: StratumPoolConfig {
           host: url.host_str().unwrap().trim_matches(['[', ']']).into(),
           port: url.port().unwrap(),
           password: pool.password.clone(),

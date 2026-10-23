@@ -156,17 +156,17 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
     resolve(&format!("{BASE}pow:\n  default_algorithm: randomx\n"))
       .unwrap_err()
       .to_string()
-      .contains("pow.p2pool.address")
+      .contains("pow.stratum_pool.address")
   );
   let config = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: p2pool_accepted\n  p2pool:\n    address: '[::1]:3333'\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    address: '[::1]:3333'\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
   );
   let cfg = resolve(&config).unwrap();
   assert!(cfg.pow.randomx_enabled);
-  assert_eq!(cfg.pow.p2pool.host, "::1");
-  assert_eq!(cfg.pow.p2pool.connect_timeout.as_millis(), 300);
+  assert_eq!(cfg.pow.stratum_pool.host, "::1");
+  assert_eq!(cfg.pow.stratum_pool.connect_timeout.as_millis(), 300);
   assert_eq!(
-    cfg.pow.p2pool.job_session_mode,
+    cfg.pow.stratum_pool.job_session_mode,
     rilgate_pool::JobSessionMode::PerChallenge
   );
   assert!(resolve(&config.replace("per_challenge", "unknown")).is_err());
@@ -185,7 +185,7 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
 fn resolved_output_redacts_every_key_and_password() {
   let config = BASE.replace("  secret: '0123456789abcdef0123456789abcdef'", "  keys:\n    challenge: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    auth: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n    challenge_rotation:\n      active_id: current\n      previous:\n        old: cccccccccccccccccccccccccccccccc");
   let document = parse(&format!(
-    "{config}pow:\n  p2pool:\n    password: private-pool-password\n"
+    "{config}pow:\n  stratum_pool:\n    password: private-pool-password\n"
   ))
   .unwrap();
   let cfg = document.resolve().unwrap();
@@ -213,7 +213,7 @@ fn resolved_output_redacts_every_key_and_password() {
 fn all_rule_challenges_are_validated_before_runtime_construction() {
   for (algorithm, difficulty) in [("fast", 0), ("fast", 65), ("randomx", 999)] {
     let config = format!(
-      "{BASE}pow:\n  p2pool: {{address: '127.0.0.1:3333'}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
+      "{BASE}pow:\n  stratum_pool: {{address: '127.0.0.1:3333'}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
     );
     let error = format!("{:#}", resolve(&config).unwrap_err());
     assert!(error.contains("difficulty"), "{error}");
@@ -547,11 +547,14 @@ fn randomx_verification_rejects_invalid_order_endpoint_and_tls() {
 fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_only() {
   use rilgate_config::{PowEnforcement, schema::pow::Hasher};
   let mut document = parse(BASE).unwrap();
-  document.pow.p2pool = Some(Default::default());
+  document.pow.stratum_pool = Some(Default::default());
   let cfg = document.resolve().unwrap();
   let mut pow = cfg.pow.clone();
   pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n")).unwrap().policy;
-  for enforce in [PowEnforcement::LocalVerify, PowEnforcement::P2poolAccepted] {
+  for enforce in [
+    PowEnforcement::LocalVerify,
+    PowEnforcement::StratumPoolAccepted,
+  ] {
     for algorithm in [PowAlgorithm::Fast, PowAlgorithm::RandomX] {
       for order in [
         vec![Hasher::Local],
@@ -581,4 +584,21 @@ fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_on
   pow.default_algorithm = PowAlgorithm::Fast;
   pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: randomx\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge: {{algorithm: randomx}}\n")).unwrap().policy;
   assert!(pow.needs_remote_verifier());
+}
+
+#[test]
+fn renamed_pool_keys_fail_with_the_new_name() {
+  for (text, expected) in [
+    (
+      "pow:\n  p2pool: {}\n",
+      "pow.p2pool: renamed to pow.stratum_pool",
+    ),
+    (
+      "pow:\n  verification: p2pool_accepted\n",
+      "pow.verification: p2pool_accepted is renamed to stratum_pool_accepted",
+    ),
+  ] {
+    let error = format!("{:#}", parse(&format!("{BASE}{text}")).unwrap_err());
+    assert!(error.contains(expected), "{error}");
+  }
 }

@@ -65,7 +65,7 @@ followed by the flag in upper snake case. There are no exceptions.
 | `security.secret` | `--security-secret`, `-s` | `RILGATE_SECURITY_SECRET` |
 | `server.max_connections` | `--server-max-connections` | `RILGATE_SERVER_MAX_CONNECTIONS` |
 | `site.i18n.default` | `--site-i18n-default` | `RILGATE_SITE_I18N_DEFAULT` |
-| `pow.p2pool.address` | `--pow-p2pool-address` | `RILGATE_POW_P2POOL_ADDRESS` |
+| `pow.stratum_pool.address` | `--pow-stratum-pool-address` | `RILGATE_POW_STRATUM_POOL_ADDRESS` |
 
 `rilgate --help` lists every setting with its YAML path and default. Values are validated by
 the schema exactly like `${VARIABLE_NAME}` references, so durations take `5s` and
@@ -74,7 +74,7 @@ sizes take `16MiB`. An invalid value names its flag or variable.
 Boolean flags alone mean `true` and accept `--flag=false`. Lists are comma-separated
 or repeated and replace the YAML list. An empty value clears it.
 
-Any `pow.p2pool.*` value enables P2Pool with defaults for the rest. Policy rules, IP sets
+Any `pow.stratum_pool.*` value enables P2Pool with defaults for the rest. Policy rules, IP sets
 and signing key rotation (`security.keys`) are YAML only. Pass the secret through
 `RILGATE_SECURITY_SECRET`. Do not use `--security-secret`, because process arguments are visible to other
 local users.
@@ -142,7 +142,7 @@ warning-free configuration, run it in CI or before deployment.
 | `verifier-remote-credentials` | production | error | Remote hashing lacks CA, client certificate or client key |
 | `verifier-remote-missing` | both | error | Order selects remote without an endpoint |
 | `verifier-local-fallback` | both | warning | Local follows remote; outages can build a 256 MiB cache on every gateway |
-| `verifier-remote-unused` | both | warning | Order selects remote while no challenge selects RandomX or verification is p2pool_accepted |
+| `verifier-remote-unused` | both | warning | Order selects remote while no challenge selects RandomX or verification is stratum_pool_accepted |
 | `trusted-proxy-broad` | production | error | A public `server.trusted_proxies` network is broader than `/8` (IPv4) or `/16` (IPv6) |
 | `debug-score-header` | production | error | `policy.score.debug_header.enabled` is `true` |
 | `ip-set-plain-http` | production | error | A remote IP set `url` does not use `https` |
@@ -232,7 +232,7 @@ or overflow.
 | `policy.mode` | `balanced` |
 | `policy.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
 
-When `pow.p2pool` is enabled, its defaults are:
+When `pow.stratum_pool` is enabled, its defaults are:
 
 - Address `127.0.0.1:3333`, password `x`, and agent `rilgate/<version>`.
 - Connect timeout `5s` and submit timeout `20s`.

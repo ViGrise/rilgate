@@ -62,8 +62,8 @@ async fn login(
 async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<()>) {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.enforce = PowEnforcement::P2poolAccepted;
-  pow.p2pool.port = p2pool_port;
+  pow.enforce = PowEnforcement::StratumPoolAccepted;
+  pow.stratum_pool.port = p2pool_port;
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -184,7 +184,7 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
       .verify_auth_token(&token, &claims.host, &unbound())
       .unwrap()
       .enforce,
-    PowEnforcement::P2poolAccepted
+    PowEnforcement::StratumPoolAccepted
   );
   ws.close(None).await.unwrap();
   p2pool.await.unwrap();
@@ -213,12 +213,12 @@ async fn a_silent_p2pool_submission_expires() {
 #[tokio::test]
 async fn session_capacity_returns_503_and_releases_when_a_permit_is_dropped() {
   let mut cfg = common::config();
-  let p2pool = &mut Arc::get_mut(&mut cfg).unwrap().pow.p2pool;
+  let p2pool = &mut Arc::get_mut(&mut cfg).unwrap().pow.stratum_pool;
   p2pool.max_sessions = 1;
   // Pooled job sessions draw from the same permit budget, so the cap has to
   // follow max_sessions down or configuration validation rejects the pair.
   p2pool.max_job_sessions = 1;
-  let service = rilgate_pool::P2PoolProvider::new(cfg.pow.p2pool.clone()).unwrap();
+  let service = rilgate_pool::StratumPoolProvider::new(cfg.pow.stratum_pool.clone()).unwrap();
   let permit = service.acquire_slot().unwrap();
   let error = service.acquire_slot().unwrap_err();
   assert!(error.is::<CapacityExceeded>());

@@ -1,5 +1,5 @@
 use super::WorkProvider;
-use crate::P2PoolConfig;
+use crate::StratumPoolConfig;
 use anyhow::Result;
 use rilgate_core::{
   BoxFuture,
@@ -66,7 +66,7 @@ impl PooledSession {
     loop {
       if self.is_closed() {
         return Err(anyhow::anyhow!(
-          "pooled P2Pool session is no longer running"
+          "pooled Stratum pool session is no longer running"
         ));
       }
       if let Some(job) = self.jobs.borrow_and_update().clone() {
@@ -76,13 +76,13 @@ impl PooledSession {
         .jobs
         .changed()
         .await
-        .map_err(|_| anyhow::anyhow!("pooled P2Pool session did not initialize"))?;
+        .map_err(|_| anyhow::anyhow!("pooled Stratum pool session did not initialize"))?;
     }
   }
 }
 
-pub struct P2PoolProvider {
-  config: P2PoolConfig,
+pub struct StratumPoolProvider {
+  config: StratumPoolConfig,
   slots: Arc<Semaphore>,
   job_slots: Arc<Semaphore>,
   sessions: Mutex<HashMap<u64, PooledSession>>,
@@ -94,8 +94,8 @@ pub struct P2PoolProvider {
 
 const CONNECT_ATTEMPTS: usize = 2;
 
-impl P2PoolProvider {
-  pub fn new(config: P2PoolConfig) -> Result<Self> {
+impl StratumPoolProvider {
+  pub fn new(config: StratumPoolConfig) -> Result<Self> {
     config.validate()?;
     Ok(Self {
       job_slots: Arc::new(Semaphore::new(config.max_job_sessions)),
@@ -180,7 +180,7 @@ impl P2PoolProvider {
         Err(error) => last_error = Some(error),
       }
     }
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("unable to obtain a P2Pool job")))
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("unable to obtain a Stratum pool job")))
   }
 
   async fn open_ephemeral(&self, difficulty: u64) -> Result<StratumJob> {
@@ -207,7 +207,7 @@ impl P2PoolProvider {
         ?error,
         failures,
         capacity_failures,
-        "P2Pool challenge unavailable"
+        "Stratum pool challenge unavailable"
       );
     }
   }
@@ -229,7 +229,7 @@ async fn run_session(
   let mut session = match connected {
     Ok(session) => session,
     Err(error) => {
-      tracing::debug!(?error, "Unable to open pooled P2Pool session");
+      tracing::debug!(?error, "Unable to open pooled Stratum pool session");
       return;
     }
   };
@@ -258,7 +258,7 @@ async fn run_session(
       }
       event = session.read_event() => {
         if event.is_err() {
-          tracing::debug!("Pooled P2Pool session connection lost");
+          tracing::debug!("Pooled Stratum pool session connection lost");
           return;
         }
         jobs.send_if_modified(|current| {
@@ -274,7 +274,7 @@ async fn run_session(
   }
 }
 
-impl WorkProvider for P2PoolProvider {
+impl WorkProvider for StratumPoolProvider {
   type Work = StratumJob;
   fn fetch(&self, difficulty: u64) -> BoxFuture<'_, StratumJob> {
     Box::pin(async move {

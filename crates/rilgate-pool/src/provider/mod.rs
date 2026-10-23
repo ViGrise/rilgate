@@ -1,4 +1,4 @@
 mod contract;
-mod p2pool;
+mod stratum_pool;
 pub use contract::WorkProvider;
-pub use p2pool::P2PoolProvider;
+pub use stratum_pool::StratumPoolProvider;

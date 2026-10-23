@@ -150,9 +150,9 @@ beyond `pow.algorithms.randomx.verifier_queue` receive `503`. Queued work whose 
 exceeds its deadline is skipped. Seed changes release the old cache before allocation of
 another one.
 
-P2Pool connections share `pow.p2pool.sessions.max` slots across HTTP job fetches and WebSocket
+P2Pool connections share `pow.stratum_pool.sessions.max` slots across HTTP job fetches and WebSocket
 sessions. Excess requests receive `503` before upgrade or login. WebSocket
-sessions expire after `pow.p2pool.sessions.ttl`, and pending submissions expire after `pow.p2pool.timeout.submit`.
+sessions expire after `pow.stratum_pool.sessions.ttl`, and pending submissions expire after `pow.stratum_pool.timeout.submit`.
 
 Job rotation does not discard an outstanding acceptance response. Shares must match the
 current job and the selected difficulty before submission. Access still requires the
@@ -160,17 +160,17 @@ matching P2Pool acceptance. Gateway clients send the nonce as a numeric hexadeci
 value. The Stratum adapter converts it to the little-endian byte encoding expected by
 P2Pool.
 
-Challenge issuance keeps its Stratum sessions open in a pool of at most `pow.p2pool.job_sessions.max`. A
+Challenge issuance keeps its Stratum sessions open in a pool of at most `pow.stratum_pool.job_sessions.max`. A
 task owns each session and tracks job rotation while idle. Challenge issuance thus
 reuses a connection.
 
 It does not open a new one. Those sessions take permits from `sessions.max`, so
 `job_sessions.max` must not exceed it and the remainder stays available to WebSocket sessions.
-A session unused for `pow.p2pool.job_sessions.idle` is closed.
+A session unused for `pow.stratum_pool.job_sessions.idle` is closed.
 
 Incoming job notifications do not extend that deadline. The idle clock starts when the
 initial job becomes available, so connection and login time does not consume it. With
-`pow.p2pool.job_sessions.mode: per_challenge`, each challenge uses one connection within the shared `sessions.max` budget.
+`pow.stratum_pool.job_sessions.mode: per_challenge`, each challenge uses one connection within the shared `sessions.max` budget.
 Zero is not a mode selector.
 
 One pooled session per difficulty publishes its latest job to all matching issuance
@@ -195,7 +195,7 @@ pow:
   algorithms:
     randomx:
       verifier_queue: 8
-  p2pool:
+  stratum_pool:
     address: 127.0.0.1:3333
     timeout:
       submit: 20s

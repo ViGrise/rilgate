@@ -192,7 +192,8 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
       report("verifier-local-fallback", Severity::Warning,
         "pow.algorithms.randomx.verify.order: remote outages can build a 256 MiB cache on every gateway".into());
     }
-    if !config.pow.selects_randomx() || config.pow.enforce == crate::PowEnforcement::P2poolAccepted
+    if !config.pow.selects_randomx()
+      || config.pow.enforce == crate::PowEnforcement::StratumPoolAccepted
     {
       report("verifier-remote-unused", Severity::Warning,
         "pow.algorithms.randomx.verify.order: remote hashing is unused by the configured challenges and verification mode".into());

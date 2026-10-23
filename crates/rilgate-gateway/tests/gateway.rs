@@ -180,7 +180,7 @@ async fn unsolved_randomx_challenge_cannot_be_exchanged_or_used_as_auth() {
       .is_err()
   );
   let receipt = service
-    .issue_p2pool_receipt(1000, "example.test".into())
+    .issue_stratum_pool_receipt(1000, "example.test".into())
     .unwrap();
   assert!(
     service
@@ -509,7 +509,7 @@ async fn unavailable_p2pool_returns_service_unavailable_after_valid_presentation
   drop(listener);
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.p2pool.port = port;
+  pow.stratum_pool.port = port;
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()

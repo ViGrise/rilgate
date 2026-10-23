@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use rilgate_config::schema::policy::{Action, Condition, Definition, Mode, Rule, StringMatch};
 use rilgate_config::{
   BrowserConfig, ChallengePolicy, Config, Configuration, DifficultyConfig, Environment,
-  P2PoolConfig, PowAlgorithm, PowConfig, PowEnforcement, Secret, UpstreamConfig, WebConfig,
+  PowAlgorithm, PowConfig, PowEnforcement, Secret, StratumPoolConfig, UpstreamConfig, WebConfig,
 };
 
 pub fn config() -> Config {
@@ -45,7 +45,7 @@ pub fn config() -> Config {
       randomx_verify: Default::default(),
       randomx_cache_idle_timeout: std::time::Duration::from_secs(1800),
       rate_limit: Default::default(),
-      p2pool: P2PoolConfig {
+      stratum_pool: StratumPoolConfig {
         host: "127.0.0.1".into(),
         port: 3333,
         password: Secret("x".into()),

@@ -1,6 +1,6 @@
 mod common;
 
-use rilgate_pool::{P2PoolProvider, WorkProvider};
+use rilgate_pool::{StratumPoolProvider, WorkProvider};
 use serde_json::json;
 use std::time::Duration;
 use tokio::{
@@ -30,7 +30,7 @@ async fn login(socket: TcpStream, difficulty: u64) -> BufReader<TcpStream> {
 #[tokio::test]
 async fn unpooled_fetches_connect_per_job_and_share_the_session_budget() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let mut cfg = common::config().pow.p2pool.clone();
+  let mut cfg = common::config().pow.stratum_pool.clone();
   cfg.port = listener.local_addr().unwrap().port();
   cfg.job_session_mode = rilgate_pool::JobSessionMode::PerChallenge;
   cfg.max_sessions = 1;
@@ -41,7 +41,7 @@ async fn unpooled_fetches_connect_per_job_and_share_the_session_budget() {
       assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
     }
   });
-  let pool = P2PoolProvider::new(cfg).unwrap();
+  let pool = StratumPoolProvider::new(cfg).unwrap();
   let permit = pool.acquire_slot().unwrap();
   assert!(pool.fetch(1000).await.is_err());
   drop(permit);
@@ -62,7 +62,7 @@ async fn unpooled_fetches_connect_per_job_and_share_the_session_budget() {
 #[tokio::test]
 async fn job_notifications_do_not_keep_unused_sessions_alive() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let mut cfg = common::config().pow.p2pool.clone();
+  let mut cfg = common::config().pow.stratum_pool.clone();
   cfg.port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
@@ -95,7 +95,7 @@ async fn job_notifications_do_not_keep_unused_sessions_alive() {
     }
     listener
   });
-  let pool = P2PoolProvider::new(cfg).unwrap();
+  let pool = StratumPoolProvider::new(cfg).unwrap();
   pool.fetch(1000).await.unwrap();
   rotation.await.unwrap();
   tokio::time::timeout(Duration::from_secs(2), async {
@@ -125,7 +125,7 @@ async fn job_notifications_do_not_keep_unused_sessions_alive() {
 #[tokio::test]
 async fn concurrent_fetches_share_one_initializing_session_and_follow_job_rotation() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let mut cfg = common::config().pow.p2pool.clone();
+  let mut cfg = common::config().pow.stratum_pool.clone();
   cfg.port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
@@ -148,7 +148,7 @@ async fn concurrent_fetches_share_one_initializing_session_and_follow_job_rotati
     );
     assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
   });
-  let pool = std::sync::Arc::new(P2PoolProvider::new(cfg).unwrap());
+  let pool = std::sync::Arc::new(StratumPoolProvider::new(cfg).unwrap());
   let mut requests = tokio::task::JoinSet::new();
   for _ in 0..128 {
     let pool = pool.clone();
@@ -178,7 +178,7 @@ async fn concurrent_fetches_share_one_initializing_session_and_follow_job_rotati
 #[tokio::test]
 async fn disconnected_shared_sessions_are_replaced() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let mut cfg = common::config().pow.p2pool.clone();
+  let mut cfg = common::config().pow.stratum_pool.clone();
   cfg.port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
@@ -200,7 +200,7 @@ async fn disconnected_shared_sessions_are_replaced() {
       .unwrap();
     assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
   });
-  let pool = P2PoolProvider::new(cfg).unwrap();
+  let pool = StratumPoolProvider::new(cfg).unwrap();
   assert_eq!(pool.fetch(1000).await.unwrap().job_id, "first");
   disconnect.send(()).unwrap();
   closure.await.unwrap();
@@ -228,7 +228,7 @@ async fn disconnected_shared_sessions_are_replaced() {
 #[tokio::test]
 async fn canceling_a_fetch_does_not_cancel_the_shared_connection() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let mut cfg = common::config().pow.p2pool.clone();
+  let mut cfg = common::config().pow.stratum_pool.clone();
   cfg.port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
@@ -244,7 +244,7 @@ async fn canceling_a_fetch_does_not_cancel_the_shared_connection() {
     let mut socket = login(socket, 1000).await;
     assert_eq!(socket.read(&mut [0; 1]).await.unwrap(), 0);
   });
-  let pool = std::sync::Arc::new(P2PoolProvider::new(cfg).unwrap());
+  let pool = std::sync::Arc::new(StratumPoolProvider::new(cfg).unwrap());
   let canceled = {
     let pool = pool.clone();
     tokio::spawn(async move { pool.fetch(1000).await })

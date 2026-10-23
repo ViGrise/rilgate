@@ -8,6 +8,16 @@ use std::path::{Path, PathBuf};
 /// neither `--config` nor `RILGATE_CONFIG` selects one.
 const DEFAULT_PATHS: &[&str] = &["rilgate.yml", "config/rilgate.yml"];
 
+/// Configuration sections with a new name. An old name fails with the new one,
+/// so an operator does not lose a setting without notice.
+const RENAMED_SECTIONS: &[(&str, &str)] = &[("pow.p2pool", "pow.stratum_pool")];
+/// Setting values with a new name, as (setting path, old value, new value).
+const RENAMED_VALUES: &[(&str, &str, &str)] = &[(
+  "pow.verification",
+  "p2pool_accepted",
+  "stratum_pool_accepted",
+)];
+
 /// A loaded document with warnings for the caller to report once logging is
 /// available.
 pub struct Loaded {
@@ -16,6 +26,7 @@ pub struct Loaded {
 }
 
 pub fn load(args: &Overrides) -> Result<Loaded> {
+  reject_renamed_environment(std::env::vars_os().filter_map(|(name, _)| name.into_string().ok()))?;
   let explicit = args
     .config
     .clone()
@@ -82,6 +93,7 @@ pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
   } else {
     serde_yaml_ng::from_str(text).context("configuration YAML")?
   };
+  reject_renamed(&value, settings)?;
   let mut value = expand(value, "", 0)?;
   for setting in settings {
     assign(&mut value, setting)
@@ -97,6 +109,43 @@ pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
       .unwrap_or_default();
     anyhow::anyhow!("Configuration error at {path}{source}: {}", error.inner())
   })
+}
+
+fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
+  let lookup = |path: &str| {
+    path
+      .split('.')
+      .try_fold(document, |node, key| node.get(key))
+  };
+  for (old, new) in RENAMED_SECTIONS {
+    ensure!(lookup(old).is_none(), "{old}: renamed to {new}");
+  }
+  for (path, old, new) in RENAMED_VALUES {
+    let in_document = lookup(path).and_then(Value::as_str) == Some(*old);
+    let in_settings = settings.iter().any(|setting| {
+      setting.path == *path && matches!(&setting.value, SettingValue::Scalar(text) if text == old)
+    });
+    ensure!(
+      !in_document && !in_settings,
+      "{path}: {old} is renamed to {new}"
+    );
+  }
+  Ok(())
+}
+
+/// Fails for an environment variable of a renamed section. Without this check,
+/// the variable has no effect.
+fn reject_renamed_environment(names: impl Iterator<Item = String>) -> Result<()> {
+  let variable = |path: &str| format!("RILGATE_{}_", path.replace('.', "_").to_uppercase());
+  for name in names {
+    for (old, new) in RENAMED_SECTIONS {
+      let prefix = variable(old);
+      if let Some(rest) = name.strip_prefix(&prefix) {
+        anyhow::bail!("{name}: renamed to {}{rest}", variable(new));
+      }
+    }
+  }
+  Ok(())
 }
 
 fn assign(root: &mut value::Expanded, setting: &Setting) -> Result<()> {
@@ -115,7 +164,7 @@ fn assign(root: &mut value::Expanded, setting: &Setting) -> Result<()> {
   let mut keys = setting.path.split('.').peekable();
   while let Some(key) = keys.next() {
     // An absent or null section becomes a mapping, so a setting can enable an
-    // optional section such as `pow.p2pool`.
+    // optional section such as `pow.stratum_pool`.
     if matches!(node, Expanded::Scalar(Value::Null)) {
       *node = Expanded::Mapping(Vec::new());
     }
@@ -213,4 +262,24 @@ fn interpolate(text: &str, path: &str) -> Result<String> {
   output.push_str(remaining);
   ensure!(output.len() <= 65_536, "{path}: value exceeds 64 KiB");
   Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn environment_variables_of_renamed_sections_fail_with_the_new_name() {
+    let error =
+      super::reject_renamed_environment(["RILGATE_POW_P2POOL_ADDRESS".to_string()].into_iter())
+        .unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "RILGATE_POW_P2POOL_ADDRESS: renamed to RILGATE_POW_STRATUM_POOL_ADDRESS"
+    );
+    assert!(
+      super::reject_renamed_environment(
+        ["RILGATE_POW_STRATUM_POOL_ADDRESS".to_string()].into_iter()
+      )
+      .is_ok()
+    );
+  }
 }

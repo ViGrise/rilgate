@@ -29,7 +29,13 @@ pub async fn check(state: &AppState) -> Response {
   );
   let pool = async {
     if needs_pool {
-      Some(connect(state.cfg.pow.p2pool.host.clone(), state.cfg.pow.p2pool.port).await)
+      Some(
+        connect(
+          state.cfg.pow.stratum_pool.host.clone(),
+          state.cfg.pow.stratum_pool.port,
+        )
+        .await,
+      )
     } else {
       None
     }

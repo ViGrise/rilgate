@@ -11,7 +11,7 @@ pub struct Pow {
   pub challenge: Challenge,
   pub rate_limit: RateLimit,
   pub algorithms: Algorithms,
-  pub p2pool: Option<P2Pool>,
+  pub stratum_pool: Option<StratumPool>,
 }
 impl Default for Pow {
   fn default() -> Self {
@@ -21,7 +21,7 @@ impl Default for Pow {
       challenge: Challenge::default(),
       rate_limit: RateLimit::default(),
       algorithms: Algorithms::default(),
-      p2pool: None,
+      stratum_pool: None,
     }
   }
 }
@@ -156,7 +156,7 @@ impl Default for Browser {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct P2Pool {
+pub struct StratumPool {
   pub address: String,
   pub password: Secret,
   pub agent: String,
@@ -164,7 +164,7 @@ pub struct P2Pool {
   pub sessions: Sessions,
   pub job_sessions: JobSessions,
 }
-impl Default for P2Pool {
+impl Default for StratumPool {
   fn default() -> Self {
     Self {
       address: "127.0.0.1:3333".into(),

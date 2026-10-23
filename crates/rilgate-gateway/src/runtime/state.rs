@@ -10,7 +10,7 @@ pub struct AppState {
   pub requests: Arc<tokio::sync::Semaphore>,
   pub probes: Arc<tokio::sync::Semaphore>,
   pub pow: Arc<ChallengeService>,
-  pub pool: Arc<rilgate_pool::P2PoolProvider>,
+  pub pool: Arc<rilgate_pool::StratumPoolProvider>,
   pub shutdown: tokio_util::sync::CancellationToken,
   pub limiter: Arc<crate::transport::rate_limit::RateLimiter>,
   pub proxy: Arc<ProxyService>,

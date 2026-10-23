@@ -64,7 +64,7 @@ impl PowConfig {
       "pow.algorithms.randomx.cache.idle_timeout must be at most 7d"
     );
     self.auth_binding.validate()?;
-    self.p2pool.validate()?;
+    self.stratum_pool.validate()?;
     for (path, ttl) in [
       ("pow.challenge.ttl", self.challenge_ttl_seconds),
       (
@@ -114,9 +114,9 @@ impl PowConfig {
     for (name, selection) in self.policy.challenges()? {
       let algorithm = selection.algorithm.unwrap_or(self.default_algorithm);
       ensure!(
-        self.enforce != crate::PowEnforcement::P2poolAccepted
+        self.enforce != crate::PowEnforcement::StratumPoolAccepted
           || algorithm == crate::PowAlgorithm::RandomX,
-        "policy ({name}): p2pool_accepted requires RandomX challenges"
+        "policy ({name}): stratum_pool_accepted requires RandomX challenges"
       );
       if let Some(difficulty) = selection.difficulty {
         let valid = match algorithm {

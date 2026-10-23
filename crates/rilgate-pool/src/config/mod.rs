@@ -7,7 +7,7 @@ pub enum JobSessionMode {
 
 use rilgate_crypto::Secret;
 #[derive(Debug, Clone)]
-pub struct P2PoolConfig {
+pub struct StratumPoolConfig {
   pub host: String,
   pub port: u16,
   pub password: Secret,
@@ -22,17 +22,17 @@ pub struct P2PoolConfig {
   pub job_session_idle: std::time::Duration,
 }
 
-impl P2PoolConfig {
+impl StratumPoolConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     anyhow::ensure!(
       (1..=4096).contains(&self.max_sessions),
-      "pow.p2pool.sessions.max must be between 1 and 4096"
+      "pow.stratum_pool.sessions.max must be between 1 and 4096"
     );
     anyhow::ensure!(
       (1..=4096).contains(&self.max_job_sessions)
         && (self.job_session_mode == JobSessionMode::PerChallenge
           || self.max_job_sessions <= self.max_sessions),
-      "pow.p2pool.job_sessions.max must not exceed pow.p2pool.sessions.max, because \
+      "pow.stratum_pool.job_sessions.max must not exceed pow.stratum_pool.sessions.max, because \
        pooled job sessions hold permits from the same budget as WebSocket sessions"
     );
     for (path, duration) in [
@@ -43,14 +43,14 @@ impl P2PoolConfig {
     ] {
       anyhow::ensure!(
         !duration.is_zero() && duration <= std::time::Duration::from_secs(31_536_000),
-        "pow.p2pool.{path}: expected a positive duration of at most one year"
+        "pow.stratum_pool.{path}: expected a positive duration of at most one year"
       );
     }
     Ok(())
   }
 }
 
-impl P2PoolConfig {
+impl StratumPoolConfig {
   pub fn stratum(&self) -> rilgate_stratum::StratumConfig {
     rilgate_stratum::StratumConfig {
       host: self.host.clone(),

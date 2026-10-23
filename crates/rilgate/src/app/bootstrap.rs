@@ -1,14 +1,16 @@
 use anyhow::Result;
 use rilgate_challenge::ChallengeService;
 use rilgate_config::Config;
-use rilgate_pool::P2PoolProvider;
+use rilgate_pool::StratumPoolProvider;
 use rilgate_pow::AlgorithmRegistry;
 use rilgate_pow_hash::{FastAlgorithm, FastConfig};
 use rilgate_pow_randomx::{RandomXAlgorithm, RandomXConfig};
 use std::sync::Arc;
-pub(super) fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2PoolProvider>)> {
+pub(super) fn services(
+  config: &Config,
+) -> Result<(Arc<ChallengeService>, Arc<StratumPoolProvider>)> {
   let cfg = &config.pow;
-  let pool = Arc::new(P2PoolProvider::new(cfg.p2pool.clone())?);
+  let pool = Arc::new(StratumPoolProvider::new(cfg.stratum_pool.clone())?);
   let mut registry = AlgorithmRegistry::default();
   registry.register(Arc::new(FastAlgorithm::new(&FastConfig {
     ttl: cfg.challenge_ttl_seconds,

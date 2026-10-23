@@ -368,7 +368,7 @@ security:
 # pow:
   # local_verify checks Fast SHA-256 or RandomX proofs on this gateway.
   # Compatible signed local proofs can be verified across instances.
-  # p2pool_accepted requires RandomX challenges and an actual accepted share
+  # stratum_pool_accepted requires RandomX challenges and an actual accepted share
   # response from P2Pool, through a retained WebSocket/Stratum session. HTTP
   # RandomX issue/verify is unavailable in that mode. Route sessions back to
   # their owning gateway; there is no distributed session store.
@@ -517,7 +517,7 @@ security:
   # Omitted by default. Required whenever RandomX jobs or pool acceptance are
   # selected. Merely adding this section does not switch the policy to RandomX.
   #
-  # p2pool:
+  # stratum_pool:
     # Stratum host:port or [IPv6]:port. No URL scheme, credentials or path.
     #
     # address: 127.0.0.1:3333
@@ -536,7 +536,7 @@ security:
       # connect: 5s
 
       # Maximum wait for the pool response to a submitted share. A locally valid
-      # hash alone does not grant access with p2pool_accepted verification.
+      # hash alone does not grant access with stratum_pool_accepted verification.
       #
       # submit: 20s
     # sessions:
@@ -649,7 +649,7 @@ security:
       # to use the default algorithm or score-derived difficulty, respectively.
       #
       # challenge:
-        # fast or randomx. RandomX also requires pow.p2pool.
+        # fast or randomx. RandomX also requires pow.stratum_pool.
         #
         # algorithm: fast
 
