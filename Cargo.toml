@@ -18,6 +18,7 @@ members = [
   "crates/rilgate-pow",
   "crates/rilgate-web",
   "crates/randomx-core",
+  "crates/hashwx-core",
   "crates/randomx-wasm",
   "crates/xtask",
 ]
