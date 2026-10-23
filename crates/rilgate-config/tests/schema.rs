@@ -156,14 +156,14 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
     resolve(&format!("{BASE}pow:\n  default_algorithm: randomx\n"))
       .unwrap_err()
       .to_string()
-      .contains("pow.stratum_pool.address")
+      .contains("pow.stratum_pool.pools")
   );
   let config = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    address: '[::1]:3333'\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: '[::1]:3333'}}]\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
   );
   let cfg = resolve(&config).unwrap();
   assert!(cfg.pow.randomx_enabled);
-  assert_eq!(cfg.pow.stratum_pool.host, "::1");
+  assert_eq!(cfg.pow.stratum_pool.pools[0].host, "::1");
   assert_eq!(cfg.pow.stratum_pool.connect_timeout.as_millis(), 300);
   assert_eq!(
     cfg.pow.stratum_pool.job_session_mode,
@@ -185,7 +185,7 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
 fn resolved_output_redacts_every_key_and_password() {
   let config = BASE.replace("  secret: '0123456789abcdef0123456789abcdef'", "  keys:\n    challenge: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    auth: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n    challenge_rotation:\n      active_id: current\n      previous:\n        old: cccccccccccccccccccccccccccccccc");
   let document = parse(&format!(
-    "{config}pow:\n  stratum_pool:\n    password: private-pool-password\n"
+    "{config}pow:\n  stratum_pool:\n    pools: [{{name: primary, address: localhost:3333, login: {{password: private-pool-password}}}}]\n"
   ))
   .unwrap();
   let cfg = document.resolve().unwrap();
@@ -213,7 +213,7 @@ fn resolved_output_redacts_every_key_and_password() {
 fn all_rule_challenges_are_validated_before_runtime_construction() {
   for (algorithm, difficulty) in [("fast", 0), ("fast", 65), ("randomx", 999)] {
     let config = format!(
-      "{BASE}pow:\n  stratum_pool: {{address: '127.0.0.1:3333'}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
+      "{BASE}pow:\n  stratum_pool: {{}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
     );
     let error = format!("{:#}", resolve(&config).unwrap_err());
     assert!(error.contains("difficulty"), "{error}");
@@ -600,5 +600,55 @@ fn renamed_pool_keys_fail_with_the_new_name() {
   ] {
     let error = format!("{:#}", parse(&format!("{BASE}{text}")).unwrap_err());
     assert!(error.contains(expected), "{error}");
+  }
+}
+
+#[test]
+fn pool_login_templates_reject_ambiguous_difficulty_and_hide_operator_identity() {
+  for user in [
+    "wallet",
+    "{difficulty}{difficulty}",
+    "{wallet}+{difficulty}",
+  ] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: '{user}'}}\n"
+    );
+    let error = format!("{:#}", resolve(&text).unwrap_err());
+    assert!(error.contains("login.user"), "{error}");
+    assert!(!error.contains(user), "{error}");
+  }
+  let text = format!(
+    "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: 'private-wallet+{{difficulty}}', password: private-password}}\n"
+  );
+  let document = parse(&text).unwrap();
+  let cfg = document.resolve().unwrap();
+  for output in [document.display(true).unwrap(), format!("{cfg:?}")] {
+    assert!(!output.contains("private-wallet"), "{output}");
+    assert!(!output.contains("private-password"), "{output}");
+  }
+}
+
+#[test]
+fn pool_lists_reject_duplicate_names_invalid_addresses_and_unbounded_failover() {
+  for pools in [
+    "[]",
+    "[{name: same, address: 'localhost:1'}, {name: same, address: 'localhost:2'}]",
+    "[{name: primary, address: 'user:password@localhost:1'}]",
+    "[{name: BadName, address: 'localhost:1'}]",
+  ] {
+    assert!(
+      resolve(&format!(
+        "{BASE}pow:\n  stratum_pool:\n    pools: {pools}\n"
+      ))
+      .is_err()
+    );
+  }
+  for cooldown in ["0s", "601s"] {
+    assert!(
+      resolve(&format!(
+        "{BASE}pow:\n  stratum_pool:\n    failover: {{cooldown: {cooldown}}}\n"
+      ))
+      .is_err()
+    );
   }
 }

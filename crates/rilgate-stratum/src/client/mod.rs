@@ -41,14 +41,13 @@ impl StratumSession {
     if difficulty < 1000 {
       return Err(anyhow!("Stratum pool difficulty must be at least 1000"));
     }
-    let address = format!("{}:{}", cfg.host, cfg.port);
     let stream = timeout(
       cfg.connect_timeout,
       TcpStream::connect((cfg.host.as_str(), cfg.port)),
     )
     .await
     .context("Stratum pool connection timed out")?
-    .with_context(|| format!("Unable to connect to the Stratum pool at {address}"))?;
+    .context("Unable to connect to the Stratum pool")?;
 
     let (read_half, write_half) = stream.into_split();
     let mut reader = JsonLineReader::new(read_half);
@@ -59,7 +58,7 @@ impl StratumSession {
       "jsonrpc": "2.0",
       "method": "login",
       "params": {
-        "login": format!("x+{difficulty}"),
+        "login": cfg.user.expose().replace("{difficulty}", &difficulty.to_string()),
         "pass": cfg.password.expose(),
         "agent": cfg.agent.clone(),
       }
@@ -78,8 +77,8 @@ impl StratumSession {
       ));
     }
 
-    if let Some(error) = response.get("error").filter(|value| !value.is_null()) {
-      return Err(anyhow!("Stratum pool login rejected: {error}"));
+    if response.get("error").is_some_and(|value| !value.is_null()) {
+      return Err(anyhow!("Stratum pool login rejected"));
     }
 
     let result = response

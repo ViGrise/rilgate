@@ -31,7 +31,7 @@ async fn login(socket: TcpStream, difficulty: u64) -> BufReader<TcpStream> {
 async fn unpooled_fetches_connect_per_job_and_share_the_session_budget() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config().pow.stratum_pool.clone();
-  cfg.port = listener.local_addr().unwrap().port();
+  cfg.pools[0].port = listener.local_addr().unwrap().port();
   cfg.job_session_mode = rilgate_pool::JobSessionMode::PerChallenge;
   cfg.max_sessions = 1;
   let server = tokio::spawn(async move {
@@ -63,7 +63,7 @@ async fn unpooled_fetches_connect_per_job_and_share_the_session_budget() {
 async fn job_notifications_do_not_keep_unused_sessions_alive() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config().pow.stratum_pool.clone();
-  cfg.port = listener.local_addr().unwrap().port();
+  cfg.pools[0].port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
   cfg.job_session_idle = std::time::Duration::from_secs(1);
@@ -126,7 +126,7 @@ async fn job_notifications_do_not_keep_unused_sessions_alive() {
 async fn concurrent_fetches_share_one_initializing_session_and_follow_job_rotation() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config().pow.stratum_pool.clone();
-  cfg.port = listener.local_addr().unwrap().port();
+  cfg.pools[0].port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
   let (rotate, rotation) = tokio::sync::oneshot::channel();
@@ -179,7 +179,7 @@ async fn concurrent_fetches_share_one_initializing_session_and_follow_job_rotati
 async fn disconnected_shared_sessions_are_replaced() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config().pow.stratum_pool.clone();
-  cfg.port = listener.local_addr().unwrap().port();
+  cfg.pools[0].port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
   let (disconnect, disconnected) = tokio::sync::oneshot::channel();
@@ -229,7 +229,7 @@ async fn disconnected_shared_sessions_are_replaced() {
 async fn canceling_a_fetch_does_not_cancel_the_shared_connection() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config().pow.stratum_pool.clone();
-  cfg.port = listener.local_addr().unwrap().port();
+  cfg.pools[0].port = listener.local_addr().unwrap().port();
   cfg.max_sessions = 1;
   cfg.max_job_sessions = 1;
   cfg.job_session_idle = std::time::Duration::from_secs(1);
@@ -267,4 +267,32 @@ async fn canceling_a_fetch_does_not_cancel_the_shared_connection() {
     .await
     .unwrap()
     .unwrap();
+}
+
+#[tokio::test]
+async fn all_pools_in_cooldown_still_retry_in_order() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut config = common::config().pow.stratum_pool.clone();
+  config.pools[0].port = listener.local_addr().unwrap().port();
+  let server = tokio::spawn(async move {
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut stream = BufReader::new(stream);
+    let mut line = String::new();
+    stream.read_line(&mut line).await.unwrap();
+    stream
+      .get_mut()
+      .write_all(b"{\"id\":1,\"error\":\"login-secret\"}\n")
+      .await
+      .unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    login(stream, 1000).await;
+  });
+  let provider = StratumPoolProvider::new(config).unwrap();
+  let error = provider.connect(1000).await.err().unwrap();
+  assert!(!format!("{error:#}").contains("login-secret"));
+  assert_eq!(
+    provider.connect(1000).await.unwrap().current_job.job_id,
+    "first"
+  );
+  server.await.unwrap();
 }

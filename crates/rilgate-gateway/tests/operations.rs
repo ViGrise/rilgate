@@ -88,7 +88,12 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
-  config.pow.stratum_pool.port = pool.local_addr().unwrap().port();
+  config.pow.stratum_pool.pools[0].port = pool.local_addr().unwrap().port();
+  config.pow.stratum_pool.pools[0].name = "backup".into();
+  let mut primary = config.pow.stratum_pool.pools[0].clone();
+  primary.name = "primary".into();
+  primary.port = 9;
+  config.pow.stratum_pool.pools.insert(0, primary);
   config.pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -547,7 +552,7 @@ async fn socket_remote_readiness_probes_only_required_hashers() {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.env = Environment::Development;
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
-    config.pow.stratum_pool.port = pool.local_addr().unwrap().port();
+    config.pow.stratum_pool.pools[0].port = pool.local_addr().unwrap().port();
     config.pow.enforce = enforce;
     config.pow.randomx_verify.order = order;
     config.pow.randomx_verify.remote.endpoint = Some(endpoint.clone());

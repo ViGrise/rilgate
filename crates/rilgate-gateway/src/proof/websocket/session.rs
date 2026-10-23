@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 type WebSocket = WebSocketStream<tokio::io::DuplexStream>;
 use futures_util::{SinkExt, StreamExt};
-use rilgate_pool::{StratumEvent, StratumSession};
+use rilgate_pool::StratumEvent;
 use rilgate_pow::target::hash_meets_difficulty;
 use rilgate_protocol::PowEnforcement;
 use std::time::Duration;
@@ -22,20 +22,19 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
   }
 
   let (mut ws_tx, mut ws_rx) = socket.split();
-  let mut stratum =
-    match StratumSession::connect(&state.cfg.pow.stratum_pool.stratum(), difficulty).await {
-      Ok(session) => session,
-      Err(error) => {
-        send_ws(
-          &mut ws_tx,
-          ServerWsMessage::Error {
-            message: "Stratum pool connection unavailable".into(),
-          },
-        )
-        .await?;
-        return Err(error);
-      }
-    };
+  let mut stratum = match state.pool.connect(difficulty).await {
+    Ok(session) => session,
+    Err(error) => {
+      send_ws(
+        &mut ws_tx,
+        ServerWsMessage::Error {
+          message: "Stratum pool connection unavailable".into(),
+        },
+      )
+      .await?;
+      return Err(error);
+    }
+  };
   let session_deadline = Instant::now() + state.cfg.pow.stratum_pool.session_ttl;
 
   send_ws(

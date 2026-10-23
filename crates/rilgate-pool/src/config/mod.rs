@@ -5,12 +5,10 @@ pub enum JobSessionMode {
   PerChallenge,
 }
 
-use rilgate_crypto::Secret;
 #[derive(Debug, Clone)]
 pub struct StratumPoolConfig {
-  pub host: String,
-  pub port: u16,
-  pub password: Secret,
+  pub pools: Vec<rilgate_stratum::StratumConfig>,
+  pub cooldown: std::time::Duration,
   pub agent: String,
   pub connect_timeout: std::time::Duration,
   pub submit_timeout: std::time::Duration,
@@ -46,19 +44,15 @@ impl StratumPoolConfig {
         "pow.stratum_pool.{path}: expected a positive duration of at most one year"
       );
     }
+    anyhow::ensure!(
+      (1..=8).contains(&self.pools.len()),
+      "pow.stratum_pool.pools: expected 1 to 8 pools"
+    );
+    anyhow::ensure!(
+      (std::time::Duration::from_secs(1)..=std::time::Duration::from_secs(600))
+        .contains(&self.cooldown),
+      "pow.stratum_pool.failover.cooldown: expected 1s to 10m"
+    );
     Ok(())
-  }
-}
-
-impl StratumPoolConfig {
-  pub fn stratum(&self) -> rilgate_stratum::StratumConfig {
-    rilgate_stratum::StratumConfig {
-      host: self.host.clone(),
-      port: self.port,
-      password: self.password.clone(),
-      agent: self.agent.clone(),
-      connect_timeout: self.connect_timeout,
-      submit_timeout: self.submit_timeout,
-    }
   }
 }

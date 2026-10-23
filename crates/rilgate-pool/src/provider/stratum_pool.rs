@@ -1,4 +1,5 @@
 use super::WorkProvider;
+use super::connection::Connections;
 use crate::StratumPoolConfig;
 use anyhow::Result;
 use rilgate_core::{
@@ -6,7 +7,7 @@ use rilgate_core::{
   error::{CapacityExceeded, PowBackendUnavailable},
 };
 use rilgate_protocol::StratumJob;
-use rilgate_stratum::{StratumConfig, StratumSession};
+use rilgate_stratum::StratumSession;
 use std::{
   collections::HashMap,
   sync::{
@@ -82,6 +83,7 @@ impl PooledSession {
 }
 
 pub struct StratumPoolProvider {
+  connections: Arc<Connections>,
   config: StratumPoolConfig,
   slots: Arc<Semaphore>,
   job_slots: Arc<Semaphore>,
@@ -105,8 +107,21 @@ impl StratumPoolProvider {
       failures: AtomicU64::new(0),
       capacity_failures: AtomicU64::new(0),
       last_warning_ms: AtomicU64::new(0),
+      connections: Arc::new(Connections::new(config.clone())),
       config,
     })
+  }
+
+  pub async fn connect(&self, difficulty: u64) -> Result<StratumSession> {
+    self.connections.connect(difficulty).await
+  }
+
+  pub async fn readiness(&self) -> Vec<(String, bool)> {
+    self.connections.readiness().await
+  }
+
+  pub fn connection_metrics(&self) -> String {
+    self.connections.metrics()
   }
 
   pub fn active_sessions(&self) -> usize {
@@ -157,7 +172,7 @@ impl StratumPoolProvider {
     };
     // Publishing the handle before connecting coalesces concurrent requests for one difficulty.
     tokio::spawn(run_session(
-      self.config.stratum(),
+      self.connections.clone(),
       difficulty,
       jobs,
       SessionLifetime(usage),
@@ -185,7 +200,7 @@ impl StratumPoolProvider {
 
   async fn open_ephemeral(&self, difficulty: u64) -> Result<StratumJob> {
     let _slot = self.acquire_slot()?;
-    let session = StratumSession::connect(&self.config.stratum(), difficulty).await?;
+    let session = self.connect(difficulty).await?;
     Ok(session.current_job)
   }
 
@@ -214,7 +229,7 @@ impl StratumPoolProvider {
 }
 
 async fn run_session(
-  config: StratumConfig,
+  connections: Arc<Connections>,
   difficulty: u64,
   jobs: watch::Sender<Option<StratumJob>>,
   lifetime: SessionLifetime,
@@ -223,7 +238,7 @@ async fn run_session(
   idle_timeout: Duration,
 ) {
   let connected = tokio::select! {
-    result = StratumSession::connect(&config, difficulty) => result,
+    result = connections.connect(difficulty) => result,
     _ = jobs.closed() => return,
   };
   let mut session = match connected {

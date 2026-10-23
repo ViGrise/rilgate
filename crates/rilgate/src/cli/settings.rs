@@ -125,8 +125,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.score_step", "pow-algorithms-randomx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_SCORE_STEP", None, "Score that doubles RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.browser.module", "pow-algorithms-randomx-browser-module", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_MODULE", None, "Browser RandomX solver module path"),
-  spec!(POOL, Text, "pow.stratum_pool.address", "pow-stratum-pool-address", "RILGATE_POW_STRATUM_POOL_ADDRESS", None, "Stratum pool address; setting any Stratum pool value enables the pool"),
-  spec!(POOL, Secret, "pow.stratum_pool.password", "pow-stratum-pool-password", "RILGATE_POW_STRATUM_POOL_PASSWORD", None, "Stratum pool Stratum password"),
+  spec!(POOL, Text, "pow.stratum_pool.failover.cooldown", "pow-stratum-pool-failover-cooldown", "RILGATE_POW_STRATUM_POOL_FAILOVER_COOLDOWN", None, "Pool and proxy connection failure cooldown"),
   spec!(POOL, Text, "pow.stratum_pool.agent", "pow-stratum-pool-agent", "RILGATE_POW_STRATUM_POOL_AGENT", None, "Stratum user agent"),
   spec!(POOL, Text, "pow.stratum_pool.timeout.connect", "pow-stratum-pool-timeout-connect", "RILGATE_POW_STRATUM_POOL_TIMEOUT_CONNECT", None, "Stratum pool connect timeout"),
   spec!(POOL, Text, "pow.stratum_pool.timeout.submit", "pow-stratum-pool-timeout-submit", "RILGATE_POW_STRATUM_POOL_TIMEOUT_SUBMIT", None, "Stratum pool share submit timeout"),
@@ -137,6 +136,54 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.idle", "pow-stratum-pool-job-sessions-idle", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
   spec!(POLICY, Text, "policy.mode", "policy-mode", "RILGATE_POLICY_MODE", None, "Policy preset: off, light, balanced, strict or custom"),
 ];
+
+pub(crate) const POOL_FIELDS: &[(&str, &str)] = &[
+  ("NAME", "name"),
+  ("ADDRESS", "address"),
+  ("LOGIN_USER", "login.user"),
+  ("LOGIN_PASSWORD", "login.password"),
+];
+
+fn indexed_settings(
+  variables: impl Iterator<Item = (String, String)>,
+) -> Result<Vec<Setting>, String> {
+  let mut settings = Vec::new();
+  for (name, value) in variables {
+    let Some(rest) = name.strip_prefix("RILGATE_POW_STRATUM_POOL_POOLS_") else {
+      continue;
+    };
+    let (index, field) = rest
+      .split_once('_')
+      .ok_or_else(|| format!("{name}: expected an index and a field"))?;
+    let index: usize = index
+      .parse()
+      .map_err(|_| format!("{name}: expected a numeric index"))?;
+    if index >= 8 {
+      return Err(format!("{name}: index must be 0 to 7"));
+    }
+    let path = POOL_FIELDS
+      .iter()
+      .find(|(key, _)| *key == field)
+      .map(|(_, path)| *path)
+      .ok_or_else(|| {
+        format!(
+          "{name}: unknown field; valid fields: {}",
+          POOL_FIELDS
+            .iter()
+            .map(|(key, _)| *key)
+            .collect::<Vec<_>>()
+            .join(", ")
+        )
+      })?;
+    settings.push(Setting {
+      path: format!("pow.stratum_pool.pools.{index}.{path}"),
+      source: name,
+      value: SettingValue::Scalar(value),
+    });
+  }
+  settings.sort_by(|a, b| a.path.cmp(&b.path));
+  Ok(settings)
+}
 
 /// The flag values present on the command line or in the environment.
 #[derive(Debug, Default)]
@@ -213,12 +260,16 @@ impl FromArgMatches for Settings {
           _ => format!("--{}", spec.flag),
         };
         values.push(Setting {
-          path: spec.path,
+          path: spec.path.into(),
           source,
           value,
         });
       }
     }
+    values.extend(
+      indexed_settings(std::env::vars())
+        .map_err(|message| clap::Error::raw(clap::error::ErrorKind::ValueValidation, message))?,
+    );
     Ok(Self { values })
   }
   fn update_from_arg_matches(&mut self, matches: &ArgMatches) -> Result<(), clap::Error> {
@@ -340,5 +391,25 @@ mod tests {
     flags.sort_unstable();
     flags.dedup();
     assert_eq!(flags.len(), SPECS.len());
+  }
+}
+
+#[cfg(test)]
+mod indexed_tests {
+  use super::*;
+
+  #[test]
+  fn mistyped_indexed_fields_fail_instead_of_silently_using_a_default() {
+    let error = indexed_settings(
+      [(
+        "RILGATE_POW_STRATUM_POOL_POOLS_0_ADRESS".into(),
+        "secret".into(),
+      )]
+      .into_iter(),
+    )
+    .unwrap_err();
+    assert!(error.contains("RILGATE_POW_STRATUM_POOL_POOLS_0_ADRESS"));
+    assert!(error.contains("valid fields: NAME, ADDRESS, LOGIN_USER, LOGIN_PASSWORD"));
+    assert!(!error.contains("secret"));
   }
 }

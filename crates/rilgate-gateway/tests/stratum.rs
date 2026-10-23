@@ -63,7 +63,11 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.enforce = PowEnforcement::StratumPoolAccepted;
-  pow.stratum_pool.port = p2pool_port;
+  pow.stratum_pool.pools[0].port = p2pool_port;
+  let mut unavailable = pow.stratum_pool.pools[0].clone();
+  unavailable.name = "unavailable".into();
+  unavailable.port = 9;
+  pow.stratum_pool.pools.insert(0, unavailable);
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -246,4 +250,54 @@ async fn internal_json_requests_are_bounded_and_uncacheable() {
     .unwrap();
   assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
   assert_eq!(response.headers()["cache-control"], "no-store");
+}
+
+#[tokio::test]
+async fn failed_primary_uses_backup_and_cooldown_preserves_pool_affinity() {
+  use rilgate_pool::StratumPoolProvider;
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut config = common::config().pow.stratum_pool.clone();
+  let mut primary = config.pools[0].clone();
+  primary.name = "primary".into();
+  let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  primary.port = closed.local_addr().unwrap().port();
+  drop(closed);
+  config.pools[0].name = "backup".into();
+  config.pools[0].port = listener.local_addr().unwrap().port();
+  config.pools[0].user = rilgate_config::Secret("wallet.worker+{difficulty}".into());
+  config.pools.insert(0, primary);
+  let server = tokio::spawn(async move {
+    for _ in 0..2 {
+      let (stream, _) = listener.accept().await.unwrap();
+      let (read, mut write) = stream.into_split();
+      let mut reader = BufReader::new(read);
+      let request = read_json(&mut reader).await;
+      assert_eq!(request["params"]["login"], "wallet.worker+1000");
+      write_json(
+        &mut write,
+        json!({"id": 1, "result": {"id": "backup-miner", "job": job("backup-job")}}),
+      )
+      .await;
+      let submit = read_json(&mut reader).await;
+      assert_eq!(submit["params"]["id"], "backup-miner");
+      assert_eq!(submit["params"]["job_id"], "backup-job");
+    }
+  });
+  let provider = StratumPoolProvider::new(config).unwrap();
+  for _ in 0..2 {
+    let mut session = provider.connect(1000).await.unwrap();
+    session
+      .submit_share("backup-job", "01020304", &"00".repeat(32))
+      .await
+      .unwrap();
+  }
+  server.await.unwrap();
+  let metrics = provider.connection_metrics();
+  assert!(
+    metrics
+      .contains("rilgate_stratum_pool_connections_total{pool=\"primary\",outcome=\"failed\"} 1"),
+    "{metrics}"
+  );
+  assert!(metrics.contains("rilgate_stratum_pool_failover_total{from=\"primary\"} 1"));
+  assert!(!metrics.contains("wallet"));
 }

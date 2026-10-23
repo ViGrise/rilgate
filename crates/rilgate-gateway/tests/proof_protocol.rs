@@ -198,7 +198,7 @@ async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty()
   let port = listener.local_addr().unwrap().port();
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.stratum_pool.port = port;
+  pow.stratum_pool.pools[0].port = port;
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -290,7 +290,7 @@ async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
 
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.stratum_pool.port = port;
+  pow.stratum_pool.pools[0].port = port;
   pow.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()

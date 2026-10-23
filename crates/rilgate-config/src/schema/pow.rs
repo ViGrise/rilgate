@@ -157,8 +157,8 @@ impl Default for Browser {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StratumPool {
-  pub address: String,
-  pub password: Secret,
+  pub pools: Vec<Pool>,
+  pub failover: Failover,
   pub agent: String,
   pub timeout: PoolTimeout,
   pub sessions: Sessions,
@@ -167,8 +167,12 @@ pub struct StratumPool {
 impl Default for StratumPool {
   fn default() -> Self {
     Self {
-      address: "127.0.0.1:3333".into(),
-      password: Secret("x".into()),
+      pools: vec![Pool {
+        name: "default".into(),
+        address: "127.0.0.1:3333".into(),
+        login: Login::default(),
+      }],
+      failover: Failover::default(),
       agent: concat!("rilgate/", env!("CARGO_PKG_VERSION")).into(),
       timeout: PoolTimeout::default(),
       sessions: Sessions::default(),
@@ -176,6 +180,43 @@ impl Default for StratumPool {
     }
   }
 }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pool {
+  pub name: String,
+  pub address: String,
+  #[serde(default)]
+  pub login: Login,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Login {
+  pub user: Secret,
+  pub password: Secret,
+}
+impl Default for Login {
+  fn default() -> Self {
+    Self {
+      user: Secret("x+{difficulty}".into()),
+      password: Secret("x".into()),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Failover {
+  pub cooldown: Time,
+}
+impl Default for Failover {
+  fn default() -> Self {
+    Self {
+      cooldown: Time::seconds(30),
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PoolTimeout {

@@ -7,6 +7,36 @@ use std::sync::Arc;
 
 impl Document {
   pub fn resolve(&self) -> Result<Config> {
+    self.resolve_config().map_err(|error| {
+      let message = format!("{error:#}");
+      let sources: Vec<_> = self
+        .sources
+        .iter()
+        .filter(|(path, _)| {
+          let normalized = path.split('.').fold(String::new(), |mut out, key| {
+            if key.parse::<usize>().is_ok() {
+              out.push_str(&format!("[{key}]"));
+            } else {
+              if !out.is_empty() {
+                out.push('.');
+              }
+              out.push_str(key);
+            }
+            out
+          });
+          message.contains(&normalized)
+        })
+        .map(|(_, source)| source.as_str())
+        .collect();
+      if sources.is_empty() {
+        error
+      } else {
+        anyhow::anyhow!("{message} (from {})", sources.join(", "))
+      }
+    })
+  }
+
+  fn resolve_config(&self) -> Result<Config> {
     ensure!(
       self.pow.algorithms.randomx.serve.is_none(),
       "pow.algorithms.randomx.serve: use rilgate verifier serve; combined mode is not supported"
@@ -57,22 +87,31 @@ impl Document {
         .any(|(_, c)| c.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::RandomX);
     ensure!(
       !needs_pool || self.pow.stratum_pool.is_some(),
-      "pow.stratum_pool.address: required when RandomX jobs or stratum_pool_accepted verification are enabled"
+      "pow.stratum_pool.pools: required when RandomX jobs or stratum_pool_accepted verification are enabled"
     );
     let fallback = StratumPool::default();
     let pool = self.pow.stratum_pool.as_ref().unwrap_or(&fallback);
-    let url = url::Url::parse(&format!("tcp://{}", pool.address))
-      .context("pow.stratum_pool.address: expected HOST:PORT or [IPv6]:PORT")?;
-    ensure!(
-      url.host_str().is_some()
-        && url.port().is_some()
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.path().is_empty()
-        && url.query().is_none()
-        && url.fragment().is_none(),
-      "pow.stratum_pool.address: expected HOST:PORT without credentials or a path"
-    );
+    let mut names = std::collections::HashSet::new();
+    let pools = pool.pools.iter().enumerate().map(|(index, entry)| {
+      let path = format!("pow.stratum_pool.pools[{index}]");
+      ensure!(valid_name(&entry.name) && names.insert(&entry.name), "{path}.name: expected a unique name of 1 to 64 lowercase letters, digits, hyphens or underscores");
+      let url = url::Url::parse(&format!("tcp://{}", entry.address))
+        .map_err(|_| anyhow::anyhow!("{path}.address: expected HOST:PORT or [IPv6]:PORT"))?;
+      ensure!(url.host_str().is_some() && url.port().is_some() && url.username().is_empty() && url.password().is_none() && url.path().is_empty() && url.query().is_none() && url.fragment().is_none(), "{path}.address: expected HOST:PORT without credentials or a path");
+      let user = entry.login.user.expose();
+      let remainder = user.replace("{difficulty}", "");
+      ensure!(user.matches("{difficulty}").count() == 1 && !remainder.contains(['{', '}']) && remainder.len() + 20 <= 256, "{path}.login.user: expected exactly one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
+      Ok(rilgate_pool::StratumConfig {
+        name: entry.name.clone(),
+        host: url.host_str().unwrap().trim_matches(['[', ']']).into(),
+        port: url.port().unwrap(),
+        user: entry.login.user.clone(),
+        password: entry.login.password.clone(),
+        agent: pool.agent.clone(),
+        connect_timeout: pool.timeout.connect.0,
+        submit_timeout: pool.timeout.submit.0,
+      })
+    }).collect::<Result<Vec<_>>>()?;
     let randomx = &self.pow.algorithms.randomx;
     let mut verify = randomx.verify.clone();
     verify.remote.server_name = verify.remote.effective_server_name();
@@ -159,9 +198,8 @@ impl Document {
           global_refill_per_second: self.pow.rate_limit.global.refill_per_second,
         },
         stratum_pool: StratumPoolConfig {
-          host: url.host_str().unwrap().trim_matches(['[', ']']).into(),
-          port: url.port().unwrap(),
-          password: pool.password.clone(),
+          pools,
+          cooldown: pool.failover.cooldown.0,
           agent: pool.agent.clone(),
           connect_timeout: pool.timeout.connect.0,
           submit_timeout: pool.timeout.submit.0,
@@ -206,4 +244,11 @@ fn prune(value: &mut serde_yaml_ng::Value, default: &serde_yaml_ng::Value) {
       true
     });
   }
+}
+
+fn valid_name(name: &str) -> bool {
+  (1..=64).contains(&name.len())
+    && name
+      .bytes()
+      .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'-' | b'_'))
 }

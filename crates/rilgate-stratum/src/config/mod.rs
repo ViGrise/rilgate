@@ -1,6 +1,8 @@
 use rilgate_crypto::Secret;
 #[derive(Debug, Clone)]
 pub struct StratumConfig {
+  pub name: String,
+  pub user: Secret,
   pub host: String,
   pub port: u16,
   pub password: Secret,
