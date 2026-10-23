@@ -126,6 +126,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.browser.module", "pow-algorithms-randomx-browser-module", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_MODULE", None, "Browser RandomX solver module path"),
   spec!(POOL, Text, "pow.stratum_pool.failover.cooldown", "pow-stratum-pool-failover-cooldown", "RILGATE_POW_STRATUM_POOL_FAILOVER_COOLDOWN", None, "Pool and proxy connection failure cooldown"),
+  spec!(POOL, Text, "pow.stratum_pool.failover.timeout", "pow-stratum-pool-failover-timeout", "RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT", None, "Total Stratum pool connection timeout"),
   spec!(POOL, Text, "pow.stratum_pool.agent", "pow-stratum-pool-agent", "RILGATE_POW_STRATUM_POOL_AGENT", None, "Stratum user agent"),
   spec!(POOL, Text, "pow.stratum_pool.timeout.connect", "pow-stratum-pool-timeout-connect", "RILGATE_POW_STRATUM_POOL_TIMEOUT_CONNECT", None, "Stratum pool connect timeout"),
   spec!(POOL, Text, "pow.stratum_pool.timeout.submit", "pow-stratum-pool-timeout-submit", "RILGATE_POW_STRATUM_POOL_TIMEOUT_SUBMIT", None, "Stratum pool share submit timeout"),

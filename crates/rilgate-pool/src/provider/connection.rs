@@ -74,7 +74,12 @@ impl Connections {
     }
   }
 
-  async fn attempt(&self, index: usize, difficulty: u64) -> Result<StratumSession> {
+  async fn attempt(
+    &self,
+    index: usize,
+    difficulty: u64,
+    deadline: Instant,
+  ) -> Result<Option<StratumSession>> {
     let pool = &self.config.pools[index];
     let (scope, proxies) = self.proxy_list(index);
     let mut order: Vec<Option<usize>> = {
@@ -98,14 +103,21 @@ impl Connections {
       };
     }
     for proxy_index in order {
+      if Instant::now() >= deadline {
+        return Ok(None);
+      }
       let proxy = proxy_index.map(|i| &proxies[i]);
-      let result = tokio::time::timeout(
-        pool.connect_timeout,
+      let result = tokio::time::timeout_at(
+        deadline.min(Instant::now() + pool.connect_timeout),
         self.transports[index].connect(pool, proxy),
       )
       .await
       .context("Stratum pool connection timed out")
       .and_then(|result| result);
+      // A path stopped by the request budget has not failed, so it starts no cooldown.
+      if Instant::now() >= deadline {
+        return Ok(None);
+      }
       let connected = result.is_ok();
       if let Some(i) = proxy_index {
         let mut states = self.proxies.lock().unwrap_or_else(|e| e.into_inner());
@@ -120,11 +132,17 @@ impl Connections {
       }
       match result {
         Ok(stream) => {
-          return StratumSession::login(pool, stream, difficulty)
-            .await
-            .inspect_err(|error| {
+          return match tokio::time::timeout_at(
+            deadline,
+            StratumSession::login(pool, stream, difficulty),
+          )
+          .await
+          {
+            Ok(result) if Instant::now() < deadline => result.map(Some).inspect_err(|error| {
               tracing::warn!(pool = %pool.name, error = %error, "Stratum pool login failed");
-            });
+            }),
+            _ => Ok(None),
+          };
         }
         Err(error) => {
           tracing::warn!(pool = %pool.name, proxy = proxy.map(|proxy| proxy.name.as_str()), error = %error, "Stratum connection attempt failed");
@@ -135,19 +153,24 @@ impl Connections {
   }
 
   pub async fn connect(&self, difficulty: u64) -> Result<StratumSession> {
+    let deadline = Instant::now() + self.config.failover_timeout;
     let order = self.order();
     for (position, &index) in order.iter().enumerate() {
+      if Instant::now() >= deadline {
+        break;
+      }
       let pool = &self.config.pools[index];
-      let result = self.attempt(index, difficulty).await;
+      let result = self.attempt(index, difficulty, deadline).await;
       let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
       let state = &mut states[index];
       match result {
-        Ok(session) => {
+        Ok(Some(session)) => {
           state.connected += 1;
           state.failed_at = None;
           return Ok(session);
         }
-        _ => {
+        Ok(None) => break,
+        Err(_) => {
           state.failed += 1;
           state.failed_at = Some(Instant::now());
           if position + 1 < order.len() {
@@ -258,5 +281,136 @@ impl Connections {
       }
     }
     text
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use rilgate_crypto::Secret;
+  use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+  };
+
+  fn config(port: u16) -> StratumPoolConfig {
+    StratumPoolConfig {
+      pools: (0..4)
+        .map(|index| rilgate_stratum::StratumConfig {
+          name: format!("pool{index}"),
+          host: "127.0.0.1".into(),
+          port,
+          user: Secret("x+{difficulty}".into()),
+          password: Secret("x".into()),
+          agent: "test".into(),
+          connect_timeout: Duration::from_secs(1),
+          submit_timeout: Duration::from_secs(1),
+          tls: Default::default(),
+          proxies: None,
+          difficulty_mismatches: Default::default(),
+        })
+        .collect(),
+      proxies: vec![],
+      cooldown: Duration::from_secs(30),
+      agent: "test".into(),
+      connect_timeout: Duration::from_secs(1),
+      submit_timeout: Duration::from_secs(1),
+      failover_timeout: Duration::from_millis(1500),
+      max_sessions: 4,
+      session_ttl: Duration::from_secs(60),
+      job_session_mode: crate::JobSessionMode::Pooled,
+      max_job_sessions: 1,
+      job_session_idle: Duration::from_secs(30),
+    }
+  }
+
+  async fn hanging_listener() -> (u16, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let task = tokio::spawn(async move {
+      let mut streams = Vec::new();
+      loop {
+        streams.push(listener.accept().await.unwrap().0);
+      }
+    });
+    (port, task)
+  }
+
+  #[tokio::test]
+  async fn hanging_pools_stop_at_budget_and_only_real_failures_enter_cooldown() {
+    let (port, server) = hanging_listener().await;
+    let connections = Connections::new(config(port)).unwrap();
+    let start = Instant::now();
+    let error = connections.connect(1000).await.err().unwrap();
+    assert_eq!(error.to_string(), "All Stratum pools are unavailable");
+    let elapsed = start.elapsed();
+    assert!(
+      (Duration::from_millis(1400)..Duration::from_millis(2200)).contains(&elapsed),
+      "elapsed: {elapsed:?}"
+    );
+    let states = connections.states.lock().unwrap();
+    assert!(states[0].failed_at.is_some());
+    assert!(
+      states[1..]
+        .iter()
+        .all(|state| state.failed_at.is_none() && state.failed == 0)
+    );
+    server.abort();
+  }
+
+  #[tokio::test]
+  async fn budget_cut_proxy_does_not_enter_cooldown_or_try_more_routes() {
+    let (port, server) = hanging_listener().await;
+    let mut config = config(port);
+    config.proxies = (0..4)
+      .map(|index| rilgate_stratum::config::Proxy {
+        name: format!("proxy{index}"),
+        url: Secret(format!("http://127.0.0.1:{port}")),
+        username: None,
+        password: None,
+      })
+      .collect();
+    let connections = Connections::new(config).unwrap();
+    assert!(connections.connect(1000).await.is_err());
+    let proxies = connections.proxies.lock().unwrap();
+    assert!(proxies[&(0, 0)].failed_at.is_some());
+    assert!(!proxies.contains_key(&(0, 1)));
+    assert_eq!(proxies.len(), 1);
+    assert!(
+      connections
+        .states
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|state| state.failed_at.is_none())
+    );
+    server.abort();
+  }
+
+  #[tokio::test]
+  async fn backup_pool_connects_within_remaining_budget() {
+    let (port, hanging) = hanging_listener().await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut config = config(port);
+    config.pools[1].port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.unwrap();
+      let mut byte = [0];
+      while {
+        stream.read_exact(&mut byte).await.unwrap();
+        byte[0] != b'\n'
+      } {}
+      let response = format!(
+        "{{\"id\":1,\"result\":{{\"id\":\"backup\",\"job\":{{\"blob\":\"{}\",\"job_id\":\"job\",\"seed_hash\":\"{}\",\"target\":\"ffffffff\",\"algo\":\"rx/0\"}}}}}}\n",
+        "00".repeat(64),
+        "ab".repeat(32)
+      );
+      stream.write_all(response.as_bytes()).await.unwrap();
+    });
+    let connections = Connections::new(config).unwrap();
+    assert_eq!(connections.connect(1000).await.unwrap().rpc_id, "backup");
+    assert!(connections.states.lock().unwrap()[0].failed_at.is_some());
+    server.await.unwrap();
+    hanging.abort();
   }
 }

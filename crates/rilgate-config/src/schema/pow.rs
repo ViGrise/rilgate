@@ -215,11 +215,13 @@ impl Default for Login {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Failover {
+  pub timeout: Time,
   pub cooldown: Time,
 }
 impl Default for Failover {
   fn default() -> Self {
     Self {
+      timeout: Time::seconds(15),
       cooldown: Time::seconds(30),
     }
   }

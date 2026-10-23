@@ -230,6 +230,7 @@ impl Document {
         stratum_pool: StratumPoolConfig {
           pools,
           proxies: pool.proxies.clone(),
+          failover_timeout: pool.failover.timeout.0,
           cooldown: pool.failover.cooldown.0,
           agent: pool.agent.clone(),
           connect_timeout: pool.timeout.connect.0,

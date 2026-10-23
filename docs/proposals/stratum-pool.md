@@ -94,6 +94,7 @@ pow:
           password: rilgate
         tls: {enabled: true}
     failover:
+      timeout: 15s
       cooldown: 30s
     agent: rilgate/<version>
     timeout: {connect: 5s, submit: 20s}
@@ -132,6 +133,7 @@ Shared settings:
 
 | Setting | Default | Rules |
 | --- | --- | --- |
+| `failover.timeout` | `15s` | `1s` to `5m`, at least `timeout.connect`. Total connection time across all pools and proxies, including login |
 | `failover.cooldown` | `30s` | `1s` to `10m`. The time that Rilgate skips a pool or a proxy after a connection failure |
 | `agent`, `timeout`, `sessions`, `job_sessions` | current values | The rules do not change |
 
@@ -141,6 +143,8 @@ The minimum difficulty of `1000` does not change. Environment references such as
 
 The shared settings keep their CLI flags and environment variables, for example
 `--pow-stratum-pool-timeout-connect` and `RILGATE_POW_STRATUM_POOL_TIMEOUT_CONNECT`.
+Set the total budget with `--pow-stratum-pool-failover-timeout` or
+`RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT`.
 `.env.example` is generated again from the settings.
 
 ### Indexed environment variables
@@ -221,7 +225,8 @@ Sources for the formats:
 
 For each new Stratum session, the gateway does these steps:
 
-1. It takes the pools in the configured order and skips a pool in its cooldown.
+1. It starts one `failover.timeout` budget for the request. It takes the pools
+   in the configured order and skips a pool in its cooldown.
 2. For a pool, it takes the proxy list of the pool and skips a proxy in its
    cooldown. With an empty list, the gateway tries one direct connection.
 3. It connects through the next proxy, then does the TLS handshake if TLS is on,
@@ -235,7 +240,13 @@ For each new Stratum session, the gateway does these steps:
 7. If all pools are in their cooldown, the gateway tries them again in order and
    ignores the cooldown. A cooldown never blocks the last chance to connect.
 
+The gateway stops when the budget expires and reports that all Stratum pools
+are unavailable. A try that the budget stops does not start a pool or
+proxy cooldown. A failure before the budget expires still starts the applicable
+cooldown. Readiness probes keep the separate `server.readiness_timeout` bound.
+
 `timeout.connect` limits the transport phase and the login round trip separately.
+Each phase is also limited by the time left in the request budget.
 The transport phase includes TCP, proxy and TLS handshakes. A session stays on
 the pool that it connected to:
 
