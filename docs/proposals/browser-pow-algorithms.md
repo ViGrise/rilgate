@@ -1,6 +1,7 @@
 # More browser proof-of-work algorithms
 
-Status: proposed.
+Status: HashWX steps 1 to 5 are implemented. Difficulty defaults await a
+mid-range phone measurement. Optional algorithms and fallback remain proposed.
 
 This proposal adds proof-of-work algorithms for browser challenges next to Fast
 and RandomX. It selects HashWX as the next algorithm, through a new Apache-2.0
@@ -13,10 +14,10 @@ the contract in [adding an algorithm](../algorithms.md).
 | Algorithm | Strength | Limit |
 | --- | --- | --- |
 | Fast (SHA-256) | Runs on every supported browser, including IE11 | The browser solver is pure JavaScript (`web/static/js/solvers/fast/worker.js`). A native or GPU solver computes many more hashes per second. Thus Fast costs a bot much less than a person |
-| RandomX | CPU-oriented and memory-hard | It needs P2Pool for every job, about 256 MiB in the browser, and a 256 MiB cache on the verifier |
+| RandomX | CPU-oriented and memory-hard | It needs a Stratum pool for every job, about 256 MiB in the browser, and a 256 MiB cache on the verifier |
 
 Rilgate has no GPU-resistant algorithm without external infrastructure. An
-operator who wants a stronger challenge than Fast must operate P2Pool.
+operator who wants a stronger challenge than Fast must configure a Stratum pool.
 
 ## 2. Requirements for a new algorithm
 
@@ -28,6 +29,7 @@ operator who wants a stronger challenge than Fast must operate P2Pool.
    ISC, Zlib or a similar permissive license.
 5. The browser solver runs in a worker, shows progress and supports cancellation.
 6. The parameters let an operator set the solve time for a mid-range phone.
+   Default calibration must use a mid-range phone.
 
 ## 3. Candidates
 
@@ -81,14 +83,15 @@ under Apache-2.0:
 - Use the test vectors in Appendix F of the specification only to check
   conformance.
 - Record the specification revision and the conformance results in the crate
-  README. Get a license review before the first release that includes the crate.
+  README. The [license review](../hashwx-license-review.md) records the inputs
+  and the earlier upstream fetch. No upstream implementation code was copied.
 
 ### Crates
 
 | Crate | Role |
 | --- | --- |
 | `crates/hashwx-core` | `no_std` instance generator, interpreter and WASM code generator |
-| `crates/hashwx-wasm` | Raw `wasm32-unknown-unknown` ABI for the browser solver, staged by `cargo xtask build-wasm` |
+| `crates/hashwx-wasm` | Raw `wasm32v1-none` ABI for the browser solver, staged by `cargo xtask build-wasm` |
 | `crates/rilgate-pow-hashwx` | `rilgate_pow::Algorithm` backend |
 
 The server verifies with the interpreter. At about 5 times the compiled cost, one
@@ -134,10 +137,12 @@ pow:
 | `nonces_per_seed` | `65536` | `463` to `1048576` |
 | `difficulty.base` | `50000` | `1` to `2^40` |
 | `difficulty.max` | `5000000` | `difficulty.base` to `2^40` |
+| `difficulty.score_step` | `10` | Positive i32 |
 
 Without an explicit difficulty, the score maps to a difficulty with the same
 `base`, `score_step` and `max` rule as RandomX. The default values are
-placeholders until the measurements in section 8.
+placeholders until a mid-range phone measurement is recorded in section 8.
+Explicit rule difficulties override this mapping, including its max cap.
 
 Verification is cheap, so HashWX needs no dedicated verifier pool. It runs on a
 blocking task with the proof API rate limits in front.
@@ -149,10 +154,10 @@ blocking task with the proof API rate limits in front.
   batch. The RandomX worker already instantiates generated modules in the same way
   (`web/static/js/solvers/randomx/randomx-worker.js`).
 - If the compilation of a generated module fails, the worker uses the interpreter.
-- The solver can use several workers, one batch for each worker. It reports
+- The solver uses up to two workers by default, with distinct batches. It reports
   progress after each batch and supports cancellation.
 - HashWX starts without a consent step. Each VM uses 16 KiB, and the default
-  difficulty targets a solve of 1 to 3 seconds. RandomX keeps its consent step,
+  difficulty is a placeholder for a future mid-range target of 1 to 3 seconds. RandomX keeps its consent step,
   because it allocates about 256 MiB and can run for much longer.
 
 ### Browser requirements
@@ -161,6 +166,7 @@ blocking task with the proof API rate limits in front.
 | --- | --- |
 | WebAssembly 1.0 | Required. SIMD is not required. The classic adapter checks `WebAssembly.instantiate` before it loads the solver |
 | Workers | Required. The adapter checks `Worker` |
+| JavaScript modules | Required. Solver assets use ES2020 syntax and load after the classic adapter |
 | BigInt | Not required. The `hashwx-wasm` ABI passes each 64-bit nonce and hash as two 32-bit values |
 | Memory | 16 KiB per VM, plus the WASM module and the generated code |
 | Runtime compilation | Required for full speed. Rilgate sends only `frame-ancestors 'self'` as its content security policy, so it does not block generated modules |
@@ -173,16 +179,17 @@ Known limits:
 
 - IE11 and other browsers without WebAssembly cannot solve HashWX challenges.
 - Safari Lockdown Mode disables WebAssembly, so it cannot solve HashWX challenges.
-- A content security policy from the operator or an edge proxy can block runtime
-  compilation. It must allow `'wasm-unsafe-eval'` for the challenge page. Without
-  it, the solver uses the interpreter, which is about 5 times slower. Documentation
-  in `docs/web.md` and `docs/production.md` states this.
+- An edge CSP must permit worker creation and WASM compilation in the worker's
+  own policy. If a generated module fails after the interpreter loads, the
+  worker uses that interpreter. A worker policy denying all WASM also blocks
+  the interpreter. See `docs/web.md` and `docs/production.md`.
 - Phones have fewer cores and lower speed per core than the desktop in the
-  published benchmark. The measurements in section 8 set the default difficulty.
+  published benchmark. Section 8 records a high-end phone. A mid-range phone is still required
+  to set the default difficulty.
 - Module compilation costs time for each batch. The default `nonces_per_seed` of
   65536 spreads this cost over many hashes.
-- Long solves use battery and heat on phones. `difficulty.max` limits the longest
-  expected solve.
+- Long solves use battery and heat on phones. `difficulty.max` caps mapped work. Explicit policy difficulties
+  override that mapping.
 
 ### Conformance
 
@@ -411,19 +418,12 @@ The recorded files for the tables above are:
 - Safari: `target/hashwx-bench/2026-10-23T16-57-44.811Z-cfd4da1d-e2fc-40b3-8e46-94774d5e938a.json`
 - Native: `target/hashwx-bench/native-463.json` and `target/hashwx-bench/native-65536.json`
 
-### Input record for the later license review
+### License review record
 
-The successful upstream retrieval in this continuation was a `curl` download
-of `doc/specification.md` at revision
-`fde6d2ae34dce266497aed5c093ff7b40a933c3a`, from
-`https://raw.githubusercontent.com/tevador/hashwx/fde6d2ae34dce266497aed5c093ff7b40a933c3a/doc/specification.md`.
-It was saved outside the repository. No upstream implementation code was
-copied into the repository. Use the specification and published design
-document as inputs from this point. The user also reported one upstream
-source fetch during the earlier review. Its exact source file was not
-identified in the available fetch record. The step 5 license review must
-resolve that record and check provenance before release. That review has
-not started in step 2.
+The [step 5 license review](../hashwx-license-review.md) records the single
+earlier upstream fetch and the pinned specification input. No upstream
+implementation code was copied, translated or adapted. No upstream source was
+read or fetched during the continuation that completed steps 3 to 5.
 
 ## 9. Integration
 
@@ -455,7 +455,7 @@ algorithm and enforcement match and its difficulty is at least the required one.
 | Order of checks | An invalid token signature fails without a hash computation |
 | Capacity | For Argon2id, a full verifier queue returns `503`, and peak memory stays within `verifier_workers × memory` |
 | Browser | The Playwright suite solves a HashWX challenge in Chromium, Firefox and WebKit. An incapable browser shows the failure controls |
-| Browser limits | A page with a content security policy that blocks `'wasm-unsafe-eval'` solves with the interpreter. The solver runs without `BigInt` |
+| Browser limits | Generated-module compilation failure retains the interpreter. Both engines run without `BigInt`. A worker CSP denying all WASM rejects calculation |
 | Fallback | A presentation token without a fallback cannot get a fallback challenge |
 
 ## 11. Delivery sequence

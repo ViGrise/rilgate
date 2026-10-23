@@ -223,3 +223,34 @@ In development only, set `policy.score.debug_header.enabled: true` to let the co
 score. Its default name is `x-pow-weight`. The gateway signs the selected rule, final
 score, difficulty, algorithm, host and verification backend into the presentation. A
 browser cannot alter these claims.
+
+## HashWX selection
+
+Select HashWX in a custom rule or score threshold:
+
+```yaml
+policy:
+  mode: custom
+  default_action: allow
+  rules:
+    - name: hashwx-protected
+      when:
+        path: {prefix: /protected/}
+      action: challenge
+      challenge: {algorithm: hashwx, difficulty: 50000}
+```
+
+Use `pow.verification: local_verify`. HashWX difficulty is an expected hash
+count, between 1 and 2^40. Fast difficulty counts leading zero hex digits.
+When difficulty is omitted, `pow.algorithms.hashwx.difficulty` maps the score
+to work. Explicit rule difficulty takes precedence over that mapping.
+
+The shipped HashWX base and max values are placeholders. Measure a mid-range
+phone before choosing a production cost. A browser with no WASM support gets
+the failure and retry controls. The client keeps the selected algorithm;
+capability fallback is not implemented.
+
+A challenge action accepts an existing cookie only when algorithm and
+enforcement match and cookie difficulty meets the current requirement.
+A Fast cookie therefore cannot satisfy a HashWX rule. Host and optional client
+bindings still apply. A DENY rule still rejects a valid HashWX cookie.

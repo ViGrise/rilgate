@@ -2,7 +2,7 @@
 
 ## PoW algorithms
 
-Challenge policies can choose between two algorithms.
+Challenge policies can select Fast, HashWX or RandomX.
 
 ### `fast` - lightweight SHA-256
 
@@ -33,6 +33,55 @@ module. Server verification is one SHA-256 operation, so this is appropriate for
 moderate suspicion.
 
 The canonical YAML algorithm name is `fast`.
+
+### `hashwx` - local CPU work
+
+```yaml
+challenge:
+  algorithm: hashwx
+  difficulty: 50000
+```
+
+HashWX generates a hash function from a seed. Each function has 32 programs
+and uses 16392 bytes of VM memory. The browser generates and compiles a WASM
+module for each seed batch. The server generates one instance and computes
+one interpreted hash. It uses a blocking task after the shared token checks.
+HashWX needs no pool, remote verifier or mining transport.
+
+The signed challenge contains a 32-byte value in lower-case hex,
+`nonces_per_seed`, `difficulty`, host, version and lifetime. The proof is a
+canonical decimal `u64` nonce, from `0` to `18446744073709551615`:
+
+```text
+batch  = nonce / nonces_per_seed
+seed   = SHA-256(raw_challenge_bytes || batch_as_u64_little_endian)
+hash   = HashWX(seed)(nonce)
+valid  = hash < floor((2^64 - 1) / difficulty)
+```
+
+Difficulty is an expected hash count. It is between 1 and 2^40. It is distinct
+from Fast's leading-zero hexadecimal digit count. Without an explicit policy difficulty,
+`base * 2^(max(score, 0) / score_step)` is capped at `max`, with integer
+division and saturation. An explicit policy difficulty bypasses this mapping.
+
+HashWX supports `local_verify`. Its challenge lifetime is `pow.challenge.ttl`.
+The browser starts automatically, uses at most two workers by default, and
+checks expiry during range searches. It terminates all workers on completion,
+error, cancellation or page exit. It keeps 64-bit values as u32 halves and
+needs no BigInt or SIMD. A failure to compile a generated module retains the
+WASM interpreter. A worker policy that denies all WASM blocks both engines.
+See [browser requirements](web.md#hashwx-browser-requirements).
+
+The shipped difficulty defaults are placeholders. The iPhone 15 Pro Max
+measurement is from a high-end device. A mid-range phone measurement is still
+required before the defaults can target 1 to 3 seconds. See
+[measurements](performance.md#hashwx-measurements) and the
+[complete example](../config/rilgate.hashwx.example.yml).
+
+HashWX tokens use version 1 with an explicit `hashwx` algorithm tag. Older
+builds reject that tag. Deploy HashWX support to every gateway instance before
+selecting it in policy. Shared signing keys, token lifetimes and enforcement
+must also match. Receipts and access cookies retain the algorithm and difficulty.
 
 ### `randomx` - expensive challenge
 
@@ -65,7 +114,7 @@ pow:
 RandomX uses the WebSocket + retained Stratum session and succeeds only after Stratum pool
 accepts the share.
 
-`fast` supports only local verification. Policies that select it with `stratum_pool_accepted`
+`fast` and `hashwx` support local verification. Policies that select either with `stratum_pool_accepted`
 are rejected. Pool-accepted deployments must select RandomX.
 
 ### Pool selection
@@ -132,7 +181,7 @@ pow:
   verification: local_verify
 ```
 
-Flow:
+RandomX flow:
 
 ```text
 application request
@@ -303,7 +352,7 @@ rebuild of the seed cache. Pool blobs must fit in 233 bytes before the 23-byte s
 Larger jobs return 503. This local work cannot be submitted as a Stratum pool share. The
 `stratum_pool_accepted` mode uses the original pool blob unchanged.
 
-`pow.challenge.ttl` controls presentations and fast challenges. `pow.algorithms.randomx.challenge_ttl` controls local
+`pow.challenge.ttl` controls presentations, Fast challenges and HashWX challenges. `pow.algorithms.randomx.challenge_ttl` controls local
 RandomX solving and defaults to 3600 seconds. Tune it for browser hash rates and policy
 difficulty.
 

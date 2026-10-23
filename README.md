@@ -53,6 +53,10 @@ the requested URL. Other protected methods return `401`. The client can retry
 after authentication. Internal APIs and static resources live under `site.base_path`, which
 defaults to `/.well-known/rilgate`.
 
+HashWX provides local CPU work with generated WASM and an interpreted verifier.
+It needs no pool. Its difficulty defaults await a mid-range phone measurement.
+See [the HashWX example](config/rilgate.hashwx.example.yml).
+
 Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache, plus
 scratchpads and runtime memory. It requires WebAssembly SIMD128. Both RandomX modes get
 work from a Stratum pool Stratum endpoint.
@@ -134,7 +138,7 @@ this repository track the source:
 
 ## Project status
 
-Rilgate is experimental. Fast and RandomX are implemented. GhostRider and BLAKE3 are
+Rilgate is experimental. Fast, HashWX and RandomX are implemented. GhostRider and BLAKE3 are
 potential extensions.
 
 HTTP serving and upstream forwarding use Pingora, including application WebSocket
