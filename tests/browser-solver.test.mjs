@@ -198,13 +198,13 @@ test("RandomX mining is disclosed and waits for a click before loading the solve
     window: { POW_INTERNAL_PREFIX: "/gateway", POW_ALGORITHM: "randomx" },
     fetch: async (url) => {
       calls.push(url);
-      return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ enforce: "p2pool_accepted" }) };
+      return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ enforce: "stratum_pool_accepted" }) };
     },
     console: { error: (error) => assert.fail(error.message) },
   });
   vm.runInContext(challengeSource, context);
   await until(() => !element("#randomx-start").hidden);
-  assert.match(element("#description").textContent, /mining work.*P2Pool/);
+  assert.match(element("#description").textContent, /mining work.*mining pool/);
   assert.match(element("#description").textContent, /256 MiB/);
   assert.equal(typeof element("#randomx-start").click, "function");
   assert.deepEqual(calls, ["/gateway/api/client-config"]);
