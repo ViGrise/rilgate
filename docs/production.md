@@ -349,9 +349,11 @@ With `[remote]` and `fallback`, a rejected deadline returns `503`.
 Each verifier has one worker and at most one resident 256 MiB cache. A client
 certificate can hold at most half its admission limit, with a minimum of one.
 Give each gateway its own client certificate.
-A closed connection or expired request drops queued work. A hash that already
-started finishes, but its result is discarded. A remote timeout followed by
-local fallback can therefore compute the same proof twice.
+A closed connection or expired request drops queued work. Before it rejects a new
+request, a full worker queue removes this work to free capacity. This also applies
+to the local hasher of a gateway. A hash that already started finishes, but its
+result is discarded. A remote timeout followed by local fallback can therefore
+compute the same proof twice.
 
 `[remote, local]` can make all gateways allocate a cache during one verifier
 outage. Reserve memory for that condition. `[remote]` keeps gateway cache use at
