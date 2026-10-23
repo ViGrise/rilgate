@@ -12,7 +12,7 @@ Rilgate is a reverse proxy gateway that uses proof-of-work challenges. It places
 challenge in front of your web application, then forwards requests after the
 browser completes the required work.
 
-[Website](https://rilgate.com) · [Quick start](#quick-start) · [Documentation](#documentation) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
+[Website](https://rilgate.com) · [Quick start](#quick-start) · [Documentation](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
 
 </div>
 
@@ -20,7 +20,7 @@ browser completes the required work.
 
 - **Two PoW algorithms:** lightweight SHA-256 (`fast`) and memory-intensive RandomX.
 - **Request policies:** choose allow, deny, challenge or score adjustments using
-  paths, user agents and headers.
+  paths, methods, user agents, headers, client IP ranges and published IP sets.
 - **Two RandomX modes:** local verification or access granted after P2Pool accepts
   a submitted share. RandomX starts only after explicit browser consent.
 - **Shared Rust implementation:** native verification and browser WebAssembly use
@@ -29,49 +29,6 @@ browser completes the required work.
   internal paths come from configuration or filesystem overrides.
 - **Bounded resources:** proof rate limits, verifier queues, pool sessions, request
   bodies and timeouts. Web resources support atomic reloads.
-
-## Quick start
-
-You need stable Rust through [rustup](https://rustup.rs). The repository toolchain
-includes the WebAssembly target. Node.js 24 is needed to run the browser tests;
-Python 3 is used only for the demo upstream below.
-
-Clone the repository and build the gateway:
-
-```bash
-git clone https://github.com/ViGrise/rilgate.git
-cd rilgate
-scripts/build.sh
-```
-
-In one terminal, start a small upstream site:
-
-```bash
-demo_dir="$(mktemp -d)"
-mkdir -p "$demo_dir/protected"
-printf '%s\n' '<h1>Hello from the upstream</h1>' > "$demo_dir/protected/index.html"
-python3 -m http.server 3000 --bind 127.0.0.1 --directory "$demo_dir"
-```
-
-In another terminal, copy the example to your configuration file and start Rilgate:
-
-```bash
-cp config/rilgate.example.yml config/rilgate.yml
-export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
-./target/debug/rilgate --config config/rilgate.yml
-```
-
-Open **<http://localhost:8080/protected/>**. The browser solves a Fast challenge,
-receives an access cookie and reloads the same URL to reach the upstream page.
-The balanced preset challenges application traffic regardless of User-Agent and
-requires no external pool. Policies that select RandomX need explicit P2Pool
-configuration. See [configuration](docs/configuration.md) for environment references.
-
-Check gateway health:
-
-```bash
-curl http://localhost:8080/.well-known/rilgate/api/health
-```
 
 ## How it works
 
@@ -101,13 +58,20 @@ RandomX modes obtain work from a P2Pool Stratum endpoint.
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for
 protocol, host binding, lifetime and enforcement details.
 
-## Configuration
+## Quick start
 
-Rilgate reads `rilgate.yml` or `config/rilgate.yml` from the working directory,
-or a file selected by `--config` or `RILGATE_CONFIG`. Only the upstream URL and
-signing secret are required:
+Install the latest release on Linux or macOS (Windows archives are on the
+[releases page](https://github.com/ViGrise/rilgate/releases)):
+
+```bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
+```
+
+Create `rilgate.yml` pointing at your application. Rilgate reads it from the
+working directory:
 
 ```yaml
+environment: development # allows the access cookie over plain HTTP
 server:
   upstream:
     url: http://127.0.0.1:3000
@@ -115,65 +79,55 @@ security:
   secret: "${RILGATE_SECURITY_SECRET}"
 ```
 
+Start the gateway and open <http://localhost:8080>:
+
+```bash
+export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
+rilgate
+```
+
+See the documentation for [other installation methods](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/installation)
+(Docker, source builds), [configuration](https://platform.vigrise.com/docs/open-source-software/rilgate/configuration/overview) and
+[deployment](https://platform.vigrise.com/docs/open-source-software/rilgate/deployment/overview).
+
+## Configuration
+
+Rilgate reads `rilgate.yml` from the working directory, falling back to
+`config/rilgate.yml`. Use `--config FILE` or `RILGATE_CONFIG` only for a file
+elsewhere. Only the upstream URL and signing secret are required, as in the
+quick start.
+
 The defaults are production, embedded resources, local Fast verification and
 `policy.mode: balanced`. HKDF derives independent purpose-specific signing keys.
 Unknown fields and conflicting settings fail validation in every environment.
 Use `rilgate config check` to validate and `rilgate config show --defaults` to
-inspect all defaults with secrets redacted. The schema has no version field and
-replaces the unreleased previous format.
+inspect all defaults with secrets redacted. Every setting can also be given as a
+flag or `RILGATE_*` variable; see `rilgate --help`. The schema has no version
+field and replaces the unreleased previous format.
 
 See [the commented template](config/rilgate.example.yml),
 [configuration](docs/configuration.md), [request policies](docs/policy.md),
 [web resources](docs/web.md), and [production operations](docs/production.md).
 
-## Deployment
-
-Install a release binary on Linux or macOS (Windows archives are on the
-[releases page](https://github.com/ViGrise/rilgate/releases)):
-
-```bash
-curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
-```
-
-Set `VERSION=v<version>` to pin a release and `INSTALL_DIR` to change the target
-directory; `rilgate upgrade` later installs newer releases. Multi-architecture
-images are published to `ghcr.io/vigrise/rilgate`. Every setting can also be
-given as a flag or `RILGATE_*` variable; see `rilgate --help`.
-
-To build a release binary with embedded web assets from source:
-
-```bash
-scripts/build.sh --release
-./target/release/rilgate --config /path/to/rilgate.yml
-```
-
-Docker and Compose examples are included:
-
-```bash
-docker build -f deploy/docker/Dockerfile -t rilgate:local .
-export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
-docker compose -f deploy/docker/compose.yml up --build
-```
-
-The Compose example mounts `config/rilgate.production.yml`, requires signing
-secrets, and expects an upstream application on the host. It binds to loopback;
-configure TLS and client quotas at the edge before public use.
-See [deployment examples](deploy/README.md) for configuration, systemd, Caddy
-and nginx integration.
-
 ## Documentation
+
+The full documentation is published at
+[platform.vigrise.com](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction).
+The guides in this repository track the source:
 
 | Guide                                     | Contents                                                |
 | ----------------------------------------- | ------------------------------------------------------- |
 | [Architecture](docs/architecture.md)      | Crate boundaries, dependencies and detailed source tree |
 | [Configuration](docs/configuration.md)    | Loading, precedence, scaling and a full example         |
 | [Gateway](docs/gateway.md)                | Routing, reverse proxy behavior and resource limits     |
-| [Policies](docs/policy.md)                | Matchers, request weights and algorithm selection       |
+| [Policies](docs/policy.md)                | Matchers, IP sets, request weights and algorithm selection |
 | [Proof of work](docs/pow.md)              | Fast, RandomX, P2Pool modes and token lifecycle         |
 | [Web resources](docs/web.md)              | Branding, templates, translation fallback and reloads   |
+| [AJAX and API integration](docs/api-integration.md) | JSON challenge responses and iframe completion |
 | [Adding an algorithm](docs/algorithms.md) | Backend, provider and browser contracts                 |
 | [Production operations](docs/production.md) | Deployment hardening, monitoring, rotation and rollback |
 | [Development](docs/development.md)        | Build, tests and RandomX reference validation           |
+| [Performance](docs/performance.md)        | Asset and gate benchmarks with measurement records      |
 
 ## Project status
 
@@ -188,7 +142,7 @@ validation requirements.
 Local proofs and access tokens are reusable within their signed lifetime.
 Single-use verification across gateway instances would require shared state or a
 different protocol. RandomX solve time depends heavily on the device and
-configured difficulty; test the policy against the browsers you intend to server.
+configured difficulty; test the policy against the browsers you intend to serve.
 
 ## Contributing
 

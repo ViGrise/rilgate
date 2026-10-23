@@ -53,9 +53,14 @@ solver.js    owns calculation and cancellation
 worker.js    performs expensive calculation off the page thread
 ```
 
-Register the adapter through `window.PowClient.register(id, adapter)` and import
-its module in `web/static/js/challenge.js` after the shared runtime and registry.
-The page entrypoint selects an adapter
+Register the adapter through `window.PowClient.register(id, adapter)`. Add the
+adapter, and any classic solver or worker it needs, to the `STARTUP` list in
+`crates/xtask/src/web.rs` after the shared runtime and registry and before
+`challenge.js`; `cargo xtask build-web` lowers each member to ES5 and assembles
+`challenge.bundle.js`. List the algorithm's served files in the required
+resource check in `crates/rilgate-web/src/runtime/snapshot.rs`. Modern-only work
+such as WebAssembly loads as a separate module after the adapter checks browser
+capabilities, as RandomX does. The page entrypoint selects an adapter
 through the registry and checks the algorithm list returned by client-config.
 Shared fetch, translation, exchange, and status helpers belong to the challenge
 runtime. Mining transport belongs to the P2Pool browser module. Keep resource

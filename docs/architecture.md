@@ -8,12 +8,12 @@ are grouped by responsibility instead of collecting every subsystem in `src/`.
 
 ```text
 rilgate -> config, gateway, challenge, pow implementations, pool, web, telemetry, ip-feeds
-config -> domain configuration types (challenge, policy, pool, pow, web)
-gateway -> config, challenge, policy, pool, pow API, protocol, crypto, web, telemetry
+config -> domain configuration types (challenge, policy, pool, pow, web), protocol, crypto
+gateway -> config, challenge, policy, pool, pow API, protocol, crypto, web, core
 challenge -> pow API, policy, protocol, crypto, core
 ip-feeds -> policy
 pow-randomx -> pow API, pool provider contract, protocol, core, randomx-core
-pow-hash -> pow API, protocol, core
+pow-hash -> pow API, core
 pool -> stratum, protocol, crypto, core
 stratum -> protocol, crypto
 pow API -> protocol, core
@@ -57,13 +57,16 @@ crates/rilgate/src/
 crates/rilgate-gateway/src/
   transport/        Pingora lifecycle, client IPs and proof quotas
   proxy/            Application gate, forwarding and upstream connections
+  auth/             Access cookie parsing and Set-Cookie construction
+  web/              Challenge, denied and error pages, assets and response negotiation
   observability/    Health, dependency readiness and Prometheus exposition
   proof/            HTTP and connection-affine WebSocket proof APIs
   runtime/          Shared application state and resources
+crates/xtask/src/   Browser WASM staging and ES5 resource generation
 scripts/test/       Production browser and container verification runners
 tests/e2e/          Playwright configuration, npm manifests and browser tests
 tests/container/    Container protocol helpers
-config/             Minimal, commented, custom and RandomX configuration examples
+config/             Production, commented, custom and RandomX configuration examples
 deploy/             Docker, systemd, edge proxy and monitoring examples
 ```
 

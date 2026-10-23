@@ -3,6 +3,9 @@
 Tagged releases publish binaries on GitHub Releases and multi-architecture
 images at `ghcr.io/vigrise/rilgate`; see
 [release, rollout and rollback](../docs/production.md#release-rollout-and-rollback).
+`install.sh` verifies a release archive against `SHA256SUMS` and installs it into
+`/usr/local/bin`; set `INSTALL_DIR` to choose another directory or
+`VERSION=v<version>` to pin a release. `rilgate upgrade` installs newer releases.
 Build a native binary from the repository root with `scripts/build.sh --release`.
 The Pingora transport requires OpenSSL at build time and runtime. On Debian or
 Ubuntu, install `pkg-config` and `libssl-dev` to build, and `libssl3` plus

@@ -1,10 +1,11 @@
 # Rilgate configuration
 
 # Getting started:
-#   1. Set server.upstream.url to your application.
-#   2. Export RILGATE_SECURITY_SECRET with a cryptographically random secret:
+#   1. Copy this file to rilgate.yml in the directory you run rilgate from.
+#   2. Set server.upstream.url to your application.
+#   3. Export RILGATE_SECURITY_SECRET with a cryptographically random secret:
 #        export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
-#   3. Run: rilgate --config config/rilgate.example.yml config check
+#   4. Run: rilgate config check
 
 # Only the upstream URL and signing secret are required. Embedded pages, assets,
 # translations, Fast SHA-256 proofs and the balanced policy work without P2Pool.
@@ -29,8 +30,10 @@
 # Configuration is loaded at startup; restart the process after editing YAML.
 # Resource watching below reloads web resources, not this configuration file.
 
-# Check this file: rilgate --config config/rilgate.example.yml config check
-# Inspect resolved values: rilgate --config config/rilgate.example.yml config show
+# Rilgate reads rilgate.yml from the working directory, then config/rilgate.yml.
+# Select another file with --config FILE or RILGATE_CONFIG.
+# Check the file: rilgate config check
+# Inspect resolved values: rilgate config show
 # Include all defaults: append --defaults to config show. Secrets are redacted.
 # Redacted output is for inspection and cannot replace the original secret values.
 

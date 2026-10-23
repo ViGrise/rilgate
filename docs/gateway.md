@@ -23,6 +23,7 @@ With the default prefix:
 /.well-known/rilgate/api/verify
 /.well-known/rilgate/api/exchange
 /.well-known/rilgate/api/ws
+/.well-known/rilgate/static/js/challenge.bundle.js
 /.well-known/rilgate/static/js/challenge.js
 /.well-known/rilgate/static/js/solvers/fast/worker.js
 /.well-known/rilgate/static/js/solvers/randomx/solver.js
@@ -30,7 +31,8 @@ With the default prefix:
 /.well-known/rilgate/static/js/solvers/randomx/randomx_wasm.wasm
 ```
 
-`/api/health`, `/api/live`,
+The challenge page loads the assembled classic `challenge.bundle.js`; individual
+script routes remain available. `/api/health`, `/api/live`,
 `/api/ready` and `/api/metrics` are served only on operations listeners; public
 listeners return 404 for them. Operations listeners return 404 for every other
 route. With the default empty `server.operations.listen` list, operational routes
