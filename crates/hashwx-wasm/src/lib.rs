@@ -93,7 +93,7 @@ pub unsafe extern "C" fn hx_create(seed: *const u8, len: u32) -> i32 {
   }
   let seed = unsafe { &*seed.cast::<[u8; 32]>() };
   let hasher = HashWx::new(seed);
-  let module = hasher.wasm_module();
+  let module = Vec::new();
   let instance = Box::new(Instance { hasher, module });
   with_instances(|instances| {
     let mut instances = instances.borrow_mut();
@@ -174,6 +174,9 @@ pub unsafe extern "C" fn hx_search(
 pub extern "C" fn hx_module_ptr(handle: i32) -> usize {
   let mut pointer = 0;
   with_instance(handle, |instance| {
+    if instance.module.is_empty() {
+      instance.module = instance.hasher.wasm_module();
+    }
     pointer = instance.module.as_ptr() as usize;
     0
   });
@@ -185,6 +188,9 @@ pub extern "C" fn hx_module_ptr(handle: i32) -> usize {
 pub extern "C" fn hx_module_len(handle: i32) -> usize {
   let mut len = 0;
   with_instance(handle, |instance| {
+    if instance.module.is_empty() {
+      instance.module = instance.hasher.wasm_module();
+    }
     len = instance.module.len();
     0
   });
@@ -208,4 +214,29 @@ pub unsafe extern "C" fn hx_seed(
   hash.update(join(batch_lo, batch_hi).to_le_bytes());
   let seed = hash.finalize();
   unsafe { output.copy_from_nonoverlapping(seed.as_ptr(), 32) };
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn interpreted_search_defers_module_generation_until_requested() {
+    let seed = [0u8; 32];
+    let handle = unsafe { hx_create(seed.as_ptr(), 32) };
+    let mut output = [0; 16];
+    unsafe { hx_search(handle, 0, 0, 1, u32::MAX, u32::MAX, output.as_mut_ptr()) };
+    with_instance(handle, |instance| {
+      assert!(
+        instance.module.is_empty(),
+        "interpreted work must defer code generation"
+      );
+      0
+    });
+    assert!(hx_module_len(handle) > 0);
+    let pointer = hx_module_ptr(handle);
+    assert_ne!(pointer, 0);
+    assert_eq!(hx_module_ptr(handle), pointer);
+    assert_eq!(hx_destroy(handle), 0);
+  }
 }

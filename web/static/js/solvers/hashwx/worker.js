@@ -63,7 +63,9 @@ self.onmessage = async ({ data }) => {
         try {
           if (generatedAllowed) {
             try {
-              const bytes = new Uint8Array(api.memory.buffer, api.hx_module_ptr(handle), api.hx_module_len(handle)).slice();
+              const pointer = api.hx_module_ptr(handle);
+              const length = api.hx_module_len(handle);
+              const bytes = new Uint8Array(api.memory.buffer, pointer, length).slice();
               compiled = (await WebAssembly.instantiate(bytes, {})).instance.exports;
             } catch {
               generatedAllowed = false;
@@ -79,7 +81,7 @@ self.onmessage = async ({ data }) => {
             const status = compiled ? compiled.search(lo, hi, size, ...target) : api.hx_search(handle, lo, hi, size, ...target, output);
             if (status === 0) {
               const memory = compiled ? compiled.memory : api.memory;
-              const pointer = compiled ? 16408 : output;
+              const pointer = compiled ? compiled.result_ptr.value : output;
               const view = new DataView(memory.buffer);
               const resultLo = view.getUint32(pointer, true), resultHi = view.getUint32(pointer + 4, true);
               alive();

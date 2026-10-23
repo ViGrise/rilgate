@@ -48,6 +48,7 @@ test("4096 pseudorandom nonces across 64 seeds match in both engines", async () 
       assert.ok(bytes.length < 32768);
       const { instance } = await WebAssembly.instantiate(bytes, {});
       const generated = instance.exports;
+  assert.equal(typeof generated.result_ptr.value, "number");
       const boundary = [[0, 0], [1, 0], [0xffffffff, 0], [0, 1], [0xffffffff, 0x7fffffff], [0, 0x80000000], [0xffffffff, 0xffffffff]];
       for (let j = 0; j < 64; j++) {
         const nonce = boundary[j] ?? [random(), random()];
@@ -74,6 +75,7 @@ test("range search returns the first strict match, handles carries, wraparound a
   const context = createHashWx(exports, seedA);
   const { instance } = await WebAssembly.instantiate(context.moduleBytes(), {});
   const generated = instance.exports;
+  assert.equal(typeof generated.result_ptr.value, "number");
   try {
     for (const start of [[0, 0], [0xfffffff0, 0], [0xfffffff0, 0xffffffff]]) {
       const candidates = [];
@@ -87,15 +89,15 @@ test("range search returns the first strict match, handles carries, wraparound a
         for (const count of [0, 1, 64]) {
           const expected = candidates.slice(0, count).find(({ hash }) => less(hash, target));
           const previousInterpreted = words(exports.memory, context.output, 4);
-          const previousGenerated = words(generated.memory, 16400, 4);
+          const previousGenerated = words(generated.memory, generated.result_ptr.value - 8, 4);
           assert.equal(context.search(...start, count, ...target), expected ? 0 : -1);
           assert.equal(generated.search(...start, count, ...target), expected ? 0 : -1);
           if (expected) {
             assert.deepEqual(words(exports.memory, context.output, 4), [...expected.nonce, ...expected.hash]);
-            assert.deepEqual(words(generated.memory, 16400, 4), [...expected.hash, ...expected.nonce]);
+            assert.deepEqual(words(generated.memory, generated.result_ptr.value - 8, 4), [...expected.hash, ...expected.nonce]);
           } else {
             assert.deepEqual(words(exports.memory, context.output, 4), previousInterpreted);
-            assert.deepEqual(words(generated.memory, 16400, 4), previousGenerated);
+            assert.deepEqual(words(generated.memory, generated.result_ptr.value - 8, 4), previousGenerated);
           }
         }
       }

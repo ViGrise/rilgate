@@ -57,7 +57,9 @@ self.onmessage = async ({ data: parameters }) => {
           },
         };
       }
-      const module = new Uint8Array(api.memory.buffer, api.hx_module_ptr(handle), api.hx_module_len(handle)).slice();
+      const pointer = api.hx_module_ptr(handle);
+      const length = api.hx_module_len(handle);
+      const module = new Uint8Array(api.memory.buffer, pointer, length).slice();
       const { instance } = await WebAssembly.instantiate(module, {});
       const compiled = instance.exports;
       return {

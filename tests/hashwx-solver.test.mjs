@@ -114,3 +114,19 @@ test('worker errors and progress callback errors release the whole worker group'
   await nextRejected;
   assert.ok(instances.every(worker => worker.terminated));
 });
+
+test('worker reads the generated module result through its exported location', async () => {
+  const messages = [];
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  new DataView(memory.buffer).setUint32(128, 987, true);
+  let calls = 0;
+  const context = vm.createContext({
+    self: { postMessage: message => messages.push(message) },
+    fetch: async () => ({ ok: true, arrayBuffer: async () => bytes }),
+    WebAssembly: { instantiate: async (...args) => ++calls === 1 ? WebAssembly.instantiate(...args) :
+      { instance: { exports: { memory, result_ptr: { value: 128 }, search: () => 0 } } } },
+  });
+  vm.runInContext(source, context);
+  await context.self.onmessage({ data: { challenge, startBatch: 0, batchStride: 1 } });
+  assert.equal(messages.at(-1).nonce, '987');
+});

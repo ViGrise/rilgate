@@ -4,6 +4,8 @@ use alloc::{vec, vec::Vec};
 
 use crate::HashWx;
 
+const RESULT_NONCE_OFFSET: u32 = 16408;
+
 #[derive(Default)]
 struct Code(Vec<u8>);
 
@@ -310,7 +312,7 @@ fn search() -> Code {
   out.op(0x54);
   out.control(0x04);
   out.store(16400, 7);
-  out.store(16408, 5);
+  out.store(RESULT_NONCE_OFFSET, 5);
   out.c32(0);
   out.op(0x0f);
   out.op(0x0b);
@@ -342,11 +344,16 @@ pub(super) fn generate(instance: &HashWx) -> Vec<u8> {
   );
   out.section(3, &Code(vec![3, 0, 1, 2]));
   out.section(5, &Code(vec![1, 1, 1, 1]));
-  let mut exports = Code(vec![3]);
+  let mut globals = Code(vec![1, 0x7f, 0]);
+  globals.c32(RESULT_NONCE_OFFSET);
+  globals.op(0x0b);
+  out.section(6, &globals);
+  let mut exports = Code(vec![4]);
   for (name, kind, index) in [
     (b"memory".as_slice(), 2, 0),
     (b"hash", 0, 1),
     (b"search", 0, 2),
+    (b"result_ptr", 3, 0),
   ] {
     exports.name(name);
     exports.op(kind);

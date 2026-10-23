@@ -17,7 +17,9 @@ export function createHashWx(exports, seed) {
     handle,
     output,
     moduleBytes() {
-      return new Uint8Array(exports.memory.buffer, exports.hx_module_ptr(handle), exports.hx_module_len(handle)).slice();
+      const pointer = exports.hx_module_ptr(handle);
+      const length = exports.hx_module_len(handle);
+      return new Uint8Array(exports.memory.buffer, pointer, length).slice();
     },
     hash(lo, hi) {
       if (exports.hx_hash(handle, lo, hi, output) !== 0) throw new Error("HashWX hash failed");
