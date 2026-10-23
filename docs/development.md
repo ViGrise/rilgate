@@ -10,11 +10,11 @@ CMake, pkg-config, and OpenSSL development headers. On Debian/Ubuntu install
 shared libraries and CA certificates.
 
 Run commands from the repository root. Build with `scripts/build.sh` or
-`scripts/build.sh --release`. The script creates the browser WASM artifact
-before the gateway embeds it. Run `scripts/test.sh` for
-the complete default checks, including WASM generation, formatting, Rust tests,
-Clippy and Node tests, building incrementally in the workspace target
-directory. Browser E2E tests
+`scripts/build.sh --release`. The script creates the browser WASM artifact and
+the generated ES5 resources before the gateway embeds them. Run `scripts/test.sh`
+for the complete default checks, including WASM and web resource generation,
+formatting, Rust tests, Clippy and Node tests, building incrementally in the
+workspace target directory. Browser E2E tests
 run with `scripts/test/browser.sh` or `npm --prefix tests/e2e run test:e2e`;
 dependencies and reports stay in temporary directories.
 The native RandomX reference tests below are opt-in and
@@ -149,9 +149,10 @@ scripts/build.sh --release
 scripts/perf-gate.sh
 ```
 
-Thresholds are overridable through `PERF_GATE_MAX_LOG_BYTES`,
-`PERF_GATE_MAX_CHALLENGE_PCT`, `PERF_GATE_CONNECTIONS` and
-`PERF_GATE_DURATION`. Setting `PERF_GATE_RUST_LOG` measures a non-default log
+The operations listener used for health defaults to port 9090; override it with
+`PERF_GATE_OPERATIONS_PORT`. Thresholds and load shape are overridable through
+`PERF_GATE_MAX_LOG_BYTES`, `PERF_GATE_MAX_CHALLENGE_PCT`, `PERF_GATE_CONNECTIONS`,
+`PERF_GATE_THREADS`, `PERF_GATE_DURATION` and `PERF_GATE_WARMUP`. Setting `PERF_GATE_RUST_LOG` measures a non-default log
 filter instead of the shipping one. Set `PERF_GATE_BINARY` to test a binary
 from another Cargo target directory.
 

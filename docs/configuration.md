@@ -104,10 +104,13 @@ it preserves operations addresses.
 or the tag given by `--version`, after checking the release `SHA256SUMS`. It
 keeps the current binary when the release is not newer unless `--force` is set.
 
+Run these from the directory that holds `rilgate.yml`, or add `--config FILE`
+for a file elsewhere:
+
 ```bash
-rilgate --config /etc/rilgate/config.yml config check
-rilgate --config /etc/rilgate/config.yml config show
-rilgate --config /etc/rilgate/config.yml config show --defaults
+rilgate config check
+rilgate config show
+rilgate config show --defaults
 ```
 
 `check` validates fields, cross-field constraints, policy expressions, and

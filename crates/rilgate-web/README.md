@@ -6,7 +6,7 @@ immutable snapshots, optional watching, manual reloads, and web CLI commands.
 See the [web resource guide](../../docs/web.md)
 for configuration and deployment instructions.
 
-Gateway APIs and assets live below the configurable `web.base_path`.
+Gateway APIs and assets live below the configurable `site.base_path`.
 Challenge, denied, and upstream error pages are rendered at the application URL.
 
 Default:
@@ -21,37 +21,40 @@ The default solver module therefore resolves to:
 /.well-known/rilgate/static/js/solvers/randomx/solver.js
 ```
 
-Configure the relative path in `config/rilgate.yml`:
+Configure the relative path in `rilgate.yml`:
 
 ```yaml
-web:
+site:
   base_path: "/.well-known/rilgate"
 
 pow:
-  browser:
-    solver_module_path: "/static/js/solvers/randomx/solver.js"
+  algorithms:
+    randomx:
+      browser:
+        module: "/static/js/solvers/randomx/solver.js"
 ```
 
 ## Modules
 
 ```text
-static/js/solvers/randomx/solver.js          ES module loaded by challenge.js
+static/js/solvers/randomx/adapter.js         classic adapter in the startup bundle; checks capabilities and consent
+static/js/solvers/randomx/loader.js          ES module that imports the configured solver
+static/js/solvers/randomx/solver.js          ES module exporting solve(job) and cancel()
 static/js/solvers/randomx/randomx-worker.js  classic Web Worker that owns the WASM instance
 static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32
 ```
 
 `solver.js` resolves the worker and the WASM module relative to its own URL, so
-the trio stays together regardless of `web.base_path`.
+they stay together regardless of `site.base_path`.
 
 `randomx_wasm.wasm` is produced by `cargo xtask build-wasm` and embedded with
 the rest of `web/` through `include_dir!`, keeping deployment to a single
 binary. Rebuild the module and gateway after changing `crates/randomx-core`
-or `crates/randomx-wasm`:
+or `crates/randomx-wasm`. The build script also runs `cargo xtask build-web`,
+which generates the ES5 startup bundle under `generated/`:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo xtask build-wasm
-cargo build --release
+scripts/build.sh --release
 ```
 
 ## Module contract
@@ -79,8 +82,8 @@ reconstructs the blob and recomputes RandomX natively with the same
 `randomx-core` code the browser runs.
 
 Starting a new `solve()` while one is in flight cancels the previous attempt and
-rejects it with an error named `SupersededError`; `challenge.js` treats that as
-a normal job rotation rather than a challenge failure.
+rejects it with an error named `SupersededError`; the RandomX adapter treats that
+as a normal job rotation rather than a challenge failure.
 
 ## WASM ABI
 

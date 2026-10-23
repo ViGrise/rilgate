@@ -83,7 +83,7 @@ quotes. Every challenge/denial JSON template must render a valid JSON object.
 Validation covers each loaded locale and both algorithms; rendering also checks
 the actual output. Invalid reloads retain the previous snapshot. At startup,
 invalid external overrides fall back to the embedded bundle and are reported in
-web diagnostics. Run `rilgate --config config.yml web validate` before deployment.
+web diagnostics. Run `rilgate web validate DIRECTORY` before deployment.
 No separate JSON Schema is required. The template defines the response body;
 application integration tests verify its expected envelope and fields.
 

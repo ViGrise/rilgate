@@ -225,9 +225,11 @@ crates/randomx-wasm   raw wasm32 ABI around randomx-core
 crates/xtask          builds and stages the browser module
 ```
 
-The browser gets three assets:
+The browser gets these modern assets, loaded only after the classic adapter in
+the startup bundle confirms browser capabilities and consent:
 
 ```text
+static/js/solvers/randomx/loader.js          ES module importing the configured solver
 static/js/solvers/randomx/solver.js          ES module exporting solve(job)
 static/js/solvers/randomx/randomx-worker.js  Web Worker owning the WASM instance
 static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32
@@ -246,12 +248,11 @@ export async function solve(job) {
 
 The module is embedded with the rest of the web bundle into the server binary,
 so deployment stays a single file. Rebuild it and the gateway after changing
-`crates/randomx-core` or `crates/randomx-wasm`:
+`crates/randomx-core` or `crates/randomx-wasm`. The build script runs
+`cargo xtask build-wasm` and `cargo xtask build-web` before `cargo build`:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo xtask build-wasm
-cargo build --release
+scripts/build.sh --release
 ```
 
 Light mode keeps roughly 256 MiB of Argon2d cache in the worker and derives

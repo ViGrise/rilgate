@@ -194,6 +194,8 @@ OS vulnerabilities need separate review; image scanning does not prove safety.
 (RUSTSEC-2024-0449), retained by Pingora and the operator configuration parser.
 No known vulnerability advisory is exempted. Review these dependencies on each
 release and remove exceptions when their upstream dependency chains change.
+A scheduled workflow also checks advisories against the committed lockfile
+daily, so new advisories surface between pushes.
 
 Pushes to `main` publish a multi-architecture image (`linux/amd64`,
 `linux/arm64`) to `ghcr.io/vigrise/rilgate`, tagged `main` and `sha-<commit>`,
