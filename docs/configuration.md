@@ -161,6 +161,11 @@ Loopback, private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`),
 (`100.64.0.0/10`) and link-local networks count as non-public. Signing key strength is
 checked in every environment.
 
+For pool and proxy checks, single-label DNS names, such as `p2pool`, count as
+non-public. Names under `.local`, `.internal`, `.lan`, `.home.arpa`, `.svc` and
+`.cluster.local` also count as non-public. These checks ignore letter case and a
+final dot in a DNS name.
+
 ## Challenge browser support
 
 The embedded fast challenge targets IE11, Safari and iOS 9+, and Chrome 49 (including
@@ -286,10 +291,15 @@ configuration masks URLs and credentials.
 proxy. `http` uses CONNECT. TLS verifies the pool certificate through the proxy.
 Certificate verification is always on. HTTP response headers are limited to 8 KiB.
 
-`failover.cooldown` defaults to `30s` and accepts `1s` to `10m`. A failed TCP,
-proxy, TLS or login attempt puts that route in cooldown. The gateway tries the
-next proxy, then the next pool. If all entries of a list are in cooldown, it
-tries them in order anyway. `timeout.connect` limits each attempt.
+`failover.cooldown` defaults to `30s` and accepts `1s` to `10m`. A TCP connection,
+proxy handshake or TLS handshake failure puts the proxy in cooldown. The gateway
+then tries the next proxy. A login failure puts the pool in cooldown and selects
+the next pool. If all entries of a list are in cooldown, the gateway tries them
+in order. `timeout.connect` limits the transport phase and the login round trip
+separately. The transport phase includes TCP, proxy and TLS handshakes.
+
+The provider loads the TLS CA file once at startup. A missing or invalid CA file
+stops startup with an error that names the pool.
 
 ### Indexed environment variables
 

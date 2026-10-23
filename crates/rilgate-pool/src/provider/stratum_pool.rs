@@ -107,7 +107,7 @@ impl StratumPoolProvider {
       failures: AtomicU64::new(0),
       capacity_failures: AtomicU64::new(0),
       last_warning_ms: AtomicU64::new(0),
-      connections: Arc::new(Connections::new(config.clone())),
+      connections: Arc::new(Connections::new(config.clone())?),
       config,
     })
   }
@@ -116,8 +116,8 @@ impl StratumPoolProvider {
     self.connections.connect(difficulty).await
   }
 
-  pub async fn readiness(&self) -> Vec<(String, bool)> {
-    self.connections.readiness().await
+  pub async fn readiness(&self, timeout: Duration) -> Vec<(String, bool)> {
+    self.connections.readiness(timeout).await
   }
 
   pub fn connection_metrics(&self) -> String {

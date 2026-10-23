@@ -1,9 +1,10 @@
 use crate::{StratumPoolConfig, StratumSession};
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use std::{
   collections::{BTreeMap, HashMap},
   fmt::Write,
   sync::Mutex,
+  time::Duration,
 };
 use tokio::time::Instant;
 
@@ -17,19 +18,26 @@ struct PoolState {
 
 pub(super) struct Connections {
   config: StratumPoolConfig,
+  transports: Vec<rilgate_stratum::transport::Transport>,
   states: Mutex<Vec<PoolState>>,
   proxies: Mutex<HashMap<(usize, usize), PoolState>>,
 }
 
 impl Connections {
-  pub fn new(mut config: StratumPoolConfig) -> Self {
+  pub fn new(mut config: StratumPoolConfig) -> Result<Self> {
     for pool in &mut config.pools {
       pool.difficulty_mismatches = Default::default();
       pool.agent = config.agent.clone();
       pool.connect_timeout = config.connect_timeout;
       pool.submit_timeout = config.submit_timeout;
     }
-    Self {
+    let transports = config
+      .pools
+      .iter()
+      .map(rilgate_stratum::transport::Transport::new)
+      .collect::<Result<Vec<_>>>()?;
+    Ok(Self {
+      transports,
       proxies: Mutex::new(HashMap::new()),
       states: Mutex::new(
         (0..config.pools.len())
@@ -37,7 +45,7 @@ impl Connections {
           .collect(),
       ),
       config,
-    }
+    })
   }
 
   fn order(&self) -> Vec<usize> {
@@ -66,7 +74,7 @@ impl Connections {
     }
   }
 
-  async fn attempt(&self, index: usize, difficulty: Option<u64>) -> Result<Option<StratumSession>> {
+  async fn attempt(&self, index: usize, difficulty: u64) -> Result<StratumSession> {
     let pool = &self.config.pools[index];
     let (scope, proxies) = self.proxy_list(index);
     let mut order: Vec<Option<usize>> = {
@@ -91,19 +99,14 @@ impl Connections {
     }
     for proxy_index in order {
       let proxy = proxy_index.map(|i| &proxies[i]);
-      let result = tokio::time::timeout(pool.connect_timeout, async {
-        if let Some(difficulty) = difficulty {
-          StratumSession::connect_via(pool, proxy, difficulty)
-            .await
-            .map(Some)
-        } else {
-          rilgate_stratum::transport::connect_via(pool, proxy)
-            .await
-            .map(|_| None)
-        }
-      })
-      .await;
-      let connected = matches!(&result, Ok(Ok(_)));
+      let result = tokio::time::timeout(
+        pool.connect_timeout,
+        self.transports[index].connect(pool, proxy),
+      )
+      .await
+      .context("Stratum pool connection timed out")
+      .and_then(|result| result);
+      let connected = result.is_ok();
       if let Some(i) = proxy_index {
         let mut states = self.proxies.lock().unwrap_or_else(|e| e.into_inner());
         let state = states.entry((scope, i)).or_default();
@@ -116,12 +119,15 @@ impl Connections {
         }
       }
       match result {
-        Ok(Ok(session)) => return Ok(session),
-        Ok(Err(error)) => {
-          tracing::warn!(pool = %pool.name, proxy = proxy.map(|proxy| proxy.name.as_str()), error = %error, "Stratum connection attempt failed")
+        Ok(stream) => {
+          return StratumSession::login(pool, stream, difficulty)
+            .await
+            .inspect_err(|error| {
+              tracing::warn!(pool = %pool.name, error = %error, "Stratum pool login failed");
+            });
         }
-        Err(_) => {
-          tracing::warn!(pool = %pool.name, proxy = proxy.map(|proxy| proxy.name.as_str()), "Stratum connection attempt timed out")
+        Err(error) => {
+          tracing::warn!(pool = %pool.name, proxy = proxy.map(|proxy| proxy.name.as_str()), error = %error, "Stratum connection attempt failed");
         }
       }
     }
@@ -132,11 +138,11 @@ impl Connections {
     let order = self.order();
     for (position, &index) in order.iter().enumerate() {
       let pool = &self.config.pools[index];
-      let result = self.attempt(index, Some(difficulty)).await;
+      let result = self.attempt(index, difficulty).await;
       let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
       let state = &mut states[index];
       match result {
-        Ok(Some(session)) => {
+        Ok(session) => {
           state.connected += 1;
           state.failed_at = None;
           return Ok(session);
@@ -154,33 +160,39 @@ impl Connections {
     Err(anyhow!("All Stratum pools are unavailable"))
   }
 
-  pub async fn readiness(&self) -> Vec<(String, bool)> {
+  pub async fn readiness(&self, timeout: Duration) -> Vec<(String, bool)> {
     let mut results: Vec<_> = self
       .config
       .pools
       .iter()
       .map(|pool| (pool.name.clone(), false))
       .collect();
-    let order = self.order();
-    for (position, &index) in order.iter().enumerate() {
-      let connected = self.attempt(index, None).await.is_ok();
-      {
-        let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
-        let state = &mut states[index];
-        if connected {
-          state.connected += 1;
-          state.failed_at = None;
-        } else {
-          state.failed += 1;
-          state.failed_at = Some(Instant::now());
-          if position + 1 < order.len() {
-            state.failover += 1;
+    let mut probes = tokio::task::JoinSet::new();
+    for (index, pool) in self.config.pools.iter().enumerate() {
+      let pool = pool.clone();
+      let transport = self.transports[index].clone();
+      let proxies = self.proxy_list(index).1.to_vec();
+      probes.spawn(async move {
+        let ready = tokio::time::timeout(timeout, async {
+          let routes = proxies
+            .iter()
+            .map(Some)
+            .chain(proxies.is_empty().then_some(None));
+          for proxy in routes {
+            if transport.connect(&pool, proxy).await.is_ok() {
+              return true;
+            }
           }
-        }
-      }
-      results[index].1 = connected;
-      if connected {
-        break;
+          false
+        })
+        .await
+        .unwrap_or(false);
+        (index, ready)
+      });
+    }
+    while let Some(result) = probes.join_next().await {
+      if let Ok((index, ready)) = result {
+        results[index].1 = ready;
       }
     }
     results

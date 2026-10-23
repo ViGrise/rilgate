@@ -54,6 +54,13 @@ impl StratumSession {
     let stream = timeout(cfg.connect_timeout, connect_via(cfg, proxy))
       .await
       .context("Stratum pool connection timed out")??;
+    Self::login(cfg, stream, difficulty).await
+  }
+
+  pub async fn login(cfg: &StratumConfig, stream: Stream, difficulty: u64) -> Result<Self> {
+    if difficulty < 1000 {
+      return Err(anyhow!("Stratum pool difficulty must be at least 1000"));
+    }
     let (read_half, write_half) = tokio::io::split(stream);
     let mut reader = JsonLineReader::new(read_half);
     let mut writer = write_half;

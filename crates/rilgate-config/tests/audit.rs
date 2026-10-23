@@ -290,3 +290,32 @@ fn public_per_challenge_connections_warn_in_both_environments_even_with_tls() {
     );
   }
 }
+
+#[test]
+fn private_dns_names_allow_pool_and_proxy_transport_in_production() {
+  for host in [
+    "p2pool",
+    "pool.local",
+    "pool.internal",
+    "pool.lan",
+    "pool.home.arpa",
+    "pool.svc",
+    "pool.cluster.local",
+    "POOL.INTERNAL.",
+  ] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: private, address: '{host}:3333'}}]\n    proxies: [{{name: route, url: 'http://{host}:3128', username: user, password: pass}}]\n"
+    );
+    assert!(warnings(&text).is_empty(), "{host}");
+  }
+  for host in [
+    "pool.internal.example",
+    "pool.notinternal",
+    "pool.svc.example",
+  ] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: public, address: '{host}:3333'}}]\n"
+    );
+    assert!(resolve(&text).is_err(), "{host}");
+  }
+}

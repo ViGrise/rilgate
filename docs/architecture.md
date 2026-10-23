@@ -171,8 +171,9 @@ several workers are reserved for phase 2.
 
 The pool provider owns ordered pool and proxy failover and their cooldowns.
 Each connection attempt includes TCP, proxy negotiation, optional TLS and
-Stratum login. The readiness probe uses the same route selection and transport,
-without login, under one total timeout.
+Stratum login. Readiness probes all pools concurrently through their configured
+proxies, without login. Each pool probe uses `server.readiness_timeout`.
+Readiness does not change connection counters or cooldowns.
 
 Each pooled job session owns one pool connection. Its job stream cannot move to
 a backup pool. A new session selects a route again. A browser WebSocket owns

@@ -736,3 +736,62 @@ fn tls_server_names_fail_at_startup_instead_of_on_each_challenge() {
   let error = format!("{:#}", resolve(&text).unwrap_err());
   assert!(error.contains("tls.server_name"), "{error}");
 }
+
+#[test]
+fn resolution_errors_attribute_only_settings_inside_the_error_path() {
+  use rilgate_config::{Setting, SettingValue, loader::parse_with};
+  let setting = |path: &str, source: &str, value: &str| Setting {
+    path: path.into(),
+    source: source.into(),
+    value: SettingValue::Scalar(value.into()),
+  };
+  for (text, settings, expected, unrelated) in [
+    (
+      format!(
+        "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, login: {{user: invalid}}}}]\n"
+      ),
+      vec![
+        setting(
+          "pow.stratum_pool.pools.0.address",
+          "ADDRESS_SOURCE",
+          "localhost:3333",
+        ),
+        setting(
+          "pow.stratum_pool.pools.0.login.user",
+          "LOGIN_SOURCE",
+          "invalid",
+        ),
+        setting(
+          "pow.stratum_pool.pools.0.login.password",
+          "PASSWORD_SOURCE",
+          "secret",
+        ),
+        setting("pow.default_algorithm", "ALGORITHM_SOURCE", "fast"),
+      ],
+      vec!["LOGIN_SOURCE"],
+      vec!["ADDRESS_SOURCE", "PASSWORD_SOURCE", "ALGORITHM_SOURCE"],
+    ),
+    (
+      format!(
+        "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333}}]\n    proxies: [{{name: route, url: 'http://localhost:3128'}}]\n"
+      ),
+      vec![
+        setting("pow.stratum_pool.proxies.0.url", "PROXY_SOURCE", "invalid"),
+        setting("pow.stratum_pool.pools.0.name", "POOL_SOURCE", "pool"),
+      ],
+      vec!["PROXY_SOURCE"],
+      vec!["POOL_SOURCE"],
+    ),
+  ] {
+    let error = format!(
+      "{:#}",
+      parse_with(&text, &settings).unwrap().resolve().unwrap_err()
+    );
+    for source in expected {
+      assert!(error.contains(source), "{error}");
+    }
+    for source in unrelated {
+      assert!(!error.contains(source), "{error}");
+    }
+  }
+}

@@ -4,7 +4,7 @@ use std::str::FromStr;
 #[serde(rename_all = "snake_case")]
 pub enum PowEnforcement {
   LocalVerify,
-  /// Tokens issued under the previous name stay valid until they expire.
+  /// Decoding also accepts `p2pool_accepted`.
   #[serde(alias = "p2pool_accepted")]
   StratumPoolAccepted,
 }

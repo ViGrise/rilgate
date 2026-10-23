@@ -92,7 +92,19 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
   config.pow.stratum_pool.pools[0].name = "backup".into();
   let mut primary = config.pow.stratum_pool.pools[0].clone();
   primary.name = "primary".into();
-  primary.port = 9;
+  let hanging = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  primary.port = hanging.local_addr().unwrap().port();
+  primary.tls.enabled = true;
+  config.server.readiness_timeout = Duration::from_millis(100);
+  let hanging_server = tokio::spawn(async move {
+    loop {
+      let (stream, _) = hanging.accept().await.unwrap();
+      tokio::spawn(async move {
+        let _stream = stream;
+        std::future::pending::<()>().await;
+      });
+    }
+  });
   config.pow.stratum_pool.pools.insert(0, primary);
   config.pow.policy.rules.as_mut().unwrap()[0]
     .challenge
@@ -126,6 +138,7 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
     serde_json::from_slice::<serde_json::Value>(&response.bytes().await.unwrap()).unwrap()["pool"],
     false
   );
+  hanging_server.abort();
   assert_eq!(
     client
       .get(format!("{base}/metrics"))

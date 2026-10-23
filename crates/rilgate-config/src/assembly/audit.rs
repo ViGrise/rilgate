@@ -292,10 +292,19 @@ pub(super) fn public(addresses: &[SocketAddr]) -> impl Iterator<Item = &SocketAd
 }
 
 fn host_is_public(host: &str) -> bool {
-  if host.trim_end_matches('.').eq_ignore_ascii_case("localhost") {
-    return false;
+  if let Ok(ip) = host.parse::<IpAddr>() {
+    return !is_non_public(&IpNet::from(ip.to_canonical()));
   }
-  host
-    .parse::<IpAddr>()
-    .map_or(true, |ip| !is_non_public(&IpNet::from(ip.to_canonical())))
+  let host = host.trim_end_matches('.').to_ascii_lowercase();
+  host.contains('.')
+    && ![
+      ".local",
+      ".internal",
+      ".lan",
+      ".home.arpa",
+      ".svc",
+      ".cluster.local",
+    ]
+    .iter()
+    .any(|suffix| host.ends_with(suffix))
 }

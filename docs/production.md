@@ -140,8 +140,9 @@ concurrently. Only one probe runs at a time per instance.
 
 Upstream TCP readiness does not check application HTTP responses. Pool readiness
 checks proxy and TLS handshakes. It does not check Stratum login, available jobs
-or proof acceptance. Each response lists pool names and results. One timeout
-limits all pool attempts together. Monitor real request errors
+or proof acceptance. Each response lists pool names and results. Pool probes run
+concurrently. Each pool probe has its own readiness timeout and does not change
+cooldowns or failover counters. Monitor real request errors
 and pool failures as well. Saturated request capacity can also produce 503 for probes.
 Operational endpoints do not reserve unlimited resources during overload.
 

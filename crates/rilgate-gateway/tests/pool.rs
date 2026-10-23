@@ -427,3 +427,173 @@ async fn difficulty_changes_count_once_per_connection_and_preserve_pool_targets(
   );
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn readiness_observes_healthy_backup_without_changing_connection_state() {
+  let hanging = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let healthy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut config = common::config().pow.stratum_pool.clone();
+  config.pools[0].port = hanging.local_addr().unwrap().port();
+  config.pools[0].tls.enabled = true;
+  let mut backup = config.pools[0].clone();
+  backup.name = "backup".into();
+  backup.port = healthy.local_addr().unwrap().port();
+  backup.tls.enabled = false;
+  config.pools.push(backup);
+  let provider = StratumPoolProvider::new(config).unwrap();
+  let before = provider.connection_metrics();
+  let server = tokio::spawn(async move {
+    let (stream, _) = hanging.accept().await.unwrap();
+    std::future::pending::<()>().await;
+    drop(stream);
+  });
+  let results = tokio::time::timeout(
+    Duration::from_millis(500),
+    provider.readiness(Duration::from_millis(100)),
+  )
+  .await
+  .unwrap();
+  assert_eq!(
+    results,
+    [("default".into(), false), ("backup".into(), true)]
+  );
+  assert_eq!(provider.connection_metrics(), before);
+  server.abort();
+}
+
+#[test]
+fn invalid_pool_ca_stops_provider_creation_and_names_the_pool() {
+  let directory = tempfile::tempdir().unwrap();
+  for contents in [
+    None,
+    Some("invalid PEM"),
+    Some("-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----\n"),
+  ] {
+    let path = directory.path().join("ca.pem");
+    if let Some(contents) = contents {
+      std::fs::write(&path, contents).unwrap();
+    }
+    let mut config = common::config().pow.stratum_pool.clone();
+    config.pools[0].name = "primary".into();
+    config.pools[0].tls.enabled = true;
+    config.pools[0].tls.ca = Some(path);
+    let error = StratumPoolProvider::new(config)
+      .err()
+      .expect("invalid CA must stop startup");
+    assert!(format!("{error:#}").contains("primary"), "{error:#}");
+  }
+}
+
+fn http_proxy(listener: &TcpListener, name: &str) -> rilgate_pool::Proxy {
+  rilgate_pool::Proxy {
+    name: name.into(),
+    url: rilgate_config::Secret(format!("http://{}", listener.local_addr().unwrap())),
+    username: None,
+    password: None,
+  }
+}
+
+async fn proxy_headers(stream: &mut TcpStream) {
+  let mut bytes = Vec::new();
+  while !bytes.ends_with(b"\r\n\r\n") {
+    bytes.push(stream.read_u8().await.unwrap());
+  }
+}
+
+#[tokio::test]
+async fn pool_login_failures_preserve_proxy_health_and_fail_over_to_the_backup_pool() {
+  for response in [
+    Some("{\"id\":1,\"error\":\"rejected\"}\n"),
+    Some("{\"id\":1,\"result\":{\"id\":\"miner\",\"job\":{}}}\n"),
+    None,
+  ] {
+    let first = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let second = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let backup = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut config = common::config().pow.stratum_pool.clone();
+    config.connect_timeout = Duration::from_millis(200);
+    config.cooldown = Duration::from_secs(1);
+    config.proxies = vec![http_proxy(&first, "first"), http_proxy(&second, "second")];
+    let mut pool = config.pools[0].clone();
+    pool.name = "backup".into();
+    pool.port = backup.local_addr().unwrap().port();
+    pool.proxies = Some(Vec::new());
+    config.pools.push(pool);
+    let server = tokio::spawn(async move {
+      for _ in 0..2 {
+        let (mut stream, _) = first.accept().await.unwrap();
+        proxy_headers(&mut stream).await;
+        stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).await.unwrap();
+        if let Some(response) = response {
+          reader
+            .get_mut()
+            .write_all(response.as_bytes())
+            .await
+            .unwrap();
+        } else {
+          tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+      }
+    });
+    let healthy = tokio::spawn(async move {
+      for _ in 0..2 {
+        let (stream, _) = backup.accept().await.unwrap();
+        login(stream, 1000).await;
+      }
+    });
+    let provider = StratumPoolProvider::new(config).unwrap();
+    for attempt in 0..2 {
+      if attempt > 0 {
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+      }
+      assert_eq!(
+        provider.connect(1000).await.unwrap().current_job.job_id,
+        "first"
+      );
+    }
+    let metrics = provider.connection_metrics();
+    assert!(
+      metrics
+        .contains("rilgate_stratum_proxy_connections_total{proxy=\"first\",outcome=\"failed\"} 0"),
+      "{metrics}"
+    );
+    assert!(
+      metrics.contains(
+        "rilgate_stratum_proxy_connections_total{proxy=\"first\",outcome=\"connected\"} 2"
+      ),
+      "{metrics}"
+    );
+    assert!(
+      tokio::time::timeout(Duration::from_millis(50), second.accept())
+        .await
+        .is_err()
+    );
+    server.await.unwrap();
+    healthy.await.unwrap();
+  }
+}
+
+#[tokio::test]
+async fn transport_and_login_each_have_a_full_connect_timeout() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut config = common::config().pow.stratum_pool.clone();
+  config.connect_timeout = Duration::from_millis(500);
+  config.proxies = vec![http_proxy(&listener, "route")];
+  let server = tokio::spawn(async move {
+    let (mut stream, _) = listener.accept().await.unwrap();
+    proxy_headers(&mut stream).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    login(stream, 1000).await;
+  });
+  let provider = StratumPoolProvider::new(config).unwrap();
+  assert_eq!(
+    provider.connect(1000).await.unwrap().current_job.job_id,
+    "first"
+  );
+  server.await.unwrap();
+}

@@ -186,34 +186,40 @@ fn indexed_field(name: &str, field: &str, fields: &[(&str, &str)]) -> Result<Str
 }
 
 fn indexed_settings(
-  variables: impl Iterator<Item = (String, String)>,
+  variables: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<Vec<Setting>, String> {
   let mut settings = Vec::new();
   for (name, value) in variables {
+    let Some(name) = name.to_str() else {
+      continue;
+    };
     let Some(rest) = name.strip_prefix("RILGATE_POW_STRATUM_POOL_") else {
       continue;
     };
     let path = if let Some(rest) = rest.strip_prefix("POOLS_") {
-      let (index, field) = indexed_item(&name, rest)?;
+      let (index, field) = indexed_item(name, rest)?;
       let field = if let Some(rest) = field.strip_prefix("PROXIES_") {
-        let (proxy, field) = indexed_item(&name, rest)?;
+        let (proxy, field) = indexed_item(name, rest)?;
         format!(
           "proxies.{proxy}.{}",
-          indexed_field(&name, field, PROXY_FIELDS)?
+          indexed_field(name, field, PROXY_FIELDS)?
         )
       } else {
-        indexed_field(&name, field, POOL_FIELDS)?
+        indexed_field(name, field, POOL_FIELDS)?
       };
       format!("pow.stratum_pool.pools.{index}.{field}")
     } else if let Some(rest) = rest.strip_prefix("PROXIES_") {
-      let (index, field) = indexed_item(&name, rest)?;
+      let (index, field) = indexed_item(name, rest)?;
       format!(
         "pow.stratum_pool.proxies.{index}.{}",
-        indexed_field(&name, field, PROXY_FIELDS)?
+        indexed_field(name, field, PROXY_FIELDS)?
       )
     } else {
       continue;
     };
+    let value = value
+      .into_string()
+      .map_err(|_| format!("{name}: expected a UTF-8 value"))?;
     let value = if path.ends_with(".proxies") {
       if !value.is_empty() {
         return Err(format!(
@@ -226,7 +232,7 @@ fn indexed_settings(
     };
     settings.push(Setting {
       path,
-      source: name,
+      source: name.into(),
       value,
     });
   }
@@ -316,7 +322,7 @@ impl FromArgMatches for Settings {
       }
     }
     values.extend(
-      indexed_settings(std::env::vars())
+      indexed_settings(std::env::vars_os())
         .map_err(|message| clap::Error::raw(clap::error::ErrorKind::ValueValidation, message))?,
     );
     Ok(Self { values })
@@ -509,5 +515,38 @@ mod proxy_indexed_tests {
     )
     .unwrap_err();
     assert!(error.contains("valid fields: NAME, URL, USERNAME, PASSWORD"));
+  }
+}
+
+#[cfg(all(test, unix))]
+mod environment_encoding_tests {
+  use super::*;
+  use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+  #[test]
+  fn unrelated_non_utf8_environment_entries_are_ignored() {
+    let invalid = OsString::from_vec(vec![0xff]);
+    assert!(
+      indexed_settings(
+        [
+          (invalid.clone(), invalid.clone()),
+          (OsString::from("UNRELATED"), invalid.clone()),
+          (OsString::from("RILGATE_POW_STRATUM_POOL_AGENT"), invalid),
+        ]
+        .into_iter()
+      )
+      .unwrap()
+      .is_empty()
+    );
+  }
+
+  #[test]
+  fn indexed_non_utf8_values_report_the_variable() {
+    let name = "RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_PASSWORD";
+    let error =
+      indexed_settings([(OsString::from(name), OsString::from_vec(vec![0xff]))].into_iter())
+        .unwrap_err();
+    assert!(error.contains(name), "{error}");
+    assert!(error.contains("UTF-8"), "{error}");
   }
 }

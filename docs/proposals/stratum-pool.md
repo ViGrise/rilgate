@@ -226,18 +226,18 @@ For each new Stratum session, the gateway does these steps:
    cooldown. With an empty list, the gateway tries one direct connection.
 3. It connects through the next proxy, then does the TLS handshake if TLS is on,
    then sends the Stratum `login`.
-4. A connection can fail in the TCP connection, the proxy handshake, the TLS
-   handshake or the login. Then the proxy starts its cooldown, and the gateway
-   tries the next proxy.
-5. If all proxies of the pool fail, the pool starts its cooldown and the gateway
-   tries the next pool.
+4. If the TCP connection, proxy handshake or TLS handshake fails, the proxy
+   starts its cooldown. The gateway tries the next proxy.
+5. If all proxies fail or the pool login fails, the pool starts its cooldown.
+   The gateway tries the next pool. A login failure does not change proxy health.
 6. If all pools fail, the challenge or the share submission fails, as with one
    pool today.
 7. If all pools are in their cooldown, the gateway tries them again in order and
    ignores the cooldown. A cooldown never blocks the last chance to connect.
 
-`timeout.connect` limits each try. A session stays on the pool that it
-connected to:
+`timeout.connect` limits the transport phase and the login round trip separately.
+The transport phase includes TCP, proxy and TLS handshakes. A session stays on
+the pool that it connected to:
 
 - A pooled job session belongs to one pool. Its jobs come only from that pool.
 - In `stratum_pool_accepted` mode, the WebSocket session submits the share to the
@@ -334,8 +334,9 @@ change to `StratumPool*` names in the same change.
 Readiness:
 
 - `/api/ready` is ready when at least one pool accepts a connection through its
-  proxies. The probe follows the connection order of section 5 and uses
-  `server.readiness_timeout` for all attempts together.
+  proxies. All pools are probed concurrently. Each pool probe uses
+  `server.readiness_timeout`. Probes do not change cooldowns or connection and
+  failover counters.
 - The response names each pool and its result. It does not show addresses or
   credentials.
 

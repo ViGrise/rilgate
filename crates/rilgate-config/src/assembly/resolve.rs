@@ -9,25 +9,33 @@ impl Document {
   pub fn resolve(&self) -> Result<Config> {
     self.resolve_config().map_err(|error| {
       let message = format!("{error:#}");
+      let error_paths: Vec<_> = error
+        .chain()
+        .flat_map(|cause| {
+          cause
+            .to_string()
+            .lines()
+            .map(|line| {
+              line
+                .split_once(':')
+                .map_or(line, |(path, _)| path)
+                .trim()
+                .replace('[', ".")
+                .replace(']', "")
+            })
+            .collect::<Vec<_>>()
+        })
+        .collect();
       let sources: Vec<_> = self
         .sources
         .iter()
         .filter(|(path, _)| {
-          let normalized = path.split('.').fold(String::new(), |mut out, key| {
-            if key.parse::<usize>().is_ok() {
-              out.push_str(&format!("[{key}]"));
-            } else {
-              if !out.is_empty() {
-                out.push('.');
-              }
-              out.push_str(key);
-            }
-            out
-          });
-          message.contains(&normalized)
-            || normalized
-              .rsplit_once('.')
-              .is_some_and(|(parent, _)| message.contains(parent))
+          error_paths.iter().any(|error_path| {
+            path.as_str() == error_path
+              || path
+                .strip_prefix(error_path.as_str())
+                .is_some_and(|suffix| suffix.starts_with('.'))
+          })
         })
         .map(|(_, source)| source.as_str())
         .collect();

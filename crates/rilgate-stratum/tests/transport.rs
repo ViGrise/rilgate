@@ -147,7 +147,10 @@ async fn tls_rejects_untrusted_certificates_and_wrong_names_before_sending_login
     server_name: Some("pool.test".into()),
     ca: Some(ca_path),
   };
-  let mut stream = connect_via(&cfg, Some(&proxy_config)).await.unwrap();
+  let transport = rilgate_stratum::transport::Transport::new(&cfg).unwrap();
+  std::fs::remove_file(cfg.tls.ca.as_ref().unwrap()).unwrap();
+  let mut stream = transport.connect(&cfg, Some(&proxy_config)).await.unwrap();
+  std::fs::write(cfg.tls.ca.as_ref().unwrap(), ca.to_pem().unwrap()).unwrap();
   let mut data = [0; 8];
   stream.read_exact(&mut data).await.unwrap();
   assert_eq!(&data, b"verified");
@@ -181,6 +184,9 @@ async fn headers(stream: &mut tokio::net::TcpStream) -> String {
 async fn http_connect_bounds_headers_rejects_refusals_and_preserves_tunnel_bytes() {
   for response in [
     b"HTTP/1.1 200 OK\r\n\r\njob".to_vec(),
+    b"HTTP/1.0 200 OK\r\n\r\njob".to_vec(),
+    b"HTTP/1.1 200\r\n\r\njob".to_vec(),
+    b"HTTP/1.0 200\r\n\r\njob".to_vec(),
     b"HTTP/1.1 403 Forbidden\r\n\r\n".to_vec(),
     vec![b'x'; 8193],
     b"HTTP/1.1 200".to_vec(),

@@ -80,6 +80,7 @@ async fn http_connect(
     .split(|byte| *byte == b'\n')
     .next()
     .unwrap_or_default();
+  let status = status.strip_suffix(b"\r").unwrap_or(status);
   let mut fields = status.split(|byte| *byte == b' ');
   ensure!(
     matches!(fields.next(), Some(b"HTTP/1.0" | b"HTTP/1.1")) && fields.next() == Some(b"200"),

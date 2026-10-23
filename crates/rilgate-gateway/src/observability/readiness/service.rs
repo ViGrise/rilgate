@@ -29,20 +29,7 @@ pub async fn check(state: &AppState) -> Response {
   );
   let pool = async {
     if needs_pool {
-      Some(
-        tokio::time::timeout(timeout, state.pool.readiness())
-          .await
-          .unwrap_or_else(|_| {
-            state
-              .cfg
-              .pow
-              .stratum_pool
-              .pools
-              .iter()
-              .map(|pool| (pool.name.clone(), false))
-              .collect()
-          }),
-      )
+      Some(state.pool.readiness(timeout).await)
     } else {
       None
     }
