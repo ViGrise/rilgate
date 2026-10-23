@@ -60,6 +60,7 @@ pub fn config() -> Config {
           connect_timeout: std::time::Duration::from_secs(1),
           submit_timeout: std::time::Duration::from_secs(1),
         }],
+        failover_timeout: std::time::Duration::from_secs(15),
         cooldown: std::time::Duration::from_secs(30),
         agent: "test".into(),
         connect_timeout: std::time::Duration::from_secs(1),

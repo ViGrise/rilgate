@@ -795,3 +795,20 @@ fn resolution_errors_attribute_only_settings_inside_the_error_path() {
     }
   }
 }
+
+#[test]
+fn failover_budget_rejects_values_below_connect_timeout_or_outside_range() {
+  for (timeout, connect, expected) in [
+    ("2s", "3s", "pow.stratum_pool.timeout.connect"),
+    ("500ms", "1s", "1s to 5m"),
+    ("301s", "1s", "1s to 5m"),
+  ] {
+    let error = resolve(&format!("{BASE}pow:\n  stratum_pool:\n    failover: {{timeout: {timeout}}}\n    timeout: {{connect: {connect}}}\n")).unwrap_err();
+    let message = format!("{error:#}");
+    assert!(
+      message.contains("pow.stratum_pool.failover.timeout"),
+      "{message}"
+    );
+    assert!(message.contains(expected), "{message}");
+  }
+}

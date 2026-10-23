@@ -9,6 +9,7 @@ pub enum JobSessionMode {
 pub struct StratumPoolConfig {
   pub proxies: Vec<rilgate_stratum::config::Proxy>,
   pub pools: Vec<rilgate_stratum::StratumConfig>,
+  pub failover_timeout: std::time::Duration,
   pub cooldown: std::time::Duration,
   pub agent: String,
   pub connect_timeout: std::time::Duration,
@@ -53,6 +54,15 @@ impl StratumPoolConfig {
       (std::time::Duration::from_secs(1)..=std::time::Duration::from_secs(600))
         .contains(&self.cooldown),
       "pow.stratum_pool.failover.cooldown: expected 1s to 10m"
+    );
+    anyhow::ensure!(
+      (std::time::Duration::from_secs(1)..=std::time::Duration::from_secs(300))
+        .contains(&self.failover_timeout),
+      "pow.stratum_pool.failover.timeout: expected 1s to 5m"
+    );
+    anyhow::ensure!(
+      self.failover_timeout >= self.connect_timeout,
+      "pow.stratum_pool.failover.timeout must be at least pow.stratum_pool.timeout.connect"
     );
     Ok(())
   }

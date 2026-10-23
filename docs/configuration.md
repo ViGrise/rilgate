@@ -243,7 +243,7 @@ or overflow.
 When `pow.stratum_pool` is enabled, its defaults are:
 
 - One pool named `default`, at `127.0.0.1:3333`, with login `x+{difficulty}` and password `x`.
-- No proxies, TLS disabled, failover cooldown `30s`, and agent `rilgate/<version>`.
+- No proxies, TLS disabled, failover timeout `15s`, failover cooldown `30s`, and agent `rilgate/<version>`.
 - Connect timeout `5s` and submit timeout `20s`.
 - Session capacity `64` and session TTL `15m`.
 - Job-session mode `pooled`, maximum `16`, and idle `1m`.
@@ -297,6 +297,16 @@ then tries the next proxy. A login failure puts the pool in cooldown and selects
 the next pool. If all entries of a list are in cooldown, the gateway tries them
 in order. `timeout.connect` limits the transport phase and the login round trip
 separately. The transport phase includes TCP, proxy and TLS handshakes.
+
+`failover.timeout` limits the total connection time across all pools and proxies,
+including login. It defaults to `15s` and accepts `1s` to `5m`. It must be at least
+`timeout.connect`. Each phase uses the smaller of its timeout and the time left.
+When the budget expires, the gateway stops and reports that all Stratum pools
+are unavailable. A try that this budget stops does not start a pool or
+proxy cooldown. A failure before the budget expires still starts the applicable
+cooldown. Readiness probes keep the separate `server.readiness_timeout` bound.
+Use `--pow-stratum-pool-failover-timeout` or
+`RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT` to set the budget.
 
 The provider loads the TLS CA file once at startup. A missing or invalid CA file
 stops startup with an error that names the pool.

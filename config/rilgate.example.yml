@@ -555,10 +555,14 @@ security:
         # username: "${RILGATE_STRATUM_PROXY_USERNAME}"
         # password: "${RILGATE_STRATUM_PROXY_PASSWORD}"
 
-    # Skip a failed pool or proxy for this duration, from 1s to 10m.
-    # If every entry is in cooldown, try the list in order again.
+    # Limits for ordered pool and proxy connection attempts.
     #
     # failover:
+      # Total time across all pools and proxies, including login (1s to 5m).
+      # Must be at least timeout.connect. A request stopped by this limit starts no cooldown.
+      # timeout: 15s
+      # Skip a failed pool or proxy for this duration, from 1s to 10m.
+      # If every entry is in cooldown, try the list in order again.
       # cooldown: 30s
 
     # Client agent identifier sent in the Stratum login.
