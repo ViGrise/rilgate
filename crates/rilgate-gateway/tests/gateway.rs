@@ -417,6 +417,8 @@ fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
   assert!(cfg.validate().is_ok());
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.env = rilgate_gateway::config::Environment::Production;
+  assert!(config.validate().is_ok());
+  config.pow.signing_key.0 = "short".into();
   assert!(config.validate().is_err());
   config.pow.signing_key.0 = "a".repeat(32);
   config.pow.auth_signing_key.0 = "b".repeat(32);

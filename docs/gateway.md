@@ -227,9 +227,9 @@ not a deadline for the complete response. Streaming responses and upgraded
 WebSocket sessions can outlive these request budgets.
 
 Startup validates policy difficulties, paths, timeouts, and queue/session
-capacities. Production rejects placeholder or shorter-than-32-byte signing
-keys and debug score headers. P2Pool passwords are redacted in configuration
-logs.
+capacities. Every environment rejects placeholder or shorter-than-32-byte
+signing keys; production also rejects debug score headers. P2Pool passwords are
+redacted in configuration logs.
 
 RandomX requires a click before solver initialization. The page discloses CPU
 and memory use, and P2Pool mode explicitly discloses submitted mining work.

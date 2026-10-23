@@ -30,13 +30,7 @@ impl Configuration {
       .chain(self.pow.signing_keys.previous.values())
       .chain(self.pow.auth_signing_keys.previous.values())
     {
-      ensure!(
-        !key.expose().is_empty(),
-        "security.keys: signing keys must not be empty"
-      );
-      if production {
-        validate_secret(key, "security.keys")?;
-      }
+      validate_secret(key, "security.keys")?;
     }
     if production
       && self
