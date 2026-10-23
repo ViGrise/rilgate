@@ -1,13 +1,12 @@
 # Web runtime and browser RandomX adapter
 
-The `rilgate-web` crate implements the embedded bundle and filesystem overrides,
-MiniJinja rendering, key-level translations, locale negotiation, safe seeding,
-immutable snapshots, optional watching, manual reloads, and web CLI commands.
-See the [web resource guide](../../docs/web.md)
-for configuration and deployment instructions.
+The `rilgate-web` crate implements the embedded bundle, filesystem overrides, MiniJinja
+rendering, key-level translations, locale negotiation, and safe seeding. It also
+implements immutable snapshots, optional watching, manual reloads, and web CLI commands.
+See the [web resource guide](../../docs/web.md) for configuration and deployment instructions.
 
-Gateway APIs and assets live below the configurable `site.base_path`.
-Challenge, denied, and upstream error pages are rendered at the application URL.
+Gateway APIs and assets live below the configurable `site.base_path`. Challenge, denied, and
+upstream error pages are rendered at the application URL.
 
 Default:
 
@@ -44,13 +43,12 @@ static/js/solvers/randomx/randomx-worker.js  classic Web Worker that owns the WA
 static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32
 ```
 
-`solver.js` resolves the worker and the WASM module relative to its own URL, so
-they stay together regardless of `site.base_path`.
+`solver.js` resolves the worker and the WASM module relative to its own URL, so they
+stay together regardless of `site.base_path`.
 
-`randomx_wasm.wasm` is produced by `cargo xtask build-wasm` and embedded with
-the rest of `web/` through `include_dir!`, keeping deployment to a single
-binary. Rebuild the module and gateway after changing `crates/randomx-core`
-or `crates/randomx-wasm`. The build script also runs `cargo xtask build-web`,
+`cargo xtask build-wasm` produces `randomx_wasm.wasm`. `include_dir!` embeds it with the rest of
+`web/`, so deployment uses a single binary. After you change `crates/randomx-core` or
+`crates/randomx-wasm`, rebuild the module and gateway. The build script also runs `cargo xtask build-web`,
 which generates the ES5 startup bundle under `generated/`:
 
 ```bash
@@ -74,16 +72,16 @@ export async function solve(job) {
 }
 ```
 
-`p2pool_accepted` needs both `nonce` and `result` because the gateway forwards
-the share through the active P2Pool Stratum session.
+`p2pool_accepted` needs both `nonce` and `result` because the gateway forwards the
+share through the active P2Pool Stratum session.
 
-`local_verify` only requires the nonce for trust purposes: the Rust gateway
-reconstructs the blob and recomputes RandomX natively with the same
-`randomx-core` code the browser runs.
+`local_verify` only requires the nonce for trust purposes: the Rust gateway reconstructs
+the blob and recomputes RandomX natively with the same `randomx-core` code the browser
+runs.
 
-Starting a new `solve()` while one is in flight cancels the previous attempt and
-rejects it with an error named `SupersededError`; the RandomX adapter treats that
-as a normal job rotation rather than a challenge failure.
+If a new `solve()` starts while one is active, it cancels the previous operation. It
+rejects that operation with an error named `SupersededError`. The RandomX adapter treats this
+error as normal job rotation. It does not treat it as a challenge failure.
 
 ## WASM ABI
 
@@ -101,44 +99,50 @@ rx_set_dataset_triple_function(handle, table_index) -> status
 rx_dataset_item(handle, item_u64, out_ptr) -> status   interpreted oracle
 ```
 
-`cargo xtask build-wasm` exports a growable `__indirect_function_table`. The worker
-compiles the Rust-generated dataset module with the core's `memory`, installs its
-`dataset_item`, `dataset_pair` and `dataset_triple` functions in that table, and registers their
-indices with the handle. Three table slots are reused across seed changes.
-Index zero restores interpretation. The generated module belongs to one cache
-and must be replaced when the seed changes. Its byte buffer is valid until the
-handle is destroyed; callers copy it before asynchronous compilation. Dataset
-output is eight u64 words at an eight-byte-aligned writable address. The paired
-kernel receives two item indices and two output addresses. `rx_hash_pair` receives
-two equally sized inputs and writes their hashes consecutively to 64 bytes.
-The triple kernel receives an address containing three u64 indices and an address
-for three consecutive eight-word outputs. `rx_hash_triple` reads equally sized
-inputs at `input_ptr`, `input_ptr + 256` and `input_ptr + 512`, then writes 96 output
-bytes. The maximum input length is 256 bytes.
+`cargo xtask build-wasm` exports a growable `__indirect_function_table`. The worker compiles the Rust-generated
+dataset module with the core's `memory`. It installs the module's `dataset_item`,
+`dataset_pair` and `dataset_triple` functions in that table.
+
+It registers their indices with the handle. Three table slots are reused across seed
+changes. Index zero restores interpretation.
+
+The generated module belongs to one cache and must be replaced when the seed changes.
+Its byte buffer is valid until the handle is destroyed. Before asynchronous compilation,
+callers copy it.
+
+Dataset output is eight u64 words at an eight-byte-aligned writable address. The paired
+kernel receives two item indices and two output addresses. `rx_hash_pair` receives two
+equally sized inputs and writes their hashes consecutively to 64 bytes. The triple
+kernel receives an address containing three u64 indices and an address for three
+consecutive eight-word outputs. `rx_hash_triple` reads equally sized inputs at `input_ptr`,
+`input_ptr + 256` and `input_ptr + 512`, then writes 96 output bytes. The maximum input length is
+256 bytes.
 
 The worker checks all three consecutive nonce results in order and yields between
-batches. One cache is shared by three independent VMs, adding about 4 MiB of
-scratchpad memory relative to a single VM. The final nonce is hashed singly,
-keeping every nonce within the 32-bit range. Failed kernel installation retains single-hash execution.
-The built WASM artifact requires SIMD128 support.
+batches. Three independent VMs share one cache. They use about 4 MiB more scratchpad
+memory than a single VM.
 
-The wrapper uses Rust's wasm32 standard library and exposes a raw C-style ABI.
-Callers pass pointers into the exported linear memory; no `wasm-bindgen`
-JavaScript glue is required. Fallible status exports return `0` on success
-and `-1` on failure.
+The worker hashes the final nonce singly. This keeps every nonce within the 32-bit
+range. Failed kernel installation retains single-hash execution. The built WASM artifact
+requires SIMD128 support.
 
-`cancel()` terminates the worker, releases its WASM memory, and rejects pending
-work with `AbortError`. The challenge page calls it when work finishes or the
-page leaves. The page waits for a click before allocating the RandomX cache,
-and P2Pool mode discloses that browser work is submitted as mining work.
+The wrapper uses Rust's wasm32 standard library and exposes a raw C-style ABI. Callers
+pass pointers into the exported linear memory. No `wasm-bindgen` JavaScript glue is
+required. Fallible status exports return `0` on success and `-1` on
+failure.
 
-Local RandomX jobs carry `expires_at` in Unix seconds. The challenge page passes
-it as `expiresAt` to the solver, which refuses expired work before cache setup
-and before and after hashing. Difficulty may be a number or a decimal string;
-strings preserve values above JavaScript's safe integer range. Local blobs
-include a unique challenge suffix and are not valid P2Pool mining submissions.
+`cancel()` terminates the worker, releases its WASM memory, and rejects pending work
+with `AbortError`. The challenge page calls it when work finishes or the page leaves.
+The page waits for a click before it allocates the RandomX cache. P2Pool mode discloses
+that browser work is submitted as mining work.
 
-The Rust WASM core uses exact directed SIMD rounding, public-state AES lookup
-tables and inlined SuperscalarHash kernels. Browser throughput depends on the
-device, browser and workload. See [RandomX throughput](../../docs/pow.md#randomx-throughput)
-for arithmetic validation and native throughput commands.
+Local RandomX jobs carry `expires_at` in Unix seconds. The challenge page passes it as
+`expiresAt` to the solver, which refuses expired work before cache setup and before and
+after each hash. Difficulty can be a number or a decimal string. Strings preserve values
+above JavaScript's safe integer range. Local blobs include a unique challenge suffix and
+are not valid P2Pool mining submissions.
+
+The Rust WASM core uses exact directed SIMD rounding, public-state AES lookup tables and
+inlined SuperscalarHash kernels. Browser throughput depends on the device, browser and
+workload. See [RandomX throughput](../../docs/pow.md#randomx-throughput) for arithmetic validation and native
+throughput commands.

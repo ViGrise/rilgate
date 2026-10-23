@@ -28,9 +28,9 @@ difficulty 4 -> ~65,536
 difficulty 6 -> ~16,777,216
 ```
 
-The browser solver runs in a dedicated Web Worker and does **not** load the
-RandomX WASM module. Server verification is one SHA-256 operation, so this is
-appropriate for low/moderate suspicion.
+The browser solver runs in a dedicated Web Worker and does **not** load the RandomX WASM
+module. Server verification is one SHA-256 operation, so this is appropriate for low or
+moderate suspicion.
 
 The canonical YAML algorithm name is `fast`.
 
@@ -42,9 +42,9 @@ challenge:
   difficulty: 8000
 ```
 
-Both RandomX modes obtain work from a configured P2Pool Stratum endpoint.
-Difficulty is a positive integer of at least 1000; a result must be no greater
-than `floor((2^256 - 1) / difficulty)` when interpreted as a little-endian integer.
+Both RandomX modes get work from a configured P2Pool Stratum endpoint. Difficulty is a
+positive integer of at least 1000. A result must be no greater than `floor((2^256 - 1) / difficulty)` when
+interpreted as a little-endian integer.
 
 With:
 
@@ -62,11 +62,11 @@ pow:
   verification: p2pool_accepted
 ```
 
-RandomX uses the WebSocket + retained Stratum session and succeeds only after
-P2Pool accepts the share.
+RandomX uses the WebSocket + retained Stratum session and succeeds only after P2Pool
+accepts the share.
 
-`fast` supports only local verification. Policies selecting it with
-`p2pool_accepted` are rejected. P2Pool-accepted deployments must select RandomX.
+`fast` supports only local verification. Policies that select it with `p2pool_accepted`
+are rejected. P2Pool-accepted deployments must select RandomX.
 
 ### Hybrid escalation
 
@@ -101,8 +101,7 @@ pow:
 
 ## Enforcement modes
 
-Configured through `pow.verification` in YAML, `--pow-verification` or
-`RILGATE_POW_VERIFICATION`.
+Configured through `pow.verification` in YAML, `--pow-verification` or `RILGATE_POW_VERIFICATION`.
 
 ### Stateless local verification
 
@@ -149,15 +148,17 @@ gateway
       upstream
 ```
 
-The challenge is self-contained and signed, so a challenge created by gateway A
-can be verified by gateway B when both instances share signing keys,
-enforcement mode, and compatible token lifetimes and algorithms.
+The challenge is self-contained and signed. Gateway B can validate a challenge created
+by gateway A if both instances share:
+
+- Signing keys and enforcement mode.
+- Compatible token lifetimes and algorithms.
 
 No Redis, coordinator, sticky session or special load-balancer configuration is
 required.
 
-A locally accepted result proves the requested RandomX difficulty but is not
-the same protocol event as P2Pool returning a Stratum `accepted`.
+A locally accepted result proves the requested RandomX difficulty. It is a different
+protocol event from a P2Pool Stratum `accepted` response.
 
 ### P2Pool-accepted enforcement
 
@@ -199,12 +200,12 @@ HTTP exchange
 shared HttpOnly access cookie
 ```
 
-Only the active WebSocket challenge is temporarily tied to one gateway process.
-An established WebSocket naturally stays on that instance, so the external
-load balancer does not need sticky-session configuration.
+Only the active WebSocket challenge is temporarily tied to one gateway process. An
+established WebSocket naturally stays on that instance, so the external load balancer
+does not need sticky-session configuration.
 
-After success, the normal access cookie is stateless and can be verified by any
-gateway sharing the auth key.
+After success, the normal access cookie is stateless and can be verified by any gateway
+that shares the auth key.
 
 ## Browser RandomX adapter
 
@@ -216,8 +217,8 @@ Default:
 /.well-known/rilgate/static/js/solvers/randomx/solver.js
 ```
 
-RandomX is implemented once, in `crates/randomx-core`, and reused by both the
-native server verifier and the browser:
+RandomX is implemented once, in `crates/randomx-core`, and reused by both the native server
+verifier and the browser:
 
 ```text
 crates/randomx-core   pure-Rust RandomX v1 Light mode (no C/C++ dependency)
@@ -225,8 +226,8 @@ crates/randomx-wasm   raw wasm32 ABI around randomx-core
 crates/xtask          builds and stages the browser module
 ```
 
-The browser gets these modern assets, loaded only after the classic adapter in
-the startup bundle confirms browser capabilities and consent:
+The browser gets these modern assets, loaded only after the classic adapter in the
+startup bundle confirms browser capabilities and consent:
 
 ```text
 static/js/solvers/randomx/loader.js          ES module importing the configured solver
@@ -246,78 +247,81 @@ export async function solve(job) {
 }
 ```
 
-The module is embedded with the rest of the web bundle into the server binary,
-so deployment stays a single file. Rebuild it and the gateway after changing
-`crates/randomx-core` or `crates/randomx-wasm`. The build script runs
-`cargo xtask build-wasm` and `cargo xtask build-web` before `cargo build`:
+The module is embedded with the rest of the web bundle into the server binary, so
+deployment stays a single file. After you change `crates/randomx-core` or `crates/randomx-wasm`, rebuild
+the module and gateway. The build script runs `cargo xtask build-wasm` and `cargo xtask build-web` before
+`cargo build`:
 
 ```bash
 scripts/build.sh --release
 ```
 
-Light mode keeps roughly 256 MiB of Argon2d cache in the worker and derives
-dataset items on demand instead of materializing the ~2 GiB dataset.
+Light mode keeps roughly 256 MiB of Argon2d cache in the worker. It derives dataset
+items on demand. It does not materialize the ~2 GiB dataset.
 
 ### Proof scope and lifetime
 
-Presentation and challenge tokens bind the request host. Receipts and access
-cookies retain that binding, including the port. HTTP/2 authority is supported
-when the Host header is absent. Missing hosts cannot bypass a nonempty binding.
-Old receipts and access tokens without a host claim require a new proof. Fast
-challenges also retain their enforcement mode and cannot cross mode changes;
-older fast challenge tokens without that claim require a new challenge.
-All token validators reject unsupported versions, future issue times, invalid
+Presentation and challenge tokens bind the request host. Receipts and access cookies
+retain that binding, including the port. HTTP/2 authority is supported when the Host
+header is absent.
+
+Missing hosts cannot bypass a nonempty binding. Old receipts and access tokens without a
+host claim need a new proof. Fast challenges also retain their enforcement mode and
+cannot cross mode changes. Older fast challenge tokens without that claim need a new
+challenge. All token validators reject unsupported versions, future issue times, invalid
 lifetimes, and expiration at the current second.
 
-Access cookies apply across paths on their bound host. A `CHALLENGE` policy
-accepts a cookie only when its algorithm and enforcement mode match and its
-difficulty is at least the policy's requirement. `DENY` rules still deny access
-with a valid cookie.
+Access cookies apply across paths on their bound host. A `CHALLENGE` policy accepts a
+cookie only when its algorithm and enforcement mode match and its difficulty is at least
+the policy's requirement. `DENY` rules still deny access with a valid cookie.
 
-Local RandomX work appends a domain marker and a random 16-byte challenge ID to
-the P2Pool-derived blob. Identical pool jobs therefore yield distinct proofs
-without rebuilding the seed cache. Pool blobs must fit in 233 bytes before the
-23-byte suffix; larger jobs return 503. This local work cannot be submitted as a
-P2Pool share. The `p2pool_accepted` mode uses the original pool blob unchanged.
+Local RandomX work appends a domain marker and a random 16-byte challenge ID to the
+P2Pool-derived blob. Identical pool jobs therefore yield distinct proofs without a
+rebuild of the seed cache. Pool blobs must fit in 233 bytes before the 23-byte suffix.
+Larger jobs return 503. This local work cannot be submitted as a P2Pool share. The
+`p2pool_accepted` mode uses the original pool blob unchanged.
 
-`pow.challenge.ttl` controls presentations and fast challenges.
-`pow.algorithms.randomx.challenge_ttl` controls local RandomX solving and defaults
-to 3600 seconds. Tune it for browser hash rates and policy difficulty. The HTTP
-RandomX response includes `expires_at` in Unix seconds; the browser checks it
-before initialization and before and after each hash. Native verification times
-out at the deadline, abandons queued work, and rechecks expiration before
-issuing a receipt. An already running native hash finishes on its verifier thread.
+`pow.challenge.ttl` controls presentations and fast challenges. `pow.algorithms.randomx.challenge_ttl` controls local
+RandomX solving and defaults to 3600 seconds. Tune it for browser hash rates and policy
+difficulty.
 
-RandomX difficulty remains a JSON number through JavaScript's largest safe
-integer and becomes a decimal string above that limit, preserving all u64 values
-in HTTP and WebSocket job messages. Custom solvers should accept both forms.
+The HTTP RandomX response includes `expires_at` in Unix seconds. The browser checks it
+before initialization and before and after each hash. Native verification reaches its
+timeout at the deadline and abandons queued work. It rechecks expiration before it
+issues a receipt. An already running native hash finishes on its verifier thread.
 
-Exchanging a receipt preserves its issue time when calculating access expiry.
-Repeated exchange cannot extend access. Tokens remain reusable bearer credentials
-within their signed lifetime, and authentication cookies work from any machine
-unless `security.auth.bind` ties them to the client network, browser family or
-chosen headers. Binding limits where a copied cookie works. It does not stop
-reuse by a client that matches the binding. Rejecting every replay across
-instances requires shared state or a different protocol. Re-verifying the same challenge can still
-issue receipts until that challenge expires.
+RandomX difficulty remains a JSON number through JavaScript's largest safe integer.
+Above that limit, it becomes a decimal string. This preserves all u64 values in HTTP and
+WebSocket job messages. Custom solvers should accept both forms.
+
+Receipt exchange preserves the receipt issue time to calculate access expiry. Repeated
+exchange cannot extend access. Tokens remain reusable bearer credentials within their
+signed lifetime.
+
+Unless `security.auth.bind` ties authentication cookies to the client network, browser family or
+chosen headers, they work from any machine. Binding limits where a copied cookie works.
+It does not stop reuse by a client that matches the binding. Rejection of every replay
+across instances requires shared state or a different protocol. Repeated verification of the
+same challenge can still issue receipts until that challenge expires.
 
 ### RandomX throughput
 
-The native core corrects binary64 rounding with exact residuals or integer
-significand comparisons. The WASM core uses two-lane SIMD and normalized Dekker
-residuals, retaining software arithmetic for exceptional values. All four
-RandomX rounding modes remain exact. Directed division and square root reuse
-the nearest-rounded result when computing residuals. The `no_std` build retains
-software square root. WASM assets require SIMD128 support.
+The native core corrects binary64 rounding with exact residuals or integer significand
+comparisons. The WASM core uses two-lane SIMD and normalized Dekker residuals, and
+retains software arithmetic for exceptional values. All four RandomX rounding modes
+remain exact. Directed division and square root reuse the nearest-rounded result when
+they compute residuals. The `no_std` build retains software square root. WASM assets
+need SIMD128 support.
 
-Rust generates seed-specialized SuperscalarHash kernels for one, two or three
-dataset items. Integer high multiplication is inlined, and cache-line reads begin before
-the independent arithmetic. The worker compiles the module against the existing
-cache, reuses three table slots across seed changes, and hashes three consecutive
-nonces in one worker. Each nonce has independent VM state; the extra scratchpad
-costs about 4 MiB relative to a single VM alongside the shared 256 MiB cache.
-Kernel installation failure retains single-hash interpretation. No C++, Emscripten or additional workers are
-required.
+Rust generates seed-specialized SuperscalarHash kernels for one, two or three dataset
+items. Integer high multiplication is inlined, and cache-line reads begin before the
+independent arithmetic. The worker compiles the module against the existing cache,
+reuses three table slots across seed changes, and hashes three consecutive nonces in one
+worker.
+
+Each nonce has independent VM state. The extra scratchpad costs about 4 MiB relative to
+a single VM alongside the shared 256 MiB cache. Kernel installation failure retains
+single-hash interpretation. No C++, Emscripten or extra workers are required.
 
 Native throughput can be measured with:
 
@@ -325,17 +329,17 @@ Native throughput can be measured with:
 cargo run -p randomx-core --release --example throughput -- 8 nonce
 ```
 
-Arithmetic validation covers IEEE boundaries and 200,000 random pairs against
-the software oracle in the actual WASM runtime. AES table rounds are compared
-with the portable AES implementation over 4,096 state/key pairs. Dataset tests
-compare single, paired and triple kernels with interpretation over three seeds
-and 411 boundary/random items. Full hash tests check paired and triple versus
-individual execution and official reference vectors.
+Arithmetic validation covers IEEE boundaries and 200,000 random pairs against the
+software oracle in the actual WASM runtime. AES table rounds are compared with the
+portable AES implementation over 4,096 state and key pairs. Dataset tests compare
+single, paired and triple kernels with interpretation over three seeds and 411 boundary
+and random items. Full hash tests check paired and triple versus individual execution
+and official reference vectors.
 
 ```bash
 cargo build -p randomx-wasm --release --target wasm32-unknown-unknown --features validation
 node scripts/validate-randomx-wasm.mjs
 ```
 
-The validation build stays under `target/`; `cargo xtask build-wasm` stages the
-production artifact without the validation export.
+The validation build stays under `target/`. `cargo xtask build-wasm` stages the production
+artifact without the validation export.
