@@ -1,4 +1,5 @@
 use crate::StratumConfig;
+use crate::config::Proxy;
 use anyhow::{Context, Result, ensure};
 use rustls::pki_types::{CertificateDer, ServerName, pem::PemObject};
 use std::sync::Arc;
@@ -12,9 +13,16 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send> AsyncStream for T {}
 pub type Stream = Box<dyn AsyncStream>;
 
 pub async fn connect_transport(config: &StratumConfig) -> Result<Stream> {
-  let stream = TcpStream::connect((config.host.as_str(), config.port))
-    .await
-    .context("Stratum pool TCP connection failed")?;
+  connect_via(config, None).await
+}
+
+pub async fn connect_via(config: &StratumConfig, proxy: Option<&Proxy>) -> Result<Stream> {
+  let stream = match proxy {
+    Some(proxy) => crate::proxy::connect(config, proxy).await?,
+    None => TcpStream::connect((config.host.as_str(), config.port))
+      .await
+      .context("Stratum pool TCP connection failed")?,
+  };
   if !config.tls.enabled {
     return Ok(Box::new(stream));
   }

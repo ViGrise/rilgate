@@ -1,6 +1,10 @@
 use crate::{StratumPoolConfig, StratumSession};
 use anyhow::{Result, anyhow};
-use std::{fmt::Write, sync::Mutex};
+use std::{
+  collections::{BTreeMap, HashMap},
+  fmt::Write,
+  sync::Mutex,
+};
 use tokio::time::Instant;
 
 #[derive(Default)]
@@ -14,6 +18,7 @@ struct PoolState {
 pub(super) struct Connections {
   config: StratumPoolConfig,
   states: Mutex<Vec<PoolState>>,
+  proxies: Mutex<HashMap<(usize, usize), PoolState>>,
 }
 
 impl Connections {
@@ -24,6 +29,7 @@ impl Connections {
       pool.submit_timeout = config.submit_timeout;
     }
     Self {
+      proxies: Mutex::new(HashMap::new()),
       states: Mutex::new(
         (0..config.pools.len())
           .map(|_| PoolState::default())
@@ -52,19 +58,78 @@ impl Connections {
     }
   }
 
+  fn proxy_list(&self, index: usize) -> (usize, &[rilgate_stratum::config::Proxy]) {
+    match &self.config.pools[index].proxies {
+      Some(proxies) => (index + 1, proxies),
+      None => (0, &self.config.proxies),
+    }
+  }
+
+  async fn attempt(&self, index: usize, difficulty: Option<u64>) -> Result<Option<StratumSession>> {
+    let pool = &self.config.pools[index];
+    let (scope, proxies) = self.proxy_list(index);
+    let mut order: Vec<Option<usize>> = {
+      let states = self.proxies.lock().unwrap_or_else(|e| e.into_inner());
+      (0..proxies.len())
+        .filter(|i| {
+          states.get(&(scope, *i)).is_none_or(|state| {
+            state
+              .failed_at
+              .is_none_or(|time| time.elapsed() >= self.config.cooldown)
+          })
+        })
+        .map(Some)
+        .collect()
+    };
+    if order.is_empty() {
+      order = if proxies.is_empty() {
+        vec![None]
+      } else {
+        (0..proxies.len()).map(Some).collect()
+      };
+    }
+    for proxy_index in order {
+      let proxy = proxy_index.map(|i| &proxies[i]);
+      let result = tokio::time::timeout(pool.connect_timeout, async {
+        if let Some(difficulty) = difficulty {
+          StratumSession::connect_via(pool, proxy, difficulty)
+            .await
+            .map(Some)
+        } else {
+          rilgate_stratum::transport::connect_via(pool, proxy)
+            .await
+            .map(|_| None)
+        }
+      })
+      .await;
+      let connected = matches!(&result, Ok(Ok(_)));
+      if let Some(i) = proxy_index {
+        let mut states = self.proxies.lock().unwrap_or_else(|e| e.into_inner());
+        let state = states.entry((scope, i)).or_default();
+        if connected {
+          state.connected += 1;
+          state.failed_at = None;
+        } else {
+          state.failed += 1;
+          state.failed_at = Some(Instant::now());
+        }
+      }
+      if let Ok(Ok(session)) = result {
+        return Ok(session);
+      }
+    }
+    Err(anyhow!("Pool connection attempts failed"))
+  }
+
   pub async fn connect(&self, difficulty: u64) -> Result<StratumSession> {
     let order = self.order();
     for (position, &index) in order.iter().enumerate() {
       let pool = &self.config.pools[index];
-      let result = tokio::time::timeout(
-        pool.connect_timeout,
-        StratumSession::connect(pool, difficulty),
-      )
-      .await;
+      let result = self.attempt(index, Some(difficulty)).await;
       let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
       let state = &mut states[index];
       match result {
-        Ok(Ok(session)) => {
+        Ok(Some(session)) => {
           state.connected += 1;
           state.failed_at = None;
           return Ok(session);
@@ -90,13 +155,18 @@ impl Connections {
       .map(|pool| (pool.name.clone(), false))
       .collect();
     for index in self.order() {
-      let pool = &self.config.pools[index];
-      let connected = tokio::time::timeout(
-        pool.connect_timeout,
-        rilgate_stratum::transport::connect_transport(pool),
-      )
-      .await
-      .is_ok_and(|result| result.is_ok());
+      let connected = self.attempt(index, None).await.is_ok();
+      {
+        let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        let state = &mut states[index];
+        if connected {
+          state.connected += 1;
+          state.failed_at = None;
+        } else {
+          state.failed += 1;
+          state.failed_at = Some(Instant::now());
+        }
+      }
       results[index].1 = connected;
       if connected {
         break;
@@ -124,6 +194,34 @@ impl Connections {
         "rilgate_stratum_pool_failover_total{{from=\"{}\"}} {}",
         pool.name, state.failover
       );
+    }
+    text.push_str("# TYPE rilgate_stratum_proxy_connections_total counter\n");
+    let states = self.proxies.lock().unwrap_or_else(|e| e.into_inner());
+    let mut counters: BTreeMap<&str, (u64, u64)> = BTreeMap::new();
+    let lists = std::iter::once((0, self.config.proxies.as_slice())).chain(
+      self
+        .config
+        .pools
+        .iter()
+        .enumerate()
+        .filter_map(|(i, pool)| pool.proxies.as_deref().map(|proxies| (i + 1, proxies))),
+    );
+    for (scope, proxies) in lists {
+      for (index, proxy) in proxies.iter().enumerate() {
+        let counter = counters.entry(&proxy.name).or_default();
+        if let Some(state) = states.get(&(scope, index)) {
+          counter.0 += state.connected;
+          counter.1 += state.failed;
+        }
+      }
+    }
+    for (proxy, (connected, failed)) in counters {
+      for (outcome, value) in [("connected", connected), ("failed", failed)] {
+        let _ = writeln!(
+          text,
+          "rilgate_stratum_proxy_connections_total{{proxy=\"{proxy}\",outcome=\"{outcome}\"}} {value}"
+        );
+      }
     }
     text
   }

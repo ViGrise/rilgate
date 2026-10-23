@@ -10,7 +10,7 @@ use openssl::{
   },
 };
 use rilgate_crypto::Secret;
-use rilgate_stratum::{StratumConfig, config::TlsConfig, transport::connect_transport};
+use rilgate_stratum::{StratumConfig, config::TlsConfig, transport::connect_via};
 use std::{sync::Arc, time::Duration};
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
@@ -90,6 +90,7 @@ pub fn config(port: u16) -> StratumConfig {
     connect_timeout: Duration::from_secs(2),
     submit_timeout: Duration::from_secs(2),
     tls: TlsConfig::default(),
+    proxies: None,
   }
 }
 
@@ -124,20 +125,139 @@ async fn tls_rejects_untrusted_certificates_and_wrong_names_before_sending_login
       }
     }
   });
+  let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let proxy_config = proxy(proxy_listener.local_addr().unwrap().port(), "http");
+  let tunnel = tokio::spawn(async move {
+    for _ in 0..3 {
+      let (mut client, _) = proxy_listener.accept().await.unwrap();
+      headers(&mut client).await;
+      let mut upstream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+      client.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
+      tokio::spawn(async move {
+        let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+      });
+    }
+  });
   let mut cfg = config(port);
   cfg.tls = TlsConfig {
     enabled: true,
     server_name: Some("pool.test".into()),
     ca: Some(ca_path),
   };
-  let mut stream = connect_transport(&cfg).await.unwrap();
+  let mut stream = connect_via(&cfg, Some(&proxy_config)).await.unwrap();
   let mut data = [0; 8];
   stream.read_exact(&mut data).await.unwrap();
   assert_eq!(&data, b"verified");
   cfg.tls.server_name = Some("wrong.test".into());
-  assert!(connect_transport(&cfg).await.is_err());
+  assert!(connect_via(&cfg, Some(&proxy_config)).await.is_err());
   cfg.tls.server_name = Some("pool.test".into());
   cfg.tls.ca = None;
-  assert!(connect_transport(&cfg).await.is_err());
+  assert!(connect_via(&cfg, Some(&proxy_config)).await.is_err());
   task.await.unwrap();
+  tunnel.await.unwrap();
+}
+
+fn proxy(port: u16, scheme: &str) -> rilgate_stratum::config::Proxy {
+  rilgate_stratum::config::Proxy {
+    name: "proxy".into(),
+    url: Secret(format!("{scheme}://127.0.0.1:{port}")),
+    username: Some(Secret("operator".into())),
+    password: Some(Secret("password".into())),
+  }
+}
+
+async fn headers(stream: &mut tokio::net::TcpStream) -> String {
+  let mut bytes = Vec::new();
+  while !bytes.ends_with(b"\r\n\r\n") {
+    bytes.push(stream.read_u8().await.unwrap());
+  }
+  String::from_utf8(bytes).unwrap()
+}
+
+#[tokio::test]
+async fn http_connect_bounds_headers_rejects_refusals_and_preserves_tunnel_bytes() {
+  for response in [
+    b"HTTP/1.1 200 OK\r\n\r\njob".to_vec(),
+    b"HTTP/1.1 403 Forbidden\r\n\r\n".to_vec(),
+    vec![b'x'; 8193],
+    b"HTTP/1.1 200".to_vec(),
+  ] {
+    let expected = response.ends_with(b"job");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy = proxy(listener.local_addr().unwrap().port(), "http");
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.unwrap();
+      let request = headers(&mut stream).await;
+      assert!(request.starts_with("CONNECT 127.0.0.1:3333 HTTP/1.1\r\n"));
+      assert!(request.contains("Proxy-Authorization: Basic b3BlcmF0b3I6cGFzc3dvcmQ="));
+      stream.write_all(&response).await.unwrap();
+    });
+    let result = rilgate_stratum::transport::connect_via(&config(3333), Some(&proxy)).await;
+    if expected {
+      let mut stream = result.unwrap();
+      let mut bytes = [0; 3];
+      stream.read_exact(&mut bytes).await.unwrap();
+      assert_eq!(&bytes, b"job");
+    } else {
+      assert!(result.is_err());
+    }
+    server.await.unwrap();
+  }
+}
+
+#[tokio::test]
+async fn socks_dns_modes_and_credentials_reach_the_proxy_with_the_correct_address_type() {
+  for (scheme, address_type, host) in [("socks5", 1, "127.0.0.1"), ("socks5h", 3, "pool.invalid")] {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy = proxy(listener.local_addr().unwrap().port(), scheme);
+    let task = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.unwrap();
+      assert_eq!(stream.read_u8().await.unwrap(), 5);
+      let count = stream.read_u8().await.unwrap();
+      let mut methods = vec![0; count as usize];
+      stream.read_exact(&mut methods).await.unwrap();
+      assert!(methods.contains(&2));
+      stream.write_all(&[5, 2]).await.unwrap();
+      assert_eq!(stream.read_u8().await.unwrap(), 1);
+      let len = stream.read_u8().await.unwrap();
+      let mut user = vec![0; len as usize];
+      stream.read_exact(&mut user).await.unwrap();
+      assert_eq!(user, b"operator");
+      let len = stream.read_u8().await.unwrap();
+      let mut pass = vec![0; len as usize];
+      stream.read_exact(&mut pass).await.unwrap();
+      assert_eq!(pass, b"password");
+      stream.write_all(&[1, 0]).await.unwrap();
+      let mut request = [0; 4];
+      stream.read_exact(&mut request).await.unwrap();
+      assert_eq!(request, [5, 1, 0, address_type]);
+      let len = if address_type == 3 {
+        stream.read_u8().await.unwrap() as usize
+      } else {
+        4
+      };
+      let mut address = vec![0; len];
+      stream.read_exact(&mut address).await.unwrap();
+      if address_type == 3 {
+        assert_eq!(address, b"pool.invalid");
+      }
+      assert_eq!(stream.read_u16().await.unwrap(), 3333);
+      stream
+        .write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 1])
+        .await
+        .unwrap();
+      stream.write_all(b"job").await.unwrap();
+    });
+    let mut cfg = config(3333);
+    cfg.host = host.into();
+    let mut stream = rilgate_stratum::transport::connect_via(&cfg, Some(&proxy))
+      .await
+      .unwrap();
+    let mut bytes = [0; 3];
+    stream.read_exact(&mut bytes).await.unwrap();
+    assert_eq!(&bytes, b"job");
+    task.await.unwrap();
+  }
 }

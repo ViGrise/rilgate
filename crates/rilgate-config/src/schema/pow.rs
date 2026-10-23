@@ -158,6 +158,7 @@ impl Default for Browser {
 #[serde(default, deny_unknown_fields)]
 pub struct StratumPool {
   pub pools: Vec<Pool>,
+  pub proxies: Vec<rilgate_pool::Proxy>,
   pub failover: Failover,
   pub agent: String,
   pub timeout: PoolTimeout,
@@ -167,11 +168,13 @@ pub struct StratumPool {
 impl Default for StratumPool {
   fn default() -> Self {
     Self {
+      proxies: Vec::new(),
       pools: vec![Pool {
         name: "default".into(),
         address: "127.0.0.1:3333".into(),
         login: Login::default(),
         tls: Default::default(),
+        proxies: None,
       }],
       failover: Failover::default(),
       agent: concat!("rilgate/", env!("CARGO_PKG_VERSION")).into(),
@@ -190,6 +193,8 @@ pub struct Pool {
   pub login: Login,
   #[serde(default)]
   pub tls: rilgate_pool::TlsConfig,
+  #[serde(default)]
+  pub proxies: Option<Vec<rilgate_pool::Proxy>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

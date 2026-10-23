@@ -46,9 +46,11 @@ pub fn config() -> Config {
       randomx_cache_idle_timeout: std::time::Duration::from_secs(1800),
       rate_limit: Default::default(),
       stratum_pool: StratumPoolConfig {
+        proxies: Vec::new(),
         pools: vec![rilgate_pool::StratumConfig {
           name: "default".into(),
           tls: Default::default(),
+          proxies: None,
           host: "127.0.0.1".into(),
           port: 3333,
           user: Secret("x+{difficulty}".into()),

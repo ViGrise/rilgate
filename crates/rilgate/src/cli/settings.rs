@@ -145,43 +145,89 @@ pub(crate) const POOL_FIELDS: &[(&str, &str)] = &[
   ("TLS_ENABLED", "tls.enabled"),
   ("TLS_SERVER_NAME", "tls.server_name"),
   ("TLS_CA", "tls.ca"),
+  ("PROXIES", "proxies"),
 ];
+
+pub(crate) const PROXY_FIELDS: &[(&str, &str)] = &[
+  ("NAME", "name"),
+  ("URL", "url"),
+  ("USERNAME", "username"),
+  ("PASSWORD", "password"),
+];
+
+fn indexed_item<'a>(name: &str, rest: &'a str) -> Result<(usize, &'a str), String> {
+  let (index, field) = rest
+    .split_once('_')
+    .ok_or_else(|| format!("{name}: expected an index and a field"))?;
+  let index: usize = index
+    .parse()
+    .map_err(|_| format!("{name}: expected a numeric index"))?;
+  if index >= 8 {
+    return Err(format!("{name}: index must be 0 to 7"));
+  }
+  Ok((index, field))
+}
+
+fn indexed_field(name: &str, field: &str, fields: &[(&str, &str)]) -> Result<String, String> {
+  fields
+    .iter()
+    .find(|(key, _)| *key == field)
+    .map(|(_, path)| path.to_string())
+    .ok_or_else(|| {
+      format!(
+        "{name}: unknown field; valid fields: {}",
+        fields
+          .iter()
+          .map(|(key, _)| *key)
+          .collect::<Vec<_>>()
+          .join(", ")
+      )
+    })
+}
 
 fn indexed_settings(
   variables: impl Iterator<Item = (String, String)>,
 ) -> Result<Vec<Setting>, String> {
   let mut settings = Vec::new();
   for (name, value) in variables {
-    let Some(rest) = name.strip_prefix("RILGATE_POW_STRATUM_POOL_POOLS_") else {
+    let Some(rest) = name.strip_prefix("RILGATE_POW_STRATUM_POOL_") else {
       continue;
     };
-    let (index, field) = rest
-      .split_once('_')
-      .ok_or_else(|| format!("{name}: expected an index and a field"))?;
-    let index: usize = index
-      .parse()
-      .map_err(|_| format!("{name}: expected a numeric index"))?;
-    if index >= 8 {
-      return Err(format!("{name}: index must be 0 to 7"));
-    }
-    let path = POOL_FIELDS
-      .iter()
-      .find(|(key, _)| *key == field)
-      .map(|(_, path)| *path)
-      .ok_or_else(|| {
+    let path = if let Some(rest) = rest.strip_prefix("POOLS_") {
+      let (index, field) = indexed_item(&name, rest)?;
+      let field = if let Some(rest) = field.strip_prefix("PROXIES_") {
+        let (proxy, field) = indexed_item(&name, rest)?;
         format!(
-          "{name}: unknown field; valid fields: {}",
-          POOL_FIELDS
-            .iter()
-            .map(|(key, _)| *key)
-            .collect::<Vec<_>>()
-            .join(", ")
+          "proxies.{proxy}.{}",
+          indexed_field(&name, field, PROXY_FIELDS)?
         )
-      })?;
+      } else {
+        indexed_field(&name, field, POOL_FIELDS)?
+      };
+      format!("pow.stratum_pool.pools.{index}.{field}")
+    } else if let Some(rest) = rest.strip_prefix("PROXIES_") {
+      let (index, field) = indexed_item(&name, rest)?;
+      format!(
+        "pow.stratum_pool.proxies.{index}.{}",
+        indexed_field(&name, field, PROXY_FIELDS)?
+      )
+    } else {
+      continue;
+    };
+    let value = if path.ends_with(".proxies") {
+      if !value.is_empty() {
+        return Err(format!(
+          "{name}: use an empty value for a direct connection, or indexed proxy fields"
+        ));
+      }
+      SettingValue::List(Vec::new())
+    } else {
+      SettingValue::Scalar(value)
+    };
     settings.push(Setting {
-      path: format!("pow.stratum_pool.pools.{index}.{path}"),
+      path,
       source: name,
-      value: SettingValue::Scalar(value),
+      value,
     });
   }
   settings.sort_by(|a, b| a.path.cmp(&b.path));
@@ -414,5 +460,54 @@ mod indexed_tests {
     assert!(error.contains("RILGATE_POW_STRATUM_POOL_POOLS_0_ADRESS"));
     assert!(error.contains("valid fields: NAME, ADDRESS, LOGIN_USER, LOGIN_PASSWORD"));
     assert!(!error.contains("secret"));
+  }
+}
+
+#[cfg(test)]
+mod proxy_indexed_tests {
+  use super::*;
+
+  #[test]
+  fn indexed_proxy_override_can_clear_inheritance_and_build_a_nested_route() {
+    let values = indexed_settings(
+      [
+        ("RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES".into(), "".into()),
+        (
+          "RILGATE_POW_STRATUM_POOL_POOLS_1_PROXIES_0_URL".into(),
+          "socks5h://localhost:1080".into(),
+        ),
+        (
+          "RILGATE_POW_STRATUM_POOL_PROXIES_0_NAME".into(),
+          "default".into(),
+        ),
+      ]
+      .into_iter(),
+    )
+    .unwrap();
+    assert!(
+      values
+        .iter()
+        .any(|setting| setting.path == "pow.stratum_pool.pools.0.proxies"
+          && setting.value == SettingValue::List(Vec::new()))
+    );
+    assert!(
+      values
+        .iter()
+        .any(|setting| setting.path == "pow.stratum_pool.pools.1.proxies.0.url")
+    );
+    assert!(
+      values
+        .iter()
+        .any(|setting| setting.path == "pow.stratum_pool.proxies.0.name")
+    );
+    let error = indexed_settings(
+      [(
+        "RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES_0_URI".into(),
+        "secret".into(),
+      )]
+      .into_iter(),
+    )
+    .unwrap_err();
+    assert!(error.contains("valid fields: NAME, URL, USERNAME, PASSWORD"));
   }
 }

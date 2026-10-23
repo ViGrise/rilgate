@@ -91,6 +91,7 @@ impl Document {
     );
     let fallback = StratumPool::default();
     let pool = self.pow.stratum_pool.as_ref().unwrap_or(&fallback);
+    validate_proxies(&pool.proxies, "pow.stratum_pool.proxies")?;
     let mut names = std::collections::HashSet::new();
     let pools = pool.pools.iter().enumerate().map(|(index, entry)| {
       let path = format!("pow.stratum_pool.pools[{index}]");
@@ -101,9 +102,11 @@ impl Document {
       let user = entry.login.user.expose();
       let remainder = user.replace("{difficulty}", "");
       ensure!(user.matches("{difficulty}").count() == 1 && !remainder.contains(['{', '}']) && remainder.len() + 20 <= 256, "{path}.login.user: expected exactly one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
+      if let Some(proxies) = &entry.proxies { validate_proxies(proxies, &format!("{path}.proxies"))?; }
       Ok(rilgate_pool::StratumConfig {
         name: entry.name.clone(),
         tls: entry.tls.clone(),
+        proxies: entry.proxies.clone(),
         host: url.host_str().unwrap().trim_matches(['[', ']']).into(),
         port: url.port().unwrap(),
         user: entry.login.user.clone(),
@@ -200,6 +203,7 @@ impl Document {
         },
         stratum_pool: StratumPoolConfig {
           pools,
+          proxies: pool.proxies.clone(),
           cooldown: pool.failover.cooldown.0,
           agent: pool.agent.clone(),
           connect_timeout: pool.timeout.connect.0,
@@ -252,4 +256,19 @@ fn valid_name(name: &str) -> bool {
     && name
       .bytes()
       .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'-' | b'_'))
+}
+
+fn validate_proxies(proxies: &[rilgate_pool::Proxy], path: &str) -> Result<()> {
+  ensure!(proxies.len() <= 8, "{path}: expected at most 8 proxies");
+  let mut names = std::collections::HashSet::new();
+  for (index, proxy) in proxies.iter().enumerate() {
+    ensure!(
+      valid_name(&proxy.name) && names.insert(&proxy.name),
+      "{path}[{index}].name: expected a unique name of 1 to 64 lowercase letters, digits, hyphens or underscores"
+    );
+    proxy
+      .endpoint()
+      .with_context(|| format!("{path}[{index}]"))?;
+  }
+  Ok(())
 }

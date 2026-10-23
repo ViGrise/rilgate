@@ -7,6 +7,7 @@ pub enum JobSessionMode {
 
 #[derive(Debug, Clone)]
 pub struct StratumPoolConfig {
+  pub proxies: Vec<rilgate_stratum::config::Proxy>,
   pub pools: Vec<rilgate_stratum::StratumConfig>,
   pub cooldown: std::time::Duration,
   pub agent: String,

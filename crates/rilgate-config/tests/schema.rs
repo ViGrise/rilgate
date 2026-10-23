@@ -652,3 +652,42 @@ fn pool_lists_reject_duplicate_names_invalid_addresses_and_unbounded_failover() 
     );
   }
 }
+
+#[test]
+fn proxy_overrides_replace_defaults_and_hide_urls_and_credentials() {
+  let text = format!(
+    "{BASE}pow:\n  stratum_pool:\n    proxies:\n      - {{name: shared, url: 'socks5h://proxy.private:1080', username: private-user, password: private-pass}}\n    pools:\n      - {{name: inherited, address: localhost:3333}}\n      - {{name: direct, address: localhost:3334, proxies: []}}\n      - name: replacement\n        address: localhost:3335\n        proxies: [{{name: local, url: 'http://local.private:3128'}}]\n"
+  );
+  let document = parse(&text).unwrap();
+  let cfg = document.resolve().unwrap();
+  assert!(cfg.pow.stratum_pool.pools[0].proxies.is_none());
+  assert!(
+    cfg.pow.stratum_pool.pools[1]
+      .proxies
+      .as_ref()
+      .unwrap()
+      .is_empty()
+  );
+  assert_eq!(
+    cfg.pow.stratum_pool.pools[2].proxies.as_ref().unwrap()[0].name,
+    "local"
+  );
+  for output in [document.display(true).unwrap(), format!("{cfg:?}")] {
+    for secret in [
+      "proxy.private",
+      "local.private",
+      "private-user",
+      "private-pass",
+    ] {
+      assert!(!output.contains(secret), "{output}");
+    }
+  }
+  for replacement in [
+    "https://proxy.private:1080",
+    "socks5://user:pass@proxy.private:1080",
+    "http://proxy.private:1080/path",
+  ] {
+    assert!(resolve(&text.replace("socks5h://proxy.private:1080", replacement)).is_err());
+  }
+  assert!(resolve(&text.replace(", password: private-pass", "")).is_err());
+}

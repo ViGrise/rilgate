@@ -105,7 +105,11 @@ pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
     let source = settings
       .iter()
       .rev()
-      .find(|setting| dotted == setting.path || dotted.starts_with(&format!("{}.", setting.path)))
+      .find(|setting| {
+        dotted == setting.path
+          || dotted.starts_with(&format!("{}.", setting.path))
+          || setting.path.starts_with(&format!("{dotted}."))
+      })
       .map(|setting| format!(" (from {})", setting.source))
       .unwrap_or_default();
     anyhow::anyhow!("Configuration error at {path}{source}: {}", error.inner())

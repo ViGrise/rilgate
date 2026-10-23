@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::transport::{Stream, connect_transport};
+use crate::transport::{Stream, connect_via};
 use anyhow::{Context, Result, anyhow};
 use serde_json::{Value, json};
 use tokio::{
@@ -36,10 +36,18 @@ pub struct StratumSession {
 
 impl StratumSession {
   pub async fn connect(cfg: &StratumConfig, difficulty: u64) -> Result<Self> {
+    Self::connect_via(cfg, None, difficulty).await
+  }
+
+  pub async fn connect_via(
+    cfg: &StratumConfig,
+    proxy: Option<&crate::config::Proxy>,
+    difficulty: u64,
+  ) -> Result<Self> {
     if difficulty < 1000 {
       return Err(anyhow!("Stratum pool difficulty must be at least 1000"));
     }
-    let stream = timeout(cfg.connect_timeout, connect_transport(cfg))
+    let stream = timeout(cfg.connect_timeout, connect_via(cfg, proxy))
       .await
       .context("Stratum pool connection timed out")??;
     let (read_half, write_half) = tokio::io::split(stream);

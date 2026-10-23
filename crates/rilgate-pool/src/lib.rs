@@ -4,4 +4,4 @@ pub mod config;
 pub use config::{JobSessionMode, StratumPoolConfig};
 pub use rilgate_stratum::{StratumConfig, StratumEvent, StratumSession};
 
-pub use rilgate_stratum::config::TlsConfig;
+pub use rilgate_stratum::config::{Proxy, TlsConfig};

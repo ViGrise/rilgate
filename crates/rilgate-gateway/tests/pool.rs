@@ -296,3 +296,79 @@ async fn all_pools_in_cooldown_still_retry_in_order() {
   );
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn proxy_failover_skips_failed_routes_and_empty_override_connects_directly() {
+  let pool = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = pool.local_addr().unwrap().port();
+  let refused = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let working = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut config = common::config().pow.stratum_pool.clone();
+  config.pools[0].port = port;
+  config.proxies = [(&refused, "refused"), (&working, "working")]
+    .into_iter()
+    .map(|(listener, name)| rilgate_pool::Proxy {
+      name: name.into(),
+      url: rilgate_config::Secret(format!("http://{}", listener.local_addr().unwrap())),
+      username: None,
+      password: None,
+    })
+    .collect();
+  let rejecting = tokio::spawn(async move {
+    let (mut stream, _) = refused.accept().await.unwrap();
+    let mut byte = [0];
+    let mut bytes = Vec::new();
+    while !bytes.ends_with(b"\r\n\r\n") {
+      stream.read_exact(&mut byte).await.unwrap();
+      bytes.push(byte[0]);
+    }
+    stream
+      .write_all(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+      .await
+      .unwrap();
+  });
+  let forwarding = tokio::spawn(async move {
+    for _ in 0..2 {
+      let (mut stream, _) = working.accept().await.unwrap();
+      let mut byte = [0];
+      let mut bytes = Vec::new();
+      while !bytes.ends_with(b"\r\n\r\n") {
+        stream.read_exact(&mut byte).await.unwrap();
+        bytes.push(byte[0]);
+      }
+      let mut target = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+      stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
+      tokio::io::copy_bidirectional(&mut stream, &mut target)
+        .await
+        .unwrap();
+    }
+  });
+  let server = tokio::spawn(async move {
+    for _ in 0..3 {
+      let (stream, _) = pool.accept().await.unwrap();
+      login(stream, 1000).await;
+    }
+  });
+  let provider = StratumPoolProvider::new(config.clone()).unwrap();
+  for _ in 0..2 {
+    provider.connect(1000).await.unwrap();
+  }
+  let metrics = provider.connection_metrics();
+  assert!(
+    metrics
+      .contains("rilgate_stratum_proxy_connections_total{proxy=\"refused\",outcome=\"failed\"} 1"),
+    "{metrics}"
+  );
+  assert!(metrics.contains(
+    "rilgate_stratum_proxy_connections_total{proxy=\"working\",outcome=\"connected\"} 2"
+  ));
+  config.pools[0].proxies = Some(Vec::new());
+  StratumPoolProvider::new(config)
+    .unwrap()
+    .connect(1000)
+    .await
+    .unwrap();
+  rejecting.await.unwrap();
+  forwarding.await.unwrap();
+  server.await.unwrap();
+}
