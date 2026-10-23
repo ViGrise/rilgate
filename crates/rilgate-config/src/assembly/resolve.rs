@@ -103,6 +103,7 @@ impl Document {
       ensure!(user.matches("{difficulty}").count() == 1 && !remainder.contains(['{', '}']) && remainder.len() + 20 <= 256, "{path}.login.user: expected exactly one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
       Ok(rilgate_pool::StratumConfig {
         name: entry.name.clone(),
+        tls: entry.tls.clone(),
         host: url.host_str().unwrap().trim_matches(['[', ']']).into(),
         port: url.port().unwrap(),
         user: entry.login.user.clone(),

@@ -93,7 +93,7 @@ impl Connections {
       let pool = &self.config.pools[index];
       let connected = tokio::time::timeout(
         pool.connect_timeout,
-        tokio::net::TcpStream::connect((pool.host.as_str(), pool.port)),
+        rilgate_stratum::transport::connect_transport(pool),
       )
       .await
       .is_ok_and(|result| result.is_ok());

@@ -3153,10 +3153,16 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "hex",
+ "openssl",
  "rilgate-crypto",
  "rilgate-protocol",
+ "rustls",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tokio-rustls",
+ "webpki-roots",
 ]
 
 [[package]]

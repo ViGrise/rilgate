@@ -48,6 +48,7 @@ pub fn config() -> Config {
       stratum_pool: StratumPoolConfig {
         pools: vec![rilgate_pool::StratumConfig {
           name: "default".into(),
+          tls: Default::default(),
           host: "127.0.0.1".into(),
           port: 3333,
           user: Secret("x+{difficulty}".into()),

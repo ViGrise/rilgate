@@ -2,6 +2,7 @@ use rilgate_crypto::Secret;
 #[derive(Debug, Clone)]
 pub struct StratumConfig {
   pub name: String,
+  pub tls: TlsConfig,
   pub user: Secret,
   pub host: String,
   pub port: u16,
@@ -9,4 +10,12 @@ pub struct StratumConfig {
   pub agent: String,
   pub connect_timeout: std::time::Duration,
   pub submit_timeout: std::time::Duration,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TlsConfig {
+  pub enabled: bool,
+  pub server_name: Option<String>,
+  pub ca: Option<std::path::PathBuf>,
 }

@@ -9,6 +9,14 @@ publish = false
 anyhow.workspace = true
 tokio.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 rilgate-protocol.workspace = true
 rilgate-crypto.workspace = true
 hex.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+webpki-roots = "1"
+
+[dev-dependencies]
+openssl = "0.10"
+tempfile.workspace = true

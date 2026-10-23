@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
-use tokio::net::tcp::OwnedWriteHalf;
 const MAX_STRATUM_LINE_BYTES: usize = 64 * 1024;
 
 pub(crate) struct JsonLineReader<R> {
@@ -42,7 +41,10 @@ impl<R: AsyncRead + Unpin> JsonLineReader<R> {
   }
 }
 
-pub(crate) async fn write_json_line(writer: &mut OwnedWriteHalf, value: &Value) -> Result<()> {
+pub(crate) async fn write_json_line<W: tokio::io::AsyncWrite + Unpin>(
+  writer: &mut W,
+  value: &Value,
+) -> Result<()> {
   let mut encoded = serde_json::to_vec(value)?;
   encoded.push(b'\n');
   writer.write_all(&encoded).await?;

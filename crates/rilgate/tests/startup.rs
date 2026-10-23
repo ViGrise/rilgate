@@ -278,7 +278,10 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   assert_eq!(value["server"]["metrics_enabled"], true);
   assert_eq!(value["server"]["trusted_proxies"][1], "192.0.2.1/32");
   assert_eq!(value["security"]["auth"]["ttl"], "2h");
-  assert_eq!(value["pow"]["stratum_pool"]["pools"][0]["address"], "127.0.0.1:3334");
+  assert_eq!(
+    value["pow"]["stratum_pool"]["pools"][0]["address"],
+    "127.0.0.1:3334"
+  );
   assert_eq!(value["pow"]["stratum_pool"]["sessions"]["max"], 64);
 }
 

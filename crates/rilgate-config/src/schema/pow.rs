@@ -171,6 +171,7 @@ impl Default for StratumPool {
         name: "default".into(),
         address: "127.0.0.1:3333".into(),
         login: Login::default(),
+        tls: Default::default(),
       }],
       failover: Failover::default(),
       agent: concat!("rilgate/", env!("CARGO_PKG_VERSION")).into(),
@@ -187,6 +188,8 @@ pub struct Pool {
   pub address: String,
   #[serde(default)]
   pub login: Login,
+  #[serde(default)]
+  pub tls: rilgate_pool::TlsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

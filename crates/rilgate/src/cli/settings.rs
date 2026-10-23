@@ -142,6 +142,9 @@ pub(crate) const POOL_FIELDS: &[(&str, &str)] = &[
   ("ADDRESS", "address"),
   ("LOGIN_USER", "login.user"),
   ("LOGIN_PASSWORD", "login.password"),
+  ("TLS_ENABLED", "tls.enabled"),
+  ("TLS_SERVER_NAME", "tls.server_name"),
+  ("TLS_CA", "tls.ca"),
 ];
 
 fn indexed_settings(

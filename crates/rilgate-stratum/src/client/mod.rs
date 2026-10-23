@@ -1,12 +1,10 @@
 use std::time::Duration;
 
+use crate::transport::{Stream, connect_transport};
 use anyhow::{Context, Result, anyhow};
 use serde_json::{Value, json};
 use tokio::{
-  net::{
-    TcpStream,
-    tcp::{OwnedReadHalf, OwnedWriteHalf},
-  },
+  io::{ReadHalf, WriteHalf},
   time::timeout,
 };
 
@@ -28,8 +26,8 @@ pub enum StratumEvent {
 }
 
 pub struct StratumSession {
-  reader: JsonLineReader<OwnedReadHalf>,
-  writer: OwnedWriteHalf,
+  reader: JsonLineReader<ReadHalf<Stream>>,
+  writer: WriteHalf<Stream>,
   pub rpc_id: String,
   next_request_id: u64,
   pub current_job: StratumJob,
@@ -41,15 +39,10 @@ impl StratumSession {
     if difficulty < 1000 {
       return Err(anyhow!("Stratum pool difficulty must be at least 1000"));
     }
-    let stream = timeout(
-      cfg.connect_timeout,
-      TcpStream::connect((cfg.host.as_str(), cfg.port)),
-    )
-    .await
-    .context("Stratum pool connection timed out")?
-    .context("Unable to connect to the Stratum pool")?;
-
-    let (read_half, write_half) = stream.into_split();
+    let stream = timeout(cfg.connect_timeout, connect_transport(cfg))
+      .await
+      .context("Stratum pool connection timed out")??;
+    let (read_half, write_half) = tokio::io::split(stream);
     let mut reader = JsonLineReader::new(read_half);
     let mut writer = write_half;
 
