@@ -92,6 +92,29 @@ fn configuration_show_is_valid_yaml_and_redacts_expanded_secrets() {
 }
 
 #[test]
+fn configuration_warnings_are_reported_and_fail_strict_checks() {
+  let contents = "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  metrics_enabled: true\nsecurity:\n  secret: \"${RILGATE_SECURITY_SECRET}\"\n";
+  let variables = [("RILGATE_SECURITY_SECRET", SECRET)];
+  let result = command(contents, &["config", "check"], &variables);
+  let stderr = String::from_utf8_lossy(&result.stderr);
+  assert!(result.status.success(), "{stderr}");
+  assert!(
+    stderr.contains("warning: server.metrics_enabled:") && stderr.contains("[metrics-unreachable]"),
+    "{stderr}"
+  );
+  let strict = command(contents, &["config", "check", "--strict"], &variables);
+  let stderr = String::from_utf8_lossy(&strict.stderr);
+  assert!(!strict.status.success(), "{stderr}");
+  assert!(stderr.contains("1 warning"), "{stderr}");
+  let clean = contents.replace("  metrics_enabled: true\n", "");
+  assert!(
+    command(&clean, &["config", "check", "--strict"], &variables)
+      .status
+      .success()
+  );
+}
+
+#[test]
 fn weak_signing_keys_fail_in_every_environment() {
   let strong = "explicit-test-key-with-at-least-32-bytes";
   for environment in ["development", "production"] {

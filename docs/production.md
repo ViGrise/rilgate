@@ -20,13 +20,15 @@ to derive independent challenge and authentication signing keys. Explicit
 unknown fields and conflicting configuration; production forbids debug scores.
 
 ```bash
-./target/release/rilgate --config /etc/rilgate/rilgate.yml config check
+./target/release/rilgate --config /etc/rilgate/rilgate.yml config check --strict
 ./target/release/rilgate --config /etc/rilgate/rilgate.yml config show --defaults
 ```
 
 These commands validate keys, limits, policies and algorithm selection without
 opening a listener or contacting upstream/P2Pool. Resolved output redacts all
 keys and pool passwords. Validate filesystem overrides with `web validate`.
+`--strict` also fails on [environment check](configuration.md#environment-checks)
+warnings; run it in the deployment pipeline so a warning blocks rollout.
 The template uses `server.listen: ":8080"`, an IPv4 wildcard listener. Use
 `127.0.0.1:8080` for a host-local edge, or a list such as `[":8080", "[::]:8080"]`
 to add IPv6; Compose publishes only on host loopback.

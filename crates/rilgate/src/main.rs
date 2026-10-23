@@ -18,9 +18,12 @@ async fn main() -> anyhow::Result<()> {
   if let Some(Command::Upgrade { version, force }) = command {
     return rilgate::cli::upgrade::run(version, force).await;
   }
-  let rilgate_config::loader::Loaded { document, warnings } =
-    rilgate_config::loader::load(&args.overrides())?;
+  let rilgate_config::loader::Loaded {
+    document,
+    mut warnings,
+  } = rilgate_config::loader::load(&args.overrides())?;
   let config = document.resolve()?;
+  warnings.extend(config.warnings().iter().map(ToString::to_string));
   // Standard output carries command results and serve logs, so command
   // warnings go to standard error and serve warnings go through tracing.
   if !matches!(command, None | Some(Command::Serve)) {
@@ -32,7 +35,14 @@ async fn main() -> anyhow::Result<()> {
     Some(Command::Config { command }) => {
       rilgate::app::validate(&config)?;
       match command {
-        ConfigCommand::Check => println!("Configuration is valid"),
+        ConfigCommand::Check { strict } => {
+          anyhow::ensure!(
+            !strict || warnings.is_empty(),
+            "configuration has {} warning(s); --strict treats warnings as errors",
+            warnings.len()
+          );
+          println!("Configuration is valid");
+        }
         ConfigCommand::Show { defaults } => print!("{}", document.display(defaults)?),
       }
       Ok(())

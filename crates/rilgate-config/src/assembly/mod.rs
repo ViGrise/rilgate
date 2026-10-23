@@ -1,7 +1,9 @@
+mod audit;
 mod overrides;
 mod resolve;
 use crate::{Environment, PowConfig, ServerConfig, UpstreamConfig, schema::server::Listen};
 use anyhow::{Context, Result, ensure};
+pub use audit::{Finding, Severity};
 pub use overrides::{Overrides, Setting, SettingValue};
 pub use rilgate_web::WebConfig;
 use std::{net::SocketAddr, sync::Arc};
@@ -24,7 +26,6 @@ impl Configuration {
     self.pow.validate()?;
     self.web.validate().context("site")?;
     self.upstream.validate().context("server.upstream")?;
-    let production = matches!(self.env, Environment::Production);
     for key in [&self.pow.signing_key, &self.pow.auth_signing_key]
       .into_iter()
       .chain(self.pow.signing_keys.previous.values())
@@ -32,31 +33,20 @@ impl Configuration {
     {
       validate_secret(key, "security.keys")?;
     }
-    if production
-      && self
-        .pow
-        .policy
-        .score
-        .as_ref()
-        .is_some_and(|s| s.debug_header.enabled)
-    {
-      anyhow::bail!(
-        "policy.score.debug_header.enabled: debug score headers are disabled in production"
-      );
-    }
-    if production {
-      for (name, set) in &self.pow.policy.ip_sets {
-        if let Some(url) = &set.url {
-          ensure!(
-            url
-              .get(..8)
-              .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://")),
-            "policy.ip_sets.{name}.url: production requires https"
-          );
-        }
-      }
-    }
+    let errors: Vec<String> = audit::audit(self)
+      .into_iter()
+      .filter(|finding| finding.severity == Severity::Error)
+      .map(|finding| finding.to_string())
+      .collect();
+    ensure!(errors.is_empty(), "{}", errors.join("\n"));
     Ok(())
+  }
+  /// Findings that are reported without stopping startup.
+  pub fn warnings(&self) -> Vec<Finding> {
+    audit::audit(self)
+      .into_iter()
+      .filter(|finding| finding.severity == Severity::Warning)
+      .collect()
   }
   pub fn load(args: Overrides) -> Result<Config> {
     crate::loader::load(&args)?.document.resolve()

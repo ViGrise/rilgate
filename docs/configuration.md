@@ -120,6 +120,32 @@ By default it omits unchanged defaults; `--defaults` includes the whole schema.
 A redacted result is for inspection and cannot be used as a secret-bearing
 configuration. Validate external templates with `rilgate web validate DIRECTORY`.
 
+## Environment checks
+
+Validation also checks settings against the selected `environment`. An error
+stops `config check` and startup. A warning is printed on standard error by
+commands and logged by `serve`, and startup continues because the setting is
+valid in some deployments. Each finding ends with a stable identifier.
+`rilgate config check --strict` fails when any warning is present; run it in CI
+or before deployment to enforce a warning-free configuration.
+
+| Identifier | Environment | Level | Condition |
+| --- | --- | --- | --- |
+| `trusted-proxy-broad` | production | error | A public `server.trusted_proxies` network is broader than `/8` (IPv4) or `/16` (IPv6) |
+| `debug-score-header` | production | error | `policy.score.debug_header.enabled` is `true` |
+| `ip-set-plain-http` | production | error | A remote IP set `url` does not use `https` |
+| `trusted-proxy-public` | production | warning | A `server.trusted_proxies` network contains public addresses, such as CDN ranges |
+| `operations-listen-public` | production | warning | A `server.operations.listen` address is outside loopback and private networks, including `0.0.0.0` |
+| `proof-rate-limit-disabled` | production | warning | `pow.rate_limit.enabled` is `false` |
+| `resource-watch-enabled` | production | warning | `site.resources.watch.enabled` is `true` |
+| `auth-ttl-long` | production | warning | `security.auth.ttl` exceeds `7d` |
+| `development-public-listener` | development | warning | A `server.listen` address is beyond loopback, including the default `:8080` |
+| `metrics-unreachable` | both | warning | `server.metrics_enabled` is `true` with no `server.operations.listen` address |
+
+Loopback, private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`),
+shared (`100.64.0.0/10`) and link-local networks count as non-public. Signing
+key strength is checked in every environment.
+
 ## Challenge browser support
 
 The embedded fast challenge targets IE11, Safari and iOS 9+, Chrome 49
