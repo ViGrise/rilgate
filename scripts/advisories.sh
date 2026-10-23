@@ -82,7 +82,7 @@ open_issue() {
   if [[ -z "$upstream" ]]; then
     upstream="- [ ] Link the upstream issue or pull request that removes or replaces \`${package}\`."
   fi
-  path="$(cargo tree --locked -e normal -i "$package" 2>&1 | head -n 40)"
+  path="$(cargo tree --locked -e normal -i "$package" 2>&1 | sed "s# (${ROOT}/[^)]*)##" | head -n 40)"
   body="$(jq -r --arg version "$version" --arg path "$path" --arg upstream "$upstream" '
     .fields as $f | $f.advisory as $a
     | "> \($a.title)\n\n"
