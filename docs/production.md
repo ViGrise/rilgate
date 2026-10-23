@@ -279,3 +279,58 @@ scripts/perf-gate.sh
 6. If budgets are exceeded, restore the artifact and configuration together.
 7. Preserve compatible verification keyrings across both versions so rollback does not
    reject valid cookies or outstanding work.
+
+## Remote RandomX verification
+
+Run `rilgate verifier serve` on a private network. Allow only gateway hosts to
+reach its TLS listener. Keep the operations listener on the monitoring network.
+A verifier needs no signing keys, tokens, cookies or pool connection.
+
+Use a private CA for this channel. Configure the gateway with a CA file, client
+certificate and client key. Configure the verifier with its server certificate,
+server key and a client CA. The gateway checks the certificate name in
+`verify.remote.server_name`, which defaults to the endpoint host. Production
+requires HTTPS and all client credentials.
+
+Trust only verifiers that you operate. A trusted verifier controls the hash
+result and can cause a gateway to accept an invalid proof. TLS protects the
+channel; it does not protect against a compromised verifier.
+
+For certificate rotation, add the new CA to each trust file first. Deploy the
+new certificates next. Remove the old CA after all peers use the new
+certificates. Restart the processes to load changed files. Keep gateway and
+verifier clocks synchronized. The protocol rejects deadlines in the past or
+more than 60 seconds in the future with `503` and `{"reason":"deadline"}`.
+`pow.algorithms.randomx.verify.remote.on_deadline_rejected` defaults to `fallback`.
+This policy tries the next hasher. Set `reject` to return `401` without fallback.
+With `[remote]` and `fallback`, a rejected deadline returns `503`.
+
+Each verifier has one worker and at most one resident 256 MiB cache. A client
+certificate can hold at most half its admission limit, with a minimum of one.
+Give each gateway its own client certificate.
+A closed connection or expired request drops queued work. A hash that already
+started finishes, but its result is discarded. A remote timeout followed by
+local fallback can therefore compute the same proof twice.
+
+`[remote, local]` can make all gateways allocate a cache during one verifier
+outage. Reserve memory for that condition. `[remote]` keeps gateway cache use at
+zero and fails with `503` during an outage. A failed hash never grants access.
+A cold verifier remains ready. A hash initialization failure makes it not ready
+for one second, then permits another attempt. During shutdown it stays not ready,
+stops new hash connections and allows up to 30 seconds for active requests to
+finish. Operations have a separate connection limit. Test the first hash with a timeout long enough
+for cache construction on the deployment host.
+
+Monitor these counters without endpoint or certificate labels:
+
+| Metric | Labels |
+| --- | --- |
+| `rilgate_randomx_hash_total` | `hasher`: local or remote; `outcome`: hashed, unavailable or invalid |
+| `rilgate_randomx_hash_fallback_total` | `from`: local or remote; `reason`: timeout, connection, overloaded, protocol or deadline |
+| `rilgate_verifier_service_requests_total` | `outcome`: hashed, invalid, overloaded, expired or cancelled |
+
+The gateway also exposes `rilgate_randomx_remote_duration_seconds`. The verifier
+exposes its request counter only on its operations listener when
+`server.metrics_enabled` is true. Readiness of a remote-only gateway probes the
+verifier only when a rule selects RandomX and `pow.verification` is
+`local_verify`. The probe uses `server.readiness_timeout`.

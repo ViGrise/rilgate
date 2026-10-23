@@ -14,13 +14,28 @@ pub enum HashError {
   Invalid(anyhow::Error),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HasherKind {
   Local,
+  Remote,
+}
+
+/// Decides whether a remote hasher that cannot use the request deadline ends
+/// the sequence with an invalid proof or passes the request to the next hasher.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeadlinePolicy {
+  #[default]
+  Fallback,
+  Reject,
 }
 
 pub trait RandomXHasher: Send + Sync {
   fn kind(&self) -> HasherKind;
+  fn ready(&self, _: Duration) -> BoxFuture<'_, bool> {
+    Box::pin(async { false })
+  }
   fn hash(
     &self,
     seed: Vec<u8>,
@@ -82,13 +97,13 @@ impl RandomXHasher for LocalHasher {
     &self,
     seed: Vec<u8>,
     input: Vec<u8>,
-    _: Instant,
+    deadline: Instant,
   ) -> BoxFuture<'_, Result<[u8; 32], HashError>> {
     Box::pin(async move {
       self
         .verifier()
         .map_err(HashError::Unavailable)?
-        .hash(seed, input)
+        .hash_with_deadline(seed, input, Some(deadline))
         .await
     })
   }
@@ -96,11 +111,34 @@ impl RandomXHasher for LocalHasher {
 
 pub struct OrderedHasher {
   hashers: Vec<Arc<dyn RandomXHasher>>,
+  metrics: super::metrics::HashMetrics,
+  deadline_policy: DeadlinePolicy,
 }
 
 impl OrderedHasher {
   pub fn new(hashers: Vec<Arc<dyn RandomXHasher>>) -> Self {
-    Self { hashers }
+    Self {
+      hashers,
+      metrics: Default::default(),
+      deadline_policy: Default::default(),
+    }
+  }
+
+  pub fn with_deadline_policy(mut self, policy: DeadlinePolicy) -> Self {
+    self.deadline_policy = policy;
+    self
+  }
+  pub fn diagnostics(&self) -> rilgate_pow::algorithm::HashDiagnostics {
+    self.metrics.snapshot()
+  }
+
+  pub async fn remote_ready(&self, timeout: Duration) -> bool {
+    for hasher in &self.hashers {
+      if hasher.kind() == HasherKind::Remote {
+        return hasher.ready(timeout).await;
+      }
+    }
+    false
   }
 
   pub async fn hash(
@@ -110,12 +148,33 @@ impl OrderedHasher {
     deadline: Instant,
   ) -> Result<[u8; 32], HashError> {
     let mut unavailable = anyhow!("No RandomX hasher available");
-    for hasher in &self.hashers {
+    for (index, hasher) in self.hashers.iter().enumerate() {
       if Instant::now() >= deadline {
         break;
       }
-      match hasher.hash(seed.clone(), input.clone(), deadline).await {
-        Err(HashError::Unavailable(error)) => unavailable = error,
+      let duration = self.metrics.start(hasher.kind());
+      let result = hasher.hash(seed.clone(), input.clone(), deadline).await;
+      drop(duration);
+      let result = match result {
+        Err(HashError::Unavailable(error))
+          if self.deadline_policy == DeadlinePolicy::Reject
+            && matches!(
+              error.downcast_ref::<super::remote::UnavailableReason>(),
+              Some(super::remote::UnavailableReason::Deadline)
+            ) =>
+        {
+          Err(HashError::Invalid(error))
+        }
+        result => result,
+      };
+      self.metrics.observe(hasher.kind(), &result);
+      match result {
+        Err(HashError::Unavailable(error)) => {
+          if index + 1 < self.hashers.len() && Instant::now() < deadline {
+            self.metrics.fallback(hasher.kind(), &error);
+          }
+          unavailable = error;
+        }
         result => return result,
       }
     }
@@ -134,6 +193,7 @@ mod tests {
     Unavailable,
     DelayedUnavailable,
     Invalid,
+    Deadline,
     Pending,
   }
 
@@ -163,6 +223,9 @@ mod tests {
             Err(HashError::Unavailable(anyhow!("unavailable")))
           }
           Outcome::Invalid => Err(HashError::Invalid(anyhow!("invalid"))),
+          Outcome::Deadline => Err(HashError::Unavailable(anyhow!(
+            super::super::remote::UnavailableReason::Deadline
+          ))),
           Outcome::Pending => std::future::pending().await,
         }
       })
@@ -185,6 +248,31 @@ mod tests {
       })
       .collect();
     (OrderedHasher::new(hashers), calls)
+  }
+
+  #[tokio::test]
+  async fn deadline_policy_controls_the_next_hasher() {
+    for policy in [DeadlinePolicy::Fallback, DeadlinePolicy::Reject] {
+      let (hasher, calls) = ordered(vec![Outcome::Deadline, Outcome::Hash]);
+      let hasher = hasher.with_deadline_policy(policy);
+      let result = hasher
+        .hash(
+          vec![1; 32],
+          vec![2; 76],
+          Instant::now() + Duration::from_secs(1),
+        )
+        .await;
+      let outcomes = hasher.diagnostics().outcomes[0];
+      if policy == DeadlinePolicy::Fallback {
+        assert_eq!(result.unwrap(), [7; 32]);
+        assert_eq!(calls[1].load(Ordering::SeqCst), 1);
+        assert_eq!(outcomes, [1, 1, 0]);
+      } else {
+        assert!(matches!(result, Err(HashError::Invalid(_))));
+        assert_eq!(calls[1].load(Ordering::SeqCst), 0);
+        assert_eq!(outcomes, [0, 0, 1]);
+      }
+    }
   }
 
   #[tokio::test]
@@ -250,9 +338,12 @@ mod tests {
   #[tokio::test]
   async fn outer_deadline_cancels_the_sequence() {
     let (hasher, calls) = ordered(vec![Outcome::Unavailable, Outcome::Pending, Outcome::Hash]);
-    let deadline = Instant::now() + Duration::from_millis(20);
-    let result =
-      tokio::time::timeout_at(deadline.into(), hasher.hash(vec![1], vec![2], deadline)).await;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let result = tokio::time::timeout(
+      Duration::from_millis(20),
+      hasher.hash(vec![1], vec![2], deadline),
+    )
+    .await;
     assert!(result.is_err());
     assert_eq!(calls[0].load(Ordering::SeqCst), 1);
     assert_eq!(calls[1].load(Ordering::SeqCst), 1);

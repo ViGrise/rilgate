@@ -103,10 +103,11 @@ pow:
 | `verify.order` | `[local]` | One or two entries. Values are `local` and `remote`, each at most once. An empty list is an error |
 | `verify.remote.endpoint` | none | Required when `order` contains `remote`. An `https` URL without a path, query or credentials |
 | `verify.remote.server_name` | endpoint host | The name that the verifier certificate must contain |
+| `verify.remote.on_deadline_rejected` | `fallback` | `fallback` tries the next hasher; `reject` returns `401` |
 | `verify.remote.timeout` | `2s` | `100ms` to `30s`. It covers DNS, connect, TLS, upload and the response read |
 | `verify.remote.tls.*` | none | `ca` is required. `client_cert` and `client_key` must both be present |
 | `serve` | absent | Present: the process serves a hasher on `serve.listen` |
-| `serve.workers` | `1` in phase 1. In phase 2, the available CPU count | `1` to `64` |
+| `serve.workers` | `1` | Must be `1`. Planned range: `1` to `64` |
 | `serve.queue` | `64` | `1` to `4096` |
 | `serve.max_connections` | `256` | `1` to `65536` |
 | `serve.tls.*` | none | `cert` and `key` are required. `client_ca` is required in production |
@@ -149,7 +150,9 @@ expiry. The whole sequence of requests runs inside that timeout.
 | Local worker stopped, or cache initialization failed | unavailable | yes | `503` if last |
 | Remote connection, DNS or TLS failure | unavailable | yes | `503` if last |
 | Remote request timeout | unavailable | yes | `503` if last |
-| Remote `503` | unavailable | yes | `503` if last |
+| Remote deadline rejected, `on_deadline_rejected: fallback` (default) | unavailable | yes | `503` if last |
+| Remote deadline rejected, `on_deadline_rejected: reject` | invalid | no | `401` |
+| Other remote `503` | unavailable | yes | `503` if last |
 | Remote `400` | invalid | no | `401` |
 | Remote redirect, other status, malformed or oversized body, hash not 32 bytes | unavailable | yes | `503` if last |
 | Challenge expired during the sequence | expired | no | `401` |
@@ -210,15 +213,16 @@ Content-Type: application/json
 | Response | Meaning |
 | --- | --- |
 | `200 {"hash": "<64 hex>"}` | Hash computed |
-| `400` | Invalid seed, input or deadline |
-| `503` with `Retry-After` | Queue full, admission limit reached, or the deadline passed before the hash started |
+| `400` | Malformed or oversized body, seed or input |
+| `503 {"reason":"deadline"}` with `Retry-After` | Deadline has passed or is more than 60 seconds ahead |
+| `503` with `Retry-After` | Queue full, admission limit reached, the request body failed or stalled, or the deadline passed before the hash started |
 
 - `deadline_unix_ms` is an absolute Unix time in milliseconds. The gateway sends
   the earlier of the request timeout and the challenge expiry. A relative value
   would lose the transport delay.
 - The verifier rejects a deadline in the past or more than 60 seconds in the
-  future with `400`. Gateway and verifier clocks must stay synchronized, for
-  example with NTP.
+  future with `503` and `{"reason":"deadline"}`. It counts this request as `expired`.
+  Gateway and verifier clocks must stay synchronized, for example with NTP.
 - Request and response bodies are at most 4 KiB. Both sides enforce the limit
   while they read the body.
 - The client sends no redirect, and it treats a `3xx` response as unavailable.
@@ -251,7 +255,8 @@ The command has its own resolution path:
 
 ### Admission and fairness
 
-- `serve.max_connections` limits accepted TCP connections.
+- `serve.max_connections` limits accepted hash TCP connections. Each operations
+  listener has a separate limit of 16 connections.
 - Each authenticated client certificate can hold at most half of `serve.queue`.
   One gateway cannot fill the whole queue.
 - The verifier reads a request body only after admission, within the 4 KiB limit.
@@ -325,7 +330,7 @@ New metrics. Labels contain no seed, endpoint, address or certificate identity:
 | Metric | Type | Labels |
 | --- | --- | --- |
 | `rilgate_randomx_hash_total` | counter | `hasher` (`local`, `remote`), `outcome` (`hashed`, `unavailable`, `invalid`) |
-| `rilgate_randomx_hash_fallback_total` | counter | `from` (`local`, `remote`), `reason` (`timeout`, `connection`, `overloaded`, `protocol`) |
+| `rilgate_randomx_hash_fallback_total` | counter | `from` (`local`, `remote`), `reason` (`timeout`, `connection`, `overloaded`, `protocol`, `deadline`) |
 | `rilgate_randomx_remote_duration_seconds` | histogram | none |
 | `rilgate_randomx_cache_slots` | gauge | `state` (`resident`, `building`) |
 | `rilgate_verifier_service_requests_total` | counter | `outcome` (`hashed`, `invalid`, `overloaded`, `expired`, `cancelled`) |
@@ -341,7 +346,10 @@ Readiness:
   - A configured challenge rule selects RandomX.
   - `order` has no `local` entry.
 - The probe uses `server.readiness_timeout`, like the other dependency probes.
-- A cold verifier is ready. Only a verifier that cannot hash is not ready.
+- A cold verifier is ready. A hash initialization failure makes it not ready for
+  one second, then permits a new attempt. Shutdown keeps it not ready. The service
+  stops new hash connections and drains active requests for up to 30 seconds.
+  Operations use a separate connection budget.
 
 ## 11. Environment checks
 

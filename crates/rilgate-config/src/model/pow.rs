@@ -28,6 +28,7 @@ pub struct PowConfig {
   pub auth_cookie_name: String,
   pub nonce_offset: usize,
   pub verifier_queue_capacity: usize,
+  pub randomx_verify: crate::schema::pow::Verify,
   pub randomx_cache_idle_timeout: std::time::Duration,
   pub rate_limit: RateLimitConfig,
   pub p2pool: P2PoolConfig,
@@ -50,6 +51,50 @@ impl PowConfig {
       auth_ttl_seconds: self.auth_ttl_seconds,
       auth_binding: self.auth_binding.clone(),
       policy: self.policy.clone(),
+    }
+  }
+}
+
+impl PowConfig {
+  pub fn selects_randomx(&self) -> bool {
+    self
+      .policy
+      .challenges()
+      .expect("validated policy")
+      .iter()
+      .any(|(_, selection)| {
+        selection.algorithm.unwrap_or(self.default_algorithm) == PowAlgorithm::RandomX
+      })
+  }
+
+  pub fn needs_remote_verifier(&self) -> bool {
+    self.enforce == PowEnforcement::LocalVerify
+      && self.selects_randomx()
+      && !self
+        .randomx_verify
+        .order
+        .contains(&crate::schema::pow::Hasher::Local)
+  }
+}
+
+impl crate::schema::pow::Verify {
+  /// The hasher order for the RandomX backend.
+  pub fn hashers(&self) -> rilgate_pow_randomx::HasherOrder {
+    let remote = &self.remote;
+    rilgate_pow_randomx::HasherOrder {
+      order: self.order.clone(),
+      remote: remote
+        .endpoint
+        .clone()
+        .map(|endpoint| rilgate_pow_randomx::RemoteHasherConfig {
+          endpoint,
+          server_name: remote.effective_server_name().unwrap_or_default(),
+          timeout: remote.timeout.0,
+          ca: remote.tls.ca.clone(),
+          client_cert: remote.tls.client_cert.clone(),
+          client_key: remote.tls.client_key.clone(),
+        }),
+      deadline_policy: remote.on_deadline_rejected,
     }
   }
 }

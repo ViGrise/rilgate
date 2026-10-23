@@ -14,7 +14,7 @@ pub(super) fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2
     ttl: cfg.challenge_ttl_seconds,
   })))?;
   if cfg.randomx_enabled {
-    registry.register(Arc::new(RandomXAlgorithm::new(
+    registry.register(Arc::new(RandomXAlgorithm::with_order(
       &RandomXConfig {
         difficulty: cfg.difficulty.clone(),
         ttl: cfg.randomx_challenge_ttl_seconds,
@@ -23,7 +23,8 @@ pub(super) fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2
         cache_idle_timeout: cfg.randomx_cache_idle_timeout,
       },
       pool.clone(),
-    )))?;
+      &cfg.randomx_verify.hashers(),
+    )?))?;
   }
   Ok((
     Arc::new(ChallengeService::with_registry(
@@ -32,4 +33,25 @@ pub(super) fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<P2
     )?),
     pool,
   ))
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+  #[test]
+  fn fast_only_does_not_read_remote_tls_files() {
+    let mut config = rilgate_test_utils::config::config();
+    let cfg = Arc::get_mut(&mut config).unwrap();
+    cfg.pow.randomx_enabled = false;
+    cfg.pow.randomx_verify.order = vec![rilgate_config::schema::pow::Hasher::Remote];
+    cfg.pow.randomx_verify.remote.endpoint = Some("https://localhost:9443".into());
+    cfg.pow.randomx_verify.remote.tls.ca = Some("/nonexistent/ca.pem".into());
+    let (service, _) = super::services(&config).unwrap();
+    assert!(
+      service
+        .algorithm_descriptor(rilgate_config::PowAlgorithm::RandomX)
+        .is_err()
+    );
+    assert_eq!(service.algorithm_descriptors().len(), 1);
+  }
 }

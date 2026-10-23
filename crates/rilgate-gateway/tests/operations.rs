@@ -52,6 +52,32 @@ async fn readiness_tracks_required_dependencies_while_liveness_stays_available()
   );
   assert!(text.contains("rilgate_http_request_duration_seconds_bucket{le=\"+Inf\"}"));
   assert!(text.contains("rilgate_pool_sessions_active 0"));
+  let mut family = "";
+  let mut closed = std::collections::HashSet::new();
+  for line in text.lines() {
+    let name = if let Some(rest) = line.strip_prefix("# TYPE ") {
+      rest.split_whitespace().next().unwrap()
+    } else if line.starts_with('#') || line.is_empty() {
+      continue;
+    } else {
+      line.split(['{', ' ']).next().unwrap()
+    };
+    let name = name
+      .strip_suffix("_bucket")
+      .or_else(|| name.strip_suffix("_count"))
+      .or_else(|| name.strip_suffix("_sum"))
+      .unwrap_or(name);
+    if name != family {
+      closed.insert(family);
+      assert!(
+        !closed.contains(name),
+        "metric family {name} is interleaved"
+      );
+      family = name;
+    }
+  }
+  assert!(closed.contains("rilgate_randomx_hash_total"));
+  assert!(closed.contains("rilgate_randomx_hash_fallback_total"));
   assert!(text.contains("rilgate_verifier_queue_depth 0"));
 }
 
@@ -449,4 +475,121 @@ async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_g
       );
     }
   }
+}
+
+#[tokio::test]
+async fn socket_remote_readiness_probes_only_required_hashers() {
+  use rilgate_config::{Environment, PowAlgorithm, PowEnforcement, schema::pow::Hasher};
+  use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+  let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let pool = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let remote = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let endpoint = format!("http://{}", remote.local_addr().unwrap());
+  let calls = Arc::new(AtomicUsize::new(0));
+  let available = Arc::new(AtomicBool::new(true));
+  let request_calls = calls.clone();
+  let request_available = available.clone();
+  let server = tokio::spawn(async move {
+    axum::serve(
+      remote,
+      axum::Router::new().route(
+        "/v1/ready",
+        axum::routing::get(move || {
+          let calls = request_calls.clone();
+          let available = request_available.clone();
+          async move {
+            calls.fetch_add(1, Ordering::SeqCst);
+            if available.load(Ordering::SeqCst) {
+              http::StatusCode::OK
+            } else {
+              http::StatusCode::SERVICE_UNAVAILABLE
+            }
+          }
+        }),
+      ),
+    )
+    .await
+    .unwrap();
+  });
+  for (enforce, algorithm, order, required) in [
+    (
+      PowEnforcement::LocalVerify,
+      PowAlgorithm::RandomX,
+      vec![Hasher::Remote],
+      true,
+    ),
+    (
+      PowEnforcement::LocalVerify,
+      PowAlgorithm::Fast,
+      vec![Hasher::Remote],
+      false,
+    ),
+    (
+      PowEnforcement::LocalVerify,
+      PowAlgorithm::RandomX,
+      vec![Hasher::Remote, Hasher::Local],
+      false,
+    ),
+    (
+      PowEnforcement::LocalVerify,
+      PowAlgorithm::RandomX,
+      vec![Hasher::Local, Hasher::Remote],
+      false,
+    ),
+    (
+      PowEnforcement::P2poolAccepted,
+      PowAlgorithm::RandomX,
+      vec![Hasher::Remote],
+      false,
+    ),
+  ] {
+    let mut cfg = common::config();
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.env = Environment::Development;
+    config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
+    config.pow.p2pool.port = pool.local_addr().unwrap().port();
+    config.pow.enforce = enforce;
+    config.pow.randomx_verify.order = order;
+    config.pow.randomx_verify.remote.endpoint = Some(endpoint.clone());
+    let challenge = config.pow.policy.rules.as_mut().unwrap()[0]
+      .challenge
+      .as_mut()
+      .unwrap();
+    challenge.algorithm = Some(algorithm);
+    challenge.difficulty = Some(if algorithm == PowAlgorithm::RandomX {
+      1000
+    } else {
+      1
+    });
+    let gateway = app::router(cfg).await.unwrap();
+    let client = reqwest::Client::new();
+    let url = format!(
+      "http://{}/.well-known/test-pow/api/ready",
+      gateway.operations_address()
+    );
+    for healthy in [true, false] {
+      available.store(healthy, Ordering::SeqCst);
+      let previous = calls.load(Ordering::SeqCst);
+      let response = client.get(&url).send().await.unwrap();
+      assert_eq!(
+        response.status().as_u16(),
+        if required && !healthy { 503 } else { 200 }
+      );
+      let body: serde_json::Value =
+        serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+      assert_eq!(
+        body["remote"],
+        if required {
+          serde_json::Value::Bool(healthy)
+        } else {
+          serde_json::Value::Null
+        }
+      );
+      assert_eq!(
+        calls.load(Ordering::SeqCst) - previous,
+        usize::from(required)
+      );
+    }
+  }
+  server.abort();
 }

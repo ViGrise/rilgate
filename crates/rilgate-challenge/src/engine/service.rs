@@ -51,6 +51,21 @@ impl ChallengeService {
       .verifier_diagnostics()
   }
 
+  pub fn hash_diagnostics(&self) -> Option<rilgate_pow::algorithm::HashDiagnostics> {
+    self
+      .algorithms
+      .get(PowAlgorithm::RandomX)
+      .ok()?
+      .hash_diagnostics()
+  }
+
+  pub async fn remote_ready(&self, timeout: std::time::Duration) -> bool {
+    match self.algorithms.get(PowAlgorithm::RandomX) {
+      Ok(algorithm) => algorithm.remote_ready(timeout).await.unwrap_or(false),
+      Err(_) => false,
+    }
+  }
+
   pub fn algorithm_descriptors(&self) -> Vec<AlgorithmDescriptor> {
     self.algorithms.descriptors()
   }

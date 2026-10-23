@@ -27,6 +27,7 @@ use super::HashError;
 struct HashTask {
   seed: Vec<u8>,
   blob: Vec<u8>,
+  deadline: Option<Instant>,
   reply: oneshot::Sender<Result<[u8; 32], HashError>>,
 }
 
@@ -73,21 +74,28 @@ impl RandomXVerifier {
     idle_timeout: Duration,
     mut hash: impl FnMut(&mut Option<C>, &[u8], &[u8]) -> Result<[u8; 32], HashError> + Send + 'static,
   ) -> Result<Self> {
-    if !(1..=1024).contains(&capacity) {
+    if !(1..=4096).contains(&capacity) {
       return Err(anyhow!(
-        "RandomX verifier queue capacity must be between 1 and 1024"
+        "RandomX verifier queue capacity must be between 1 and 4096"
       ));
     }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-      .enable_time()
-      .build()
-      .context("Failed to create RandomX verifier runtime")?;
     let (tx, mut rx) = mpsc::channel::<HashTask>(capacity);
     let stats = Arc::new(Stats::default());
     let worker_stats = stats.clone();
     thread::Builder::new()
       .name("randomx-verifier".into())
       .spawn(move || {
+        // The worker owns its runtime, so the runtime never drops on an async thread.
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+          .enable_time()
+          .build()
+        {
+          Ok(runtime) => runtime,
+          Err(error) => {
+            tracing::error!(%error, "Failed to create RandomX verifier runtime");
+            return;
+          }
+        };
         let mut cache = None;
         let mut last_hash = Instant::now();
         loop {
@@ -113,6 +121,15 @@ impl RandomXVerifier {
           if task.reply.is_closed() {
             continue;
           }
+          if task
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+          {
+            let _ = task.reply.send(Err(HashError::Unavailable(anyhow!(
+              "RandomX hash deadline elapsed"
+            ))));
+            continue;
+          }
           worker_stats.active.store(true, Ordering::Relaxed);
           let result = hash(&mut cache, &task.seed, &task.blob);
           last_hash = Instant::now();
@@ -135,6 +152,15 @@ impl RandomXVerifier {
   }
 
   pub async fn hash(&self, seed: Vec<u8>, blob: Vec<u8>) -> Result<[u8; 32], HashError> {
+    self.hash_with_deadline(seed, blob, None).await
+  }
+
+  pub async fn hash_with_deadline(
+    &self,
+    seed: Vec<u8>,
+    blob: Vec<u8>,
+    deadline: Option<Instant>,
+  ) -> Result<[u8; 32], HashError> {
     if seed.is_empty() || seed.len() > 256 || blob.is_empty() || blob.len() > 256 {
       return Err(HashError::Invalid(anyhow!(
         "RandomX seed and input must contain between 1 and 256 bytes"
@@ -144,7 +170,12 @@ impl RandomXVerifier {
 
     self
       .tx
-      .try_send(HashTask { seed, blob, reply })
+      .try_send(HashTask {
+        seed,
+        blob,
+        deadline,
+        reply,
+      })
       .map_err(|error| {
         HashError::Unavailable(match error {
           mpsc::error::TrySendError::Full(_) => {
@@ -266,6 +297,7 @@ mod tests {
       .try_send(HashTask {
         seed: vec![2],
         blob: vec![2],
+        deadline: None,
         reply,
       })
       .unwrap();
@@ -280,6 +312,7 @@ mod tests {
       .send(HashTask {
         seed: vec![4],
         blob: vec![4],
+        deadline: None,
         reply,
       })
       .await
@@ -292,6 +325,43 @@ mod tests {
     assert!(!diagnostics.active);
     assert_eq!(diagnostics.queued, 0);
   }
+  #[tokio::test]
+  async fn queued_work_expires_before_native_hashing() {
+    let (started, wait_started) = oneshot::channel();
+    let mut started = Some(started);
+    let (release, wait) = std::sync::mpsc::channel();
+    let verifier = RandomXVerifier::spawn::<()>(2, Duration::ZERO, move |_, _, _| {
+      if let Some(started) = started.take() {
+        started.send(()).unwrap();
+        wait.recv().unwrap();
+      }
+      Ok([7; 32])
+    })
+    .unwrap();
+    let first = {
+      let verifier = verifier.clone();
+      tokio::spawn(async move { verifier.hash(vec![1], vec![1]).await })
+    };
+    wait_started.await.unwrap();
+    let (reply, response) = oneshot::channel();
+    verifier
+      .tx
+      .try_send(HashTask {
+        seed: vec![2],
+        blob: vec![2],
+        deadline: Some(Instant::now()),
+        reply,
+      })
+      .unwrap();
+    release.send(()).unwrap();
+    first.await.unwrap().unwrap();
+    assert!(matches!(
+      response.await.unwrap(),
+      Err(HashError::Unavailable(_))
+    ));
+    assert_eq!(verifier.diagnostics().completed, 1);
+  }
+
   /// Checks the reference hash across cache reuse and idle release.
   #[tokio::test]
   #[ignore = "allocates a 256 MiB Argon2d cache"]

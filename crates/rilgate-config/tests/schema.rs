@@ -514,3 +514,71 @@ fn port_override_preserves_operations_listen_addresses() {
     ]
   );
 }
+
+#[test]
+fn randomx_verification_rejects_invalid_order_endpoint_and_tls() {
+  for verify in [
+    "{order: []}",
+    "{order: [local, local]}",
+    "{order: [local, remote, local]}",
+    "{remote: {timeout: 99ms}}",
+    "{remote: {timeout: 31s}}",
+    "{remote: {endpoint: 'https://host/path'}}",
+    "{remote: {endpoint: 'https://user@host'}}",
+    "{remote: {endpoint: 'https://host?query'}}",
+    "{remote: {endpoint: 'ftp://host'}}",
+    "{remote: {tls: {client_cert: cert.pem}}}",
+    "{remote: {tls: {client_key: key.pem}}}",
+  ] {
+    let text = format!("{BASE}pow:\n  algorithms:\n    randomx:\n      verify: {verify}\n");
+    assert!(resolve(&text).is_err(), "{verify}");
+  }
+  let text = format!(
+    "environment: development\n{BASE}pow:\n  algorithms:\n    randomx:\n      verify: {{order: [remote, local], remote: {{endpoint: 'http://host:9443', timeout: 100ms}}}}\n"
+  );
+  let cfg = resolve(&text).unwrap();
+  assert_eq!(
+    cfg.pow.randomx_verify.remote.server_name.as_deref(),
+    Some("host")
+  );
+}
+
+#[test]
+fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_only() {
+  use rilgate_config::{PowEnforcement, schema::pow::Hasher};
+  let mut document = parse(BASE).unwrap();
+  document.pow.p2pool = Some(Default::default());
+  let cfg = document.resolve().unwrap();
+  let mut pow = cfg.pow.clone();
+  pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n")).unwrap().policy;
+  for enforce in [PowEnforcement::LocalVerify, PowEnforcement::P2poolAccepted] {
+    for algorithm in [PowAlgorithm::Fast, PowAlgorithm::RandomX] {
+      for order in [
+        vec![Hasher::Local],
+        vec![Hasher::Remote],
+        vec![Hasher::Remote, Hasher::Local],
+        vec![Hasher::Local, Hasher::Remote],
+      ] {
+        pow.enforce = enforce;
+        pow.default_algorithm = algorithm;
+        pow.randomx_verify.order = order.clone();
+        assert_eq!(
+          pow.needs_remote_verifier(),
+          enforce == PowEnforcement::LocalVerify
+            && algorithm == PowAlgorithm::RandomX
+            && order == [Hasher::Remote]
+        );
+      }
+    }
+  }
+  pow.enforce = PowEnforcement::LocalVerify;
+  pow.default_algorithm = PowAlgorithm::RandomX;
+  pow.randomx_verify.order = vec![Hasher::Remote];
+  pow.policy = parse(&format!("{BASE}policy: {{mode: off}}\n"))
+    .unwrap()
+    .policy;
+  assert!(!pow.needs_remote_verifier());
+  pow.default_algorithm = PowAlgorithm::Fast;
+  pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: randomx\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge: {{algorithm: randomx}}\n")).unwrap().policy;
+  assert!(pow.needs_remote_verifier());
+}

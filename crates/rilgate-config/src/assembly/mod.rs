@@ -1,6 +1,7 @@
 mod audit;
 mod overrides;
 mod resolve;
+pub mod verifier;
 use crate::{Environment, PowConfig, ServerConfig, UpstreamConfig, schema::server::Listen};
 use anyhow::{Context, Result, ensure};
 pub use audit::{Finding, Severity};

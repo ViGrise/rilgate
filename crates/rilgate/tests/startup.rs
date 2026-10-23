@@ -511,3 +511,45 @@ policy:
   assert!(error.contains("server.max_connections"), "{error}");
   assert!(!error.contains("not-a-number-sensitive-value"));
 }
+
+#[test]
+fn remote_order_and_endpoint_environment_and_flag_overrides_resolve() {
+  let contents = "environment: development\nserver: {upstream: {url: 'http://127.0.0.1:3000'}}\nsecurity: {secret: '${RILGATE_SECURITY_SECRET}'}\npow: {algorithms: {randomx: {verify: {order: [local]}}}}\n";
+  let vars = [
+    ("RILGATE_SECURITY_SECRET", SECRET),
+    (
+      "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_ORDER",
+      "remote,local",
+    ),
+    (
+      "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_ENDPOINT",
+      "http://env.test:9443",
+    ),
+  ];
+  for (flags, endpoint, order) in [
+    (vec![], "http://env.test:9443", vec!["remote", "local"]),
+    (
+      vec![
+        "--pow-algorithms-randomx-verify-order",
+        "local,remote",
+        "--pow-algorithms-randomx-verify-remote-endpoint",
+        "http://flag.test:9443",
+      ],
+      "http://flag.test:9443",
+      vec!["local", "remote"],
+    ),
+  ] {
+    let mut args = vec!["config", "show", "--defaults"];
+    args.extend(flags);
+    let output = command(contents, &args, &vars);
+    assert!(
+      output.status.success(),
+      "{}",
+      String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&output.stdout).unwrap();
+    let verify = &value["pow"]["algorithms"]["randomx"]["verify"];
+    assert_eq!(verify["remote"]["endpoint"], endpoint);
+    assert_eq!(verify["order"], serde_yaml_ng::to_value(order).unwrap());
+  }
+}

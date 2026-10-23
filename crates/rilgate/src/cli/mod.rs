@@ -1,5 +1,5 @@
 mod args;
-pub use args::{Args, Command, ConfigCommand, LogFormat, WebCommand, env_file};
+pub use args::{Args, Command, ConfigCommand, LogFormat, VerifierCommand, WebCommand, env_file};
 pub mod config;
 pub mod serve;
 mod settings;

@@ -3,6 +3,42 @@ impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::{Context, ensure};
     self.rate_limit.validate()?;
+    let verify = &self.randomx_verify;
+    ensure!(
+      (1..=2).contains(&verify.order.len())
+        && (verify.order.len() == 1 || verify.order[0] != verify.order[1]),
+      "pow.algorithms.randomx.verify.order: expected one or two distinct hashers"
+    );
+    let remote = &verify.remote;
+    ensure!(
+      (std::time::Duration::from_millis(100)..=std::time::Duration::from_secs(30))
+        .contains(&remote.timeout.0),
+      "pow.algorithms.randomx.verify.remote.timeout: expected 100ms to 30s"
+    );
+    ensure!(
+      remote.tls.client_cert.is_some() == remote.tls.client_key.is_some(),
+      "pow.algorithms.randomx.verify.remote.tls: client_cert and client_key must both be set or absent"
+    );
+    if let Some(endpoint) = &remote.endpoint {
+      let url =
+        url::Url::parse(endpoint).context("pow.algorithms.randomx.verify.remote.endpoint")?;
+      ensure!(
+        matches!(url.scheme(), "https" | "http")
+          && url.host_str().is_some()
+          && matches!(url.path(), "" | "/")
+          && url.query().is_none()
+          && url.fragment().is_none()
+          && url.username().is_empty()
+          && url.password().is_none(),
+        "pow.algorithms.randomx.verify.remote.endpoint: expected an HTTP or HTTPS origin without path, query or credentials"
+      );
+    }
+    if let Some(name) = &remote.server_name {
+      ensure!(
+        !name.is_empty() && !name.chars().any(|c| c.is_whitespace()),
+        "pow.algorithms.randomx.verify.remote.server_name: expected a certificate name"
+      );
+    }
     self
       .signing_keys
       .validate()

@@ -30,16 +30,73 @@ pub struct RandomXConfig {
   pub queue_capacity: usize,
   pub cache_idle_timeout: Duration,
 }
+/// The hashers that verify proofs, tried in `order`.
+#[derive(Debug, Clone)]
+pub struct HasherOrder {
+  pub order: Vec<verification::HasherKind>,
+  pub remote: Option<RemoteHasherConfig>,
+  pub deadline_policy: verification::DeadlinePolicy,
+}
+impl Default for HasherOrder {
+  fn default() -> Self {
+    Self {
+      order: vec![verification::HasherKind::Local],
+      remote: None,
+      deadline_policy: Default::default(),
+    }
+  }
+}
+#[derive(Debug, Clone)]
+pub struct RemoteHasherConfig {
+  pub endpoint: String,
+  pub server_name: String,
+  pub timeout: Duration,
+  pub ca: Option<std::path::PathBuf>,
+  pub client_cert: Option<std::path::PathBuf>,
+  pub client_key: Option<std::path::PathBuf>,
+}
 impl RandomXAlgorithm {
-  pub fn new(config: &RandomXConfig, provider: Arc<dyn WorkProvider<Work = StratumJob>>) -> Self {
-    let local = Arc::new(LocalHasher::new(
-      config.queue_capacity,
-      config.cache_idle_timeout,
-    ));
-    let mut algorithm =
-      Self::with_hasher(config, provider, OrderedHasher::new(vec![local.clone()]));
-    algorithm.local_hasher = Some(local);
-    algorithm
+  pub fn with_order(
+    config: &RandomXConfig,
+    pool: Arc<dyn WorkProvider<Work = StratumJob>>,
+    hashers: &HasherOrder,
+  ) -> Result<RandomXAlgorithm> {
+    use verification::{HasherKind, RandomXHasher, RemoteHasher};
+    let mut ordered: Vec<Arc<dyn RandomXHasher>> = Vec::new();
+    let mut local_hasher = None;
+    for kind in &hashers.order {
+      match kind {
+        HasherKind::Local => {
+          let local = Arc::new(LocalHasher::new(
+            config.queue_capacity,
+            config.cache_idle_timeout,
+          ));
+          local_hasher = Some(local.clone());
+          ordered.push(local);
+        }
+        HasherKind::Remote => {
+          let remote = hashers
+            .remote
+            .as_ref()
+            .context("remote hasher configuration is missing")?;
+          ordered.push(Arc::new(RemoteHasher::new(
+            &remote.endpoint,
+            &remote.server_name,
+            remote.timeout,
+            remote.ca.as_deref(),
+            remote.client_cert.as_deref(),
+            remote.client_key.as_deref(),
+          )?));
+        }
+      }
+    }
+    let mut algorithm = RandomXAlgorithm::with_hasher(
+      config,
+      pool,
+      OrderedHasher::new(ordered).with_deadline_policy(hashers.deadline_policy),
+    );
+    algorithm.local_hasher = local_hasher;
+    Ok(algorithm)
   }
 
   pub fn with_hasher(
@@ -58,6 +115,14 @@ impl RandomXAlgorithm {
   }
 }
 impl Algorithm for RandomXAlgorithm {
+  fn hash_diagnostics(&self) -> Option<rilgate_pow::algorithm::HashDiagnostics> {
+    Some(self.hasher.diagnostics())
+  }
+
+  fn remote_ready(&self, timeout: Duration) -> AlgorithmFuture<'_, bool> {
+    Box::pin(async move { Ok(self.hasher.remote_ready(timeout).await) })
+  }
+
   fn verifier_diagnostics(&self) -> Option<rilgate_pow::algorithm::VerifierDiagnostics> {
     Some(
       self
@@ -182,5 +247,58 @@ impl Algorithm for RandomXAlgorithm {
       );
       Ok(())
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  struct Provider;
+  impl WorkProvider for Provider {
+    type Work = StratumJob;
+    fn fetch(&self, _: u64) -> rilgate_core::BoxFuture<'_, StratumJob> {
+      Box::pin(async { anyhow::bail!("No work available") })
+    }
+  }
+
+  #[test]
+  fn ordered_constructor_builds_only_selected_hashers() {
+    use verification::HasherKind;
+    let config = RandomXConfig {
+      difficulty: DifficultyConfig {
+        base: 1000,
+        weight_step: 10,
+        max: 32000,
+      },
+      ttl: 60,
+      nonce_offset: 39,
+      queue_capacity: 8,
+      cache_idle_timeout: Duration::from_secs(60),
+    };
+    for order in [
+      vec![HasherKind::Local],
+      vec![HasherKind::Remote],
+      vec![HasherKind::Remote, HasherKind::Local],
+      vec![HasherKind::Local, HasherKind::Remote],
+    ] {
+      let hashers = HasherOrder {
+        order,
+        remote: Some(RemoteHasherConfig {
+          endpoint: "https://localhost:9443".into(),
+          server_name: "localhost".into(),
+          timeout: Duration::from_secs(2),
+          ca: None,
+          client_cert: None,
+          client_key: None,
+        }),
+        deadline_policy: Default::default(),
+      };
+      let algorithm = RandomXAlgorithm::with_order(&config, Arc::new(Provider), &hashers).unwrap();
+      assert_eq!(
+        algorithm.local_hasher.is_some(),
+        hashers.order.contains(&HasherKind::Local)
+      );
+    }
   }
 }

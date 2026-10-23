@@ -64,6 +64,11 @@ pub enum LogFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+  /// Run or configure a dedicated RandomX verifier
+  Verifier {
+    #[command(subcommand)]
+    command: VerifierCommand,
+  },
   /// Run the gateway (default when no command is given)
   Serve,
   /// Validate or display the resolved configuration
@@ -204,6 +209,34 @@ mod tests {
   }
 
   #[test]
+  fn verifier_command_accepts_service_settings_without_gateway_options() {
+    let mut args = Args::try_parse_from([
+      "rilgate",
+      "verifier",
+      "serve",
+      "--pow-algorithms-randomx-serve-listen",
+      "127.0.0.1:9443",
+      "--pow-algorithms-randomx-serve-queue",
+      "16",
+    ])
+    .unwrap();
+    assert!(matches!(
+      args.command,
+      Some(Command::Verifier {
+        command: VerifierCommand::Serve
+      })
+    ));
+    assert!(
+      args
+        .overrides()
+        .settings
+        .iter()
+        .any(|s| s.path == "pow.algorithms.randomx.serve.queue"
+          && s.value == SettingValue::Scalar("16".into()))
+    );
+  }
+
+  #[test]
   fn env_file_is_found_before_parsing() {
     let args = |values: &[&str]| {
       values
@@ -225,4 +258,15 @@ mod tests {
     );
     assert_eq!(env_file(&args(&["rilgate", "serve"])), None);
   }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum VerifierCommand {
+  /// Serve the RandomX hash API
+  Serve,
+  /// Validate or display verifier settings
+  Config {
+    #[command(subcommand)]
+    command: ConfigCommand,
+  },
 }

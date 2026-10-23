@@ -53,7 +53,7 @@ pow:
   verification: local_verify
 ```
 
-the gateway verifies RandomX locally.
+the gateway verifies the RandomX hash with its configured hashers.
 
 With:
 
@@ -343,3 +343,54 @@ node scripts/validate-randomx-wasm.mjs
 
 The validation build stays under `target/`. `cargo xtask build-wasm` stages the production
 artifact without the validation export.
+
+## RandomX hash location
+
+`pow.verification` sets the proof requirement. With `local_verify`, the gateway
+checks a hash against the difficulty target. The hash can come from a local
+worker or a remote verifier. With `p2pool_accepted`, the gateway waits for P2Pool
+to accept the share. A remote verifier does not replace pool acceptance. Both
+modes still need `pow.p2pool.address` to get work.
+
+Set `pow.algorithms.randomx.verify.order` to select the hash location:
+
+| Order | Operation |
+| --- | --- |
+| `[local]` | Use the local worker. This is the default. |
+| `[remote]` | Use the remote verifier. The gateway allocates no RandomX cache. |
+| `[remote, local]` | Try remote first. Use local if remote is unavailable. |
+| `[local, remote]` | Try local first. Use remote if local is unavailable. |
+
+A returned hash is final. A hash that misses the target receives `401` and does
+not start a fallback. An invalid request also stops the sequence. If every
+hasher is unavailable, the gateway returns `503`. All attempts share the
+challenge expiry. Each remote attempt also has its configured timeout.
+
+A verifier returns `503` with `{"reason":"deadline"}` when the request deadline
+has passed or is more than 60 seconds ahead. Set
+`pow.algorithms.randomx.verify.remote.on_deadline_rejected` to `fallback` (default)
+to try the next hasher. With `[remote]`, this returns `503`. Set `reject` to stop
+the sequence and return `401`. Malformed seed, input or body data remains invalid.
+
+The local worker creates its 256 MiB cache on the first hash. A cold cache build
+waits within the request deadline. The cache is released after
+`pow.algorithms.randomx.cache.idle_timeout`, which defaults to `30m`. Set `0s` to
+keep it until the process stops. A seed change releases the old cache before it
+builds the new cache.
+
+Use a custom policy to select RandomX. Presets select Fast explicitly, so
+`pow.default_algorithm: randomx` alone does not change a preset challenge.
+
+```yaml
+pow:
+  verification: local_verify
+  default_algorithm: randomx
+  p2pool:
+    address: pool.internal:3333
+policy:
+  mode: custom
+  default_action: challenge
+```
+
+For a dedicated verifier, see [configuration](configuration.md#dedicated-randomx-verifier)
+and [production operations](production.md#remote-randomx-verification).

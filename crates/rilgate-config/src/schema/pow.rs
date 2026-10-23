@@ -95,6 +95,8 @@ pub struct RandomX {
   pub nonce_offset: usize,
   pub verifier_queue: usize,
   pub cache: Cache,
+  pub verify: Verify,
+  pub serve: Option<Serve>,
   pub difficulty: Difficulty,
   pub browser: Browser,
 }
@@ -105,6 +107,8 @@ impl Default for RandomX {
       nonce_offset: 39,
       verifier_queue: 8,
       cache: Cache::default(),
+      verify: Verify::default(),
+      serve: None,
       difficulty: Difficulty::default(),
       browser: Browser::default(),
     }
@@ -215,4 +219,88 @@ impl Default for JobSessions {
       idle: Time::seconds(60),
     }
   }
+}
+
+pub use rilgate_pow_randomx::{DeadlinePolicy, HasherKind as Hasher};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Verify {
+  pub order: Vec<Hasher>,
+  pub remote: Remote,
+}
+impl Default for Verify {
+  fn default() -> Self {
+    Self {
+      order: vec![Hasher::Local],
+      remote: Remote::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Remote {
+  pub on_deadline_rejected: DeadlinePolicy,
+  pub endpoint: Option<String>,
+  pub server_name: Option<String>,
+  pub timeout: Time,
+  pub tls: RemoteTls,
+}
+impl Default for Remote {
+  fn default() -> Self {
+    Self {
+      on_deadline_rejected: DeadlinePolicy::Fallback,
+      endpoint: None,
+      server_name: None,
+      timeout: Time::seconds(2),
+      tls: RemoteTls::default(),
+    }
+  }
+}
+
+impl Remote {
+  /// The certificate name to verify: `server_name`, or else the endpoint host.
+  pub fn effective_server_name(&self) -> Option<String> {
+    self.server_name.clone().or_else(|| {
+      let endpoint = url::Url::parse(self.endpoint.as_deref()?).ok()?;
+      Some(endpoint.host_str()?.trim_matches(['[', ']']).to_owned())
+    })
+  }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RemoteTls {
+  pub ca: Option<std::path::PathBuf>,
+  pub client_cert: Option<std::path::PathBuf>,
+  pub client_key: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Serve {
+  pub listen: String,
+  pub workers: usize,
+  pub queue: usize,
+  pub max_connections: usize,
+  pub tls: ServeTls,
+}
+impl Default for Serve {
+  fn default() -> Self {
+    Self {
+      listen: String::new(),
+      workers: 1,
+      queue: 64,
+      max_connections: 256,
+      tls: ServeTls::default(),
+    }
+  }
+}
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ServeTls {
+  pub cert: Option<std::path::PathBuf>,
+  pub key: Option<std::path::PathBuf>,
+  pub client_ca: Option<std::path::PathBuf>,
 }

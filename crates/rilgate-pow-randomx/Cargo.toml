@@ -12,8 +12,22 @@ tokio.workspace = true
 uuid.workspace = true
 hex.workspace = true
 tracing.workspace = true
+webpki-roots = "1"
 rilgate-core.workspace = true
 rilgate-protocol.workspace = true
 rilgate-pow.workspace = true
 rilgate-pool.workspace = true
 randomx-core.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+openssl = "0.10"
+tokio-rustls.workspace = true
+hyper = { workspace = true, features = ["server"] }
+hyper-util.workspace = true
+http-body-util.workspace = true
+bytes.workspace = true
+tempfile.workspace = true

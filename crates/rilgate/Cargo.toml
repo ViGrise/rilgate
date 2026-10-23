@@ -20,6 +20,16 @@ clap.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true
 socket2.workspace = true
+hyper = { workspace = true, features = ["server"] }
+hyper-util.workspace = true
+http-body-util.workspace = true
+bytes.workspace = true
+http.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rilgate-core.workspace = true
 tracing.workspace = true
 rilgate-config.workspace = true
 rilgate-gateway.workspace = true
@@ -39,8 +49,12 @@ hex.workspace = true
 openssl = { version = "0.10", optional = true, features = ["vendored"] }
 
 [dev-dependencies]
+rilgate-protocol.workspace = true
+openssl = "0.10"
+randomx-core.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 axum.workspace = true
-http.workspace = true
 rilgate-test-utils.workspace = true
 tower.workspace = true
 tempfile.workspace = true

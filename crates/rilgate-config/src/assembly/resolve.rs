@@ -7,6 +7,10 @@ use std::sync::Arc;
 
 impl Document {
   pub fn resolve(&self) -> Result<Config> {
+    ensure!(
+      self.pow.algorithms.randomx.serve.is_none(),
+      "pow.algorithms.randomx.serve: use rilgate verifier serve; combined mode is not supported"
+    );
     let addresses = super::listen_addresses(&self.server.listen, "server.listen", 1)?;
     let operations_listen_addresses = super::listen_addresses(
       &self.server.operations.listen,
@@ -70,6 +74,8 @@ impl Document {
       "pow.p2pool.address: expected HOST:PORT without credentials or a path"
     );
     let randomx = &self.pow.algorithms.randomx;
+    let mut verify = randomx.verify.clone();
+    verify.remote.server_name = verify.remote.effective_server_name();
     let site = &self.site;
     let config = Arc::new(Configuration {
       env: self.environment,
@@ -142,6 +148,7 @@ impl Document {
         auth_cookie_name: self.security.auth.cookie.clone(),
         nonce_offset: randomx.nonce_offset,
         verifier_queue_capacity: randomx.verifier_queue,
+        randomx_verify: verify,
         randomx_cache_idle_timeout: randomx.cache.idle_timeout.0,
         rate_limit: RateLimitConfig {
           enabled: self.pow.rate_limit.enabled,
