@@ -105,7 +105,7 @@ and proxy credentials. Keep names free of private information.
 ## Capacity and quotas
 
 `server.max_connections` bounds accepted TCP connections, including idle clients. Excess connections
-are closed. `server.max_requests` bounds concurrent requests, including streams and upgraded
+are closed. It also sets how many idle upstream connections the gateway keeps for reuse. `server.max_requests` bounds concurrent requests, including streams and upgraded
 WebSockets.
 
 Excess requests receive `503` and `Retry-After: 1`. HTTP/2 streams per connection are
@@ -309,6 +309,7 @@ There is no universal RPS target.
 
 ```bash
 scripts/build.sh --release
+cargo build --release --locked -p rilgate-gateway --example null-upstream
 scripts/perf-gate.sh
 ```
 

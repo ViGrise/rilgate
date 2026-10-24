@@ -68,6 +68,9 @@ impl Gateway {
     pingora::prelude::fast_timeout::set_fast_timeout_to_tokio_threshold(Some(Duration::ZERO));
     let conf = Arc::new(ServerConf {
       max_retries: 16,
+      // The idle upstream pool matches the downstream connection limit. A smaller pool closes
+      // surplus upstream connections after each request and fills ephemeral ports with TIME_WAIT.
+      upstream_keepalive_pool_size: state.cfg.server.max_connections,
       ..Default::default()
     });
     let build_proxy = |role| {
