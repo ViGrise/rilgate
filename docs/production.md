@@ -260,29 +260,44 @@ open issue. A scheduled workflow checks the committed lockfile daily and opens
 an issue for each new advisory. On each release, review the open
 `dependency-advisory` issues.
 
-After these checks pass, pushes to `main` publish a multi-architecture image
-(`linux/amd64`, `linux/arm64`) to `ghcr.io/vigrise/rilgate`. Its tags are `main` and
-`sha-<commit>`. A push of a `v*` tag releases that revision:
+After these checks pass, pushes to `main` publish two multi-architecture images
+(`linux/amd64`, `linux/arm64`) to `ghcr.io/vigrise/rilgate`. The default image is based
+on Alpine and contains the static musl build. Its tags are `main` and `sha-<commit>`.
+The Debian image contains the dynamic glibc build. Each of its tags has the suffix
+`-debian`, for example `main-debian`. Both images run the same configuration as user
+`10001`. Use the Debian image to extend it with Debian packages. A push of a `v*` tag
+releases that revision:
 
 1. Set `version` under `[workspace.package]` in `Cargo.toml`.
 2. Commit the change.
 3. Create the tag `v<version>`.
 4. CI repeats the checks. It builds native binaries for Linux (amd64, arm64), macOS
-   (amd64, arm64) and Windows (amd64, arm64). It smoke tests each binary with
-   `--version` and `config check`.
-5. The image gains `<version>`, `<major>.<minor>`, `<major>` (from 1.0 onward) and
-   `latest` tags. A tag containing `-`, such as `v1.2.0-rc.1`, publishes a
-   prerelease that never moves `latest`.
-6. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows). Each archive holds
+   (amd64, arm64) and Windows (amd64, arm64). Linux has a dynamic glibc build and a
+   static musl build. CI smoke tests each binary with `--version` and `config check`,
+   and runs the static build in an empty image.
+5. The default image gains `<version>`, `<major>.<minor>`, `<major>` (from 1.0 onward)
+   and `latest` tags. The Debian image gains the same tags with the `-debian` suffix,
+   such as `latest-debian`. A tag containing `-`, such as `v1.2.0-rc.1`, publishes a
+   prerelease that never moves `latest` or `latest-debian`.
+6. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows), and
+   `rilgate-linux-<arch>-musl.tar.gz` for the static Linux build. Each archive holds
    the binary, `LICENSE` and `rilgate.production.yml`. The release also attaches the bare binary
-   `rilgate-<os>-<arch>` (`.exe` on Windows), used by `rilgate upgrade`. It attaches
+   of each build, used by `rilgate upgrade`. It attaches
    `SHA256SUMS` for both, and `install.sh`, with generated release notes.
 
 The release fails when the tag and the package version differ.
 
-Linux binaries come from the image builder stage, so they need glibc 2.36 or newer and
-OpenSSL 3 (`libssl3`). macOS and Windows binaries link OpenSSL statically through the
-`vendored-openssl` feature. Rebuild them for OpenSSL security releases. Keep the previous
+The dynamic Linux build comes from the image builder stage on Debian bookworm, so it
+needs glibc 2.36 or newer. The static musl build runs on any Linux distribution of its
+architecture. Both use mimalloc as the allocator. They had the same request throughput in
+the measurements in `docs/performance.md`.
+`install.sh` installs the glibc build when the system has glibc 2.36 or newer, and the
+static build in other cases. `rilgate upgrade` keeps the build that runs.
+
+All release binaries contain OpenSSL, because `pingora-openssl` builds it from source.
+They do not use a system OpenSSL. A system package upgrade does not apply OpenSSL
+security fixes to them, and an image scan does not report OpenSSL vulnerabilities in
+them. Rebuild and release them for OpenSSL security releases. Keep the previous
 immutable image digest or archive and its configuration for rollback.
 
 Run locally with the prerequisites in `docs/development.md`:
