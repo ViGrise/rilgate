@@ -12,6 +12,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  IMAGE_DOCUMENTATION: https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction
+  IMAGE_VENDOR: ViGrise
 jobs:
   version:
     name: Release version
@@ -289,6 +291,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.documentation=${{ env.IMAGE_DOCUMENTATION }}
+            org.opencontainers.image.vendor=${{ env.IMAGE_VENDOR }}
+            org.opencontainers.image.authors=${{ env.IMAGE_VENDOR }}
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v7
@@ -413,6 +419,13 @@ jobs:
             tags+=" -t $REGISTRY/$IMAGE_NAME:$ALIAS"
           fi
           mapfile -t annotations < <(jq -r '.annotations[] | "--annotation=" + .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          # Copies the remaining OCI labels of the image, such as the base image and vendor, to the index.
+          source="$REGISTRY/$IMAGE_NAME@sha256:$(ls | head -n 1)"
+          mapfile -t -O "${#annotations[@]}" annotations < <(docker buildx imagetools inspect "$source" --format '{{json .Image}}' | jq -r --argjson known "$DOCKER_METADATA_OUTPUT_JSON" '
+            (if has("config") then . else (to_entries | map(select(.key != "unknown/unknown")) | .[0].value) end).config.Labels // {}
+            | to_entries[] | select(.key | startswith("org.opencontainers.image."))
+            | select(("index:" + .key) as $key | ($known.annotations | map(split("=")[0]) | index($key)) | not)
+            | "--annotation=index:" + .key + "=" + .value')
           docker buildx imagetools create "${annotations[@]}" $tags $(printf "$REGISTRY/$IMAGE_NAME@sha256:%s " *)
       - name: Inspect manifest
         env:
