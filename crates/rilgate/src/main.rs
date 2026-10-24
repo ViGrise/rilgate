@@ -1,6 +1,10 @@
 use clap::Parser;
 use rilgate::cli::{Args, Command, ConfigCommand, LogFormat, VerifierCommand};
 
+// Per-thread heaps keep concurrent request handling from contending on one allocator lock.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   // Load the environment file before parsing, because its variables can supply flag values.

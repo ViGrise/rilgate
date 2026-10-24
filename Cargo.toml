@@ -61,6 +61,7 @@ hyper = { version = "1.11.0", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 bytes = "1"
 async-trait = "0.1"
+mimalloc = { version = "0.1.52", default-features = false }
 pingora = { version = "0.9.0", features = ["proxy", "openssl"] }
 http-body = "1"
 http-body-util = "0.1.5"
