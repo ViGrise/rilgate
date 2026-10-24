@@ -134,6 +134,228 @@ Proxy throughput is bounded by the single-threaded mock upstream and the added h
 latency. Gateway CPU per proxied request changed from 62.8 us to 60.7 us, which is
 within run-to-run variation.
 
+## Gateway with an HTTP null upstream, 2026-10-24
+
+The performance gate uses the `null-upstream` Rust example. It runs on a
+multithreaded Tokio runtime, consumes and discards incoming body frames, and
+returns HTTP 200 with an empty body. These are `/dev/null` semantics through
+HTTP; `/dev/null` itself cannot serve HTTP. An identifying response header lets
+the gate check forwarding even when the response body is empty. The example
+uses the existing Axum dependency and also handles streamed uploads.
+
+The previous single-threaded Node.js upstream returned 1 KiB per request. The
+new fixture changes both server implementation and response size, so these
+results do not establish a gateway speedup over the historical measurements.
+
+Measured on an Apple M4 Pro with 12 logical CPUs, macOS 26.4.1, Rust 1.98.0,
+and the release profile. Each path uses `wrk` with four client threads,
+two seconds of warmup and eight seconds of measurement. Gateway, upstream and
+client share this machine and communicate over loopback HTTP/1.1. There were
+no concurrent builds or profilers during the retained measurements. Proof API
+quotas are disabled. The authenticated path uses a real Fast difficulty 1
+cookie obtained through the proof protocol. The initial 12 / 12 runs at 32 and
+128 connections used the default disabled metrics endpoint. Subsequent runs
+enabled metrics collection, as the current harness does.
+
+| Gateway / upstream workers | Connections | Allowed req/s | Authenticated req/s | Allowed p50 / p99, us | Gateway CPU, us/allowed request |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 12 / 12, first run | 32 | 66040 | 64395 | 461 / 690 | 73.38 |
+| 12 / 12, repeat | 32 | 65334 | 65313 | 467 / 702 | 74.62 |
+| 12 / 12 | 128 | 65373 | 65254 | 1900 / 2530 | 80.80 |
+| 4 / 4 | 32 | 69332 | 68182 | 451 / 687 | 54.05 |
+| 4 / 4 | 128 | 68926 | 69757 | 1830 / 3080 | 54.92 |
+| 2 / 2 | 128 | 54983 | 51298 | 2300 / 3680 | 36.19 |
+| 4 / 12 | 128 | 70439 | 70484 | 1800 / 2730 | 54.47 |
+
+CPU cost is cumulative process user plus system time, divided by
+completed requests. RSS snapshots are observations at measurement boundaries,
+not peak memory measurements. For the 4 / 12 worker run:
+
+| Path | Req/s | p50, us | p99, us |
+| --- | ---: | ---: | ---: |
+| Null upstream directly | 128263 | 910 | 1500 |
+| Health | 136107 | 900 | 1740 |
+| Challenge page | 138077 | 910 | 1680 |
+| Authenticated proxy | 70484 | 1800 | 2960 |
+| Allowed proxy | 70439 | 1800 | 2730 |
+
+All seven retained runs passed the gate without measured HTTP or socket errors.
+Six wrote zero log bytes during load. The repeated 12-worker, 32-connection run
+wrote 94 bytes: one Pingora `failed to acquire reusable stream` event. Pingora
+falls back to creating a connection on this path; that run still passed response
+and error checks. In the 4 / 12 run, gateway RSS after allowed traffic was
+41.23 MiB and upstream RSS was 9.30 MiB. Gateway CPU was about 384% of one core,
+upstream CPU 190%, and client CPU 157% during that measurement.
+
+### Bottleneck evidence
+
+- **Transport and scheduling are the leading measured costs.** Three separate
+  five-second `sample` profiles covered allowed traffic at 12 and 2 gateway
+  workers and challenge traffic at 12 workers, with 128 connections. The leading
+  non-waiting leaf stacks include `__sendto` and `__recvfrom`; runtime parking,
+  wakeups, allocation and Pingora connection reuse are also visible. These are
+  wall-clock samples, including idle threads, not CPU percentage attribution.
+  Keeping the upstream at 12 workers and using four gateway workers reduced
+  allowed CPU/request from 80.80 to 54.47 us, with throughput about 8% higher.
+  This supports measuring runtime and transport changes before changing token
+  validation. It does not prove a particular lock is responsible.
+- **More concurrent connections add latency after saturation.** At 12 / 12
+  workers, increasing connections from 32 to 128 left proxy throughput near
+  65,000 req/s and increased allowed p50 from 461 to 1900 us. At two workers,
+  gateway CPU reached about 199% of one core and proxy throughput fell. Four
+  workers are a useful tuning candidate on this host, not a production default.
+- **The upstream application is no longer the earlier single-threaded ceiling.**
+  In the 4 / 12 run, the sink alone handled about 1.82 times allowed proxy
+  throughput. The extra HTTP hop still consumes CPU and sockets on this host.
+  Authenticated and allowed proxy rates were nearly equal. Challenge and health
+  rates were also close. Neither authentication nor challenge generation is
+  the leading throughput limit in this workload.
+- **A 128-connection upstream keepalive pool exhausted ephemeral ports at 512
+  connections.** Pingora's default `upstream_keepalive_pool_size` is 128 per
+  server thread, and the gateway uses one server thread. With more concurrent
+  proxied requests than idle pool slots, Pingora closes the surplus upstream
+  connections after each request. Each close leaves a socket in TIME_WAIT for
+  30 seconds on macOS, and the default ephemeral range has 16,384 ports. With
+  the default pool, 512 connections failed the gate during authenticated proxy
+  traffic with 413 client connect errors and 187 non-success responses. The
+  gateway logged upstream `AddrNotAvailable` failures, macOS errno 49. Upstream
+  TIME_WAIT sockets rose to 15,322 while about 300 upstream connections were
+  established. Metrics recorded zero connection and request quota rejections.
+
+### Upstream pool sized to the connection limit
+
+The gateway now sizes the upstream keepalive pool to `server.max_connections`,
+default 1024. The earlier tables in this section used Pingora's default pool.
+Rerun with default workers (12 / 12), four `wrk` threads, two
+seconds of warmup and eight seconds of measurement:
+
+| Connections | Allowed req/s | Authenticated req/s | Allowed p50 / p99, us | Gateway CPU, us/allowed request | Peak upstream TIME_WAIT | Peak upstream established |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 128 | 64394 | 64509 | 1920 / 2880 | 86.22 | 30 | 129 |
+| 512 | 63253 | 63206 | 7900 / 13080 | 89.91 | 149 | 513 |
+
+Both runs passed the gate with zero log bytes. At 512 connections the gateway
+reused one upstream connection per downstream connection, and proxy throughput
+stayed at the 128-connection level. Latency grows with queue depth because
+throughput is already saturated. At 128 connections, CPU per request did not
+improve against the 80.80 us default-pool run; connection churn is not a
+measurable cost at that concurrency on this host. Gateway RSS after allowed
+traffic was 31.88 MiB at 128 connections and 56.39 MiB at 512.
+
+Prioritize a benchmark on the deployment Linux host with the generator and sink
+on separate hosts, then compare gateway worker counts while holding upstream
+workers fixed. Profile Pingora's connection reuse and Tokio task wakeups there
+before changing production transport or synchronization. This run does not
+measure TLS, HTTP/2, large response bodies, rate limiter contention, or PoW
+verification capacity.
+
+Build and reproduce the 4 / 12 configuration:
+
+```bash
+scripts/build.sh --release
+cargo build --release --locked -p rilgate-gateway --example null-upstream
+TOKIO_WORKER_THREADS=4 PERF_GATE_UPSTREAM_WORKERS=12 \
+  PERF_GATE_THREADS=4 PERF_GATE_CONNECTIONS=128 \
+  PERF_GATE_DURATION=8s PERF_GATE_WARMUP=2s \
+  PERF_GATE_RUNDIR=/tmp/rilgate-perf-reproduction scripts/perf-gate.sh
+```
+
+The gate keeps raw `wrk` output, client CPU time, cumulative server CPU/RSS
+snapshots and metrics counters per measured path in `PERF_GATE_RUNDIR`. These
+results are not committed.
+
+## Linux container measurements, 2026-10-24
+
+Measured in the Docker Desktop Linux VM on the same Apple M4 Pro: kernel
+7.0.14-linuxkit, arm64, 12 vCPUs and 7.7 GiB of memory. The image is Debian trixie
+with Rust 1.99.1 and `wrk` 4.1.0 using epoll. Binaries use the release profile and
+default Tokio worker counts. The ephemeral port range is 32768-60999 and
+`tcp_tw_reuse` is 2. Gateway, `null-upstream` and `wrk` share the VM and
+communicate over loopback HTTP/1.1. Each path uses four `wrk` threads, two seconds
+of warmup and eight seconds of measurement. Gateway CPU is user plus system time
+read from procfs, divided by completed requests.
+
+### Upstream pool on Linux
+
+The same working tree was built with the upstream pool sized to
+`server.max_connections` and with Pingora's default pool of 128. Each run waited
+65 seconds before it started, so TIME_WAIT sockets from earlier runs had expired.
+
+| Pool | Connections | Allowed req/s | Authenticated req/s | Allowed p50 / p99, us | Gateway CPU, us/allowed request | Peak upstream TIME_WAIT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `max_connections` | 128 | 107695 | 115494 | 1150 / 2170 | 73.32 | 40 |
+| Default 128 | 128 | 105394 | 115837 | 1180 / 2220 | 74.77 | 59 |
+| `max_connections` | 512 | 104385 | 112043 | 4640 / 11160 | 73.61 | 406 |
+| Default 128 | 512 | 105605 | 110816 | 4590 / 11120 | 72.75 | 13614 |
+
+All four runs passed the gate. Throughput, latency and CPU per request are
+equivalent within run-to-run variation. With the default pool at 512 connections,
+upstream TIME_WAIT sockets reached 13,614, about 48% of the ephemeral range,
+within one eight-second measurement. The wider Linux range delays the address
+exhaustion measured on macOS but does not prevent it under sustained churn. The
+sized pool kept the peak at 406. The null upstream alone served 448,000 to 705,000
+req/s, so it does not limit these results.
+
+Pingora logs `failed to acquire reusable stream` at ERROR level two or three
+times per run with either pool size. The event occurs when a request takes a
+pooled connection while its idle watcher still holds the connection. Pingora
+then opens a new connection, and the response checks pass. These lines are the
+127 to 381 log bytes the gate reported.
+
+### Axum and Pingora transport comparison
+
+Three gateway builds served the same null upstream:
+
+- Axum: commit `d88eaa8^`, the last revision with an Axum server and a Reqwest
+  upstream client.
+- Pingora at migration: commit `d88eaa8`, which uses the same configuration
+  schema as `d88eaa8^`.
+- Pingora current: the working tree with the sized upstream pool. It uses the
+  current configuration schema with an operations listener.
+
+The order was Axum, migration, current, current, migration, Axum for each
+connection count. Values are means of the two runs per build. All 36
+measurements completed without socket errors or non-2xx responses. The proxy
+path is `/public`, allowed without a challenge. The challenge path is
+`/protected`, a local Fast challenge page. Both use a browser User-Agent.
+
+| Connections | Path | Axum req/s | Pingora at migration req/s | Pingora current req/s | Gateway CPU, us/request: Axum / migration / current |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 32 | proxy | 86016 | 88427 | 94568 | 68.95 / 70.61 / 68.78 |
+| 128 | proxy | 114617 | 107239 | 107958 | 68.80 / 72.88 / 72.46 |
+| 512 | proxy | 119754 | 105837 | 104155 | 69.09 / 73.80 / 75.32 |
+| 32 | challenge | 128246 | 176477 | 184132 | 67.87 / 36.21 / 37.33 |
+| 128 | challenge | 130595 | 203833 | 190269 | 71.02 / 36.56 / 39.92 |
+| 512 | challenge | 120670 | 247564 | 204464 | 74.23 / 30.97 / 38.73 |
+
+- **Proxy throughput depends on concurrency.** The Axum build forwarded 6% to 7% more
+  requests at 128 connections and 13% to 15% more at 512, with 4 to 6 us less gateway
+  CPU per request. At 32 connections, both Pingora builds were 3% to 10% faster.
+  The 10% to 12% Pingora deficit measured on macOS loopback appears on Linux only
+  at higher concurrency. These runs do not separate the server from the upstream
+  client, because the Axum build also uses Reqwest.
+- **Challenge results do not compare transports.** Commit `d88eaa8` also
+  contains web and token optimizations that `d88eaa8^` lacks. The Axum build
+  spent about 70 us per challenge page, close to its proxy cost, so application
+  work dominates that difference.
+- **Current challenge throughput is lower than at migration at 512
+  connections.** The current build served 17% fewer challenge pages and used
+  25% more CPU per page than `d88eaa8`. Both runs of each build agree. The cause
+  is not established: commits after the migration and the different
+  configuration schema both change this path. Bisect it with one configuration
+  before you attribute it to code.
+- **Memory at 512 connections.** Gateway RSS after the challenge measurement was
+  53.1 to 56.6 MiB for Axum, 40.5 to 42.2 MiB for Pingora at migration and 44.8
+  to 44.9 MiB for current Pingora.
+- p99 latency varied between repeated runs, for example 2.1 ms and 9.7 ms for the
+  same build. Use p50 and throughput from repeated runs for comparison in this
+  shared VM.
+
+The authenticated path is not part of the comparison, because the proof protocol
+used to get a cookie changed after the migration. These results come from one
+VM that runs the generator, gateway and upstream together. They do not replace
+a benchmark on the deployment host with separate generator and upstream hosts.
+
 ## Further investigation
 
 The authenticated path still allocates for the normalized request host, decoded token

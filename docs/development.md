@@ -126,16 +126,24 @@ collected separately from timing. It exercises the real gate and token verificat
 test configuration and keys, without forwarding requests. Run benchmarks without
 simultaneous builds or other load.
 
-`scripts/perf-gate.sh` is an optional local check that needs `wrk`, Node.js, and
-`curl`. It starts the bundled `scripts/perf/upstream.mjs` and generates a lab configuration in
+`scripts/perf-gate.sh` is an optional local check that needs `wrk`, Node.js,
+`curl`, and `ps`. It starts the release `null-upstream` example and generates a lab configuration in
 `PERF_GATE_RUNDIR` (default `/tmp/rilgate-perf-gate`). Gateway and upstream ports default to 8080 and
 3300.
 
 Override them with `PERF_GATE_PORT` and `PERF_GATE_UPSTREAM_PORT`. The lab uses fixed test keys, Fast
 difficulty 1 at `/protected`, and disabled proof rate limits. It completes the proof and
 exchange protocol to get a real access cookie, then checks that authenticated requests
-reach the upstream before and after load. It measures health, challenge pages,
-authenticated proxy traffic, and allowed proxy traffic.
+reach the upstream before and after load. The upstream uses a multithreaded Tokio
+runtime, discards request body frames, and returns HTTP 200 with an empty body and
+an identifying header. This gives it `/dev/null` semantics through HTTP.
+It measures the upstream directly, health, challenge pages, authenticated proxy
+traffic, and allowed proxy traffic. Each path reports p50 and p99. Raw `wrk`
+results, metrics counters, client CPU time, and server CPU time and RSS snapshots stay in
+`PERF_GATE_RUNDIR`. Each process snapshot line contains the PID, cumulative user plus
+system CPU seconds, and RSS in KiB. The upstream is listed first, then the gateway.
+Subtract the before value from the after value for each measurement. On Linux, the
+script reads CPU time from procfs at clock-tick precision.
 
 The script validates endpoint responses, rejects HTTP or socket errors and zero
 throughput, then checks log volume and challenge p50 relative to health p50. Absolute
@@ -143,6 +151,7 @@ throughput is reported. It is not a threshold for a pass or a failure.
 
 ```bash
 scripts/build.sh --release
+cargo build --release --locked -p rilgate-gateway --example null-upstream
 scripts/perf-gate.sh
 ```
 
@@ -150,7 +159,10 @@ The operations listener used for health defaults to port 9090. Override it with
 `PERF_GATE_OPERATIONS_PORT`. Thresholds and load shape are overridable through `PERF_GATE_MAX_LOG_BYTES`,
 `PERF_GATE_MAX_CHALLENGE_PCT`, `PERF_GATE_CONNECTIONS`, `PERF_GATE_THREADS`, `PERF_GATE_DURATION` and `PERF_GATE_WARMUP`. `PERF_GATE_RUST_LOG`
 selects a non-default log filter for measurement. It replaces the shipping filter. Set
-`PERF_GATE_BINARY` to test a binary from another Cargo target directory.
+`PERF_GATE_BINARY` and `PERF_GATE_UPSTREAM_BINARY` to test binaries from another Cargo
+target directory. `TOKIO_WORKER_THREADS` applies to both processes. Set
+`PERF_GATE_UPSTREAM_WORKERS` to control the upstream separately when comparing
+gateway worker counts. The lab enables metrics on the operations listener.
 
 Tokio worker count can affect throughput and CPU per request. Before you choose a value
 for a deployment, compare worker counts with the same load:
