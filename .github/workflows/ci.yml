@@ -135,6 +135,8 @@ jobs:
           load: true
           build-args: CARGO_BUILD_JOBS=4
           cache-from: type=gha,scope=linux-amd64
+          # The runtime stage always rebuilds so its OS packages include current security updates.
+          no-cache-filters: runtime
       - name: Validate Compose configuration
         env:
           RILGATE_SECURITY_SECRET: ci-secret-with-at-least-32-random-bytes
@@ -255,6 +257,7 @@ jobs:
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           cache-from: type=gha,scope=linux-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=linux-${{ matrix.arch }}
+          no-cache-filters: runtime
       - name: Export digest
         run: |
           mkdir -p "$RUNNER_TEMP/digests"
