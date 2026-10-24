@@ -391,6 +391,9 @@ jobs:
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v6
+        env:
+          # Registries read the description of a multi-architecture image from its index.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
@@ -411,7 +414,8 @@ jobs:
           if [[ -n "$ALIAS" && "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != *-* ]]; then
             tags+=" -t $REGISTRY/$IMAGE_NAME:$ALIAS"
           fi
-          docker buildx imagetools create $tags $(printf "$REGISTRY/$IMAGE_NAME@sha256:%s " *)
+          mapfile -t annotations < <(jq -r '.annotations[] | "--annotation=" + .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create "${annotations[@]}" $tags $(printf "$REGISTRY/$IMAGE_NAME@sha256:%s " *)
       - name: Inspect manifest
         run: docker buildx imagetools inspect "$REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.version }}"
 
