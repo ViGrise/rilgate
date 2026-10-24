@@ -90,7 +90,9 @@ jobs:
           cargo test -p randomx-core --release --locked --test vectors -- --ignored --test-threads=1
           cargo test -p rilgate-pow-randomx --release --locked --lib -- --ignored --test-threads=1
       - name: Check performance regression smoke workload
-        run: PERF_GATE_BINARY=target/release/rilgate PERF_GATE_DURATION=3s PERF_GATE_WARMUP=1s scripts/perf-gate.sh
+        run: |
+          cargo build --release --locked -p rilgate-gateway --example null-upstream
+          PERF_GATE_BINARY=target/release/rilgate PERF_GATE_DURATION=3s PERF_GATE_WARMUP=1s scripts/perf-gate.sh
   dependencies:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
