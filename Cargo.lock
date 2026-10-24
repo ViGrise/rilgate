@@ -1237,11 +1237,11 @@ dependencies = [
 
 [[package]]
 name = "hashwx-core"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "hashwx-wasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "dlmalloc",
  "hashwx-core",
@@ -2833,7 +2833,7 @@ dependencies = [
 
 [[package]]
 name = "randomx-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes",
  "argon2",
@@ -2845,7 +2845,7 @@ dependencies = [
 
 [[package]]
 name = "randomx-wasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "randomx-core",
 ]
@@ -2941,7 +2941,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2989,7 +2989,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-challenge"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-config"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "http",
@@ -3036,7 +3036,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "thiserror 2.0.21",
@@ -3044,7 +3044,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-crypto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3057,7 +3057,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-gateway"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3101,7 +3101,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-ip-feeds"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-policy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3136,7 +3136,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-pool"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "rilgate-core",
@@ -3150,7 +3150,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-pow"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "rilgate-core",
@@ -3160,7 +3160,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-pow-hash"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "rilgate-core",
@@ -3171,7 +3171,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-pow-hashwx"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "getrandom 0.4.3",
@@ -3187,7 +3187,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-pow-randomx"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3216,7 +3216,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-protocol"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3224,7 +3224,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-stratum"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3246,7 +3246,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-telemetry"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -3254,7 +3254,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-test-utils"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3277,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "rilgate-web"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -5596,7 +5596,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "hex",
