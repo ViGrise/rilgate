@@ -356,6 +356,58 @@ used to get a cookie changed after the migration. These results come from one
 VM that runs the generator, gateway and upstream together. They do not replace
 a benchmark on the deployment host with separate generator and upstream hosts.
 
+## Global allocator, 2026-10-24
+
+The `rilgate` binary uses mimalloc as its global allocator. mimalloc keeps
+per-thread heaps, so request handling on many Tokio workers does not contend on
+one allocator lock. The comparison uses the same source and the Linux container
+described above. Each build ran in the order A, B, C, C, B, A for each
+connection count. Runs that failed the gate because `wrk` reported timeouts are
+excluded. Those timeouts occurred with every build and on every path, including
+health, and come from the shared VM.
+
+| Connections | Metric | glibc malloc | glibc and mimalloc | Static musl and mimalloc |
+| ---: | --- | ---: | ---: | ---: |
+| 128 | Allowed proxy req/s | 134514 | 199837 | 201462 |
+| 128 | Authenticated proxy req/s | 139186 | 193972 | 195282 |
+| 128 | Gateway CPU, us/allowed request | 56.90 | 37.87 | 37.39 |
+| 512 | Allowed proxy req/s | 124055 | 223017 | 224476 |
+| 512 | Gateway CPU, us/allowed request | 60.01 | 35.96 | 35.50 |
+| 512 | Challenge page req/s | 434647 | 492020 | - |
+| 128 / 512 | Gateway RSS after allowed traffic, MiB | 31 / 47 | 55 / 67 | 52 / 64 |
+
+The 512-connection musl values come from an earlier session of the same
+comparison, because both musl runs in this session failed with `wrk` timeouts.
+
+- mimalloc increased allowed proxy throughput by 49% at 128 connections and 80%
+  at 512, and reduced gateway CPU per allowed request by 33% to 40%. Allocation
+  on the proxy path was the largest measured cost in this workload. It is larger
+  than the transport difference between Axum and Pingora above, which used the
+  system allocator.
+- glibc and musl builds with mimalloc have the same throughput and CPU cost
+  within run-to-run variation. A static musl build that keeps the musl
+  allocator served about 13,500 allowed proxy req/s at 128 connections, about
+  one eighth of the glibc build in the same session. Static musl builds need
+  mimalloc.
+- Health and challenge throughput changed by -4% to +13%. These paths allocate
+  less per request than proxying.
+- On Linux, mimalloc increases RSS by about 20 to 24 MiB at these connection
+  counts.
+
+On macOS with the system allocator as baseline, in the order A, B, B, A:
+
+| Connections | Allocator | Allowed proxy req/s | Gateway CPU, us/allowed request | Gateway RSS after allowed traffic, MiB |
+| ---: | --- | ---: | ---: | ---: |
+| 128 | System | 80272 | 72.86 | 37.6 |
+| 128 | mimalloc | 81089 | 64.73 | 51.8 |
+| 512 | System | 79006 | 75.30 | 73.9 |
+| 512 | mimalloc | 78910 | 70.21 | 63.5 |
+
+On macOS, mimalloc reduced CPU per allowed request by 7% to 11% without a
+throughput change. RSS increased by 14 MiB at 128 connections and decreased by
+10 MiB at 512. Loopback throughput on macOS stays near 80,000 req/s with
+both allocators.
+
 ## Further investigation
 
 The authenticated path still allocates for the normalized request host, decoded token
