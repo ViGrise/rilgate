@@ -33,10 +33,11 @@ RUN cargo xtask build-wasm \
 FROM scratch AS binary
 COPY --from=builder /app/rilgate-release /rilgate
 
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+# The builder uses bookworm, so released binaries need glibc 2.36. The runtime uses the current Debian stable release.
+FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS runtime
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends ca-certificates libssl3 curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
