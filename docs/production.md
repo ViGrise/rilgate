@@ -262,9 +262,10 @@ an issue for each new advisory. On each release, review the open
 
 After these checks pass, pushes to `main` publish two multi-architecture images
 (`linux/amd64`, `linux/arm64`) to `ghcr.io/vigrise/rilgate`. The default image is based
-on Alpine and contains the static musl build. Its tags are `main` and `sha-<commit>`.
-The Debian image contains the dynamic glibc build. Each of its tags has the suffix
-`-debian`, for example `main-debian`. Both images run the same configuration as user
+on Alpine and contains the static musl build. Its tags are `main` and `sha-<commit>`,
+and the same tags with the suffix `-alpine`, for example `main-alpine`. The Debian image
+contains the dynamic glibc build. Each of its tags has the suffix `-debian`, for example
+`main-debian`. Both images run the same configuration as user
 `10001`. Use the Debian image to extend it with Debian packages. A push of a `v*` tag
 releases that revision:
 
@@ -276,9 +277,11 @@ releases that revision:
    static musl build. CI smoke tests each binary with `--version` and `config check`,
    and runs the static build in an empty image.
 5. The default image gains `<version>`, `<major>.<minor>`, `<major>` (from 1.0 onward)
-   and `latest` tags. The Debian image gains the same tags with the `-debian` suffix,
-   such as `latest-debian`. A tag containing `-`, such as `v1.2.0-rc.1`, publishes a
-   prerelease that never moves `latest` or `latest-debian`.
+   and `latest` tags, and the same tags with the `-alpine` suffix. The Debian image gains
+   the same tags with the `-debian` suffix, such as `latest-debian`. The tags `alpine`
+   and `debian` move to the release. A tag containing `-`, such as `v1.2.0-rc.1`,
+   publishes a prerelease that never moves `latest`, `latest-alpine`, `latest-debian`,
+   `alpine` or `debian`.
 6. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows), and
    `rilgate-linux-<arch>-musl.tar.gz` for the static Linux build. Each archive holds
    the binary, `LICENSE` and `rilgate.production.yml`. The release also attaches the bare binary
