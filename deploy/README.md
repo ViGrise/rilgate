@@ -8,9 +8,10 @@ To choose another directory, set `INSTALL_DIR`. To pin a release, set `VERSION=v
 `rilgate upgrade` installs newer releases.
 
 Build a native binary from the repository root with `scripts/build.sh --release`. The Pingora transport
-requires OpenSSL at build time and runtime. On Debian or Ubuntu, install `pkg-config`
-and `libssl-dev` for builds. For runtime, install `libssl3` and `ca-certificates`. The
-Docker image includes these dependencies.
+builds OpenSSL from source, so builds need Perl, `make`, `cmake` and a C compiler. The
+binary contains OpenSSL. For runtime, install `ca-certificates`. The Docker image
+includes it. On Linux, `install.sh` selects the dynamic glibc build or the static musl
+build. Set `LIBC=gnu` or `LIBC=musl` to select one.
 
 For Docker Compose:
 

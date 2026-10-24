@@ -4,7 +4,9 @@
 #   curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
 #
 # VERSION selects a release tag (default: latest) and INSTALL_DIR the target
-# directory (default: /usr/local/bin). Archives are verified against SHA256SUMS.
+# directory (default: /usr/local/bin). On Linux, LIBC selects the dynamic glibc
+# build (gnu) or the static build (musl); by default the glibc build is used when
+# the system has glibc 2.36 or newer. Archives are verified against SHA256SUMS.
 set -euo pipefail
 
 REPO="ViGrise/rilgate"
@@ -34,7 +36,24 @@ if [ "$VERSION" = "latest" ]; then
 else
   base="https://github.com/${REPO}/releases/download/${VERSION}"
 fi
-archive="${BIN_NAME}-${os}-${arch}.tar.gz"
+variant=""
+if [ "$os" = "linux" ]; then
+  libc="${LIBC:-}"
+  if [ -z "$libc" ]; then
+    glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}' || true)"
+    if [ -n "$glibc" ] && awk -v version="$glibc" 'BEGIN { split(version, part, "."); exit !(part[1] > 2 || (part[1] == 2 && part[2] >= 36)) }'; then
+      libc="gnu"
+    else
+      libc="musl"
+    fi
+  fi
+  case "$libc" in
+    gnu) ;;
+    musl) variant="-musl" ;;
+    *) fail "Unsupported LIBC: $libc (use gnu or musl)" ;;
+  esac
+fi
+archive="${BIN_NAME}-${os}-${arch}${variant}.tar.gz"
 
 download() {
   if command -v curl >/dev/null 2>&1; then
@@ -63,7 +82,7 @@ fi
 [ "$expected" = "$actual" ] || fail "Checksum mismatch for ${archive}"
 
 tar -xzf "${workdir}/${archive}" -C "$workdir"
-source="${workdir}/${BIN_NAME}-${os}-${arch}/${BIN_NAME}"
+source="${workdir}/${BIN_NAME}-${os}-${arch}${variant}/${BIN_NAME}"
 
 mkdir -p "$INSTALL_DIR" 2>/dev/null || true
 if [ -w "$INSTALL_DIR" ]; then
@@ -76,8 +95,8 @@ fi
 
 echo "Installed ${INSTALL_DIR}/${BIN_NAME}"
 if ! "${INSTALL_DIR}/${BIN_NAME}" --version; then
-  if [ "$os" = "linux" ]; then
-    fail "${BIN_NAME} is installed but cannot start; Linux binaries need glibc 2.36 or newer and OpenSSL 3 (libssl3)."
+  if [ "$os" = "linux" ] && [ -z "$variant" ]; then
+    fail "${BIN_NAME} is installed but cannot start; the glibc build needs glibc 2.36 or newer. Set LIBC=musl to install the static build."
   fi
   fail "${BIN_NAME} is installed but cannot start."
 fi

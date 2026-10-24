@@ -49,15 +49,18 @@ pub async fn run(version: Option<String>, force: bool) -> Result<()> {
   Ok(())
 }
 
-/// The release asset holding a bare binary for the platform this binary targets.
+/// The release asset holding a bare binary for the platform and C library this binary targets.
 pub fn asset_name() -> Option<&'static str> {
-  Some(match (std::env::consts::OS, std::env::consts::ARCH) {
-    ("linux", "x86_64") => "rilgate-linux-amd64",
-    ("linux", "aarch64") => "rilgate-linux-arm64",
-    ("macos", "x86_64") => "rilgate-darwin-amd64",
-    ("macos", "aarch64") => "rilgate-darwin-arm64",
-    ("windows", "x86_64") => "rilgate-windows-amd64.exe",
-    ("windows", "aarch64") => "rilgate-windows-arm64.exe",
+  let musl = cfg!(target_env = "musl");
+  Some(match (std::env::consts::OS, std::env::consts::ARCH, musl) {
+    ("linux", "x86_64", false) => "rilgate-linux-amd64",
+    ("linux", "x86_64", true) => "rilgate-linux-amd64-musl",
+    ("linux", "aarch64", false) => "rilgate-linux-arm64",
+    ("linux", "aarch64", true) => "rilgate-linux-arm64-musl",
+    ("macos", "x86_64", _) => "rilgate-darwin-amd64",
+    ("macos", "aarch64", _) => "rilgate-darwin-arm64",
+    ("windows", "x86_64", _) => "rilgate-windows-amd64.exe",
+    ("windows", "aarch64", _) => "rilgate-windows-arm64.exe",
     _ => return None,
   })
 }
