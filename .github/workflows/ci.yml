@@ -352,7 +352,7 @@ jobs:
           if-no-files-found: error
 
   manifest:
-    name: Image - manifest ${{ matrix.variant }} (${{ matrix.tag-suffix || 'no suffix' }})
+    name: Image - manifest ${{ matrix.variant }}
     needs: image
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
@@ -363,16 +363,14 @@ jobs:
     strategy:
       matrix:
         include:
-          # The Alpine image takes the unsuffixed tags and the same tags with -alpine.
-          # A stable release also moves the alias tag of each image, such as alpine.
+          # One index carries every tag of an image, so its tags share a digest. The Alpine
+          # image takes the unsuffixed tags and the same tags with -alpine. A stable release
+          # also moves the alias tag of each image, such as alpine.
           - variant: alpine
-            tag-suffix: ''
-            alias: ''
-          - variant: alpine
-            tag-suffix: '-alpine'
+            tag-suffixes: '["", "-alpine"]'
             alias: alpine
           - variant: debian
-            tag-suffix: '-debian'
+            tag-suffixes: '["-debian"]'
             alias: debian
     steps:
       - uses: actions/download-artifact@v8
@@ -396,8 +394,6 @@ jobs:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: index
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            suffix=${{ matrix.tag-suffix }},onlatest=true
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -408,16 +404,20 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+          TAG_SUFFIXES: ${{ matrix.tag-suffixes }}
           ALIAS: ${{ matrix.alias }}
+        # Suffixes go on the tags only, so the version annotation stays the release version.
         run: |
-          tags="$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")"
+          tags="$(jq -cr --argjson suffixes "$TAG_SUFFIXES" '[.tags[] as $tag | $suffixes[] | "-t " + $tag + .] | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")"
           if [[ -n "$ALIAS" && "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != *-* ]]; then
             tags+=" -t $REGISTRY/$IMAGE_NAME:$ALIAS"
           fi
           mapfile -t annotations < <(jq -r '.annotations[] | "--annotation=" + .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           docker buildx imagetools create "${annotations[@]}" $tags $(printf "$REGISTRY/$IMAGE_NAME@sha256:%s " *)
       - name: Inspect manifest
-        run: docker buildx imagetools inspect "$REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.version }}"
+        env:
+          TAG_SUFFIXES: ${{ matrix.tag-suffixes }}
+        run: docker buildx imagetools inspect "$REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.version }}$(jq -r '.[-1]' <<< "$TAG_SUFFIXES")"
 
   release:
     name: Release
