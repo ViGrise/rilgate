@@ -1,3 +1,9 @@
+# Runtime base images. Each runtime stage builds from these values and records them as OCI labels.
+ARG DEBIAN_RUNTIME_IMAGE=docker.io/library/debian:trixie-slim
+ARG DEBIAN_RUNTIME_DIGEST=sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
+ARG ALPINE_RUNTIME_IMAGE=docker.io/library/alpine:3.22
+ARG ALPINE_RUNTIME_DIGEST=sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+
 FROM rust:1-bookworm@sha256:e12566d5abc17a0da741628782cdb504b68b8961f5bfcf677936bf3e8b32de29 AS chef
 
 ARG CARGO_BUILD_JOBS=2
@@ -69,7 +75,11 @@ COPY --from=musl-builder /app/rilgate-release /rilgate
 
 # Debian image with the dynamic glibc binary, published with the -debian tag suffix.
 # The builder uses bookworm, so this binary needs glibc 2.36 or newer.
-FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS runtime-debian
+FROM ${DEBIAN_RUNTIME_IMAGE}@${DEBIAN_RUNTIME_DIGEST} AS runtime-debian
+ARG DEBIAN_RUNTIME_IMAGE
+ARG DEBIAN_RUNTIME_DIGEST
+LABEL org.opencontainers.image.base.name="${DEBIAN_RUNTIME_IMAGE}" \
+  org.opencontainers.image.base.digest="${DEBIAN_RUNTIME_DIGEST}"
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -90,7 +100,11 @@ CMD ["--config", "/app/config/rilgate.yml"]
 
 # Default image with the static musl binary, published with the unsuffixed and latest tags.
 # It is the last stage, so a build without --target produces it.
-FROM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f AS runtime-alpine
+FROM ${ALPINE_RUNTIME_IMAGE}@${ALPINE_RUNTIME_DIGEST} AS runtime-alpine
+ARG ALPINE_RUNTIME_IMAGE
+ARG ALPINE_RUNTIME_DIGEST
+LABEL org.opencontainers.image.base.name="${ALPINE_RUNTIME_IMAGE}" \
+  org.opencontainers.image.base.digest="${ALPINE_RUNTIME_DIGEST}"
 RUN apk upgrade --no-cache \
   && apk add --no-cache ca-certificates curl
 
