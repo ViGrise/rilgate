@@ -15,6 +15,8 @@ pub struct Configuration {
   pub env: Environment,
   pub listen_addresses: Vec<SocketAddr>,
   pub operations_listen_addresses: Vec<SocketAddr>,
+  /// True when no secret or keys were configured and the signing keys derive from a random secret.
+  pub secret_generated: bool,
   pub app_port: u16,
   pub server: ServerConfig,
   pub upstream: UpstreamConfig,

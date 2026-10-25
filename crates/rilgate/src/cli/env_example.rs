@@ -57,10 +57,7 @@ const PROCESS: &[(&str, &str, &str)] = &[
 ];
 
 /// Values set in the example because the gateway needs them to start.
-const REQUIRED: &[(&str, &str)] = &[
-  ("server.upstream.url", "http://127.0.0.1:3000"),
-  ("security.secret", ""),
-];
+const REQUIRED: &[(&str, &str)] = &[("server.upstream.url", "http://127.0.0.1:3000")];
 
 pub(crate) fn render(yaml_example: &str) -> String {
   let descriptions = descriptions(yaml_example);

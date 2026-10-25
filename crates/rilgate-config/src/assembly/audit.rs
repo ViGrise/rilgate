@@ -158,6 +158,14 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
       );
     }
   }
+  if config.secret_generated {
+    report(
+      "generated-secret",
+      Severity::Warning,
+      "security.secret: not set, so this process signs with a random secret; access cookies end at restart and other instances cannot verify them. Set RILGATE_SECURITY_SECRET to keep them"
+        .into(),
+    );
+  }
   let transport_severity = if production {
     Severity::Error
   } else {

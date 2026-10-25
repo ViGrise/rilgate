@@ -7,6 +7,14 @@ impl Secret {
   pub fn expose(&self) -> &str {
     &self.0
   }
+
+  /// Returns 32 random bytes from the operating system, hex encoded.
+  pub fn generate() -> anyhow::Result<Self> {
+    let mut bytes = [0; 32];
+    getrandom::fill(&mut bytes)
+      .map_err(|error| anyhow::anyhow!("random source failed: {error}"))?;
+    Ok(Self(hex::encode(bytes)))
+  }
 }
 
 impl fmt::Debug for Secret {

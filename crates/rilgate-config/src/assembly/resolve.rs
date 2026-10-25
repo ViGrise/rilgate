@@ -38,8 +38,15 @@ impl Document {
       !self.server.upstream.url.is_empty(),
       "server.upstream.url: required; expected an HTTP or HTTPS upstream URL"
     );
+    let mut secret_generated = false;
     let (signing_key, auth_signing_key, signing_keys, auth_signing_keys) =
       match (&self.security.secret, &self.security.keys) {
+        (None, None) => {
+          secret_generated = true;
+          let secret = rilgate_crypto::Secret::generate()?;
+          let (challenge, auth) = rilgate_crypto::derivation::signing_keys(&secret)?;
+          (challenge, auth, Default::default(), Default::default())
+        }
         (Some(secret), None) => {
           super::validate_secret(secret, "security.secret")?;
           let (challenge, auth) = rilgate_crypto::derivation::signing_keys(secret)?;
@@ -52,7 +59,6 @@ impl Document {
           keys.auth_rotation.clone(),
         ),
         (Some(_), Some(_)) => anyhow::bail!("security: secret and keys are mutually exclusive"),
-        (None, None) => anyhow::bail!("security: set secret or both keys.challenge and keys.auth"),
       };
     let needs_pool = self.pow.default_algorithm == PowAlgorithm::RandomX
       || self.pow.verification == PowEnforcement::StratumPoolAccepted
@@ -116,6 +122,7 @@ impl Document {
       app_port: addresses[0].port(),
       listen_addresses: addresses,
       operations_listen_addresses,
+      secret_generated,
       server: ServerConfig {
         max_connections: self.server.max_connections,
         max_requests: self.server.max_requests,
