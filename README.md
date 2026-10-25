@@ -82,14 +82,14 @@ binding, lifetime and enforcement details.
    server:
      upstream:
        url: http://127.0.0.1:3000
-   security:
-     secret: "${RILGATE_SECURITY_SECRET}"
+   # Optional. Without a secret, each start generates a random one.
+   # security:
+   #   secret: "${RILGATE_SECURITY_SECRET}"
    ```
 
 3. Start the gateway:
 
    ```bash
-   export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
    rilgate
    ```
 
@@ -104,8 +104,11 @@ Rilgate reads `rilgate.yml` from the working directory, with a fallback to `conf
 Use `--config FILE` or `RILGATE_CONFIG` only for a file elsewhere. Only the upstream URL is
 required. Without a signing secret, Rilgate generates a random secret at each start and
 reports a `generated-secret` warning. Access cookies then end at restart, and other
-instances cannot verify them. Set `RILGATE_SECURITY_SECRET` for production, as in the
-quick start.
+instances cannot verify them. For production, set a secret:
+
+```bash
+export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
+```
 
 The defaults are production, embedded resources, local Fast verification and
 `policy.mode: balanced`. HKDF derives independent purpose-specific signing keys. Unknown fields and
