@@ -273,20 +273,44 @@ releases that revision:
 2. Commit the change.
 3. Create the tag `v<version>`.
 4. CI repeats the checks. It builds native binaries for Linux (amd64, arm64), macOS
-   (amd64, arm64) and Windows (amd64, arm64). Linux has a dynamic glibc build and a
-   static musl build. CI smoke tests each binary with `--version` and `config check`,
-   and runs the static build in an empty image.
+   (amd64, arm64) and Windows (amd64, arm64). Linux amd64 and arm64 have a dynamic glibc
+   build and a static musl build. CI cross-builds static musl binaries for Linux
+   ppc64le and riscv64 with `cargo-zigbuild`, and a FreeBSD amd64 binary with cross-rs.
+   CI smoke tests each native binary with `--version` and `config check`, runs the
+   static build in an empty image, and runs the Linux cross builds under QEMU. The
+   FreeBSD binary gets no smoke test.
 5. The default image gains `<version>`, `<major>.<minor>`, `<major>` (from 1.0 onward)
    and `latest` tags, and the same tags with the `-alpine` suffix. The Debian image gains
    the same tags with the `-debian` suffix, such as `latest-debian`. The tags `alpine`
    and `debian` move to the release. A tag containing `-`, such as `v1.2.0-rc.1`,
    publishes a prerelease that never moves `latest`, `latest-alpine`, `latest-debian`,
    `alpine` or `debian`.
-6. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows), and
-   `rilgate-linux-<arch>-musl.tar.gz` for the static Linux build. Each archive holds
-   the binary, `LICENSE`, and `rilgate.yml`. The release also attaches the bare binary
-   of each build, used by `rilgate upgrade`. It attaches
-   `SHA256SUMS` for both, and `install.sh`, with generated release notes.
+6. A GitHub Release attaches these files, with generated release notes:
+   - `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows), and
+     `rilgate-linux-<arch>-static.tar.gz` for the static musl Linux build. Each archive
+     holds the binary, `LICENSE` and `rilgate.yml`.
+   - The bare binary of each build, used by `rilgate upgrade`.
+   - `rilgate_<version>_<arch>.deb`, `rilgate-<version>-1.<arch>.rpm` and the
+     systemd-sysext image `rilgate-sysext-linux-<arch>.raw` for Linux amd64, arm64,
+     ppc64le and riscv64. The packages hold the static build.
+   - `rilgate-windows-<arch>.msi` for Windows amd64 and arm64.
+   - `rilgate-src-vendor-<version>.tar.gz`, the source with all Cargo dependencies
+     vendored for offline builds.
+   - `SHA256SUMS` with the checksum of each of these files.
+   - `install.sh` and `install.ps1`.
+   - When the `RELEASE_GPG_PRIVATE_KEY` secret is set (with the optional
+     `RELEASE_GPG_PASSPHRASE`), a detached signature `<file>.asc` for each file and the
+     public key `rilgate-release-key.asc`. Without the secret, the release has no
+     signatures and the job shows a warning.
+     `scripts/release/create-signing-key.sh "<name> <email>" <backup-dir>` creates the
+     key, sets the secrets with `gh` and writes the secret key and its revocation
+     certificate to the backup directory for offline storage. An empty passphrase
+     leaves the backup key unencrypted and removes `RELEASE_GPG_PASSPHRASE`.
+
+A pull request with the `release-build` label runs the release builds and keeps the
+files as workflow artifacts. It publishes no image and no release. The Linux amd64 and
+arm64 binaries and packages come from the image job, which runs only for tags, so a
+pull request does not build them.
 
 The release fails when the tag and the package version differ.
 

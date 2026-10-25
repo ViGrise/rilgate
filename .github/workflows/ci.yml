@@ -3,7 +3,9 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # The release-build label makes a pull request build every release file without publishing.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,7 +26,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Require the tag to match the package version
         run: |
-          version="$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)"
+          version="$(scripts/release/version.sh)"
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match workspace version $version"
             exit 1
@@ -140,7 +142,7 @@ jobs:
           load: true
           build-args: CARGO_BUILD_JOBS=4
           cache-from: |
-            type=gha,scope=linux-amd64-musl
+            type=gha,scope=linux-amd64-static
             type=gha,scope=linux-amd64
           # Runtime stages always rebuild so their OS packages include current security updates.
           no-cache-filters: runtime-alpine
@@ -164,7 +166,7 @@ jobs:
           outputs: type=local,dest=${{ runner.temp }}/binary-musl
           build-args: CARGO_BUILD_JOBS=4
           cache-from: |
-            type=gha,scope=linux-amd64-musl
+            type=gha,scope=linux-amd64-static
             type=gha,scope=linux-amd64
       - name: Test the static binary without a C library
         run: scripts/test/static-binary.sh "$RUNNER_TEMP/binary-musl/rilgate"
@@ -195,7 +197,8 @@ jobs:
   binaries:
     name: Build - ${{ matrix.platform }}
     needs: [version, test, browser, release-checks, dependencies, container]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # The version job runs only for tags, so a skipped dependency does not skip this job.
+    if: ${{ !cancelled() && !failure() && (startsWith(github.ref, 'refs/tags/v') || contains(github.event.pull_request.labels.*.name, 'release-build')) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -211,9 +214,30 @@ jobs:
           - os: windows-2025
             platform: windows-amd64
             binary: rilgate.exe
+            msi: amd64
           - os: windows-11-arm
             platform: windows-arm64
             binary: rilgate.exe
+            msi: arm64
+          # Static Linux cross builds link musl with zig, and their smoke test runs
+          # under QEMU user emulation.
+          - os: ubuntu-26.04
+            platform: linux-ppc64le-static
+            binary: rilgate
+            zigbuild: powerpc64le-unknown-linux-musl
+            qemu: ppc64le
+            linux-packages: ppc64le
+          - os: ubuntu-26.04
+            platform: linux-riscv64-static
+            binary: rilgate
+            zigbuild: riscv64gc-unknown-linux-musl
+            qemu: riscv64
+            linux-packages: riscv64
+          # BSD builds compile in cross-rs containers. No runner can execute them.
+          - os: ubuntu-26.04
+            platform: freebsd-amd64
+            binary: rilgate
+            cross: x86_64-unknown-freebsd
     defaults:
       run:
         shell: bash
@@ -230,19 +254,80 @@ jobs:
           & $perl.Source -MIPC::Cmd -e 'print "perl $^V\n"'
           "OPENSSL_SRC_PERL=$($perl.Source)" >> $env:GITHUB_ENV
       - name: Build the browser solver and release binary
+        if: matrix.cross == '' && matrix.zigbuild == ''
         run: |
           cargo xtask build-wasm
           cargo xtask build-web
           cargo build --release --locked -p rilgate --features vendored-openssl
       - name: Smoke test the binary
+        if: matrix.cross == '' && matrix.zigbuild == ''
         env:
           RILGATE_SECURITY_SECRET: release-smoke-secret-with-at-least-32-bytes
         run: |
           binary="target/release/${{ matrix.binary }}"
           "$binary" --version
           "$binary" --config config/rilgate.production.yml config check
+      - name: Install cross
+        if: matrix.cross != ''
+        env:
+          CROSS_VERSION: 0.2.5
+          CROSS_SHA256: 642375d1bcf3bd88272c32ba90e999f3d983050adf45e66bd2d3887e8e838bad
+        run: |
+          archive="$RUNNER_TEMP/cross.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/cross-rs/cross/releases/download/v$CROSS_VERSION/cross-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$CROSS_SHA256  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$HOME/.cargo/bin" cross
+      - name: Cross-build the browser solver and release binary
+        if: matrix.cross != ''
+        run: |
+          cargo xtask build-wasm
+          cargo xtask build-web
+          cross build --release --locked -p rilgate --features vendored-openssl --target "${{ matrix.cross }}"
+          mkdir -p target/release
+          cp "target/${{ matrix.cross }}/release/rilgate" target/release/rilgate
+      - name: Install zig and cargo-zigbuild
+        if: matrix.zigbuild != ''
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zig"
+          "$RUNNER_TEMP/zig/bin/pip" install --require-hashes -r scripts/release/zigbuild-requirements.txt
+          echo "$RUNNER_TEMP/zig/bin" >> "$GITHUB_PATH"
+          rustup target add "${{ matrix.zigbuild }}"
+      - name: Cross-build the browser solver and static release binary
+        if: matrix.zigbuild != ''
+        run: |
+          cargo xtask build-wasm
+          cargo xtask build-web
+          cargo zigbuild --release --locked -p rilgate --features vendored-openssl --target "${{ matrix.zigbuild }}"
+          mkdir -p target/release
+          cp "target/${{ matrix.zigbuild }}/release/rilgate" target/release/rilgate
+      - name: Smoke test the static binary under QEMU
+        if: matrix.qemu != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user
+          "qemu-${{ matrix.qemu }}" target/release/rilgate --version
+          "qemu-${{ matrix.qemu }}" target/release/rilgate --config config/rilgate.yml config check
       - name: Package
         run: scripts/release/package.sh "target/release/${{ matrix.binary }}" "${{ matrix.platform }}" dist
+      - name: Install Linux packaging tools
+        if: matrix.linux-packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
+          scripts/release/install-nfpm.sh "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build Linux packages
+        if: matrix.linux-packages != ''
+        run: scripts/release/linux-packages.sh target/release/rilgate "${{ matrix.linux-packages }}" "$(scripts/release/version.sh)" dist
+      - name: Install WiX
+        if: matrix.msi != ''
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          cygpath -w "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Build the Windows installer
+        if: matrix.msi != ''
+        run: scripts/release/windows-msi.sh target/release/rilgate.exe "${{ matrix.msi }}" "$(scripts/release/version.sh)" dist
       - uses: actions/upload-artifact@v7
         with:
           name: rilgate-${{ matrix.platform }}
@@ -275,7 +360,7 @@ jobs:
           - variant: alpine
             target: runtime-alpine
             binary-target: binary-musl
-            build: '-musl'
+            build: '-static'
     steps:
       - uses: actions/checkout@v7
       - name: Lowercase image name
@@ -350,6 +435,17 @@ jobs:
       - name: Package the binary
         if: startsWith(github.ref, 'refs/tags/v')
         run: scripts/release/package.sh "$RUNNER_TEMP/binary/rilgate" "linux-${{ matrix.arch }}${{ matrix.build }}" dist
+      # Distribution packages hold the static build, so one package runs on every distribution.
+      - name: Install Linux packaging tools
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.variant == 'alpine'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
+          scripts/release/install-nfpm.sh "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build Linux packages
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.variant == 'alpine'
+        run: scripts/release/linux-packages.sh "$RUNNER_TEMP/binary/rilgate" "${{ matrix.arch }}" "$(scripts/release/version.sh)" dist
       - if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v7
         with:
@@ -432,9 +528,25 @@ jobs:
           TAG_SUFFIXES: ${{ matrix.tag-suffixes }}
         run: docker buildx imagetools inspect "$REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.version }}$(jq -r '.[-1]' <<< "$TAG_SUFFIXES")"
 
+  source:
+    name: Source archive
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v') || contains(github.event.pull_request.labels.*.name, 'release-build')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Package the source with vendored dependencies
+        run: scripts/release/source.sh "$(scripts/release/version.sh)" dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rilgate-src-vendor
+          path: dist/*
+          if-no-files-found: error
+
   release:
     name: Release
-    needs: [version, binaries, manifest]
+    needs: [version, binaries, manifest, source]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
     timeout-minutes: 10
@@ -447,15 +559,19 @@ jobs:
           path: dist
           pattern: rilgate-*
           merge-multiple: true
-      - name: Checksum release archives
+      - name: Checksum release files
         working-directory: dist
-        run: sha256sum rilgate-* > SHA256SUMS && cat SHA256SUMS
+        run: sha256sum rilgate* > SHA256SUMS && cat SHA256SUMS
+      - name: Sign release files
+        env:
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          cp install.sh install.ps1 dist/
+          scripts/release/sign.sh dist
       - uses: softprops/action-gh-release@v3
         with:
-          files: |
-            dist/*
-            install.sh
-            install.ps1
+          files: dist/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true

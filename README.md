@@ -66,48 +66,19 @@ binding, lifetime and enforcement details.
 
 ## Installation
 
-The install scripts download a release binary, verify it against `SHA256SUMS`
-and install it.
-
-### Linux and macOS
+Linux, macOS and FreeBSD:
 
 ```bash
 curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
 ```
 
-The script installs to `/usr/local/bin` and uses `sudo` when that directory is
-not writable. Set these variables to change the defaults:
-
-| Variable      | Default          | Description                                                                 |
-| ------------- | ---------------- | --------------------------------------------------------------------------- |
-| `INSTALL_DIR` | `/usr/local/bin` | Destination directory                                                       |
-| `VERSION`     | `latest`         | Release tag, for example `v0.3.0`                                           |
-| `LIBC`        | detected         | Linux only: `gnu` for the glibc build (glibc 2.36 or newer), `musl` for the static build |
-
-```bash
-curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.3.0 INSTALL_DIR="$HOME/.local/bin" bash
-```
-
-### Windows
+Windows:
 
 ```powershell
 irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1 | iex
 ```
 
-The script installs to `%LOCALAPPDATA%\rilgate\bin` and adds that directory to
-the user `PATH`. Set these parameters, or the `VERSION` and `INSTALL_DIR`
-environment variables, to change the defaults:
-
-| Parameter     | Default                       | Description                       |
-| ------------- | ----------------------------- | --------------------------------- |
-| `-InstallDir` | `%LOCALAPPDATA%\rilgate\bin`  | Destination directory             |
-| `-Version`    | `latest`                      | Release tag, for example `v0.3.0` |
-
-```powershell
-& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.3.0
-```
-
-### Docker
+Docker:
 
 ```bash
 docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
@@ -115,8 +86,6 @@ docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
   -e RILGATE_SERVER_UPSTREAM_URL=http://host.docker.internal:3000 \
   ghcr.io/vigrise/rilgate:latest
 ```
-
-`latest` uses Alpine. `latest-debian` uses Debian.
 
 With Docker Compose:
 
@@ -146,15 +115,10 @@ services:
 docker compose up -d
 ```
 
-See [deployment examples](deploy/README.md) for a hardened Compose file and systemd.
-
-### Upgrade
-
-Run the install script again, or use the built-in command:
-
-```bash
-rilgate upgrade
-```
+Releases also have Debian and RPM packages, systemd system extension images, Windows
+installers and a source archive with vendored dependencies. See
+[installation](docs/installation.md) for install options, packages, signature checks and
+upgrades.
 
 ## Configuration
 
@@ -189,6 +153,7 @@ this repository track the source:
 
 | Guide                                     | Contents                                                |
 | ----------------------------------------- | ------------------------------------------------------- |
+| [Installation](docs/installation.md)      | Install scripts, packages, Docker, verification and upgrades |
 | [Architecture](docs/architecture.md)      | Crate boundaries, dependencies and detailed source tree |
 | [Configuration](docs/configuration.md)    | Loading, precedence, scaling and a full example         |
 | [Gateway](docs/gateway.md)                | Routing, reverse proxy behavior and resource limits     |

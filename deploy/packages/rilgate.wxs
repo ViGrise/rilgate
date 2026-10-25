@@ -1,0 +1,31 @@
+<!--
+  Windows Installer package. scripts/release/windows-msi.sh builds it with WiX and
+  sets Version, BinaryPath, LicensePath and ConfigPath.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Rilgate" Manufacturer="ViGrise" Version="$(Version)"
+    UpgradeCode="03007367-BB2A-4CBC-AFA4-AB911B57D518" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Rilgate is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Rilgate">
+        <Component Id="Executable">
+          <File Id="RilgateExe" Source="$(BinaryPath)" Name="rilgate.exe" KeyPath="yes" />
+          <Environment Id="SystemPath" Name="PATH" Value="[INSTALLFOLDER]" Part="last"
+            Action="set" System="yes" />
+        </Component>
+        <Component Id="License">
+          <File Id="License" Source="$(LicensePath)" Name="LICENSE.txt" KeyPath="yes" />
+        </Component>
+        <Component Id="Config">
+          <File Id="Config" Source="$(ConfigPath)" Name="rilgate.yml" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main">
+      <ComponentRef Id="Executable" />
+      <ComponentRef Id="License" />
+      <ComponentRef Id="Config" />
+    </Feature>
+  </Package>
+</Wix>
