@@ -67,6 +67,7 @@ fn nested_includes_mix_rules_and_cidrs_and_preserve_policy_order() {
   assert_eq!(engine.evaluate(&headers, "/health", 0).rule, "health");
   let decision = engine.evaluate_context(
     &rilgate_policy::conditions::Request {
+      host: "example.test",
       headers: &headers,
       path: "/protected",
       method: &http::Method::GET,

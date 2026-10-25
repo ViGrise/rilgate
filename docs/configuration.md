@@ -677,3 +677,78 @@ Each setting has the corresponding CLI flag and environment variable:
 `--pow-default-algorithm hashwx` and `RILGATE_POW_DEFAULT_ALGORITHM=hashwx`
 select it for challenge actions that omit an algorithm. HashWX work is local.
 It needs no `pow.stratum_pool` entry or dedicated verifier queue.
+
+## Open Graph passthrough
+
+Enable `site.open_graph` to expose anonymous upstream preview metadata in HTML
+challenges for protected GET requests:
+
+```yaml
+site:
+  open_graph:
+    enabled: false
+    ttl: 24h
+    negative_ttl: 5m
+    timeout: 2s
+    max_entries: 10000
+    include_query: false
+    request_headers:
+      user-agent: Rilgate-OpenGraph/1.0
+      x-forwarded-host: "{host}"
+      x-forwarded-proto: https
+    tags:
+      prefixes: ["og:", "twitter:", "fediverse:"]
+      names: [description, keywords, author]
+    override: {}
+```
+
+`ttl` accepts `1m` through `7d` and also applies to successful pages with no tags.
+`negative_ttl` accepts `10s` through `ttl` for failed lookups. `timeout` accepts
+`100ms` through `10s` and limits how long the challenge response waits; the fetch
+continues and fills the cache after that deadline. `max_entries` accepts 1 through
+1,000,000. The cache is in memory per process. Its key contains the request host
+and upstream path. `include_query: true` also includes the query in the key and
+prefetch URL; the default shares one lookup across query variants.
+
+`request_headers` replaces the default map, including when it is empty. Client
+headers are never copied. Names are case-insensitive and stored lowercase; at
+most 16 headers are accepted. Values support only `{host}`, expanded to the same
+request host used for challenge binding. Unknown placeholders and invalid HTTP
+header values are errors. Values have a 1024-byte limit; an expansion that exceeds
+it or produces an invalid value skips that header. The names `host`,
+`content-length`, `transfer-encoding`, `connection`, `upgrade`, `te`, `trailer`,
+`keep-alive` and `proxy-connection` are forbidden. Host follows
+`server.upstream.preserve_host`. Prefetches request HTML through the Accept header.
+
+A nonempty `override` map renders configured tags without fetching. It accepts
+at most 32 entries with names of at most 64 bytes and content of at most 1024
+bytes. Each name must match `tags`, compared in ASCII lowercase.
+`enabled: false` disables both fetching and preview rendering.
+
+`tags.prefixes` matches the beginning of a tag name; `tags.names` matches a
+whole name. Each configured list replaces its default independently; omitting a
+list keeps its default. Entries are stored lowercase and must contain 1 to 64
+bytes of `a-z`, `0-9`, `:`, `_`, `.` or `-`. Duplicate entries are errors. The
+limits are 16 prefixes and 32 names; both lists cannot be empty.
+
+`when` optionally selects requests with the shared [policy condition grammar](policy.md#conditions),
+including `host` and `policy.ip_sets`. Without `when`, all eligible requests
+look up tags. The selection also applies to overrides. A condition that evaluates
+to unknown, such as an unloaded IP set, skips the lookup. Unselected requests do
+not increment lookup metrics. `score` is rejected anywhere in `when` with its
+configuration path because score is only available in policy rules.
+
+For example, select two hosts and exclude an administrative path:
+
+```yaml
+site:
+  open_graph:
+    enabled: true
+    when:
+      all:
+        - host: {in: [example.com, www.example.com]}
+        - not: {path: {prefix: /admin/}}
+```
+
+See [gateway behavior](gateway.md#open-graph-passthrough) for fetch limits and
+[web resources](web.md) for custom layout integration.

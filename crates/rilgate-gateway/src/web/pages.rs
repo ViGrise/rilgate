@@ -7,6 +7,7 @@ pub fn render_challenge_page(
   uri: &Uri,
   json: bool,
   embedded: bool,
+  open_graph: &[rilgate_web::templates::context::OpenGraphTag],
 ) -> (String, String) {
   use rilgate_web::templates::context::PublicChallengeInfo;
   let snapshot = state.web.current();
@@ -37,7 +38,7 @@ pub fn render_challenge_page(
     if json {
       snapshot.render_challenge_json(&challenge, &locale)
     } else {
-      snapshot.render_challenge(&challenge, &locale)
+      snapshot.render_challenge_with_open_graph(&challenge, &locale, open_graph)
     }
   };
   let html = render(&snapshot).unwrap_or_else(|error| {
@@ -75,7 +76,7 @@ pub(crate) fn challenge_page(
     .verify_presentation(&token, &request_host(headers, uri))
     .map_err(ApiError::proof)?;
   let issued = rilgate_challenge::IssuedToken { token, claims };
-  let (html, locale) = render_challenge_page(state, issued, headers, uri, false, true);
+  let (html, locale) = render_challenge_page(state, issued, headers, uri, false, true, &[]);
   let mut out = crate::proxy::gate::page_response(http::StatusCode::OK, html, locale, head);
   out.headers_mut().insert(
     "content-security-policy",
@@ -151,7 +152,11 @@ pub fn render_page(
     .unwrap_or_default();
   let public = TemplateContext {
     rilgate: snapshot.public.clone(),
-    page: PageInfo { title, description },
+    page: PageInfo {
+      title,
+      description,
+      open_graph: Vec::new(),
+    },
     challenge: PublicChallengeInfo {
       token: token.into(),
       algorithm: algorithm.into(),

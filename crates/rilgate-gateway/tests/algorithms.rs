@@ -289,8 +289,15 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
       probes: Arc::new(tokio::sync::Semaphore::new(1)),
       metrics: Arc::new(Default::default()),
       cfg: config.clone(),
-      pow: service,
+      pow: service.clone(),
       pool,
+      open_graph: Arc::new(
+        rilgate_gateway::open_graph::OpenGraphService::new(
+          config.open_graph.clone(),
+          service.ip_sets(),
+        )
+        .unwrap(),
+      ),
       proxy: Arc::new(ProxyService::new(config.upstream.clone()).unwrap()),
       limiter: Arc::new(RateLimiter::new(config.pow.rate_limit.clone()).unwrap()),
       web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),

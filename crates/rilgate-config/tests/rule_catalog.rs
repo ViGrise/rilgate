@@ -46,6 +46,7 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
       let mut headers = http::HeaderMap::new();
       headers.insert("user-agent", user_agent.parse().unwrap());
       let request = Request {
+        host: "example.test",
         headers: &headers,
         path: "/content",
         method: &http::Method::GET,
@@ -229,6 +230,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
   );
   let decision = engine.evaluate_context(
     &Request {
+      host: "example.test",
       headers: &headers,
       path: "/content",
       method: &http::Method::GET,

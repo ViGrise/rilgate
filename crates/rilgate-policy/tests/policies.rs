@@ -52,6 +52,7 @@ score:
   headers.insert("user-agent", "Mozilla/5".parse().unwrap());
   let decision = engine.evaluate_context(
     &Request {
+      host: "example.test",
       headers: &headers,
       path: "/api/public",
       method: &Method::POST,
@@ -64,6 +65,7 @@ score:
   assert_eq!(decision.rule, "trusted-api");
   let decision = engine.evaluate_context(
     &Request {
+      host: "example.test",
       headers: &headers,
       path: "/api/private/info",
       method: &Method::POST,
@@ -87,6 +89,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
   headers.append("x-test", "first".parse().unwrap());
   headers.append("x-test", "second".parse().unwrap());
   let request = Request {
+    host: "example.test",
     headers: &headers,
     path: "/api/users",
     method: &Method::POST,
@@ -268,6 +271,7 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
 fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
   let headers = HeaderMap::new();
   let request = |ip: &str| Request {
+    host: "example.test",
     headers: &headers,
     path: "/",
     method: &Method::GET,

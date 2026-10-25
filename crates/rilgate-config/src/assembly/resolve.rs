@@ -148,6 +148,7 @@ impl Document {
         connect_timeout: self.server.upstream.timeout.connect.0,
         read_timeout: self.server.upstream.timeout.read.0,
       },
+      open_graph: site.open_graph.resolve()?,
       web: WebConfig {
         name: site.name.clone(),
         website_url: site.url.clone(),
@@ -244,7 +245,13 @@ impl Document {
   pub fn display(&self, defaults: bool) -> Result<String> {
     let mut value = serde_yaml_ng::to_value(self)?;
     if !defaults {
-      prune(&mut value, &serde_yaml_ng::to_value(Self::default())?);
+      let defaults = Self::default();
+      let mut baseline = serde_yaml_ng::to_value(&defaults)?;
+      if self.site.open_graph.request_headers != defaults.site.open_graph.request_headers {
+        // Header maps replace their defaults as a unit during deserialization.
+        baseline["site"]["open_graph"]["request_headers"] = serde_yaml_ng::Value::Null;
+      }
+      prune(&mut value, &baseline);
     }
     Ok(serde_yaml_ng::to_string(&value)?)
   }

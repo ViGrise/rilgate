@@ -59,6 +59,10 @@ async fn main() -> anyhow::Result<()> {
     connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
     probes: Arc::new(tokio::sync::Semaphore::new(1)),
+    open_graph: Arc::new(rilgate_gateway::open_graph::OpenGraphService::new(
+      cfg.open_graph.clone(),
+      pow.ip_sets(),
+    )?),
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone())?),
     limiter: Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone())?),
     web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),
@@ -93,12 +97,12 @@ async fn main() -> anyhow::Result<()> {
   for path in ["/public", "/protected"] {
     let uri: Uri = path.parse()?;
     for _ in 0..1000 {
-      assert!(gate(&state, &headers, &uri, &Method::GET)?.is_none());
+      assert!(gate(&state, &headers, &uri, &Method::GET).await?.is_none());
     }
     ALLOCATIONS.store(0, Ordering::Relaxed);
     COUNTING.store(true, Ordering::Relaxed);
     for _ in 0..1000 {
-      assert!(gate(&state, &headers, &uri, &Method::GET)?.is_none());
+      assert!(gate(&state, &headers, &uri, &Method::GET).await?.is_none());
     }
     COUNTING.store(false, Ordering::Relaxed);
     let allocations = ALLOCATIONS.load(Ordering::Relaxed) as f64 / 1000.0;
@@ -112,7 +116,8 @@ async fn main() -> anyhow::Result<()> {
             black_box(&headers),
             black_box(&uri),
             &Method::GET
-          )?
+          )
+          .await?
           .is_none()
         );
       }

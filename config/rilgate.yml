@@ -301,6 +301,28 @@ server:
   # own envelope and field names; rendered output must be a valid JSON object.
   # See docs/web.md for the same-origin iframe completion protocol.
 
+  # Anonymous preview metadata for HTML GET challenges. Fetches continue after
+  # the response wait deadline and share a bounded in-memory cache.
+  #
+  # open_graph:
+    # enabled: false
+    # ttl: 24h
+    # negative_ttl: 5m
+    # timeout: 2s
+    # max_entries: 10000
+    # include_query: false
+    # request_headers:
+      # user-agent: Rilgate-OpenGraph/1.0
+      # x-forwarded-host: "{host}"
+      # x-forwarded-proto: https
+    # tags:
+      # prefixes: ["og:", "twitter:", "fediverse:"]
+      # names: [description, keywords, author]
+    # Optional request selection uses the policy condition grammar.
+    # when:
+      # not: {path: {prefix: /admin/}}
+    # override: {}
+
   # resources:
     # Example override directory, not a default. Omitted means embedded-only.
     # External templates/, static/ and i18n/ overlay embedded resources.

@@ -83,8 +83,14 @@ impl ChallengeService {
   }
 
   pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision<'_> {
+    let host = headers
+      .get(http::header::HOST)
+      .and_then(|value| value.to_str().ok())
+      .unwrap_or_default()
+      .to_ascii_lowercase();
     self.evaluate_context(&rilgate_policy::conditions::Request {
       headers,
+      host: &host,
       path,
       method: &http::Method::GET,
       client_ip: None,

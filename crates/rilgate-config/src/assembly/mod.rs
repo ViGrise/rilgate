@@ -22,11 +22,16 @@ pub struct Configuration {
   pub upstream: UpstreamConfig,
   pub pow: PowConfig,
   pub web: WebConfig,
+  pub open_graph: crate::OpenGraphConfig,
 }
 impl Configuration {
   pub fn validate(&self) -> Result<()> {
     self.server.validate().context("server")?;
     self.pow.validate()?;
+    self.open_graph.validate()?;
+    self
+      .open_graph
+      .compile_condition(&rilgate_policy::IpSets::compile(&self.pow.policy.ip_sets)?)?;
     self.web.validate().context("site")?;
     self.upstream.validate().context("server.upstream")?;
     for key in [&self.pow.signing_key, &self.pow.auth_signing_key]

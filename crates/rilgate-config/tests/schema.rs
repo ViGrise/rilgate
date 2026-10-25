@@ -920,3 +920,113 @@ fn pool_accepted_configuration_leaves_hashwx_disabled() {
   );
   assert!(!resolve(&text).unwrap().pow.hashwx_enabled);
 }
+
+#[test]
+fn open_graph_header_replacement_survives_config_show() {
+  for headers in [
+    "{}",
+    "{User-Agent: Rilgate-OpenGraph/1.0}",
+    "{x-preview: '{host}'}",
+  ] {
+    let document = parse(&format!(
+      "{BASE}site:\n  open_graph:\n    enabled: true\n    timeout: 150ms\n    request_headers: {headers}\n    override: {{'og:title': Preview}}\n"
+    )).unwrap();
+    let config = document.resolve().unwrap();
+    for defaults in [true, false] {
+      let shown = document.display(defaults).unwrap();
+      let again = parse(&shown).unwrap();
+      let open_graph = again.site.open_graph.resolve().unwrap();
+      assert_eq!(
+        open_graph.request_headers,
+        config.open_graph.request_headers
+      );
+      assert_eq!(open_graph.overrides, config.open_graph.overrides);
+      assert_eq!(open_graph.timeout, config.open_graph.timeout);
+      assert!(open_graph.enabled);
+    }
+  }
+}
+
+#[test]
+fn open_graph_rejects_unbounded_resources_and_invalid_metadata() {
+  for setting in [
+    "ttl: 59s",
+    "ttl: 8d",
+    "negative_ttl: 9s",
+    "negative_ttl: 2d",
+    "timeout: 99ms",
+    "timeout: 11s",
+    "max_entries: 0",
+    "max_entries: 1000001",
+    "request_headers: {x-preview: \"bad\\r\\nvalue\"}",
+    "override: {private: secret}",
+    "unknown: true",
+  ] {
+    let text = format!("{BASE}site:\n  open_graph:\n    {setting}\n");
+    assert!(resolve(&text).is_err(), "{setting}");
+  }
+}
+
+#[test]
+fn open_graph_tag_lists_replace_independently_and_survive_display() {
+  for (tags, kept, dropped) in [
+    (
+      "prefixes: ['ARTICLE:']",
+      ["article:title", "description"],
+      "og:title",
+    ),
+    ("names: [SUMMARY]", ["og:title", "summary"], "description"),
+    ("prefixes: []", ["description", "author"], "og:title"),
+  ] {
+    let document = parse(&format!(
+      "{BASE}site:\n  open_graph:\n    tags:\n      {tags}\n"
+    ))
+    .unwrap();
+    for defaults in [true, false] {
+      let shown = document.display(defaults).unwrap();
+      let config = parse(&shown).unwrap().site.open_graph.resolve().unwrap();
+      for name in kept {
+        assert!(config.tags.matches(name), "{shown}");
+      }
+      assert!(!config.tags.matches(dropped), "{shown}");
+    }
+  }
+}
+
+#[test]
+fn open_graph_tags_reject_invalid_entries_and_overrides_outside_the_allowlist() {
+  let prefixes = (0..17)
+    .map(|index| format!("p{index}"))
+    .collect::<Vec<_>>()
+    .join(", ");
+  let names = (0..33)
+    .map(|index| format!("n{index}"))
+    .collect::<Vec<_>>()
+    .join(", ");
+  for tags in [
+    "prefixes: [], names: []".to_owned(),
+    "prefixes: ['']".to_owned(),
+    "prefixes: ['bad/name']".to_owned(),
+    "names: ['bad name']".to_owned(),
+    "prefixes: ['OG:', 'og:']".to_owned(),
+    "names: [Author, author]".to_owned(),
+    format!("names: ['{}']", "a".repeat(65)),
+    format!("prefixes: [{prefixes}]"),
+    format!("names: [{names}]"),
+  ] {
+    let text = format!("{BASE}site:\n  open_graph:\n    tags: {{{tags}}}\n");
+    let error = resolve(&text).unwrap_err();
+    assert!(
+      format!("{error:#}").contains("site.open_graph.tags"),
+      "{error:#}"
+    );
+  }
+  let text = format!(
+    "{BASE}site:\n  open_graph:\n    tags: {{prefixes: ['article:']}}\n    override: {{'og:title': removed}}\n"
+  );
+  let error = resolve(&text).unwrap_err();
+  assert!(
+    format!("{error:#}").contains("site.open_graph.override.og:title"),
+    "{error:#}"
+  );
+}

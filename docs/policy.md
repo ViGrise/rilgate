@@ -169,13 +169,27 @@ action, in rules and thresholds. Custom policies never inherit preset exceptions
 
 ## Conditions
 
+`host` matches the host used for challenge binding: the `Host` header, or the
+URI authority when the header is absent. The gateway supplies it in ASCII
+lowercase, including the port when present. For example,
+`host: {exact: example.com}` matches that host; `example.com:8443` needs a
+matcher that includes its port. Host conditions are available in policy rules
+and in `site.open_graph.when`.
+
+The public `rilgate_policy::conditions::CompiledCondition` API compiles request
+conditions against an `IpSets` registry and matches them against a `Request`.
+It shares the policy matcher and resource limits. Score matchers are rejected
+outside policy rules, with the supplied configuration path. An unknown result
+selects no request. `site.open_graph.when` uses this API with the live
+`policy.ip_sets` registry.
+
 Multiple fields in a condition are combined with AND. `all`, `any`, and
 `not` compose conditions recursively. `all` and `any` cannot be
 empty.
 
 | Field | Operators |
 | --- | --- |
-| `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
+| `host`, `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
 | `client_ip` | `cidr`, `in_sets` |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 

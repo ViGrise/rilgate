@@ -96,7 +96,8 @@ errors and resource contents remain in local diagnostics only.
 
 Templates are always memory-backed: `site.templates.cache` must remain `true`. The embedded
 challenge templates are also rendered into an HTML shell per locale when a snapshot is
-built. Each request inserts only its JSON-escaped token and solver bootstrap.
+built. Requests without preview tags insert their JSON-escaped token and solver bootstrap.
+Requests with Open Graph tags render through the template context.
 
 Client translation JSON is serialized once per snapshot and locale. Challenge responses
 remain `no-store`. The cache is internal to the server and never shares tokens between
@@ -178,3 +179,25 @@ sets before building or testing the gateway:
 export CARGO_BUILD_BUILD_DIR="$PWD/target" CARGO_TARGET_DIR="$PWD/target"
 cargo xtask build-wasm && cargo xtask build-web
 ```
+
+## Open Graph template context
+
+`page.open_graph` is a list of `{attribute, name, content}` for a protected HTML
+GET challenge when `site.open_graph` is enabled. Other pages receive an empty
+list. Fetched tags keep their source attribute: `property` when the element has
+that attribute, otherwise `name`. Override tags use `property` when their name
+contains a colon and `name` otherwise. The list preserves fetched tag order and
+repeated names. `site.open_graph.tags` controls the allowlist, and
+`site.open_graph.when` selects the requests that receive tags.
+
+The embedded `layouts/base.html.jinja` includes this loop in `<head>`:
+
+```jinja
+{% for tag in page.open_graph %}
+<meta {{ tag.attribute }}="{{ tag.name }}" content="{{ tag.content }}">
+{% endfor %}
+```
+
+Autoescaping applies to values; the gateway supplies the attribute from the
+fixed set `property` and `name`. Custom base layouts must include the loop to
+render the metadata. `rilgate web diff` shows the embedded layout change.

@@ -21,6 +21,7 @@ pub fn config() -> Config {
       connect_timeout: std::time::Duration::from_secs(1),
       read_timeout: std::time::Duration::from_secs(2),
     },
+    open_graph: Default::default(),
     web: WebConfig {
       name: "Rilgate".into(),
       website_url: "https://rilgate.com".into(),

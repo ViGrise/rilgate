@@ -13,6 +13,7 @@ pub struct AppState {
   pub pool: Arc<rilgate_pool::StratumPoolProvider>,
   pub shutdown: tokio_util::sync::CancellationToken,
   pub limiter: Arc<crate::transport::rate_limit::RateLimiter>,
+  pub open_graph: Arc<crate::open_graph::OpenGraphService>,
   pub proxy: Arc<ProxyService>,
   pub web: Arc<rilgate_web::WebManager>,
   pub web_runtime: Arc<rilgate_web::runtime::watcher::RuntimeHandle>,
