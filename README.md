@@ -12,7 +12,7 @@ Rilgate is a reverse proxy gateway that uses proof-of-work challenges. It places
 challenge in front of your web application, then forwards requests after the
 browser completes the required work.
 
-[Website](https://rilgate.com) · [Quick start](#quick-start) · [Documentation](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
+[Website](https://rilgate.com) · [Installation](#installation) · [Documentation](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
 
 </div>
 
@@ -63,35 +63,6 @@ work from a Stratum pool Stratum endpoint.
 
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host
 binding, lifetime and enforcement details.
-
-## Quick start
-
-1. Install the latest release with the install script for your system. See
-   [installation](#installation).
-
-2. Create `rilgate.yml` in the working directory, with your application as the
-   upstream. Rilgate reads this file by default:
-
-   ```yaml
-   environment: development # allows the access cookie over plain HTTP
-   server:
-     upstream:
-       url: http://127.0.0.1:3000
-   # Optional. Without a secret, each start generates a random one.
-   # security:
-   #   secret: "${RILGATE_SECURITY_SECRET}"
-   ```
-
-3. Start the gateway:
-
-   ```bash
-   rilgate
-   ```
-
-4. Open <http://localhost:8080>.
-
-See the documentation for [other installation methods](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/installation) (Docker, source
-builds), [configuration](https://platform.vigrise.com/docs/open-source-software/rilgate/configuration/overview) and [deployment](https://platform.vigrise.com/docs/open-source-software/rilgate/deployment/overview).
 
 ## Installation
 
