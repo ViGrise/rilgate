@@ -61,13 +61,13 @@ server:
   #
   # listen: ":8080"
 
-  # operations:
+  operations:
     # Operational routes are served only here, relative to site.base_path.
     # An empty list disables them. Use loopback or a private monitoring network.
     # Accepts one address or up to 16 unique addresses, distinct from server.listen.
     # Example: "127.0.0.1:9090". --port preserves these addresses.
     #
-    # listen: []
+    listen: "127.0.0.1:9090"
 
   upstream:
     # REQUIRED. HTTP or HTTPS application URL, optionally including a base path.
