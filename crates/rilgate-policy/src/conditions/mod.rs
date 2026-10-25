@@ -9,6 +9,7 @@ use std::sync::Arc;
 pub struct Request<'a> {
   pub headers: &'a HeaderMap,
   pub path: &'a str,
+  pub host: &'a str,
   pub method: &'a Method,
   pub client_ip: Option<IpAddr>,
 }
@@ -43,6 +44,7 @@ pub(crate) enum Compiled {
 #[derive(Debug)]
 pub(crate) enum Field {
   Path,
+  Host,
   Method,
   UserAgent,
   Header(HeaderName),
@@ -56,6 +58,7 @@ pub(crate) struct Text {
 pub(crate) struct Budget {
   nodes: usize,
   bytes: usize,
+  request_only: bool,
 }
 impl Budget {
   fn consume(&mut self, depth: usize, path: &str) -> Result<()> {
@@ -116,6 +119,7 @@ impl Compiled {
     }
     let mut fields = vec![
       (Field::Path, &condition.path),
+      (Field::Host, &condition.host),
       (Field::Method, &condition.method),
       (Field::UserAgent, &condition.user_agent),
     ];
@@ -124,6 +128,7 @@ impl Compiled {
         budget.consume(depth, path)?;
         let label = match &field {
           Field::Path => "path",
+          Field::Host => "host",
           Field::Method => "method",
           Field::UserAgent => "user_agent",
           Field::Header(_) => unreachable!(),
@@ -145,6 +150,10 @@ impl Compiled {
       nodes.push(Self::compile_ip(value, path, sets)?);
     }
     if let Some(value) = &condition.score {
+      ensure!(
+        !budget.request_only,
+        "{path}.score: score is only available in policy rules"
+      );
       budget.consume(depth, path)?;
       ensure!(
         value.eq.is_some()
@@ -245,6 +254,7 @@ impl Compiled {
       Self::Text(field, test) => {
         let value = match field {
           Field::Path => Some(request.path),
+          Field::Host => Some(request.host),
           Field::Method => Some(request.method.as_str()),
           Field::UserAgent => Some(
             request
@@ -372,5 +382,22 @@ impl Text {
         .as_ref()
         .is_none_or(|v| v.iter().any(|v| v == value))
       && self.regex.as_ref().is_none_or(|v| v.is_match(value))
+  }
+}
+
+#[derive(Debug)]
+pub struct CompiledCondition(Compiled);
+impl CompiledCondition {
+  pub fn compile(condition: &Condition, path: &str, sets: &IpSets) -> Result<Self> {
+    let mut budget = Budget {
+      request_only: true,
+      ..Default::default()
+    };
+    Compiled::compile(condition, path, 0, &mut budget, sets).map(Self)
+  }
+
+  /// Selects requests whose condition evaluates to true with the current IP sets.
+  pub fn matches(&self, request: &Request<'_>) -> bool {
+    self.0.matches(request, 0) == Truth::True
   }
 }

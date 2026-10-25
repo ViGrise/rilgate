@@ -24,6 +24,7 @@ fn public(snapshot: &WebSnapshot) -> TemplateContext {
   TemplateContext {
     rilgate: snapshot.public.clone(),
     page: PageInfo {
+      open_graph: Vec::new(),
       title: "Checking your browser".into(),
       description: String::new(),
     },

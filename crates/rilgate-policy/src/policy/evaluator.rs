@@ -162,9 +162,15 @@ impl PolicyEngine {
     path: &str,
     initial_weight: i32,
   ) -> PolicyDecision<'_> {
+    let host = headers
+      .get(http::header::HOST)
+      .and_then(|value| value.to_str().ok())
+      .unwrap_or_default()
+      .to_ascii_lowercase();
     self.evaluate_context(
       &Request {
         headers,
+        host: &host,
         path,
         method: &Method::GET,
         client_ip: None,

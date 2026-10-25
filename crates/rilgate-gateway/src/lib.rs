@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod observability;
+pub mod open_graph;
 pub mod proof;
 pub mod proxy;
 pub mod runtime;

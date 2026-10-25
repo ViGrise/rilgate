@@ -26,7 +26,14 @@ impl From<&WebConfig> for PublicRilgateInfo {
   }
 }
 #[derive(Debug, Clone, Serialize)]
+pub struct OpenGraphTag {
+  pub attribute: &'static str,
+  pub name: String,
+  pub content: String,
+}
+#[derive(Debug, Clone, Serialize)]
 pub struct PageInfo {
+  pub open_graph: Vec<OpenGraphTag>,
   pub title: String,
   pub description: String,
 }

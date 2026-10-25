@@ -309,3 +309,52 @@ Pooled connection details use `DEBUG`. HTTP completion events, including individ
 
 See [production operations](production.md) for connection and request limits, readiness
 behavior, Prometheus metrics and deployment trust boundaries.
+
+## Open Graph passthrough
+
+With `site.open_graph.enabled: true`, an unauthenticated protected GET that
+receives an HTML challenge looks up anonymous upstream metadata. Allowed
+requests, authenticated requests, HEAD, JSON challenges, the embedded challenge
+page, denial pages and error pages do not look up tags. A nonempty
+`site.open_graph.override` renders configured tags without an upstream fetch.
+The optional `site.open_graph.when` condition selects which eligible requests
+look up tags, including overrides. It uses the same host, request fields and
+live IP sets as policy rules. Unknown conditions skip the lookup. Score matchers
+are only available in policy rules.
+
+Prefetches use the same upstream path mapping as application forwarding and
+verify TLS against the upstream hostname. Each GET sends the configured
+`request_headers` and an HTML Accept header. Client cookies, authorization and
+other client headers stay out of the request. Host follows
+`server.upstream.preserve_host`. Only status 200 with media type `text/html` or
+`application/xhtml+xml` and no content encoding other than `identity` is parsed.
+Redirects must preserve the original scheme, host and port; at most three
+redirects are followed.
+
+The incremental parser reads only `<meta>` elements in the head and skips
+comments and the content of `script`, `style`, `title`, `textarea`, `noscript`
+and `template`. Reading stops at `</head>`, the first `<body>` element or 512
+KiB. Tags already read at the size limit are kept. The configurable
+`site.open_graph.tags` allowlist defaults to `og:`, `twitter:` and `fediverse:`
+prefixes plus `description`, `keywords` and `author`. Names use ASCII lowercase
+and must consist of `a-z`, `0-9`, `:`, `_`, `.` and `-`. Up to 32 tags are kept
+in document order, including repeated names. Names longer than 64 bytes are
+skipped; content drops control characters, turns tabs and line breaks into
+spaces, and is truncated to 1024 bytes at a character boundary. Fetched tags
+keep `property` when the element has that attribute, otherwise `name`. Override
+tags use `property` when the tag name contains a colon and `name` otherwise.
+Template autoescaping protects attribute values.
+
+At most 16 fetches run concurrently, each bounded by 10 seconds. Concurrent
+lookups of one key share a fetch. A full fetch limit returns without tags and
+caches nothing. Connection errors, fetch deadlines, status, media type or encoding
+rejections and redirect rejections use `negative_ttl`. Successful empty pages
+use `ttl`. A response that reaches `site.open_graph.timeout` renders without
+tags while the fetch continues for later requests. Lookup failures leave the
+challenge response usable.
+
+`rilgate_open_graph_lookups_total{result}` counts lookups with results `hit`,
+`fetched`, `failed`, `timeout`, `busy` and `override`. `timeout` counts
+responses that stop waiting before the fetch completes; `busy` counts lookups
+skipped because all fetch slots are occupied. Requests that `when` does not
+select are not counted.

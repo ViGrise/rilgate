@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
+  {% for tag in page.open_graph %}
+  <meta {{ tag.attribute }}="{{ tag.name }}" content="{{ tag.content }}">
+  {% endfor %}
   <title>{{ page.title }} - {{ rilgate.name }}</title>
   <link rel="stylesheet" href="{{ rilgate.stylesheet_url }}">
 </head>

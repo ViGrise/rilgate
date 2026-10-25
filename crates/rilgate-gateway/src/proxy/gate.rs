@@ -12,16 +12,16 @@ use http::{
 use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
 use rilgate_policy::PolicyAction;
 
-pub fn gate(
+pub async fn gate(
   state: &AppState,
   headers: &HeaderMap,
   uri: &Uri,
   method: &Method,
 ) -> Result<Option<Response>, ApiError> {
-  gate_with_client(state, headers, uri, method, None, false)
+  gate_with_client(state, headers, uri, method, None, false).await
 }
 
-pub fn gate_with_client(
+pub async fn gate_with_client(
   state: &AppState,
   headers: &HeaderMap,
   uri: &Uri,
@@ -30,14 +30,15 @@ pub fn gate_with_client(
   trusted_peer: bool,
 ) -> Result<Option<Response>, ApiError> {
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
-  let decision = state
-    .pow
-    .evaluate_context(&rilgate_policy::conditions::Request {
-      headers,
-      path: uri.path(),
-      method,
-      client_ip,
-    });
+  let host = request_host(headers, uri);
+  let request = rilgate_policy::conditions::Request {
+    headers,
+    host: &host,
+    path: uri.path(),
+    method,
+    client_ip,
+  };
+  let decision = state.pow.evaluate_context(&request);
   if decision.unresolved {
     state
       .metrics
@@ -89,7 +90,6 @@ pub fn gate_with_client(
     ))
   })?;
 
-  let host = request_host(headers, uri);
   let binding = BindingInput {
     client_ip,
     headers,
@@ -124,7 +124,7 @@ pub fn gate_with_client(
   if json || method == Method::GET || method == Method::HEAD {
     let presentation = state
       .pow
-      .issue_presentation_with_claims(host, uri.path().to_string(), &decision)
+      .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &decision)
       .map_err(ApiError::Internal)?;
 
     tracing::debug!(
@@ -139,7 +139,16 @@ pub fn gate_with_client(
 
     let challenge_url =
       crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token);
-    let (html, locale) = render_challenge_page(state, presentation, headers, uri, json, false);
+    let open_graph = if !json && method == Method::GET {
+      state
+        .open_graph
+        .lookup(&state.proxy, uri, &request, &state.metrics)
+        .await
+    } else {
+      Vec::new()
+    };
+    let (html, locale) =
+      render_challenge_page(state, presentation, headers, uri, json, false, &open_graph);
 
     let mut out = formatted_response(
       if json {

@@ -23,6 +23,10 @@ pub async fn build(
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
     probes: Arc::new(tokio::sync::Semaphore::new(1)),
     metrics: Arc::new(Default::default()),
+    open_graph: Arc::new(crate::open_graph::OpenGraphService::new(
+      cfg.open_graph.clone(),
+      pow.ip_sets(),
+    )?),
     cfg,
     pow,
     pool,

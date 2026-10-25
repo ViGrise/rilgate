@@ -1,3 +1,5 @@
+mod open_graph;
+pub use open_graph::OpenGraphConfig;
 mod server;
 use serde::{Deserialize, Serialize};
 pub use server::ServerConfig;

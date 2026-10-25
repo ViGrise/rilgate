@@ -635,7 +635,9 @@ impl ProxyHttp for Handler {
       &header.method,
       client_ip,
       crate::transport::client_ip::trusted_peer(peer, &self.state.cfg.server),
-    ) {
+    )
+    .await
+    {
       Ok(Some(out)) => {
         send(session, out, ctx).await?;
         Ok(true)

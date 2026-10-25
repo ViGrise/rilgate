@@ -207,6 +207,7 @@ impl WebSnapshot {
     let mut public = TemplateContext {
       rilgate: self.public.clone(),
       page: PageInfo {
+        open_graph: Vec::new(),
         title: "Validation".into(),
         description: String::new(),
       },
@@ -274,6 +275,7 @@ impl WebSnapshot {
     Ok(TemplateContext {
       rilgate: self.public.clone(),
       page: PageInfo {
+        open_graph: Vec::new(),
         title: self
           .translations
           .translate(locale, "challenge.title", &BTreeMap::new())?,
@@ -292,6 +294,20 @@ impl WebSnapshot {
       return shell.render(&self.public.base_path, challenge);
     }
     let public = self.challenge_context(challenge.clone(), locale)?;
+    self.render("pages/challenge.html.jinja", &public, locale)
+  }
+
+  pub fn render_challenge_with_open_graph(
+    &self,
+    challenge: &PublicChallengeInfo,
+    locale: &str,
+    tags: &[crate::templates::context::OpenGraphTag],
+  ) -> Result<String> {
+    if tags.is_empty() {
+      return self.render_challenge(challenge, locale);
+    }
+    let mut public = self.challenge_context(challenge.clone(), locale)?;
+    public.page.open_graph = tags.to_vec();
     self.render("pages/challenge.html.jinja", &public, locale)
   }
 
