@@ -12,7 +12,7 @@ Rilgate is a reverse proxy gateway that uses proof-of-work challenges. It places
 challenge in front of your web application, then forwards requests after the
 browser completes the required work.
 
-[Website](https://rilgate.com) · [Quick start](#quick-start) · [Documentation](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
+[Website](https://rilgate.com) · [Installation](#installation) · [Documentation](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
 
 </div>
 
@@ -64,39 +64,97 @@ work from a Stratum pool Stratum endpoint.
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host
 binding, lifetime and enforcement details.
 
-## Quick start
+## Installation
 
-1. On Linux or macOS, install the latest release:
+The install scripts download a release binary, verify it against `SHA256SUMS`
+and install it.
 
-   ```bash
-   curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
-   ```
+### Linux and macOS
 
-   Windows archives are on the [releases page](https://github.com/ViGrise/rilgate/releases).
+```bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
+```
 
-2. Create `rilgate.yml` in the working directory, with your application as the
-   upstream. Rilgate reads this file by default:
+The script installs to `/usr/local/bin` and uses `sudo` when that directory is
+not writable. Set these variables to change the defaults:
 
-   ```yaml
-   environment: development # allows the access cookie over plain HTTP
-   server:
-     upstream:
-       url: http://127.0.0.1:3000
-   # Optional. Without a secret, each start generates a random one.
-   # security:
-   #   secret: "${RILGATE_SECURITY_SECRET}"
-   ```
+| Variable      | Default          | Description                                                                 |
+| ------------- | ---------------- | --------------------------------------------------------------------------- |
+| `INSTALL_DIR` | `/usr/local/bin` | Destination directory                                                       |
+| `VERSION`     | `latest`         | Release tag, for example `v0.3.0`                                           |
+| `LIBC`        | detected         | Linux only: `gnu` for the glibc build (glibc 2.36 or newer), `musl` for the static build |
 
-3. Start the gateway:
+```bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.3.0 INSTALL_DIR="$HOME/.local/bin" bash
+```
 
-   ```bash
-   rilgate
-   ```
+### Windows
 
-4. Open <http://localhost:8080>.
+```powershell
+irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1 | iex
+```
 
-See the documentation for [other installation methods](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/installation) (Docker, source
-builds), [configuration](https://platform.vigrise.com/docs/open-source-software/rilgate/configuration/overview) and [deployment](https://platform.vigrise.com/docs/open-source-software/rilgate/deployment/overview).
+The script installs to `%LOCALAPPDATA%\rilgate\bin` and adds that directory to
+the user `PATH`. Set these parameters, or the `VERSION` and `INSTALL_DIR`
+environment variables, to change the defaults:
+
+| Parameter     | Default                       | Description                       |
+| ------------- | ----------------------------- | --------------------------------- |
+| `-InstallDir` | `%LOCALAPPDATA%\rilgate\bin`  | Destination directory             |
+| `-Version`    | `latest`                      | Release tag, for example `v0.3.0` |
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.3.0
+```
+
+### Docker
+
+```bash
+docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
+  -e RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)" \
+  -e RILGATE_SERVER_UPSTREAM_URL=http://host.docker.internal:3000 \
+  ghcr.io/vigrise/rilgate:latest
+```
+
+`latest` uses Alpine. `latest-debian` uses Debian.
+
+With Docker Compose:
+
+```yaml
+# compose.yml
+services:
+  rilgate:
+    container_name: rilgate
+    image: ghcr.io/vigrise/rilgate:latest
+    restart: unless-stopped
+    environment:
+      RILGATE_SERVER_UPSTREAM_URL: "http://host.docker.internal:3000"
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+```
+
+```bash
+docker compose up -d
+```
+
+See [deployment examples](deploy/README.md) for a hardened Compose file and systemd.
+
+### Upgrade
+
+Run the install script again, or use the built-in command:
+
+```bash
+rilgate upgrade
+```
 
 ## Configuration
 

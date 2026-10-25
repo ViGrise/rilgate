@@ -22,7 +22,7 @@ fail() {
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$os" in
   linux | darwin) ;;
-  *) fail "Unsupported OS: $os (Windows users can download the zip from GitHub Releases)" ;;
+  *) fail "Unsupported OS: $os (on Windows, use install.ps1 from GitHub Releases)" ;;
 esac
 
 case "$(uname -m)" in
