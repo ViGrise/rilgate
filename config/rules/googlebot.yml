@@ -1,0 +1,8 @@
+name: verified-google-crawler
+when:
+  all:
+    - client_ip:
+        in_sets: [google-common-crawlers]
+    - user_agent:
+        regex: '\+http://www\.google\.com/bot\.html'
+action: allow

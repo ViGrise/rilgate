@@ -3015,6 +3015,7 @@ dependencies = [
  "anyhow",
  "http",
  "humantime",
+ "include_dir",
  "ipnet",
  "rilgate-challenge",
  "rilgate-crypto",

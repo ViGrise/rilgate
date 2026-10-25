@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+include_dir.workspace = true
 rilgate-pow-hashwx.workspace = true
 serde_path_to_error = "0.1"
 ipnet = "2"

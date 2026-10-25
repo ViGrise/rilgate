@@ -55,7 +55,7 @@ defaults to `/.well-known/rilgate`.
 
 HashWX provides local CPU work with generated WASM and an interpreted verifier.
 It needs no pool. Its difficulty defaults await a mid-range phone measurement.
-See [the HashWX example](config/rilgate.hashwx.example.yml).
+See [the HashWX example](config/examples/hashwx.yml).
 
 Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache, plus
 scratchpads and runtime memory. It requires WebAssembly SIMD128. Both RandomX modes get
@@ -113,9 +113,10 @@ redacted. You can also supply every setting as a flag or `RILGATE_*` variable. S
 `rilgate --help`. The schema has no version field and replaces the unreleased previous
 format.
 
-See [the commented template](config/rilgate.example.yml), [configuration](docs/configuration.md), [request
-policies](docs/policy.md), [web resources](docs/web.md), and [production
-operations](docs/production.md).
+See [the default configuration](config/rilgate.yml), [configuration examples](config/examples/),
+[built-in policies and rules](docs/policy.md#built-in-policies-and-rules), [configuration](docs/configuration.md),
+[request policies](docs/policy.md), [web resources](docs/web.md), and
+[production operations](docs/production.md).
 
 ## Documentation
 

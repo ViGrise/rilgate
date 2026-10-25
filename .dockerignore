@@ -11,3 +11,7 @@
 !web/**
 !config/
 !config/rilgate.production.yml
+!config/rules/
+!config/rules/**
+!config/policies/
+!config/policies/**

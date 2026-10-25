@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 pub struct Document {
   #[serde(skip)]
   pub(crate) sources: Vec<(String, String)>,
+  #[serde(skip)]
+  pub(crate) config_sources: crate::loader::sources::ConfigurationSources,
   pub environment: Environment,
   pub server: server::Server,
   pub site: site::Site,

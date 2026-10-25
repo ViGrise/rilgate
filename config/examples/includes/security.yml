@@ -1,0 +1,1 @@
+secret: "${RILGATE_SECURITY_SECRET}"

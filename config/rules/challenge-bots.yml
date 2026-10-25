@@ -1,0 +1,8 @@
+name: suspicious-client
+when:
+  user_agent:
+    regex: '(?i)(^$|bot|crawler|spider|curl|wget|python|scrapy)'
+action: challenge
+challenge:
+  algorithm: fast
+  difficulty: 1

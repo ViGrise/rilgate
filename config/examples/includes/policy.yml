@@ -1,0 +1,16 @@
+mode: custom
+default_action: challenge
+ip_sets:
+  internal-bots:
+    cidrs: [192.0.2.10/32]
+  external-bots:
+    cidrs: !include ./external-bot-cidrs.yml
+rules:
+  - !include builtin:rules/public-endpoints.yml
+  - name: trusted-bots
+    when:
+      client_ip:
+        in_sets: [internal-bots, external-bots]
+    action: allow
+  - !include builtin:rules/challenge-bots.yml
+  - !include builtin:rules/challenge-all.yml

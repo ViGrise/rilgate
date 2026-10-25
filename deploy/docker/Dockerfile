@@ -111,7 +111,7 @@ RUN apk upgrade --no-cache \
 WORKDIR /app
 COPY --from=musl-builder /app/rilgate-release /app/rilgate
 COPY --from=musl-builder /app/LICENSE /app/LICENSE
-COPY config/rilgate.production.yml /app/config/rilgate.yml
+COPY config/rilgate.yml /app/config/rilgate.yml
 
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

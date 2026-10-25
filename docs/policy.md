@@ -21,9 +21,107 @@ exact `/robots.txt`, `/favicon.ico`, and the `/.well-known/acme-challenge/` pref
 RandomX or Stratum pool. Any custom `rules`, `score`, or `default_action` in a preset is
 rejected. Such settings are not silently ignored.
 
+## Built-in policies and rules
+
+`config/policies/` and `config/rules/` contain the source catalogs embedded into
+the binary at build time. `config/examples/` contains example operator
+configurations. Installed binaries load built-in resources without a checkout or
+copied catalog directories.
+
+Select a complete policy:
+
+```yaml
+policy: !include builtin:policies/balanced.yml
+```
+
+| Built-in policy | Behavior |
+| --- | --- |
+| `builtin:policies/balanced.yml` | Balanced preset, the default policy. The production configuration selects it. |
+| `builtin:policies/light.yml` | Light preset. |
+| `builtin:policies/strict.yml` | Strict preset. |
+| `builtin:policies/off.yml` | Allows application traffic without a proof requirement. |
+| `builtin:policies/crawler-protection.yml` | Optional custom policy with AI/headless deny groups, verified Google, Bing, Apple and DuckDuckGo search crawlers, public paths and client scoring. |
+
+The crawler-protection policy includes the Google, Bing, Apple and DuckDuckGo
+search crawler feeds and the score thresholds it needs. Remote feed loading
+requires outbound HTTPS for runtime readiness. Configuration checks validate the
+policy without fetching the feeds.
+The [custom example](../config/examples/custom.yml) demonstrates selecting it.
+
+Customize a built-in custom policy with a map merge:
+
+```yaml
+policy:
+  <<: !include builtin:policies/crawler-protection.yml
+  default_action: challenge
+  ip_sets:
+    internal: {cidrs: [10.0.0.0/8]}
+```
+
+The added IP set keeps the built-in crawler set and rules. Maps merge recursively;
+lists and scalars replace previous values. The `balanced`, `light`, `strict` and
+`off` presets still reject custom `rules`, `score` and `default_action`.
+
+For an operator-defined policy, mix built-in rules, inline rules and local files
+in evaluation order:
+
+```yaml
+policy:
+  mode: custom
+  default_action: allow
+  rules:
+    - !include builtin:rules/public-endpoints.yml
+    - name: health
+      when: {path: {exact: /health}}
+      action: allow
+    - !include builtin:rules/challenge-all.yml
+```
+
+| Built-in rule | Behavior |
+| --- | --- |
+| `public-endpoints.yml` | Allows `/.well-known/`, favicon image variants, `/robots.txt` and `/sitemap.xml`. Broader than preset exceptions. |
+| `challenge-bots.yml` | Challenges empty or bot/tool-like User-Agents with Fast difficulty 1. |
+| `challenge-all.yml` | Terminal catchall challenge with Fast difficulty 2. Place it last. |
+| `deny-ai-crawlers.yml` | Denies recognized AI-affiliated agents, training and search crawlers, and user-triggered AI clients. |
+| `deny-headless-browsers.yml` | Denies recognized headless User-Agents and Lightpanda client hints. |
+| `client-score.yml` | Adds 10 for browser-like User-Agents, 15 for a present `CF-Worker` header and 5 for a present `X-Firefox-Ai` header. Requires score thresholds to act on the result. |
+
+Rule names in this table use the `builtin:rules/` prefix. The optional deny
+groups can also match authorized automation. The default balanced policy keeps
+challenging application traffic regardless of User-Agent. Built-in references
+always select embedded content. Use an explicit local include path for an
+operator-maintained copy.
+
+Each verified search crawler rule allows a request only when its User-Agent
+matches the crawler and the client address is in the named IP set. Define the
+set with the publisher feed before you include the rule:
+
+```yaml
+policy:
+  mode: custom
+  ip_sets:
+    bing-crawlers:
+      url: https://www.bing.com/toolbox/bingbot.json
+      format: ip_prefixes_json
+  rules:
+    - !include builtin:rules/bingbot.yml
+```
+
+| Verified search crawler rule | User-Agent | IP set | Feed URL |
+| --- | --- | --- | --- |
+| `googlebot.yml` | Googlebot documentation URL | `google-common-crawlers` | `https://developers.google.com/static/crawling/ipranges/common-crawlers.json` |
+| `bingbot.yml` | Bingbot documentation URL | `bing-crawlers` | `https://www.bing.com/toolbox/bingbot.json` |
+| `applebot.yml` | Applebot documentation URL | `apple-crawlers` | `https://search.developer.apple.com/applebot.json` |
+| `duckduckbot.yml` | DuckDuckBot documentation URL | `duckduckgo-crawlers` | `https://duckduckgo.com/duckduckbot.json` |
+
+The crawler-protection policy evaluates deny rules before crawler and public
+allows, then applies client scores. It uses Fast difficulties 1, 2, 4 and 6 at
+scores 1, 10, 20 and 30. Its fallback allows requests without a positive score.
+GeoIP, ASN, CEL and honeypot conditions are outside the current policy schema.
+
 ## Custom evaluation
 
-See [the complete example](../config/rilgate.custom.example.yml). Rules run in declaration order. A matching
+See [the complete example](../config/examples/custom.yml). Rules run in declaration order. A matching
 `score` adds a signed integer with saturating i32 arithmetic and continues.
 
 `allow`, `deny` and `challenge` are terminal. If no rule terminates,
@@ -151,7 +249,8 @@ semantics and never match an IPv4 client. Host bits in a network are truncated. 
 index serves `client_ip.cidr` and `in_sets`.
 
 Feeds are fetched in the background, never on the request path. The first fetch starts
-at startup. `ip_prefixes_json` is the object published by Google, Bing and OpenAI:
+at startup. `ip_prefixes_json` is the object published by Google, Bing, Apple,
+DuckDuckGo and OpenAI:
 
 ```json
 {"creationTime": "...", "prefixes": [{"ipv4Prefix": "66.249.64.0/27"}, {"ipv6Prefix": "2001:4860:4801:10::/64"}]}

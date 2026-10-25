@@ -76,7 +76,7 @@ The shipped difficulty defaults are placeholders. The iPhone 15 Pro Max
 measurement is from a high-end device. A mid-range phone measurement is still
 required before the defaults can target 1 to 3 seconds. See
 [measurements](performance.md#hashwx-measurements) and the
-[complete example](../config/rilgate.hashwx.example.yml).
+[complete example](../config/examples/hashwx.yml).
 
 HashWX tokens use version 1 with an explicit `hashwx` algorithm tag. Older
 builds reject that tag. Deploy HashWX support to every gateway instance before

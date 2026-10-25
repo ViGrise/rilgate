@@ -46,27 +46,132 @@ fn command(contents: &str, args: &[&str], variables: &[(&str, &str)]) -> std::pr
 }
 const SECRET: &str = "startup-test-secret-with-at-least-32-bytes";
 
+fn distribution_command(name: &str, args: &[&str]) -> std::process::Output {
+  let directory = tempfile::tempdir().unwrap();
+  let config = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    .join("../../config")
+    .join(name);
+  std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
+    .current_dir(directory.path())
+    .env_clear()
+    .env("RILGATE_SECURITY_SECRET", SECRET)
+    .args(["--config", config.to_str().unwrap()])
+    .args(args)
+    .output()
+    .unwrap()
+}
+
+fn distribution_service(name: &str) -> rilgate_challenge::ChallengeService {
+  let result = distribution_command(name, &["config", "show", "--defaults"]);
+  assert!(
+    result.status.success(),
+    "{name}: {}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let mut document =
+    rilgate_config::loader::parse(std::str::from_utf8(&result.stdout).unwrap()).unwrap();
+  document.security.secret = Some(rilgate_config::Secret(SECRET.into()));
+  rilgate_test_utils::gateway::service(&document.resolve().unwrap()).unwrap()
+}
+
 #[test]
 fn every_distribution_template_validates_without_network_dependencies() {
-  for contents in [
-    include_str!("../../../config/rilgate.example.yml"),
-    include_str!("../../../config/rilgate.production.yml"),
-    include_str!("../../../config/rilgate.custom.example.yml"),
-    include_str!("../../../config/rilgate.randomx.example.yml"),
+  for name in [
+    "rilgate.yml",
+    "rilgate.production.yml",
+    "examples/custom.yml",
+    "examples/hashwx.yml",
+    "examples/randomx.yml",
+    "examples/includes.yml",
   ] {
-    let result = command(
-      contents,
-      &["config", "check"],
-      &[("RILGATE_SECURITY_SECRET", SECRET)],
-    );
+    let result = distribution_command(name, &["config", "check"]);
     assert!(
       result.status.success(),
-      "{}",
+      "{name}: {}",
       String::from_utf8_lossy(&result.stderr)
     );
     assert!(!String::from_utf8_lossy(&result.stdout).contains(SECRET));
     assert!(!String::from_utf8_lossy(&result.stderr).contains(SECRET));
   }
+}
+
+#[test]
+fn default_configuration_keeps_balanced_challenges_for_browsers_and_bots() {
+  use rilgate_config::PolicyAction::{Allow, Challenge};
+  let service = distribution_service("rilgate.yml");
+  for agent in ["Mozilla/5.0", "GPTBot", "HeadlessChrome", "curl/8.0", ""] {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("user-agent", agent.parse().unwrap());
+    let decision = service.evaluate_request(&headers, "/protected");
+    assert_eq!(decision.action, Challenge, "{agent}");
+    assert_eq!(decision.difficulty, Some(2), "{agent}");
+    for path in [
+      "/robots.txt",
+      "/favicon.ico",
+      "/.well-known/acme-challenge/token",
+    ] {
+      assert_eq!(
+        service.evaluate_request(&headers, path).action,
+        Allow,
+        "{agent}, {path}"
+      );
+    }
+  }
+}
+
+#[test]
+fn optional_rule_groups_deny_agents_before_public_allows_and_apply_client_scores() {
+  use rilgate_config::PolicyAction::{Allow, Challenge, Deny};
+  let service = distribution_service("examples/custom.yml");
+  for agent in [
+    "GPTBot",
+    "ClaudeBot",
+    "ChatGPT-User",
+    "OAI-SearchBot",
+    "PerplexityBot",
+    "Mozilla/5.0 HeadlessChrome",
+    "Lightpanda",
+    "hyperbrowser",
+  ] {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("user-agent", agent.parse().unwrap());
+    assert_eq!(
+      service.evaluate_request(&headers, "/robots.txt").action,
+      Deny,
+      "{agent}"
+    );
+  }
+  let mut headers = http::HeaderMap::new();
+  headers.insert("user-agent", "Mozilla/5.0".parse().unwrap());
+  for path in [
+    "/.well-known/security.txt",
+    "/favicon.svg",
+    "/robots.txt",
+    "/sitemap.xml",
+  ] {
+    assert_eq!(
+      service.evaluate_request(&headers, path).action,
+      Allow,
+      "{path}"
+    );
+  }
+  for path in ["/protected", "/favicon.svg/private", "/private/sitemap.xml"] {
+    let decision = service.evaluate_request(&headers, path);
+    assert_eq!(decision.action, Challenge, "{path}");
+    assert_eq!(decision.difficulty, Some(2), "{path}");
+  }
+  headers.insert("cf-worker", "".parse().unwrap());
+  assert_eq!(
+    service.evaluate_request(&headers, "/content").difficulty,
+    Some(4)
+  );
+  headers.insert("x-firefox-ai", "".parse().unwrap());
+  assert_eq!(
+    service.evaluate_request(&headers, "/content").difficulty,
+    Some(6)
+  );
+  headers.insert("sec-ch-ua", "Lightpanda".parse().unwrap());
+  assert_eq!(service.evaluate_request(&headers, "/content").action, Deny);
 }
 
 #[test]
@@ -139,9 +244,9 @@ fn invalid_configuration_fails_without_revealing_keys() {
   let template = include_str!("../../../config/rilgate.production.yml");
   for (contents, expected) in [
     (template.to_string(), "RILGATE_SECURITY_SECRET"),
-    (template.replace("mode: balanced", "mode: balanced\n  rules: []"), "policy"),
+    (template.replace("policy: !include builtin:policies/balanced.yml", "policy:\n  mode: balanced\n  rules: []"), "policy"),
     (template.replace("upstream:", "upsteam:"), "server"),
-    (template.replace("mode: balanced", "mode: custom\n  rules:\n    - name: bad-regex\n      when: {path: {regex: '['}}\n      action: deny"), "regex"),
+    (template.replace("policy: !include builtin:policies/balanced.yml", "policy:\n  mode: custom\n  rules:\n    - name: bad-regex\n      when: {path: {regex: '['}}\n      action: deny"), "regex"),
   ] {
     let variables = if expected == "RILGATE_SECURITY_SECRET" { vec![] } else { vec![("RILGATE_SECURITY_SECRET", SECRET)] };
     let result = command(&contents, &["config", "check"], &variables);
@@ -554,5 +659,94 @@ fn remote_order_and_endpoint_environment_and_flag_overrides_resolve() {
     let verify = &value["pow"]["algorithms"]["randomx"]["verify"];
     assert_eq!(verify["remote"]["endpoint"], endpoint);
     assert_eq!(verify["order"], serde_yaml_ng::to_value(order).unwrap());
+  }
+}
+
+#[test]
+fn split_configuration_uses_default_file_paths_and_override_precedence() {
+  let directory = tempfile::tempdir().unwrap();
+  let config = directory.path().join("config");
+  std::fs::create_dir(&config).unwrap();
+  std::fs::write(
+    config.join("rilgate.yml"),
+    "server: !include server.yml\nsecurity: !include security.yml\npolicy: !include policy.yml\n",
+  )
+  .unwrap();
+  std::fs::write(
+    config.join("server.yml"),
+    "upstream: {url: '${RILGATE_TEST_UPSTREAM}'}\nlisten: 127.0.0.1:7000\n",
+  )
+  .unwrap();
+  std::fs::write(
+    config.join("security.yml"),
+    "secret: '${RILGATE_SECURITY_SECRET}'\n",
+  )
+  .unwrap();
+  std::fs::write(
+    config.join("policy.yml"),
+    "mode: custom\nrules: !include rules.yml\n",
+  )
+  .unwrap();
+  std::fs::write(
+    config.join("rules.yml"),
+    "- name: health\n  when: {path: {exact: /health}}\n  action: allow\n",
+  )
+  .unwrap();
+  let variables = [
+    ("RILGATE_TEST_UPSTREAM", "http://127.0.0.1:3000"),
+    ("RILGATE_SERVER_LISTEN", "127.0.0.1:7001"),
+  ];
+  let result = show(
+    directory.path(),
+    &variables,
+    &["--server-listen", "127.0.0.1:7002"],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let output = String::from_utf8(result.stdout).unwrap();
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&output).unwrap();
+  assert_eq!(value["server"]["listen"], "127.0.0.1:7002");
+  assert_eq!(value["server"]["upstream"]["url"], "http://127.0.0.1:3000");
+  assert_eq!(value["policy"]["rules"][0]["name"], "health");
+  assert_eq!(value["security"]["secret"], "[redacted]");
+  assert!(!output.contains("!include"));
+  assert!(!output.contains(SECRET));
+  let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
+    .current_dir(directory.path())
+    .env_clear()
+    .env("RILGATE_SECURITY_SECRET", SECRET)
+    .envs(variables)
+    .args(["config", "check"])
+    .output()
+    .unwrap();
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+}
+
+#[test]
+fn embedded_policies_load_with_only_an_operator_configuration_file() {
+  for name in ["balanced", "light", "strict", "off", "crawler-protection"] {
+    let source = format!(
+      "server:\n  upstream: {{url: http://127.0.0.1:3000}}\nsecurity:\n  secret: '${{RILGATE_SECURITY_SECRET}}'\npolicy: !include builtin:policies/{name}.yml\n"
+    );
+    let result = command(
+      &source,
+      &["config", "show", "--defaults"],
+      &[("RILGATE_SECURITY_SECRET", SECRET)],
+    );
+    assert!(
+      result.status.success(),
+      "{name}: {}",
+      String::from_utf8_lossy(&result.stderr)
+    );
+    let output = String::from_utf8(result.stdout).unwrap();
+    assert!(!output.contains("!include"), "{name}");
+    assert!(!output.contains(SECRET), "{name}");
   }
 }

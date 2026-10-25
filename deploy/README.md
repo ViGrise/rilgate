@@ -37,7 +37,9 @@ loopback.
 4. Configure HTTPS at the edge.
 
 The image also uses the production template by default and refuses to start without
-strong signing secrets. The production template serves health, readiness and metrics on
+strong signing secrets. Policies and rules are embedded into the binary and can be
+selected with `!include builtin:policies/...` or `!include builtin:rules/...` from a
+mounted configuration. The production template serves health, readiness and metrics on
 the operations listener at `127.0.0.1:9090`. Compose moves it to `0.0.0.0:9090` inside the
 container and publishes it on host loopback for Prometheus. The image healthcheck probes
 `127.0.0.1:9090` under the default web namespace. If a mounted configuration changes the

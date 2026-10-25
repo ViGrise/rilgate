@@ -1,0 +1,8 @@
+name: verified-apple-crawler
+when:
+  all:
+    - client_ip:
+        in_sets: [apple-crawlers]
+    - user_agent:
+        regex: '\+http://www\.apple\.com/go/applebot'
+action: allow

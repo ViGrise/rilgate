@@ -7,44 +7,9 @@ use std::sync::Arc;
 
 impl Document {
   pub fn resolve(&self) -> Result<Config> {
-    self.resolve_config().map_err(|error| {
-      let message = format!("{error:#}");
-      let error_paths: Vec<_> = error
-        .chain()
-        .flat_map(|cause| {
-          cause
-            .to_string()
-            .lines()
-            .map(|line| {
-              line
-                .split_once(':')
-                .map_or(line, |(path, _)| path)
-                .trim()
-                .replace('[', ".")
-                .replace(']', "")
-            })
-            .collect::<Vec<_>>()
-        })
-        .collect();
-      let sources: Vec<_> = self
-        .sources
-        .iter()
-        .filter(|(path, _)| {
-          error_paths.iter().any(|error_path| {
-            path.as_str() == error_path
-              || path
-                .strip_prefix(error_path.as_str())
-                .is_some_and(|suffix| suffix.starts_with('.'))
-          })
-        })
-        .map(|(_, source)| source.as_str())
-        .collect();
-      if sources.is_empty() {
-        error
-      } else {
-        anyhow::anyhow!("{message} (from {})", sources.join(", "))
-      }
-    })
+    self
+      .config_sources
+      .result(self.resolve_config(), &self.sources)
   }
 
   fn resolve_config(&self) -> Result<Config> {

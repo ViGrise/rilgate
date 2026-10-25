@@ -52,7 +52,7 @@ If you use nginx or Caddy on the same host, configure:
 
 ```yaml
 server:
-  trusted_proxies: ['127.0.0.1/32', '::1/128']
+  trusted_proxies: ["127.0.0.1/32", "::1/128"]
 ```
 
 For containers, use the actual proxy source address or a dedicated, access-controlled
@@ -92,12 +92,12 @@ connection for each job and can reach the pool's connection limit. Check that
 backup logins pay the intended wallets. Monitor connection, failover and
 mismatch counters by configured name:
 
-| Counter | Labels |
-| --- | --- |
-| `rilgate_stratum_pool_connections_total` | `pool`, `outcome`: connected or failed |
-| `rilgate_stratum_pool_failover_total` | `from`: pool name |
-| `rilgate_stratum_proxy_connections_total` | `proxy`, `outcome`: connected or failed |
-| `rilgate_stratum_pool_difficulty_mismatch_total` | `pool` |
+| Counter                                          | Labels                                  |
+| ------------------------------------------------ | --------------------------------------- |
+| `rilgate_stratum_pool_connections_total`         | `pool`, `outcome`: connected or failed  |
+| `rilgate_stratum_pool_failover_total`            | `from`: pool name                       |
+| `rilgate_stratum_proxy_connections_total`        | `proxy`, `outcome`: connected or failed |
+| `rilgate_stratum_pool_difficulty_mismatch_total` | `pool`                                  |
 
 Logs, metrics and readiness responses exclude pool logins, passwords, proxy URLs
 and proxy credentials. Keep names free of private information.
@@ -128,12 +128,12 @@ can be interrupted and clients must reconnect.
 
 The following routes are relative to `site.base_path`:
 
-| Route | Meaning |
-| --- | --- |
-| `/api/live` | The process can serve HTTP requests |
-| `/api/health` | Existing web diagnostics and cumulative pool failures |
-| `/api/ready` | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS. Returns 503 when unavailable or during drain |
-| `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true` |
+| Route          | Meaning                                                                                                                                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/live`    | The process can serve HTTP requests                                                                                                                                                                                                                                      |
+| `/api/health`  | Existing web diagnostics and cumulative pool failures                                                                                                                                                                                                                    |
+| `/api/ready`   | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS. Returns 503 when unavailable or during drain |
+| `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true`                                                                                                                                                                                                  |
 
 Readiness probes have a positive timeout up to 30s (default 2s). They probe dependencies
 concurrently. Only one probe runs at a time per instance.
@@ -284,7 +284,7 @@ releases that revision:
    `alpine` or `debian`.
 6. A GitHub Release attaches `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows), and
    `rilgate-linux-<arch>-musl.tar.gz` for the static Linux build. Each archive holds
-   the binary, `LICENSE` and `rilgate.production.yml`. The release also attaches the bare binary
+   the binary, `LICENSE`, and `rilgate.yml`. The release also attaches the bare binary
    of each build, used by `rilgate upgrade`. It attaches
    `SHA256SUMS` for both, and `install.sh`, with generated release notes.
 
@@ -385,11 +385,11 @@ for cache construction on the deployment host.
 
 Monitor these counters without endpoint or certificate labels:
 
-| Metric | Labels |
-| --- | --- |
-| `rilgate_randomx_hash_total` | `hasher`: local or remote; `outcome`: hashed, unavailable or invalid |
-| `rilgate_randomx_hash_fallback_total` | `from`: local or remote; `reason`: timeout, connection, overloaded, protocol or deadline |
-| `rilgate_verifier_service_requests_total` | `outcome`: hashed, invalid, overloaded, expired or cancelled |
+| Metric                                    | Labels                                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `rilgate_randomx_hash_total`              | `hasher`: local or remote; `outcome`: hashed, unavailable or invalid                     |
+| `rilgate_randomx_hash_fallback_total`     | `from`: local or remote; `reason`: timeout, connection, overloaded, protocol or deadline |
+| `rilgate_verifier_service_requests_total` | `outcome`: hashed, invalid, overloaded, expired or cancelled                             |
 
 The gateway also exposes `rilgate_randomx_remote_duration_seconds`. The verifier
 exposes its request counter only on its operations listener when
@@ -399,7 +399,7 @@ verifier only when a rule selects RandomX and `pow.verification` is
 
 ## HashWX deployment
 
-Use [the HashWX example](../config/rilgate.hashwx.example.yml) with a custom
+Use [the HashWX example](../config/examples/hashwx.yml) with a custom
 policy and local verification. Deploy HashWX support on all gateway instances
 before changing the policy. Older builds reject the `hashwx` token variant.
 Keep shared signing keys and compatible lifetimes across instances.

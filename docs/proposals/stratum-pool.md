@@ -423,6 +423,6 @@ configuration that breaks them does not load.
 6. Add the environment checks.
 7. Update `docs/pow.md`, `docs/configuration.md`, `docs/production.md`,
    `docs/architecture.md`, `docs/api-integration.md`, `docs/algorithms.md`,
-   `config/rilgate.example.yml`, `config/rilgate.randomx.example.yml` and
+   `config/rilgate.yml`, `config/examples/randomx.yml` and
    `.env.example`. `docs/production.md` also describes Stratum blocking and the
    tunnel, proxy and separate-host options.
