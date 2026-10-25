@@ -66,19 +66,8 @@ binding, lifetime and enforcement details.
 
 ## Quick start
 
-1. Install the latest release. See [installation](#installation) for options.
-
-   On Linux or macOS:
-
-   ```bash
-   curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
-   ```
-
-   On Windows, in PowerShell:
-
-   ```powershell
-   irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1 | iex
-   ```
+1. Install the latest release with the install script for your system. See
+   [installation](#installation).
 
 2. Create `rilgate.yml` in the working directory, with your application as the
    upstream. Rilgate reads this file by default:
