@@ -48,7 +48,10 @@ container and publishes it on host loopback for Prometheus. The image healthchec
 `127.0.0.1:9090` under the default web namespace. If a mounted configuration changes the
 operations address or namespace, override the healthcheck.
 
-For systemd:
+The Debian and RPM packages and the systemd-sysext image install their own unit,
+`deploy/packages/rilgate.service`. See [Linux packages](../docs/installation.md#linux-packages).
+
+For systemd with a release archive:
 
 1. Create a `rilgate` user.
 2. Install the binary under `/opt/rilgate`.

@@ -54,9 +54,14 @@ pub fn asset_name() -> Option<&'static str> {
   let musl = cfg!(target_env = "musl");
   Some(match (std::env::consts::OS, std::env::consts::ARCH, musl) {
     ("linux", "x86_64", false) => "rilgate-linux-amd64",
-    ("linux", "x86_64", true) => "rilgate-linux-amd64-musl",
+    ("linux", "x86_64", true) => "rilgate-linux-amd64-static",
     ("linux", "aarch64", false) => "rilgate-linux-arm64",
-    ("linux", "aarch64", true) => "rilgate-linux-arm64-musl",
+    ("linux", "aarch64", true) => "rilgate-linux-arm64-static",
+    ("linux", "powerpc64", true) if cfg!(target_endian = "little") => {
+      "rilgate-linux-ppc64le-static"
+    }
+    ("linux", "riscv64", true) => "rilgate-linux-riscv64-static",
+    ("freebsd", "x86_64", _) => "rilgate-freebsd-amd64",
     ("macos", "x86_64", _) => "rilgate-darwin-amd64",
     ("macos", "aarch64", _) => "rilgate-darwin-arm64",
     ("windows", "x86_64", _) => "rilgate-windows-amd64.exe",

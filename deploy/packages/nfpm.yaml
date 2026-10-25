@@ -1,0 +1,53 @@
+# Debian and RPM package definition. scripts/release/linux-packages.sh copies the
+# listed sources into a staging directory, sets the environment variables and
+# runs nfpm from that directory.
+name: rilgate
+arch: ${PACKAGE_ARCH}
+version: ${PACKAGE_VERSION}
+release: 1
+section: net
+priority: optional
+maintainer: Thinh Hoang <thinh@thinhhv.com>
+vendor: ViGrise
+homepage: https://rilgate.com
+license: Apache-2.0
+description: |-
+  Reverse proxy gateway with proof-of-work browser challenges.
+  Rilgate places a browser challenge in front of a web application and forwards
+  requests after the browser completes the required work.
+depends:
+  - ca-certificates
+contents:
+  - src: rilgate
+    dst: /usr/bin/rilgate
+    file_info:
+      mode: 0755
+  - src: rilgate.service
+    dst: /usr/lib/systemd/system/rilgate.service
+    file_info:
+      mode: 0644
+  - src: rilgate.yml
+    dst: /etc/rilgate/rilgate.yml
+    type: config|noreplace
+    file_info:
+      mode: 0644
+  - src: rilgate.yml
+    dst: /usr/share/rilgate/rilgate.yml
+    file_info:
+      mode: 0644
+  - src: env.example
+    dst: /usr/share/doc/rilgate/env.example
+    file_info:
+      mode: 0644
+  - src: README.md
+    dst: /usr/share/doc/rilgate/README.md
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/rilgate/LICENSE
+    file_info:
+      mode: 0644
+scripts:
+  postinstall: postinstall.sh
+  preremove: preremove.sh
+  postremove: postremove.sh

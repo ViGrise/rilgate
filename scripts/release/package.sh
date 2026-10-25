@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Packages a release binary with its license and production configuration as
+# Packages a release binary with its license and example configuration as
 # rilgate-<platform>.tar.gz, or rilgate-<platform>.zip for Windows binaries, and
 # copies the bare binary as rilgate-<platform> (.exe on Windows) beside it.
 #
@@ -20,7 +20,7 @@ trap 'rm -rf "$stage"' EXIT
 
 mkdir "$stage/$name"
 cp "$binary" "$stage/$name/"
-cp "$root/LICENSE" "$root/config/rilgate.production.yml" "$stage/$name/"
+cp "$root/LICENSE" "$root/config/rilgate.yml" "$stage/$name/"
 chmod +x "$stage/$name/$(basename "$binary")"
 
 case "$binary" in
