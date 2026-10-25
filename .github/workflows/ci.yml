@@ -455,6 +455,7 @@ jobs:
           files: |
             dist/*
             install.sh
+            install.ps1
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true

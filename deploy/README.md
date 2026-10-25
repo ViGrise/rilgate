@@ -2,7 +2,8 @@
 
 Tagged releases publish binaries on GitHub Releases and multi-architecture images at
 `ghcr.io/vigrise/rilgate`. See [release, rollout and rollback](../docs/production.md#release-rollout-and-rollback). `install.sh` verifies a
-release archive against `SHA256SUMS` and installs it into `/usr/local/bin`.
+release archive against `SHA256SUMS` and installs it into `/usr/local/bin`. On Windows,
+`install.ps1` verifies the release binary and installs it into `%LOCALAPPDATA%\rilgate\bin`.
 
 To choose another directory, set `INSTALL_DIR`. To pin a release, set `VERSION=v<version>`.
 `rilgate upgrade` installs newer releases.

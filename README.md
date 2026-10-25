@@ -66,13 +66,19 @@ binding, lifetime and enforcement details.
 
 ## Quick start
 
-1. On Linux or macOS, install the latest release:
+1. Install the latest release. See [installation](#installation) for options.
+
+   On Linux or macOS:
 
    ```bash
    curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
    ```
 
-   Windows archives are on the [releases page](https://github.com/ViGrise/rilgate/releases).
+   On Windows, in PowerShell:
+
+   ```powershell
+   irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1 | iex
+   ```
 
 2. Create `rilgate.yml` in the working directory, with your application as the
    upstream. Rilgate reads this file by default:
@@ -97,6 +103,69 @@ binding, lifetime and enforcement details.
 
 See the documentation for [other installation methods](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/installation) (Docker, source
 builds), [configuration](https://platform.vigrise.com/docs/open-source-software/rilgate/configuration/overview) and [deployment](https://platform.vigrise.com/docs/open-source-software/rilgate/deployment/overview).
+
+## Installation
+
+The install scripts download a release binary, verify it against `SHA256SUMS`
+and install it.
+
+### Linux and macOS
+
+```bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | bash
+```
+
+The script installs to `/usr/local/bin` and uses `sudo` when that directory is
+not writable. Set these variables to change the defaults:
+
+| Variable      | Default          | Description                                                                 |
+| ------------- | ---------------- | --------------------------------------------------------------------------- |
+| `INSTALL_DIR` | `/usr/local/bin` | Destination directory                                                       |
+| `VERSION`     | `latest`         | Release tag, for example `v0.3.0`                                           |
+| `LIBC`        | detected         | Linux only: `gnu` for the glibc build (glibc 2.36 or newer), `musl` for the static build |
+
+```bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.3.0 INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+### Windows
+
+```powershell
+irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1 | iex
+```
+
+The script installs to `%LOCALAPPDATA%\rilgate\bin` and adds that directory to
+the user `PATH`. Set these parameters, or the `VERSION` and `INSTALL_DIR`
+environment variables, to change the defaults:
+
+| Parameter     | Default                       | Description                       |
+| ------------- | ----------------------------- | --------------------------------- |
+| `-InstallDir` | `%LOCALAPPDATA%\rilgate\bin`  | Destination directory             |
+| `-Version`    | `latest`                      | Release tag, for example `v0.3.0` |
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.3.0
+```
+
+### Docker
+
+```bash
+docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
+  -e RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)" \
+  -e RILGATE_SERVER_UPSTREAM_URL=http://host.docker.internal:3000 \
+  ghcr.io/vigrise/rilgate:latest
+```
+
+`latest` uses Alpine. `latest-debian` uses Debian. See
+[deployment examples](deploy/README.md) for Docker Compose and systemd.
+
+### Upgrade
+
+Run the install script again, or use the built-in command:
+
+```bash
+rilgate upgrade
+```
 
 ## Configuration
 
