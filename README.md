@@ -156,8 +156,37 @@ docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
   ghcr.io/vigrise/rilgate:latest
 ```
 
-`latest` uses Alpine. `latest-debian` uses Debian. See
-[deployment examples](deploy/README.md) for Docker Compose and systemd.
+`latest` uses Alpine. `latest-debian` uses Debian.
+
+With Docker Compose:
+
+```yaml
+# compose.yml
+services:
+  rilgate:
+    container_name: rilgate
+    image: ghcr.io/vigrise/rilgate:latest
+    restart: unless-stopped
+    environment:
+      RILGATE_SERVER_UPSTREAM_URL: "http://host.docker.internal:3000"
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+```
+
+```bash
+docker compose up -d
+```
+
+See [deployment examples](deploy/README.md) for a hardened Compose file and systemd.
 
 ### Upgrade
 
