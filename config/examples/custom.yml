@@ -1,0 +1,6 @@
+server:
+  upstream:
+    url: "http://127.0.0.1:3000"
+security:
+  secret: "${RILGATE_SECURITY_SECRET}"
+policy: !include builtin:policies/crawler-protection.yml

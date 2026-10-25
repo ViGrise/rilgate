@@ -1,0 +1,8 @@
+name: verified-duckduckgo-crawler
+when:
+  all:
+    - client_ip:
+        in_sets: [duckduckgo-crawlers]
+    - user_agent:
+        regex: '\+http://duckduckgo\.com/duckduckbot\.html'
+action: allow

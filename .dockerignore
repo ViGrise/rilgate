@@ -10,4 +10,8 @@
 !web/
 !web/**
 !config/
-!config/rilgate.production.yml
+!config/rilgate.yml
+!config/rules/
+!config/rules/**
+!config/policies/
+!config/policies/**

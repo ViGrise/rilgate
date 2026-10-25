@@ -1,0 +1,16 @@
+- name: public-well-known
+  when:
+    path: {prefix: /.well-known/}
+  action: allow
+- name: public-favicon
+  when:
+    path: {regex: '^/favicon\.(?:ico|png|gif|jpg|jpeg|svg)$'}
+  action: allow
+- name: public-robots
+  when:
+    path: {exact: /robots.txt}
+  action: allow
+- name: public-sitemap
+  when:
+    path: {exact: /sitemap.xml}
+  action: allow

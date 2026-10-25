@@ -51,6 +51,12 @@ impl VerifierConfig {
 }
 impl Document {
   pub fn resolve_verifier(&self) -> Result<VerifierConfig> {
+    self
+      .config_sources
+      .result(self.resolve_verifier_config(), &self.sources)
+  }
+
+  fn resolve_verifier_config(&self) -> Result<VerifierConfig> {
     let randomx = &self.pow.algorithms.randomx;
     let serve = randomx
       .serve

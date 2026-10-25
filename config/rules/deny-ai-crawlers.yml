@@ -1,0 +1,20 @@
+- name: deny-ai-affiliated-agents
+  when:
+    user_agent:
+      regex: '(?i:AI2Bot|aiHitBot|Amazonbot|anthropic-ai|Brightbot 1\.0|Bytespider|Claude-Web|cohere-ai|cohere-training-data-crawler|Cotoyogi|Crawlspace|Diffbot|DuckAssistBot|FacebookBot|Factset_spyderbot|FirecrawlAgent|FriendlyCrawler|Google-CloudVertexBot|GoogleOther|iaskspider/2\.0|ICC-Crawler|ImagesiftBot|img2dataset|imgproxy|ISSCyberRiskCrawler|Kangaroo Bot|meta-externalagent|meta-externalfetcher|NovaAct|omgili|Operator|PanguBot|Perplexity-User|PerplexityBot|PetalBot|QualifiedBot|Scrapy|SemrushBot-OCOB|SemrushBot-SWA|Sidetrade indexer bot|TikTokSpider|Timpibot|VelenPublicWebCrawler|Webzio-Extended|wpbot|YouBot)'
+  action: deny
+- name: deny-ai-training-crawlers
+  when:
+    user_agent:
+      regex: '(?i:GPTBot|ClaudeBot)'
+  action: deny
+- name: deny-ai-search-crawlers
+  when:
+    user_agent:
+      regex: '(?i:OAI-SearchBot|Claude-SearchBot|PerplexityBot|meta-webindexer)'
+  action: deny
+- name: deny-ai-clients
+  when:
+    user_agent:
+      regex: '(?i:ChatGPT-User|Claude-User|MistralAI-User|Perplexity-User)'
+  action: deny

@@ -1,0 +1,7 @@
+name: protected-traffic
+when:
+  path: {prefix: ''}
+action: challenge
+challenge:
+  algorithm: fast
+  difficulty: 2

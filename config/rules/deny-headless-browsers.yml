@@ -1,0 +1,9 @@
+name: deny-headless-browsers
+when:
+  any:
+    - user_agent:
+        regex: '(?i:HeadlessChrome|HeadlessChromium|lightpanda|hyperbrowser)'
+    - headers:
+        Sec-Ch-Ua:
+          regex: '(?i:lightpanda)'
+action: deny

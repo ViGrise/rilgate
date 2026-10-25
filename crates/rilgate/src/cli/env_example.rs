@@ -1,5 +1,5 @@
 //! Generates `.env.example` from the settings table, the schema defaults and the
-//! setting descriptions in `config/rilgate.example.yml`, and checks the
+//! setting descriptions in `config/rilgate.yml`, and checks the
 //! committed file matches. Set `RILGATE_UPDATE_ENV_EXAMPLE=1` when running the
 //! test to rewrite the file.
 use super::settings::{Kind, POOL_FIELDS, PROXY_FIELDS, SPECS};
@@ -208,7 +208,7 @@ mod tests {
   #[test]
   fn env_example_matches_the_settings_and_yaml_example() {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let yaml = std::fs::read_to_string(format!("{root}/config/rilgate.example.yml")).unwrap();
+    let yaml = std::fs::read_to_string(format!("{root}/config/rilgate.yml")).unwrap();
     let expected = render(&yaml);
     let path = format!("{root}/.env.example");
     if std::env::var_os("RILGATE_UPDATE_ENV_EXAMPLE").is_some() {

@@ -1,0 +1,3 @@
+listen: ":8080"
+upstream:
+  url: "http://127.0.0.1:3000"

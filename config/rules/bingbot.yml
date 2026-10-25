@@ -1,0 +1,8 @@
+name: verified-bing-crawler
+when:
+  all:
+    - client_ip:
+        in_sets: [bing-crawlers]
+    - user_agent:
+        regex: '\+http://www\.bing\.com/bingbot\.htm'
+action: allow

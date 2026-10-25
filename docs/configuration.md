@@ -29,9 +29,13 @@ opt-in. The balanced preset challenges application traffic at Fast difficulty 2
 regardless of User-Agent, with public exceptions described in [policies](policy.md).
 HTTPS is required for production authentication cookies.
 
-Use [the commented distribution template](../config/rilgate.example.yml), [custom policy
-example](../config/rilgate.custom.example.yml), [HashWX example](../config/rilgate.hashwx.example.yml), or
-[RandomX example](../config/rilgate.randomx.example.yml).
+The [default configuration](../config/rilgate.yml) includes the setting reference
+in comments. [Feature examples](../config/examples/) live under
+`config/examples/`: [custom policy](../config/examples/custom.yml),
+[HashWX](../config/examples/hashwx.yml), [RandomX](../config/examples/randomx.yml)
+and [multiple files](../config/examples/includes.yml). The source catalogs in
+`config/rules/` and `config/policies/` are embedded into the binary; see
+[built-in policies and rules](policy.md#built-in-policies-and-rules).
 
 ## Loading and validation
 
@@ -127,6 +131,140 @@ produces resolved YAML with every signing key and pool password redacted.
 By default it omits unchanged defaults. `--defaults` includes the whole schema. A
 redacted result is for inspection and cannot be used as a secret-bearing configuration.
 Validate external templates with `rilgate web validate DIRECTORY`.
+
+## Splitting configuration files
+
+Use `!include` at any value position to load a local YAML file. See the
+[multi-file example](../config/examples/includes.yml) for sections,
+nested includes, CIDR lists and policy rules.
+
+```yaml
+# rilgate.yml
+server: !include ./config/server.yml
+security: !include ./config/security.yml
+policy:
+  mode: custom
+  default_action: challenge
+  rules:
+    - name: health
+      when: {path: {exact: /health}}
+      action: allow
+    - !include ./config/bot-rules.yml
+```
+
+```yaml
+# config/server.yml
+upstream:
+  url: http://127.0.0.1:3000
+```
+
+```yaml
+# config/security.yml
+secret: "${RILGATE_SECURITY_SECRET}"
+```
+
+```yaml
+# config/bot-rules.yml
+- name: badbot
+  when: {user_agent: {contains: BadBot}}
+  action: deny
+- name: scraper
+  when: {user_agent: {contains: ExampleScraper}}
+  action: deny
+```
+
+Use `builtin:` to load resources shipped inside the binary:
+
+```yaml
+policy: !include builtin:policies/balanced.yml
+```
+
+Or insert a built-in rule in a custom policy:
+
+```yaml
+policy:
+  mode: custom
+  rules:
+    - !include builtin:rules/public-endpoints.yml
+    - !include ./local-rules.yml
+    - !include builtin:rules/challenge-all.yml
+```
+
+Only `rules/` and `policies/` are built-in catalogs. Example configurations are
+local files. A built-in reference always selects embedded content, with no
+filesystem fallback or shadowing. Relative includes inside a built-in document
+stay inside the catalogs; `../rules/...` resolves from a built-in policy to a
+built-in rule. Built-in paths use forward slashes and cannot escape the catalog
+root. Built-in references also work in the string-based configuration parser;
+local includes require a source file context.
+
+A file supplies the value at the include position, without repeating the parent
+key. Mapping values can mix inline content and includes. Includes can also
+supply scalars, an entire list, or the root document.
+
+When a direct list item is `!include`, a list from that file inserts its items
+into the containing list in declaration order. A map or scalar inserts one
+item. Ordinary nested lists preserve their structure. Use `<<` to merge maps
+into their parent. The resolved values must satisfy the existing schema.
+
+Relative include paths resolve from the directory of the file containing the
+tag, independent of the process working directory. Absolute paths are also
+accepted. Include paths are literal strings; `${ENV}` references are supported
+in configuration values inside the files. Other path settings retain their
+existing path rules. YAML anchors and aliases stay within their own document.
+
+Includes resolve before environment interpolation and environment/CLI overrides.
+Precedence remains flags, variables, resolved YAML, then defaults. `config check`
+and verifier commands use the same loader. `config show` emits resolved YAML,
+keeps secret redaction and omits unchanged defaults unless `--defaults` is set.
+Verifier output retains its existing subset of settings.
+
+Each included file must contain one nonempty YAML document. Explicit `null` and
+empty lists are values subject to schema validation. Missing files, invalid
+YAML, unsupported tags, cycles and exceeded limits stop loading. Errors report
+file and include context, with parser line/column when available. Schema errors
+after parsing identify logical configuration paths; semantic errors involving
+several fields can report several sources.
+
+Loading is bounded to 1 MiB of input across all sources, 256 source reads, 16 active
+sources in an include chain including the main document, 64 levels of traversal and
+65,536 visited value nodes including include nodes. Repeated includes count
+again toward the budgets. Embedded content counts toward these same budgets.
+Parser recursion and alias-repetition limits also
+apply. Files must contain UTF-8 YAML. URL loading, glob patterns and automatic
+reload are unsupported.
+
+To split an existing configuration, move a section's value into a separate
+file, replace the value with `!include ./path.yml`, and run:
+
+```sh
+rilgate --config rilgate.yml config check
+rilgate --config rilgate.yml config show
+```
+
+### Merging and overriding
+
+Use `<<` in any mapping, including the document root, to merge a map or a list
+of maps. Bases apply in list order, with later bases taking precedence. Inline
+sibling keys take precedence over every base, regardless of where `<<` appears.
+Maps merge recursively; lists and scalars replace the previous value whole.
+Explicit `null` also replaces the previous value, subject to schema validation.
+
+```yaml
+policy:
+  <<: !include builtin:policies/crawler-protection.yml
+  default_action: challenge
+  ip_sets:
+    internal: {cidrs: [10.0.0.0/8]}
+```
+
+For several bases, use `<<: [!include ./base-policy.yml, !include ./site-policy.yml]`.
+Inline maps and YAML aliases within the same document also work as bases. A direct
+include in the base list inserts its items if it supplies a list of maps. Nested
+includes and merges resolve before their base is merged. Other base types fail
+with source context. Keys keep their first position across bases, followed by new
+inline keys. Errors retain the source and file-local path of the winning value.
+`config show` contains the resolved values, with no `<<` or `!include`.
 
 ## Environment checks
 

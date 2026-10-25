@@ -1,6 +1,10 @@
+mod builtin;
+mod includes;
+pub(crate) mod sources;
 mod value;
 use crate::{Overrides, Setting, SettingValue, schema::Document};
 use anyhow::{Context, Result, ensure};
+use includes::MAX_DEPTH;
 use serde_yaml_ng::Value;
 use std::path::{Path, PathBuf};
 
@@ -32,14 +36,24 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
     .clone()
     .or_else(|| std::env::var_os("RILGATE_CONFIG").map(PathBuf::from));
   let mut warnings = Vec::new();
-  let text = match explicit {
-    Some(path) => std::fs::read_to_string(&path)
-      .with_context(|| format!("configuration file {}", path.display()))?,
-    None => read_default(&mut warnings)?,
+  let mut resolver = includes::Resolver::default();
+  let input = match explicit {
+    Some(path) => Some((resolver.read(&path)?, path)),
+    None => read_default(&mut warnings, &mut resolver)?,
   };
-  let mut document = parse_with(&text, &args.settings)?;
+  let (value, config_sources) = match input {
+    Some((text, path)) => resolver.resolve(&text, &path)?,
+    None => (
+      Value::Mapping(Default::default()),
+      sources::ConfigurationSources::default(),
+    ),
+  };
+  let mut document = document_from_value(value, &args.settings, config_sources)?;
   if let Some(port) = args.port {
-    let addresses = super::assembly::parse_listen(&document.server.listen, "server.listen")?;
+    let addresses = document.config_sources.result(
+      super::assembly::parse_listen(&document.server.listen, "server.listen"),
+      &document.sources,
+    )?;
     document.server.listen.0 = addresses
       .into_iter()
       .map(|mut address| {
@@ -54,27 +68,24 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
 /// Reads the first default file that exists and warns about each later one,
 /// which is ignored. No default file yields an empty document, so environment
 /// variables can supply the required values.
-fn read_default(warnings: &mut Vec<String>) -> Result<String> {
+fn read_default(
+  warnings: &mut Vec<String>,
+  resolver: &mut includes::Resolver,
+) -> Result<Option<(String, PathBuf)>> {
   let mut paths = DEFAULT_PATHS.iter().map(Path::new);
   while let Some(used) = paths.next() {
-    match std::fs::read_to_string(used) {
-      Ok(text) => {
-        for ignored in paths.filter(|path| path.is_file()) {
-          warnings.push(format!(
-            "ignoring configuration file {}; using {}. Remove one, or select one with --config",
-            ignored.display(),
-            used.display()
-          ));
-        }
-        return Ok(text);
+    if let Some(text) = resolver.read_optional(used)? {
+      for ignored in paths.filter(|path| path.is_file()) {
+        warnings.push(format!(
+          "ignoring configuration file {}; using {}. Remove one, or select one with --config",
+          ignored.display(),
+          used.display()
+        ));
       }
-      Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-      Err(error) => {
-        return Err(error).with_context(|| format!("configuration file {}", used.display()));
-      }
+      return Ok(Some((text, used.to_path_buf())));
     }
   }
-  Ok(String::new())
+  Ok(None)
 }
 
 pub fn parse(text: &str) -> Result<Document> {
@@ -84,41 +95,61 @@ pub fn parse(text: &str) -> Result<Document> {
 /// Parses a YAML document and applies settings over it before deserialization,
 /// so overridden values pass the same schema validation as YAML values.
 pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
-  ensure!(
-    text.len() <= 1_048_576,
-    "configuration must not exceed 1 MiB"
-  );
-  let value: Value = if text.trim().is_empty() {
-    Value::Mapping(Default::default())
-  } else {
-    serde_yaml_ng::from_str(text).context("configuration YAML")?
-  };
-  reject_renamed(&value, settings)?;
-  let mut value = expand(value, "", 0)?;
-  for setting in settings {
-    assign(&mut value, setting)
-      .with_context(|| format!("{} ({})", setting.path, setting.source))?;
-  }
-  let mut document: Document = serde_path_to_error::deserialize(value).map_err(|error| {
-    let path = error.path().to_string();
-    let dotted = path.replace('[', ".").replace(']', "");
-    let source = settings
-      .iter()
-      .rev()
-      .find(|setting| {
-        dotted == setting.path
-          || dotted.starts_with(&format!("{}.", setting.path))
-          || setting.path.starts_with(&format!("{dotted}."))
-      })
-      .map(|setting| format!(" (from {})", setting.source))
-      .unwrap_or_default();
-    anyhow::anyhow!("Configuration error at {path}{source}: {}", error.inner())
-  })?;
-  document.sources = settings
+  let (value, config_sources) = includes::Resolver::default()
+    .resolve_inline(text)
+    .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+  document_from_value(value, settings, config_sources)
+}
+
+fn document_from_value(
+  value: Value,
+  settings: &[Setting],
+  config_sources: sources::ConfigurationSources,
+) -> Result<Document> {
+  let overrides: Vec<_> = settings
     .iter()
     .map(|setting| (setting.path.clone(), setting.source.clone()))
     .collect();
-  Ok(document)
+  let finish = || -> Result<Document> {
+    reject_renamed(&value, settings)?;
+    let mut value = expand(value, "", 0)?;
+    for setting in settings {
+      assign(&mut value, setting)
+        .with_context(|| format!("{} ({})", setting.path, setting.source))?;
+    }
+    let mut document: Document = serde_path_to_error::deserialize(value).map_err(|error| {
+      let path = error.path().to_string();
+      let dotted = path.replace('[', ".").replace(']', "");
+      let source = settings
+        .iter()
+        .rev()
+        .find(|setting| {
+          dotted == setting.path
+            || dotted.starts_with(&format!("{}.", setting.path))
+            || setting.path.starts_with(&format!("{dotted}."))
+        })
+        .map(|setting| format!(" (from {})", setting.source))
+        .unwrap_or_default();
+      let document_source = if source.is_empty() {
+        config_sources.schema_context(error.path())
+      } else {
+        String::new()
+      };
+      sources::attributed(format!(
+        "Configuration error at {path}{source}{document_source}: {}",
+        error.inner()
+      ))
+    })?;
+    document.sources = overrides.clone();
+    Ok(document)
+  };
+  match finish() {
+    Ok(mut document) => {
+      document.config_sources = config_sources;
+      Ok(document)
+    }
+    Err(error) => Err(config_sources.annotate(error, &overrides)),
+  }
 }
 
 fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
@@ -235,8 +266,8 @@ fn assign(root: &mut value::Expanded, setting: &Setting) -> Result<()> {
 fn expand(value: Value, path: &str, depth: usize) -> Result<value::Expanded> {
   use value::Expanded;
   ensure!(
-    depth <= 64,
-    "{path}: YAML nesting must not exceed 64 levels"
+    depth <= MAX_DEPTH,
+    "{path}: YAML nesting must not exceed {MAX_DEPTH} levels"
   );
   Ok(match value {
     Value::String(text) if text.contains("${") => Expanded::Environment(interpolate(&text, path)?),

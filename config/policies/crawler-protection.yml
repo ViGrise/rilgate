@@ -1,0 +1,59 @@
+mode: custom
+default_action: allow
+# Remote feeds need outbound HTTPS; readiness fails until each has loaded once.
+ip_sets:
+  google-common-crawlers:
+    url: "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
+    format: ip_prefixes_json
+    refresh: 24h
+    max_stale: 7d
+  bing-crawlers:
+    url: "https://www.bing.com/toolbox/bingbot.json"
+    format: ip_prefixes_json
+    refresh: 24h
+    max_stale: 7d
+  apple-crawlers:
+    url: "https://search.developer.apple.com/applebot.json"
+    format: ip_prefixes_json
+    refresh: 24h
+    max_stale: 7d
+  duckduckgo-crawlers:
+    url: "https://duckduckgo.com/duckduckbot.json"
+    format: ip_prefixes_json
+    refresh: 24h
+    max_stale: 7d
+rules:
+  - !include ../rules/deny-headless-browsers.yml
+  - !include ../rules/deny-ai-crawlers.yml
+  - !include ../rules/googlebot.yml
+  - !include ../rules/bingbot.yml
+  - !include ../rules/applebot.yml
+  - !include ../rules/duckduckbot.yml
+  - !include ../rules/public-endpoints.yml
+  - !include ../rules/client-score.yml
+score:
+  initial: 0
+  debug_header:
+    enabled: false
+    name: x-pow-weight
+  thresholds:
+    - min: 30
+      action: challenge
+      challenge:
+        algorithm: fast
+        difficulty: 6
+    - min: 20
+      action: challenge
+      challenge:
+        algorithm: fast
+        difficulty: 4
+    - min: 10
+      action: challenge
+      challenge:
+        algorithm: fast
+        difficulty: 2
+    - min: 1
+      action: challenge
+      challenge:
+        algorithm: fast
+        difficulty: 1

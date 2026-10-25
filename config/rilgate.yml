@@ -61,13 +61,13 @@ server:
   #
   # listen: ":8080"
 
-  # operations:
+  operations:
     # Operational routes are served only here, relative to site.base_path.
     # An empty list disables them. Use loopback or a private monitoring network.
     # Accepts one address or up to 16 unique addresses, distinct from server.listen.
     # Example: "127.0.0.1:9090". --port preserves these addresses.
     #
-    # listen: []
+    listen: "127.0.0.1:9090"
 
   upstream:
     # REQUIRED. HTTP or HTTPS application URL, optionally including a base path.
@@ -616,6 +616,15 @@ security:
 
 #################################### POLICY ###################################
 
+# Alternatively, select a built-in policy with:
+# policy: !include builtin:policies/<name>.yml
+# Customize a built-in custom policy with a map merge:
+# policy:
+#   <<: !include builtin:policies/crawler-protection.yml
+#   default_action: challenge
+#   ip_sets:
+#     internal: {cidrs: [10.0.0.0/8]}
+
 # policy:
   # off: allow application traffic without proof enforcement.
   # light: challenge empty or bot-like user agents with Fast difficulty 1.
@@ -631,7 +640,7 @@ security:
 
   # Everything below requires mode: custom. Other modes reject these settings
   # rather than ignoring them. Rules and thresholds default to empty lists.
-  # See rilgate.custom.example.yml for an enabled custom-policy configuration.
+  # See examples/custom.yml for an enabled custom-policy configuration.
 
   # Final fallback when no terminal rule or score threshold matches.
   # Options: allow, deny, challenge. A fallback challenge uses default_algorithm
