@@ -6,7 +6,8 @@ Unknown fields, unsupported values and conflicting settings are errors in every
 environment. This unreleased schema replaces the previous configuration format. Old keys
 are rejected, with no compatibility loader or migration command.
 
-The minimal configuration requires an upstream URL and a signing secret:
+The minimal configuration requires an upstream URL. Production deployments also set a
+signing secret:
 
 ```yaml
 server:
@@ -18,6 +19,12 @@ security:
 
 1. Generate at least 256 bits of randomness with `openssl rand -hex 32`.
 2. Supply `RILGATE_SECURITY_SECRET` through the process environment or deployment secret store.
+
+Without `security.secret` and `security.keys`, the gateway generates a random 32-byte
+secret at each start and reports the `generated-secret` warning. Access cookies and
+proofs signed with it end at restart, and other instances cannot verify them. Use a
+configured secret for production and for more than one instance. `config check --strict`
+rejects a configuration without a secret.
 
 Rilgate derives independent challenge and authentication keys using HKDF-SHA256 with
 separate context identifiers. Secret length is checked. Inspection of a string cannot
@@ -296,6 +303,7 @@ warning-free configuration, run it in CI or before deployment.
 | `auth-ttl-long` | production | warning | `security.auth.ttl` exceeds `7d` |
 | `development-public-listener` | development | warning | A `server.listen` address is beyond loopback, including the default `:8080` |
 | `metrics-unreachable` | both | warning | `server.metrics_enabled` is `true` with no `server.operations.listen` address |
+| `generated-secret` | both | warning | Neither `security.secret` nor `security.keys` is set, so the gateway signs with a random secret for each start |
 
 Loopback, private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), shared
 (`100.64.0.0/10`) and link-local networks count as non-public. Signing key strength is

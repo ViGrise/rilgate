@@ -101,8 +101,11 @@ builds), [configuration](https://platform.vigrise.com/docs/open-source-software/
 ## Configuration
 
 Rilgate reads `rilgate.yml` from the working directory, with a fallback to `config/rilgate.yml`.
-Use `--config FILE` or `RILGATE_CONFIG` only for a file elsewhere. Only the upstream URL and
-signing secret are required, as in the quick start.
+Use `--config FILE` or `RILGATE_CONFIG` only for a file elsewhere. Only the upstream URL is
+required. Without a signing secret, Rilgate generates a random secret at each start and
+reports a `generated-secret` warning. Access cookies then end at restart, and other
+instances cannot verify them. Set `RILGATE_SECURITY_SECRET` for production, as in the
+quick start.
 
 The defaults are production, embedded resources, local Fast verification and
 `policy.mode: balanced`. HKDF derives independent purpose-specific signing keys. Unknown fields and

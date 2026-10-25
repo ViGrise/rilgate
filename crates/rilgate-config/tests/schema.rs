@@ -111,6 +111,30 @@ fn invalid_schema_fields_report_the_configuration_path() {
 }
 
 #[test]
+fn missing_secret_signs_with_a_random_secret_for_each_start_and_warns() {
+  let text = "server:\n  upstream:\n    url: http://127.0.0.1:3000\n";
+  let first = resolve(text).unwrap();
+  let second = resolve(text).unwrap();
+  assert_ne!(
+    first.pow.signing_key.expose(),
+    second.pow.signing_key.expose()
+  );
+  assert_ne!(
+    first.pow.auth_signing_key.expose(),
+    second.pow.auth_signing_key.expose()
+  );
+  first.validate().unwrap();
+  let generated = |config: &rilgate_config::Config| {
+    config
+      .warnings()
+      .iter()
+      .any(|finding| finding.id == "generated-secret")
+  };
+  assert!(generated(&first));
+  assert!(!generated(&resolve(BASE).unwrap()));
+}
+
+#[test]
 fn conflicting_secrets_and_invalid_runtime_settings_are_rejected() {
   let conflict = BASE.replace("  secret:", "  keys: {challenge: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, auth: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}\n  secret:");
   assert!(

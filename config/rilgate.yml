@@ -3,12 +3,14 @@
 # Getting started:
 #   1. Copy this file to rilgate.yml in the directory you run rilgate from.
 #   2. Set server.upstream.url to your application.
-#   3. Export RILGATE_SECURITY_SECRET with a cryptographically random secret:
+#   3. Export RILGATE_SECURITY_SECRET with a cryptographically random secret,
+#      so access cookies stay valid across restarts and instances:
 #        export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
 #   4. Run: rilgate config check
 
-# Only the upstream URL and signing secret are required. Embedded pages, assets,
-# translations, Fast SHA-256 proofs and the balanced policy work without Stratum pool.
+# Only the upstream URL is required. Without a signing secret, each start uses a
+# random one. Embedded pages, assets, translations, Fast SHA-256 proofs and the
+# balanced policy work without Stratum pool.
 # Optional settings are commented out. Remove the comment marker from the YAML
 # setting and its parent mappings to enable it; retain the YAML indentation.
 # Descriptions appear immediately above their settings, separated by a blank
@@ -139,14 +141,16 @@ server:
 
 ################################### SECURITY ##################################
 
-security:
-  # REQUIRED in single-secret mode. Supply at least 32 bytes of high-entropy data.
+# security:
+  # Master secret of at least 32 bytes of high-entropy data.
   # HKDF-SHA256 derives independent challenge and authentication signing keys.
   # Keep the secret outside source control. Changing it invalidates existing
   # signatures. Instances sharing this secret and compatible verification settings
   # can verify each other's local proofs and authentication tokens.
+  # Without secret and keys, each start generates a random secret: access cookies
+  # end at restart and other instances cannot verify them.
   #
-  secret: "${RILGATE_SECURITY_SECRET}"
+  # secret: "${RILGATE_SECURITY_SECRET}"
 
   # Alternative explicit-key mode. Remove secret above AND unset RILGATE_SECURITY_SECRET
   # before enabling keys. Both challenge and auth are required, each at least
