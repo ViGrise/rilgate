@@ -11,7 +11,7 @@ use http::{
 };
 use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
 use rilgate_config::DecisionLog;
-use rilgate_policy::{PolicyAction, PolicyDecision, conditions::Request};
+use rilgate_policy::{Lookups, PolicyAction, PolicyDecision, conditions::Request};
 
 struct DecisionContext<'a> {
   request_id: &'a str,
@@ -73,14 +73,29 @@ pub async fn gate_with_client(
 ) -> Result<Option<Response>, ApiError> {
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let host = request_host(headers, uri);
-  let request = rilgate_policy::conditions::Request {
+  let no_lookups = Lookups::NONE;
+  let mut request = Request {
     headers,
     host: &host,
     path: uri.path(),
     method,
     client_ip,
+    lookups: &no_lookups,
   };
-  let decision = state.pow.evaluate_context(&request);
+  let mut decision = state.pow.evaluate_context(&request);
+  let mut resolved = Lookups::NONE;
+  if decision.needs_lookups
+    && let (Some(dns), Some(ip)) = (&state.dns, client_ip)
+  {
+    dns
+      .resolve(ip, state.pow.lookup_plan(), &mut resolved)
+      .await;
+    request = Request {
+      lookups: &resolved,
+      ..request
+    };
+    decision = state.pow.evaluate_context(&request);
+  }
   if decision.unresolved {
     state
       .metrics

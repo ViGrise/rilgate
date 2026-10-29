@@ -4,6 +4,7 @@ members = [
   "crates/rilgate-core",
   "crates/rilgate-gateway",
   "crates/rilgate-challenge",
+  "crates/rilgate-dns",
   "crates/rilgate-ip-feeds",
   "crates/rilgate-pow-randomx",
   "crates/rilgate-pow-hash",
@@ -36,6 +37,7 @@ license = "Apache-2.0"
 rilgate-core = { path = "crates/rilgate-core" }
 rilgate-gateway = { path = "crates/rilgate-gateway" }
 rilgate-challenge = { path = "crates/rilgate-challenge" }
+rilgate-dns = { path = "crates/rilgate-dns" }
 rilgate-ip-feeds = { path = "crates/rilgate-ip-feeds" }
 rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx" }
 rilgate-pow-hash = { path = "crates/rilgate-pow-hash" }
@@ -98,6 +100,7 @@ regex = "1.12.2"
 
 humantime = "2"
 maxminddb = "0.32"
+hickory-resolver = "0.26"
 flate2 = "1.1"
 tar = "0.4"
 

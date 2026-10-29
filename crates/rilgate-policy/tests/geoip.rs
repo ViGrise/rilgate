@@ -50,6 +50,7 @@ fn decide(engine: &PolicyEngine, ip: &str) -> (PolicyAction, i32, bool) {
       path: "/",
       method: &Method::GET,
       client_ip: Some(ip.parse::<IpAddr>().unwrap()),
+      lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
   );

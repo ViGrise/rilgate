@@ -3,9 +3,11 @@ use crate::conditions::{Budget, Compiled, Request, Truth};
 use crate::geoip::GeoDatabases;
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::IpSets;
+use crate::lookups::{LookupPlan, Lookups};
 use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, Method};
+use std::cell::Cell;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone)]
@@ -16,6 +18,9 @@ pub struct PolicyDecision<'a> {
   pub difficulty: Option<u64>,
   pub rule: &'a str,
   pub unresolved: bool,
+  /// A DNS condition had no result in the lookups, so evaluating again with the
+  /// results can change the decision.
+  pub needs_lookups: bool,
 }
 #[derive(Debug)]
 struct CompiledRule {
@@ -28,6 +33,7 @@ pub struct PolicyEngine {
   default_action: PolicyAction,
   ip_sets: IpSets,
   geoip: GeoDatabases,
+  lookup_plan: LookupPlan,
   host_load: &'static HostLoad,
 }
 
@@ -39,6 +45,7 @@ impl Definition {
         "policy: ip_sets require mode: custom"
       );
       ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
+      ensure!(self.dns.is_none(), "policy: dns requires mode: custom");
       ensure!(
         self.rules.is_none() && self.score.is_none() && self.default_action.is_none(),
         "policy: rules, score and default_action require mode: custom"
@@ -115,6 +122,14 @@ impl Definition {
         }
       }
     }
+    for rule in self.rules.iter().flatten() {
+      if rule.action == Action::Deny && rule.when.uses_dns() {
+        choices.push((
+          format!("{} (unknown dns)", rule.name),
+          ChallengePolicy::default(),
+        ));
+      }
+    }
     if default == Action::Challenge {
       choices.push(("policy.default_action".into(), ChallengePolicy::default()));
     }
@@ -126,6 +141,9 @@ impl PolicyEngine {
     let (source, default) = definition.resolved_rules()?;
     let ip_sets = IpSets::compile(&definition.ip_sets)?;
     let geoip = GeoDatabases::compile(definition.geoip.as_ref())?;
+    if let Some(dns) = &definition.dns {
+      dns.validate()?;
+    }
     ensure!(
       source.len() <= 128,
       "policy: at most 128 rules and thresholds are supported"
@@ -164,11 +182,16 @@ impl PolicyEngine {
       )?;
       rules.push(CompiledRule { rule, condition });
     }
+    let lookup_plan = LookupPlan {
+      dnsbl_zones: budget.dnsbl_zones.into_iter().collect(),
+      reverse_dns: budget.reverse_dns,
+    };
     Ok(Self {
       rules,
       default_action: default,
       ip_sets,
       geoip,
+      lookup_plan,
       host_load: &HOST_LOAD,
     })
   }
@@ -186,6 +209,10 @@ impl PolicyEngine {
   }
   pub fn geoip(&self) -> &GeoDatabases {
     &self.geoip
+  }
+  /// The lookups that the conditions of this policy can use.
+  pub fn lookup_plan(&self) -> &LookupPlan {
+    &self.lookup_plan
   }
   pub fn evaluate(
     &self,
@@ -205,6 +232,7 @@ impl PolicyEngine {
         path,
         method: &Method::GET,
         client_ip: None,
+        lookups: &Lookups::NONE,
       },
       initial_weight,
     )
@@ -213,17 +241,32 @@ impl PolicyEngine {
     // A decision is unresolved when any rule evaluated on the way to it,
     // including the deciding rule, depended on unavailable IP set data.
     let mut unresolved = false;
+    let needs_lookups = Cell::new(false);
     for entry in &self.rules {
-      let truth = entry.condition.matches(request, weight, self.host_load);
+      let truth = entry
+        .condition
+        .matches(request, weight, self.host_load, &needs_lookups);
       unresolved |= truth == Truth::Unknown;
       match (entry.rule.action, truth) {
         (_, Truth::False) => {}
         (Action::Allow, Truth::True) => {
-          return self.decision(entry, PolicyAction::Allow, weight, unresolved);
+          return self.decision(
+            entry,
+            PolicyAction::Allow,
+            weight,
+            unresolved,
+            needs_lookups.get(),
+          );
         }
         (Action::Allow, Truth::Unknown) => {}
         (Action::Deny, Truth::True) => {
-          return self.decision(entry, PolicyAction::Deny, weight, unresolved);
+          return self.decision(
+            entry,
+            PolicyAction::Deny,
+            weight,
+            unresolved,
+            needs_lookups.get(),
+          );
         }
         (Action::Deny, Truth::Unknown) => {
           // Unavailable data degrades a deny rule to a challenge, bounding the
@@ -235,10 +278,17 @@ impl PolicyEngine {
             difficulty: None,
             rule: &entry.rule.name,
             unresolved,
+            needs_lookups: needs_lookups.get(),
           };
         }
         (Action::Challenge, _) => {
-          return self.decision(entry, PolicyAction::Challenge, weight, unresolved);
+          return self.decision(
+            entry,
+            PolicyAction::Challenge,
+            weight,
+            unresolved,
+            needs_lookups.get(),
+          );
         }
         (Action::Score, _) => {
           let score = entry.rule.score.unwrap_or(0);
@@ -259,6 +309,7 @@ impl PolicyEngine {
         _ => "default-challenge",
       },
       unresolved,
+      needs_lookups: needs_lookups.get(),
     }
   }
 
@@ -268,6 +319,7 @@ impl PolicyEngine {
     action: PolicyAction,
     weight: i32,
     unresolved: bool,
+    needs_lookups: bool,
   ) -> PolicyDecision<'a> {
     let selection = entry.rule.challenge.as_ref();
     PolicyDecision {
@@ -277,6 +329,7 @@ impl PolicyEngine {
       difficulty: selection.and_then(|c| c.difficulty),
       rule: &entry.rule.name,
       unresolved,
+      needs_lookups,
     }
   }
 }

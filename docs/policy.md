@@ -190,11 +190,12 @@ empty.
 | Field | Operators |
 | --- | --- |
 | `host`, `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
-| `client_ip` | `cidr`, `in_sets` |
+| `client_ip` | `cidr`, `in_sets`, `reverse_dns` (a list of 1 to 16 domains) |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 | `load` | `window` (`1m`, `5m` default, `15m`), `gt`, `gte`, `lt`, `lte` |
 | `country` | a list of 1 to 256 uppercase ISO 3166-1 alpha-2 codes |
 | `asn` | a list of 1 to 256 autonomous system numbers |
+| `dnsbl` | one DNSBL zone name |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
 regex explicitly selects case-insensitive matching. Header names are case-insensitive.
@@ -234,6 +235,51 @@ An IPv4-mapped IPv6 client matches as IPv4. Each condition needs its database in
   action: score
   score: 5
 ```
+
+`dnsbl` is true when the zone lists the client address. Rilgate queries the A record of
+the reversed address under the zone: the reversed octets for IPv4 and the 32 reversed nibbles
+for IPv6. An answer in `127.0.0.0/8` means listed, and a missing record means not listed.
+A policy uses at most 8 zones.
+
+`client_ip.reverse_dns` is true when a PTR name of the client is a listed domain or a
+subdomain of it, and the A or AAAA records of that name contain the client address.
+The match works on label boundaries, ignores case and ignores a trailing dot. For example,
+`googlebot.com` matches `crawl.googlebot.com` and does not match `evilgooglebot.com`.
+Both conditions need a client IP, work only in policy rules, and treat an IPv4-mapped IPv6
+client as IPv4.
+
+```yaml
+- name: verified-googlebot
+  when:
+    all:
+      - user_agent: {contains: Googlebot}
+      - client_ip: {reverse_dns: [googlebot.com, google.com]}
+  action: allow
+
+- name: listed-source
+  when: {dnsbl: dnsbl.dronebl.org}
+  action: score
+  score: 10
+```
+
+A lookup that fails or times out leaves the condition unknown. An `allow` rule on an unknown
+condition never allows, and a `deny` rule challenges. Rilgate evaluates the policy once
+without lookups, and looks up the client only when the evaluation reaches a DNS condition.
+The first request from a new client can wait up to `policy.dns.timeout`.
+
+`policy.dns` tunes the lookups and requires `mode: custom`. The settings apply only when a
+rule uses `dnsbl` or `client_ip.reverse_dns`. Rilgate reads the DNS servers from the system
+configuration. Results are cached per client, and a failed lookup is never cached.
+
+| Setting | Default | Range |
+| --- | --- | --- |
+| `timeout` | `1s` | `1ms..5s` |
+| `cache_ttl` | `1h` | at least `1s` |
+| `negative_ttl` | `10m` | at least `1s` |
+| `max_entries` | `65536` | `1..1048576` |
+
+`cache_ttl` applies to a listed address or a verified name. `negative_ttl` applies to an
+unlisted address or a client without a verified name.
 
 Client IP comes from the TCP peer unless `server.trusted_proxies` authorizes a forwarded chain.
 Forwarded headers from untrusted peers cannot influence IP rules. The same resolved

@@ -110,6 +110,7 @@ pub fn config() -> Config {
         score: None,
         ip_sets: std::collections::BTreeMap::new(),
         geoip: None,
+        dns: None,
       },
       browser: BrowserConfig {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),

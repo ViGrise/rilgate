@@ -299,6 +299,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
         )
         .unwrap(),
       ),
+      dns: None,
       proxy: Arc::new(ProxyService::new(config.upstream.clone()).unwrap()),
       limiter: Arc::new(RateLimiter::new(config.pow.rate_limit.clone()).unwrap()),
       web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),

@@ -51,6 +51,7 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
         path: "/content",
         method: &http::Method::GET,
         client_ip: Some(address.parse().unwrap()),
+        lookups: &rilgate_policy::Lookups::NONE,
       };
       assert_eq!(
         engine.evaluate_context(&request, 0).action,
@@ -235,6 +236,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
       path: "/content",
       method: &http::Method::GET,
       client_ip: Some("192.0.2.10".parse().unwrap()),
+      lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
   );

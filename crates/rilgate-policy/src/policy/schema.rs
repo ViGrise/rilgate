@@ -52,6 +52,12 @@ pub struct Definition {
     skip_serializing_if = "Option::is_none"
   )]
   pub geoip: Option<GeoIpDefinition>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub dns: Option<DnsDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -185,8 +191,30 @@ pub struct Condition {
     skip_serializing_if = "Option::is_none"
   )]
   pub asn: Option<Vec<u32>>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub dnsbl: Option<String>,
 }
 impl Condition {
+  /// Reports whether this condition or any nested condition needs DNS lookups.
+  pub fn uses_dns(&self) -> bool {
+    self.dnsbl.is_some()
+      || self
+        .client_ip
+        .as_ref()
+        .is_some_and(|value| value.reverse_dns.is_some())
+      || self
+        .all
+        .iter()
+        .chain(self.any.iter())
+        .flatten()
+        .any(Self::uses_dns)
+      || self.not.as_deref().is_some_and(Self::uses_dns)
+  }
+
   /// Reports whether this condition or any nested condition reads a GeoIP database.
   pub fn uses_geoip(&self) -> bool {
     self.country.is_some()
@@ -334,6 +362,12 @@ pub struct IpMatch {
     skip_serializing_if = "Option::is_none"
   )]
   pub in_sets: Option<Vec<String>>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub reverse_dns: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -415,6 +449,61 @@ pub struct GeoDatabaseDefinition {
     skip_serializing_if = "Option::is_none"
   )]
   pub max_stale: Option<std::time::Duration>,
+}
+
+/// Settings of the DNS lookups behind `dnsbl` and `client_ip.reverse_dns`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DnsDefinition {
+  /// The time one request waits for the lookups of its client.
+  #[serde(with = "humantime_serde")]
+  pub timeout: std::time::Duration,
+  /// How long a listed address or a verified name stays cached.
+  #[serde(with = "humantime_serde")]
+  pub cache_ttl: std::time::Duration,
+  /// How long an unlisted address or a missing name stays cached.
+  #[serde(with = "humantime_serde")]
+  pub negative_ttl: std::time::Duration,
+  pub max_entries: usize,
+}
+
+impl Default for DnsDefinition {
+  fn default() -> Self {
+    Self {
+      timeout: std::time::Duration::from_secs(1),
+      cache_ttl: std::time::Duration::from_secs(3600),
+      negative_ttl: std::time::Duration::from_secs(600),
+      max_entries: 65_536,
+    }
+  }
+}
+
+impl DnsDefinition {
+  pub const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+  pub const MAX_ENTRIES: usize = 1_048_576;
+
+  pub(crate) fn validate(&self) -> anyhow::Result<()> {
+    use anyhow::ensure;
+    use std::time::Duration;
+    ensure!(
+      (Duration::from_millis(1)..=Self::MAX_TIMEOUT).contains(&self.timeout),
+      "policy.dns.timeout: expected 1ms to 5s"
+    );
+    ensure!(
+      self.cache_ttl >= Duration::from_secs(1),
+      "policy.dns.cache_ttl: expected a duration of at least 1s"
+    );
+    ensure!(
+      self.negative_ttl >= Duration::from_secs(1),
+      "policy.dns.negative_ttl: expected a duration of at least 1s"
+    );
+    ensure!(
+      (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
+      "policy.dns.max_entries: expected 1 to {}",
+      Self::MAX_ENTRIES
+    );
+    Ok(())
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

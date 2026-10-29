@@ -19,6 +19,7 @@ fn decide(engine: &PolicyEngine) -> (PolicyAction, i32, bool) {
       path: "/",
       method: &Method::GET,
       client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
   );
