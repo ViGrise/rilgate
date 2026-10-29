@@ -39,6 +39,7 @@ rilgate-pow.workspace = true
 rilgate-web.workspace = true
 
 [dev-dependencies]
+tracing-subscriber.workspace = true
 rilgate-pow-hashwx.workspace = true
 hashwx-core = { path = "../hashwx-core" }
 axum.workspace = true

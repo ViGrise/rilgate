@@ -10,7 +10,48 @@ use http::{
   header::{CACHE_CONTROL, CONTENT_TYPE},
 };
 use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
-use rilgate_policy::PolicyAction;
+use rilgate_config::DecisionLog;
+use rilgate_policy::{PolicyAction, PolicyDecision, conditions::Request};
+
+struct DecisionContext<'a> {
+  request_id: &'a str,
+  request: &'a Request<'a>,
+  action: PolicyAction,
+}
+
+fn log_decision(level: DecisionLog, decision: &PolicyDecision<'_>, context: DecisionContext<'_>) {
+  let enabled = match level {
+    DecisionLog::Off => false,
+    DecisionLog::Deny => context.action == PolicyAction::Deny,
+    DecisionLog::Challenge => {
+      matches!(context.action, PolicyAction::Deny | PolicyAction::Challenge)
+    }
+    DecisionLog::All => true,
+  };
+  if !enabled {
+    return;
+  }
+  let action = match context.action {
+    PolicyAction::Allow => "allow",
+    PolicyAction::Deny => "deny",
+    PolicyAction::Challenge => "challenge",
+    PolicyAction::Score => "score",
+  };
+  tracing::info!(
+    request_id = context.request_id,
+    client_ip = %context.request.client_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "unknown".into()),
+    method = %context.request.method,
+    host = context.request.host,
+    path = context.request.path,
+    action,
+    rule = decision.rule,
+    weight = decision.weight,
+    algorithm = ?decision.algorithm,
+    difficulty = ?decision.difficulty,
+    unresolved = decision.unresolved,
+    "Policy decision"
+  );
+}
 
 pub async fn gate(
   state: &AppState,
@@ -18,7 +59,7 @@ pub async fn gate(
   uri: &Uri,
   method: &Method,
 ) -> Result<Option<Response>, ApiError> {
-  gate_with_client(state, headers, uri, method, None, false).await
+  gate_with_client(state, headers, uri, method, None, false, "").await
 }
 
 pub async fn gate_with_client(
@@ -28,6 +69,7 @@ pub async fn gate_with_client(
   method: &Method,
   client_ip: Option<std::net::IpAddr>,
   trusted_peer: bool,
+  request_id: &str,
 ) -> Result<Option<Response>, ApiError> {
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let host = request_host(headers, uri);
@@ -46,19 +88,26 @@ pub async fn gate_with_client(
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 
+  let log = |action| {
+    log_decision(
+      state.cfg.server.decision_log,
+      &decision,
+      DecisionContext {
+        request_id,
+        request: &request,
+        action,
+      },
+    )
+  };
+
   match decision.action {
     PolicyAction::Allow => {
+      log(PolicyAction::Allow);
       return Ok(None);
     }
 
     PolicyAction::Deny => {
-      tracing::debug!(
-        rule = %decision.rule,
-        weight = decision.weight,
-        unresolved = decision.unresolved,
-        path = %uri.path(),
-        "Request denied by PoW policy"
-      );
+      log(PolicyAction::Deny);
 
       let template = if json {
         "pages/denied.json.jinja"
@@ -118,6 +167,7 @@ pub async fn gate_with_client(
     });
 
   if authenticated {
+    log(PolicyAction::Allow);
     return Ok(None);
   }
 
@@ -126,16 +176,6 @@ pub async fn gate_with_client(
       .pow
       .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &decision)
       .map_err(ApiError::Internal)?;
-
-    tracing::debug!(
-      rule = %decision.rule,
-      weight = decision.weight,
-      algorithm = ?decision.algorithm,
-      difficulty = required_difficulty,
-      unresolved = decision.unresolved,
-      path = %uri.path(),
-      "Presenting proof-of-work challenge"
-    );
 
     let challenge_url =
       crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token);
@@ -172,9 +212,11 @@ pub async fn gate_with_client(
           .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?,
       );
     }
+    log(PolicyAction::Challenge);
     return Ok(Some(out));
   }
 
+  log(PolicyAction::Challenge);
   Ok(Some(response(
     StatusCode::UNAUTHORIZED,
     "Proof of work is required before sending this request.",

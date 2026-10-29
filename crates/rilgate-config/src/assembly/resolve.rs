@@ -145,6 +145,7 @@ impl Document {
           .map(|name| name.parse())
           .transpose()
           .context("server.client_ip_header: expected an HTTP header name")?,
+        decision_log: self.server.decision_log,
         metrics_enabled: self.server.metrics_enabled,
         readiness_timeout: self.server.readiness_timeout.0,
       },

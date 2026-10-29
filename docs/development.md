@@ -155,6 +155,11 @@ cargo build --release --locked -p rilgate-gateway --example null-upstream
 scripts/perf-gate.sh
 ```
 
+The generated lab configuration sets `server.decision_log: off` to measure request
+processing with policy decision logs disabled. The shipping default is `challenge`.
+The benchmark uses the shipping log filter unless `PERF_GATE_RUST_LOG` overrides it.
+Its default 65536-byte log cap checks incidental log volume during load.
+
 The operations listener used for health defaults to port 9090. Override it with
 `PERF_GATE_OPERATIONS_PORT`. Thresholds and load shape are overridable through `PERF_GATE_MAX_LOG_BYTES`,
 `PERF_GATE_MAX_CHALLENGE_PCT`, `PERF_GATE_CONNECTIONS`, `PERF_GATE_THREADS`, `PERF_GATE_DURATION` and `PERF_GATE_WARMUP`. `PERF_GATE_RUST_LOG`
