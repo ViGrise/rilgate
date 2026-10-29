@@ -27,6 +27,7 @@ thiserror.workspace = true
 futures-util.workspace = true
 url.workspace = true
 percent-encoding = "2"
+getrandom = "0.4"
 hex.workspace = true
 rilgate-config.workspace = true
 rilgate-core.workspace = true

@@ -47,6 +47,10 @@ impl Definition {
       ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
       ensure!(self.dns.is_none(), "policy: dns requires mode: custom");
       ensure!(
+        self.honeypot.is_none(),
+        "policy: honeypot requires mode: custom"
+      );
+      ensure!(
         self.rules.is_none() && self.score.is_none() && self.default_action.is_none(),
         "policy: rules, score and default_action require mode: custom"
       );
@@ -144,12 +148,15 @@ impl PolicyEngine {
     if let Some(dns) = &definition.dns {
       dns.validate()?;
     }
+    if let Some(honeypot) = &definition.honeypot {
+      honeypot.validate()?;
+    }
     ensure!(
       source.len() <= 128,
       "policy: at most 128 rules and thresholds are supported"
     );
     let mut names = std::collections::HashSet::new();
-    let mut budget = Budget::default();
+    let mut budget = Budget::for_policy(definition.honeypot.is_some());
     let mut rules = Vec::new();
     for (index, rule) in source.into_iter().enumerate() {
       let explicit = definition.rules.as_ref().map_or(0, Vec::len);

@@ -54,6 +54,7 @@ pub(crate) enum Compiled {
   Country(Arc<GeoDatabase>, Vec<[u8; 2]>),
   Asn(Arc<GeoDatabase>, Vec<u32>),
   Dnsbl(String),
+  Honeypot(bool),
   ReverseDns(Vec<String>),
 }
 #[derive(Debug)]
@@ -74,10 +75,18 @@ pub(crate) struct Budget {
   nodes: usize,
   bytes: usize,
   request_only: bool,
+  honeypot: bool,
   pub(crate) dnsbl_zones: BTreeSet<String>,
   pub(crate) reverse_dns: bool,
 }
 impl Budget {
+  pub(crate) fn for_policy(honeypot: bool) -> Self {
+    Self {
+      honeypot,
+      ..Default::default()
+    }
+  }
+
   fn consume(&mut self, depth: usize, path: &str) -> Result<()> {
     self.nodes += 1;
     ensure!(depth <= 16, "{path}: condition depth must not exceed 16");
@@ -236,6 +245,15 @@ impl Compiled {
         "{path}.dnsbl: policy must not use more than {MAX_DNSBL_ZONES} DNSBL zones"
       );
       nodes.push(Self::Dnsbl(zone));
+    }
+    if let Some(flagged) = condition.honeypot {
+      ensure!(
+        !budget.request_only,
+        "{path}.honeypot: honeypot is only available in policy rules"
+      );
+      ensure!(budget.honeypot, "{path}.honeypot: requires policy.honeypot");
+      budget.consume(depth, path)?;
+      nodes.push(Self::Honeypot(flagged));
     }
     ensure!(
       !nodes.is_empty(),
@@ -479,6 +497,7 @@ impl Compiled {
           }
         }
       }
+      Self::Honeypot(expected) => truth(request.lookups.honeypot.unwrap_or(false) == *expected),
       Self::ReverseDns(domains) => {
         if request.client_ip.is_none() {
           return Truth::False;

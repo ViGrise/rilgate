@@ -78,6 +78,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
       &Default::default(),
       Arc::new(CrawlerResolver),
     )),
+    honeypot: None,
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone()).unwrap()),
     limiter: Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone()).unwrap()),
     web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),

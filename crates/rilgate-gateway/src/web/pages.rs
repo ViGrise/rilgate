@@ -33,6 +33,7 @@ pub fn render_challenge_page(
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
     solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
+    honeypot_url: honeypot_url(state, &snapshot.config.base_path),
     ..Default::default()
   };
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
@@ -47,6 +48,17 @@ pub fn render_challenge_page(
     render(&state.web.fallback()).expect("Validated embedded challenge template")
   });
   (html, locale)
+}
+
+/// Returns a hidden link target that is unique to one page, or an empty string when
+/// the honeypot is off.
+fn honeypot_url(state: &AppState, prefix: &str) -> String {
+  if state.honeypot.is_none() {
+    return String::new();
+  }
+  let mut segment = [0u8; 16];
+  getrandom::fill(&mut segment).expect("Operating system randomness");
+  format!("{prefix}/trap/{}", hex::encode(segment))
 }
 
 pub(crate) fn challenge_url(prefix: &str, token: &str) -> String {
@@ -218,6 +230,7 @@ pub fn render_refresh_page(
       url: format!("{}/api/refresh?{query}", snapshot.config.base_path),
       algorithm: "refresh".into(),
       difficulty: Some(seconds),
+      honeypot_url: honeypot_url(state, &snapshot.config.base_path),
       ..Default::default()
     },
   };

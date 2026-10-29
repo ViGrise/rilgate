@@ -291,7 +291,9 @@ impl WebSnapshot {
   }
 
   pub fn render_challenge(&self, challenge: &PublicChallengeInfo, locale: &str) -> Result<String> {
-    if let Some(shell) = self.challenge_shells.get(locale) {
+    if challenge.honeypot_url.is_empty()
+      && let Some(shell) = self.challenge_shells.get(locale)
+    {
       return shell.render(&self.public.base_path, challenge);
     }
     let public = self.challenge_context(challenge.clone(), locale)?;
@@ -357,7 +359,7 @@ impl WebSnapshot {
       .get_template(name)?
       .render(context! {
         rilgate => &*public.rilgate, page => &public.page, challenge => &public.challenge,
-        locale => locale, client_i18n => &*client_i18n,
+        locale => locale, client_i18n => &*client_i18n, honeypot_url => &public.challenge.honeypot_url,
         client_i18n_json => client_i18n_json, challenge_bootstrap => minijinja::Value::from_safe_string(bootstrap),
       })
       .with_context(|| format!("Rendering template {name} for locale {locale}"))?;

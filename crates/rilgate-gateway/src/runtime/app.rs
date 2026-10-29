@@ -24,6 +24,12 @@ pub async fn build(
     let settings = cfg.pow.policy.dns.clone().unwrap_or_default();
     Some(rilgate_dns::DnsLookups::system(&settings)?)
   };
+  let honeypot = cfg
+    .pow
+    .policy
+    .honeypot
+    .as_ref()
+    .map(|settings| Arc::new(super::honeypot::Honeypot::new(settings)));
   Ok(Gateway::new(AppState {
     connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
@@ -36,6 +42,7 @@ pub async fn build(
     )?),
     cfg,
     dns,
+    honeypot,
     pow,
     pool,
     proxy,

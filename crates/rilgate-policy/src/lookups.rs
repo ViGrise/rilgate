@@ -10,6 +10,7 @@ pub struct Lookups {
   pub dnsbl: BTreeMap<String, bool>,
   /// The forward-confirmed PTR name of the client. `Some(None)` means the client has none.
   pub reverse_dns: Option<Option<String>>,
+  /// Whether the client followed the honeypot link. A missing entry counts as not flagged.
   pub honeypot: Option<bool>,
 }
 

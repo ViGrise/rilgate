@@ -14,6 +14,7 @@ pub struct AppState {
   pub shutdown: tokio_util::sync::CancellationToken,
   pub limiter: Arc<crate::transport::rate_limit::RateLimiter>,
   pub open_graph: Arc<crate::open_graph::OpenGraphService>,
+  pub honeypot: Option<Arc<super::honeypot::Honeypot>>,
   pub dns: Option<rilgate_dns::DnsLookups>,
   pub proxy: Arc<ProxyService>,
   pub web: Arc<rilgate_web::WebManager>,

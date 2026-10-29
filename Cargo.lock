@@ -3362,6 +3362,7 @@ dependencies = [
  "axum",
  "bytes",
  "futures-util",
+ "getrandom 0.4.3",
  "hashwx-core",
  "hex",
  "html-escape",

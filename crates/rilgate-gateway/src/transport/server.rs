@@ -313,6 +313,17 @@ impl Handler {
       }
       return Ok(Some(out));
     }
+    if path.starts_with("/trap/") {
+      if let Some(honeypot) = &self.state.honeypot {
+        honeypot.record_hit(resolved_client_ip.ok().flatten());
+        self
+          .state
+          .metrics
+          .honeypot_hits
+          .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      }
+      return Ok(Some(response(StatusCode::NOT_FOUND, "")));
+    }
     let proof = matches!(
       path,
       "/challenge"

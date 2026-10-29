@@ -117,7 +117,7 @@ policy:
 The crawler-protection policy evaluates deny rules before crawler and public
 allows, then applies client scores. It uses Fast difficulties 1, 2, 4 and 6 at
 scores 1, 10, 20 and 30. Its fallback allows requests without a positive score.
-GeoIP, ASN, CEL and honeypot conditions are outside the current policy schema.
+CEL expressions are outside the current policy schema.
 
 ## Custom evaluation
 
@@ -196,6 +196,7 @@ empty.
 | `country` | a list of 1 to 256 uppercase ISO 3166-1 alpha-2 codes |
 | `asn` | a list of 1 to 256 autonomous system numbers |
 | `dnsbl` | one DNSBL zone name |
+| `honeypot` | `true` or `false` |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
 regex explicitly selects case-insensitive matching. Header names are case-insensitive.
@@ -280,6 +281,41 @@ configuration. Results are cached per client, and a failed lookup is never cache
 
 `cache_ttl` applies to a listed address or a verified name. `negative_ttl` applies to an
 unlisted address or a client without a verified name.
+
+## Honeypot
+
+`policy.honeypot` turns on a hidden link in the challenge and refresh pages. A person does not
+see the link. A crawler that follows every link requests it. The link points to
+`{site.base_path}/trap/<random>`, where `<random>` is 16 random bytes in hex that change on
+every page. The request flags the client, and the trap URL answers like an unknown internal
+route (the 404 page).
+
+The condition `honeypot: true` matches flagged clients, and `honeypot: false` matches the
+others. The condition needs `policy.honeypot` and works only in policy rules.
+
+```yaml
+policy:
+  mode: custom
+  honeypot:
+    ttl: 24h
+    max_entries: 65536
+  rules:
+    - name: link-followers
+      when: {honeypot: true}
+      action: deny
+```
+
+| Setting | Default | Range |
+| --- | --- | --- |
+| `ttl` | `24h` | `1s..30d` |
+| `max_entries` | `65536` | `1..1048576` |
+
+Rilgate keeps flags in memory, so a restart clears them. A flag covers one IPv4 address or one
+IPv6 /64. A request without a resolved client IP flags nobody, so one hit cannot flag every
+client behind a proxy that Rilgate does not trust. When the table is full, Rilgate drops
+expired flags first and then the oldest flag. The metric `rilgate_honeypot_hits_total` counts
+the requests to the trap URL. A page template can place the link with the variable
+`honeypot_url`, which is an empty string when the honeypot is off.
 
 Client IP comes from the TCP peer unless `server.trusted_proxies` authorizes a forwarded chain.
 Forwarded headers from untrusted peers cannot influence IP rules. The same resolved
