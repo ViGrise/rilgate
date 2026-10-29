@@ -160,6 +160,25 @@ pub struct Condition {
     skip_serializing_if = "Option::is_none"
   )]
   pub score: Option<NumberMatch>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub load: Option<LoadMatch>,
+}
+impl Condition {
+  /// Reports whether this condition or any nested condition compares the host load.
+  pub fn uses_load(&self) -> bool {
+    self.load.is_some()
+      || self
+        .all
+        .iter()
+        .chain(self.any.iter())
+        .flatten()
+        .any(Self::uses_load)
+      || self.not.as_deref().is_some_and(Self::uses_load)
+  }
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -228,6 +247,45 @@ pub struct NumberMatch {
     skip_serializing_if = "Option::is_none"
   )]
   pub lte: Option<i32>,
+}
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum LoadWindow {
+  #[serde(rename = "1m")]
+  OneMinute,
+  #[default]
+  #[serde(rename = "5m")]
+  FiveMinutes,
+  #[serde(rename = "15m")]
+  FifteenMinutes,
+}
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LoadMatch {
+  pub window: LoadWindow,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub gt: Option<f64>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub gte: Option<f64>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub lt: Option<f64>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub lte: Option<f64>,
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]

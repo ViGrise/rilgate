@@ -192,6 +192,7 @@ empty.
 | `host`, `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
 | `client_ip` | `cidr`, `in_sets` |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
+| `load` | `window` (`1m`, `5m` default, `15m`), `gt`, `gte`, `lt`, `lte` |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
 regex explicitly selects case-insensitive matching. Header names are case-insensitive.
@@ -200,6 +201,21 @@ Any repeated header value can satisfy its matcher. Missing headers do not match,
 including an empty-string regex. `not` can test absence. A missing User-Agent is
 an empty string. A missing client IP does not match CIDR. Numeric comparisons combine
 with AND and impossible ranges are rejected.
+
+`load` compares the host load average over `window` with decimal bounds of at
+least 0. Rilgate samples the average every 5 seconds, and only when a condition
+uses `load`. The condition is unknown before the first sample and on platforms
+without a load average, so an `allow` rule on it never allows.
+
+```yaml
+- name: shed-load
+  when:
+    all:
+      - load: {window: 5m, gte: 4.0, lt: 8.0}
+      - path: {prefix: /search}
+  action: score
+  score: 5
+```
 
 Client IP comes from the TCP peer unless `server.trusted_proxies` authorizes a forwarded chain.
 Forwarded headers from untrusted peers cannot influence IP rules. The same resolved

@@ -1,5 +1,6 @@
+use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::{IpRanges, IpSet, IpSets, MAX_SETS_PER_MATCHER, Membership};
-use crate::policy::schema::{Condition, NumberMatch, StringMatch};
+use crate::policy::schema::{Condition, LoadMatch, NumberMatch, StringMatch};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
 use regex::Regex;
@@ -40,6 +41,7 @@ pub(crate) enum Compiled {
   Ip(IpRanges),
   Sets(Vec<Arc<IpSet>>),
   Score(NumberMatch),
+  Load(LoadMatch),
 }
 #[derive(Debug)]
 pub(crate) enum Field {
@@ -189,11 +191,45 @@ impl Compiled {
       );
       nodes.push(Self::Score(value.clone()));
     }
+    if let Some(value) = &condition.load {
+      budget.consume(depth, path)?;
+      Self::check_load(value, path)?;
+      nodes.push(Self::Load(value.clone()));
+    }
     ensure!(
       !nodes.is_empty(),
       "{path}: condition must contain at least one matcher"
     );
     Ok(Self::All(nodes))
+  }
+
+  fn check_load(value: &LoadMatch, path: &str) -> Result<()> {
+    let bounds = [value.gt, value.gte, value.lt, value.lte];
+    ensure!(
+      bounds.iter().any(Option::is_some),
+      "{path}.load: expected a numeric comparison"
+    );
+    ensure!(
+      bounds.iter().flatten().all(|v| v.is_finite() && *v >= 0.0),
+      "{path}.load: expected a finite number of at least 0"
+    );
+    // Each bound is a (value, strict) pair; the tightest bound wins and a strict
+    // bound is tighter than an inclusive one at the same value.
+    let lower = [(value.gt, true), (value.gte, false)]
+      .into_iter()
+      .filter_map(|(v, strict)| v.map(|v| (v, strict)))
+      .max_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    let upper = [(value.lt, true), (value.lte, false)]
+      .into_iter()
+      .filter_map(|(v, strict)| v.map(|v| (v, strict)))
+      .min_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)));
+    if let (Some((low, low_strict)), Some((high, high_strict))) = (lower, upper) {
+      ensure!(
+        low < high || (low == high && !low_strict && !high_strict),
+        "{path}.load: comparisons describe an empty range"
+      );
+    }
+    Ok(())
   }
 
   fn compile_ip(value: &crate::policy::schema::IpMatch, path: &str, sets: &IpSets) -> Result<Self> {
@@ -222,12 +258,12 @@ impl Compiled {
     Ok(Self::Sets(resolved))
   }
 
-  pub(crate) fn matches(&self, request: &Request<'_>, score: i32) -> Truth {
+  pub(crate) fn matches(&self, request: &Request<'_>, score: i32, load: &HostLoad) -> Truth {
     match self {
       Self::All(nodes) => {
         let mut unknown = false;
         for node in nodes {
-          match node.matches(request, score) {
+          match node.matches(request, score, load) {
             Truth::False => return Truth::False,
             Truth::Unknown => unknown = true,
             Truth::True => {}
@@ -238,7 +274,7 @@ impl Compiled {
       Self::Any(nodes) => {
         let mut unknown = false;
         for node in nodes {
-          match node.matches(request, score) {
+          match node.matches(request, score, load) {
             Truth::True => return Truth::True,
             Truth::Unknown => unknown = true,
             Truth::False => {}
@@ -250,7 +286,7 @@ impl Compiled {
           Truth::False
         }
       }
-      Self::Not(node) => node.matches(request, score).not(),
+      Self::Not(node) => node.matches(request, score, load).not(),
       Self::Text(field, test) => {
         let value = match field {
           Field::Path => Some(request.path),
@@ -294,6 +330,15 @@ impl Compiled {
           Truth::False
         }
       }
+      Self::Load(test) => match load.get(test.window) {
+        None => Truth::Unknown,
+        Some(value) => truth(
+          test.gt.is_none_or(|v| value > v)
+            && test.gte.is_none_or(|v| value >= v)
+            && test.lt.is_none_or(|v| value < v)
+            && test.lte.is_none_or(|v| value <= v),
+        ),
+      },
       Self::Score(test) => truth(
         test.eq.is_none_or(|v| score == v)
           && test.gt.is_none_or(|v| score > v)
@@ -398,6 +443,6 @@ impl CompiledCondition {
 
   /// Selects requests whose condition evaluates to true with the current IP sets.
   pub fn matches(&self, request: &Request<'_>) -> bool {
-    self.0.matches(request, 0) == Truth::True
+    self.0.matches(request, 0, &HOST_LOAD) == Truth::True
   }
 }

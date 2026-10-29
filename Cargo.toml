@@ -78,6 +78,7 @@ dotenvy = "0.15.7"
 uuid = { version = "1.24.0", features = ["v4", "v7", "fast-rng", "serde"] }
 
 anyhow = "1.0.104"
+libc = "0.2"
 thiserror = "2.0.19"
 futures-util = "0.3.31"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
