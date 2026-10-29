@@ -15,11 +15,11 @@ not writable. Set these variables to change the defaults:
 | Variable      | Default          | Description                                                                 |
 | ------------- | ---------------- | --------------------------------------------------------------------------- |
 | `INSTALL_DIR` | `/usr/local/bin` | Destination directory                                                       |
-| `VERSION`     | `latest`         | Release tag, for example `v0.3.0`                                           |
+| `VERSION`     | `latest`         | Release tag, for example `v0.4.0`                                           |
 | `LIBC`        | detected         | Linux amd64 and arm64 only: `gnu` for the glibc build (glibc 2.36 or newer), `musl` for the static build |
 
 ```bash
-curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.3.0 INSTALL_DIR="$HOME/.local/bin" bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.4.0 INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 Linux ppc64le and riscv64 have only the static build. The FreeBSD build is available
@@ -74,10 +74,10 @@ environment variables, to change the defaults:
 | Parameter     | Default                       | Description                       |
 | ------------- | ----------------------------- | --------------------------------- |
 | `-InstallDir` | `%LOCALAPPDATA%\rilgate\bin`  | Destination directory             |
-| `-Version`    | `latest`                      | Release tag, for example `v0.3.0` |
+| `-Version`    | `latest`                      | Release tag, for example `v0.4.0` |
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.3.0
+& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.4.0
 ```
 
 The release also has `rilgate-windows-amd64.msi` and `rilgate-windows-arm64.msi`. The
