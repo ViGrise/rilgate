@@ -315,7 +315,12 @@ impl Handler {
     }
     let proof = matches!(
       path,
-      "/challenge" | "/api/challenge" | "/api/verify" | "/api/exchange" | "/api/ws"
+      "/challenge"
+        | "/api/challenge"
+        | "/api/verify"
+        | "/api/exchange"
+        | "/api/ws"
+        | "/api/refresh"
     );
     let expected = if matches!(path, "/api/challenge" | "/api/verify" | "/api/exchange") {
       Method::POST
@@ -409,6 +414,23 @@ impl Handler {
           }
           Err(out) => Ok(*out),
         },
+        "/api/refresh" => {
+          let binding = BindingInput {
+            client_ip,
+            headers: &headers,
+            trusted_peer: crate::transport::client_ip::trusted_peer(
+              socket_peer,
+              &self.state.cfg.server,
+            ),
+          };
+          handlers::refresh(
+            &self.state,
+            &headers,
+            &uri,
+            &binding,
+            method == Method::HEAD,
+          )
+        }
         "/api/ws" => match self.websocket(session, ctx).await {
           Ok(()) => return Ok(None),
           Err(error) => Err(error),

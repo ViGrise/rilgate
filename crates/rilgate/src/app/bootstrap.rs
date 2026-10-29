@@ -16,6 +16,9 @@ pub(super) fn services(
   registry.register(Arc::new(FastAlgorithm::new(&FastConfig {
     ttl: cfg.challenge_ttl_seconds,
   })))?;
+  registry.register(Arc::new(rilgate_pow::RefreshAlgorithm::new(
+    cfg.challenge_ttl_seconds,
+  )))?;
   if cfg.hashwx_enabled {
     registry.register(Arc::new(HashWxAlgorithm::new(&cfg.hashwx)?))?;
   }
@@ -66,7 +69,7 @@ mod tests {
         .algorithm_descriptor(rilgate_config::PowAlgorithm::Hashwx)
         .is_err()
     );
-    assert_eq!(service.algorithm_descriptors().len(), 1);
+    assert_eq!(service.algorithm_descriptors().len(), 2);
   }
 
   #[test]

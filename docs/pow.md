@@ -2,7 +2,7 @@
 
 ## PoW algorithms
 
-Challenge policies can select Fast, HashWX or RandomX.
+Challenge policies can select Fast, HashWX, RandomX or Refresh.
 
 ### `fast` - lightweight SHA-256
 
@@ -82,6 +82,25 @@ HashWX tokens use version 1 with an explicit `hashwx` algorithm tag. Older
 builds reject that tag. Deploy HashWX support to every gateway instance before
 selecting it in policy. Shared signing keys, token lifetimes and enforcement
 must also match. Receipts and access cookies retain the algorithm and difficulty.
+
+### `refresh` - delay without JavaScript
+
+```yaml
+challenge:
+  algorithm: refresh
+  difficulty: 5
+```
+
+The challenge page uses an HTML meta refresh and runs no script. Difficulty is a
+delay of 1 to 10 seconds. After the delay, the browser opens
+`{site.base_path}/api/refresh`. That URL sets the access cookie and redirects to the
+original request path on the same host. If the browser opens the URL early, it gets the
+page again with the remaining delay.
+
+The delay proves no work, so use it only as a speed bump for clients that do not
+run JavaScript. A refresh rule cannot be `pow.default_algorithm`, and it cannot
+use `stratum_pool_accepted`. A cookie from any other algorithm satisfies a refresh
+rule. A refresh cookie satisfies a rule when its difficulty meets the requirement.
 
 ### `randomx` - expensive challenge
 

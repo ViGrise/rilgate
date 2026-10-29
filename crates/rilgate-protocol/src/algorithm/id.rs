@@ -10,6 +10,9 @@ pub enum PowAlgorithm {
 
   #[serde(rename = "randomx")]
   RandomX,
+
+  #[serde(rename = "refresh")]
+  Refresh,
 }
 
 impl FromStr for PowAlgorithm {
@@ -20,8 +23,9 @@ impl FromStr for PowAlgorithm {
       "fast" => Ok(Self::Fast),
       "hashwx" => Ok(Self::Hashwx),
       "randomx" => Ok(Self::RandomX),
+      "refresh" => Ok(Self::Refresh),
       other => Err(format!(
-        "Invalid PoW algorithm {other:?}; expected fast, hashwx or randomx"
+        "Invalid PoW algorithm {other:?}; expected fast, hashwx, randomx or refresh"
       )),
     }
   }

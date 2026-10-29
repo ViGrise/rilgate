@@ -26,6 +26,7 @@ pub fn render_challenge_page(
       rilgate_protocol::PowAlgorithm::Fast => "fast",
       rilgate_protocol::PowAlgorithm::Hashwx => "hashwx",
       rilgate_protocol::PowAlgorithm::RandomX => "randomx",
+      rilgate_protocol::PowAlgorithm::Refresh => "refresh",
     }
     .into(),
     difficulty: Some(issued.claims.difficulty),
@@ -173,6 +174,54 @@ pub fn render_page(
       ..Default::default()
     },
   };
+  let html = snapshot
+    .render(template, &public, &locale)
+    .unwrap_or_else(|error| {
+      tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
+      state
+        .web
+        .fallback()
+        .render(template, &public, &locale)
+        .expect("Validated embedded page template")
+    });
+  (html, locale)
+}
+
+/// Renders the script-free page whose meta refresh opens the refresh URL after `seconds`.
+pub fn render_refresh_page(
+  state: &AppState,
+  token: &str,
+  seconds: u64,
+  headers: &HeaderMap,
+  uri: &Uri,
+) -> (String, String) {
+  use rilgate_web::templates::context::{PageInfo, PublicChallengeInfo, TemplateContext};
+  let snapshot = state.web.current();
+  let locale = negotiate_locale(&snapshot, headers, uri);
+  let translate = |key: &str| {
+    snapshot
+      .translations
+      .translate(&locale, key, &Default::default())
+      .unwrap_or_else(|_| key.into())
+  };
+  let query = url::form_urlencoded::Serializer::new(String::new())
+    .append_pair("presentation_token", token)
+    .finish();
+  let public = TemplateContext {
+    rilgate: snapshot.public.clone(),
+    page: PageInfo {
+      title: translate("refresh.title"),
+      description: translate("refresh.description"),
+      open_graph: Vec::new(),
+    },
+    challenge: PublicChallengeInfo {
+      url: format!("{}/api/refresh?{query}", snapshot.config.base_path),
+      algorithm: "refresh".into(),
+      difficulty: Some(seconds),
+      ..Default::default()
+    },
+  };
+  let template = "pages/refresh.html.jinja";
   let html = snapshot
     .render(template, &public, &locale)
     .unwrap_or_else(|error| {

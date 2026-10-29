@@ -9,6 +9,7 @@
   {% endfor %}
   <title>{{ page.title }} - {{ rilgate.name }}</title>
   <link rel="stylesheet" href="{{ rilgate.stylesheet_url }}">
+  {% block head %}{% endblock %}
 </head>
 <body>
   {% block content %}{% endblock %}

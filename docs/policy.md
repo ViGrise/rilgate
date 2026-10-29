@@ -460,6 +460,24 @@ score. Its default name is `x-pow-weight`. The gateway signs the selected rule, 
 score, difficulty, algorithm, host and verification backend into the presentation. A
 browser cannot alter these claims.
 
+## Refresh selection
+
+Select the script-free refresh challenge in a custom rule:
+
+```yaml
+policy:
+  mode: custom
+  default_action: allow
+  rules:
+    - name: refresh-protected
+      when:
+        path: {prefix: /protected/}
+      action: challenge
+      challenge: {algorithm: refresh, difficulty: 3}
+```
+
+Difficulty is a delay of 1 to 10 seconds. See [the refresh algorithm](pow.md#refresh---delay-without-javascript).
+
 ## HashWX selection
 
 Select HashWX in a custom rule or score threshold:

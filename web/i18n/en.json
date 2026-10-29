@@ -31,5 +31,9 @@
   "error.title": "Unable to continue",
   "error.description": "The request could not be completed. Please try again.",
   "challenge.expires_in": "Challenge expires in {seconds} seconds.",
+  "refresh.title": "Checking your browser",
+  "refresh.description": "This website checks your browser without running any script. Your browser continues on its own after a short wait.",
+  "refresh.waiting": "Your browser continues in {seconds} seconds.",
+  "refresh.continue": "If nothing happens, continue manually.",
   "challenge.hashwx_unsupported": "This browser cannot run HashWX. WebAssembly and workers are required."
 }

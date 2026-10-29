@@ -230,6 +230,7 @@ impl WebSnapshot {
     }
     for page in [
       "pages/challenge.html.jinja",
+      "pages/refresh.html.jinja",
       "pages/denied.html.jinja",
       "pages/error.html.jinja",
       "pages/challenge.json.jinja",

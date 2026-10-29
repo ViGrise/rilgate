@@ -84,14 +84,33 @@ impl ChallengeService {
       .get(receipt.algorithm)?
       .validate_difficulty(receipt.difficulty)?;
 
+    self.issue_auth_token(
+      receipt.host,
+      receipt.algorithm,
+      receipt.difficulty,
+      receipt.enforce,
+      receipt.issued_at,
+      binding,
+    )
+  }
+
+  pub(crate) fn issue_auth_token(
+    &self,
+    host: String,
+    algorithm: PowAlgorithm,
+    difficulty: u64,
+    enforce: PowEnforcement,
+    issued_at: i64,
+    binding: &BindingInput<'_>,
+  ) -> Result<crate::IssuedToken<AuthClaims>> {
     let claims = AuthClaims {
-      host: receipt.host,
+      host,
       v: 1,
-      algorithm: receipt.algorithm,
-      difficulty: receipt.difficulty,
-      enforce: receipt.enforce,
-      issued_at: receipt.issued_at,
-      expires_at: receipt.issued_at + self.cfg.auth_ttl_seconds as i64,
+      algorithm,
+      difficulty,
+      enforce,
+      issued_at,
+      expires_at: issued_at + self.cfg.auth_ttl_seconds as i64,
       binding: self.cfg.auth_binding.digest(&self.binding_key, binding),
     };
 
