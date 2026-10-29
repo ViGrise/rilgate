@@ -6,6 +6,7 @@ pub struct ServerConfig {
   pub max_requests: usize,
   pub h2_max_streams: u32,
   pub trusted_proxies: Vec<IpNet>,
+  pub client_ip_header: Option<http::HeaderName>,
   pub metrics_enabled: bool,
   pub readiness_timeout: std::time::Duration,
 }
@@ -18,6 +19,7 @@ impl Default for ServerConfig {
       max_requests: defaults.max_requests,
       h2_max_streams: defaults.h2_max_streams,
       trusted_proxies: vec![],
+      client_ip_header: None,
       metrics_enabled: defaults.metrics_enabled,
       readiness_timeout: defaults.readiness_timeout.0,
     }
