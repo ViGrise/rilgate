@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 /// Values from the command line and process environment that take precedence
 /// over the YAML document.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Overrides {
   pub config: Option<PathBuf>,
   /// Replaces the port of every listen address.

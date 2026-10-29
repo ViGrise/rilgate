@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// The compiled registry of named IP sets referenced by policy conditions.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IpSets {
   sets: BTreeMap<String, Arc<IpSet>>,
 }

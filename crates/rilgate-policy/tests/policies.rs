@@ -63,7 +63,7 @@ score:
   );
   assert_eq!(decision.action, PolicyAction::Allow);
   assert_eq!(decision.weight, 10);
-  assert_eq!(decision.rule, "trusted-api");
+  assert_eq!(&*decision.rule, "trusted-api");
   let decision = engine.evaluate_context(
     &Request {
       host: "example.test",

@@ -8,7 +8,7 @@ fn engine(rules: &str) -> PolicyEngine {
   PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(&text).unwrap()).unwrap()
 }
 
-fn decide<'a>(engine: &'a PolicyEngine, lookups: &Lookups) -> rilgate_policy::PolicyDecision<'a> {
+fn decide(engine: &PolicyEngine, lookups: &Lookups) -> rilgate_policy::PolicyDecision {
   let headers = HeaderMap::new();
   engine.evaluate_context(
     &Request {

@@ -32,6 +32,7 @@ hex.workspace = true
 rilgate-config.workspace = true
 rilgate-core.workspace = true
 rilgate-dns.workspace = true
+arc-swap.workspace = true
 rilgate-protocol.workspace = true
 rilgate-crypto.workspace = true
 rilgate-challenge.workspace = true

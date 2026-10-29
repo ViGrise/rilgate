@@ -150,11 +150,7 @@ fn publish(engine: &PolicyEngine, nets: &[&str]) {
       nets.iter().map(|n| n.parse().unwrap()),
     ));
 }
-fn decide<'a>(
-  engine: &'a PolicyEngine,
-  ip: &str,
-  score: i32,
-) -> rilgate_policy::PolicyDecision<'a> {
+fn decide(engine: &PolicyEngine, ip: &str, score: i32) -> rilgate_policy::PolicyDecision {
   let headers = HeaderMap::new();
   engine.evaluate_context(
     &Request {
@@ -182,7 +178,7 @@ fn unknown_sets_never_produce_a_more_permissive_outcome() {
   let deny = remote("  - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n");
   let decision = decide(&deny, "192.0.2.1", 0);
   assert_eq!(
-    (decision.action, decision.rule, decision.unresolved),
+    (decision.action, &*decision.rule, decision.unresolved),
     (PolicyAction::Challenge, "d", true)
   );
   assert_eq!((decision.algorithm, decision.difficulty), (None, None));
@@ -324,7 +320,10 @@ fn decisions_record_any_rule_that_depended_on_unknown_data() {
     "  - {name: a, when: {client_ip: {in_sets: [feed]}}, action: allow}\n  - {name: d, when: {path: {prefix: /}}, action: deny}\n",
   );
   let decision = decide(&skipped, "192.0.2.1", 0);
-  assert_eq!((decision.action, decision.rule), (PolicyAction::Deny, "d"));
+  assert_eq!(
+    (decision.action, &*decision.rule),
+    (PolicyAction::Deny, "d")
+  );
   assert!(decision.unresolved);
   let scored =
     remote("  - {name: up, when: {client_ip: {in_sets: [feed]}}, action: score, score: 5}\n");

@@ -20,7 +20,7 @@ struct DecisionContext<'a> {
   action: PolicyAction,
 }
 
-fn log_decision(level: DecisionLog, decision: &PolicyDecision<'_>, context: DecisionContext<'_>) {
+fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: DecisionContext<'_>) {
   let enabled = match level {
     DecisionLog::Off => false,
     DecisionLog::Deny => context.action == PolicyAction::Deny,
@@ -45,7 +45,7 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision<'_>, context: Deci
     host = context.request.host,
     path = context.request.path,
     action,
-    rule = decision.rule,
+    rule = &*decision.rule,
     weight = decision.weight,
     algorithm = ?decision.algorithm,
     difficulty = ?decision.difficulty,
@@ -74,8 +74,9 @@ pub async fn gate_with_client(
 ) -> Result<Option<Response>, ApiError> {
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let host = request_host(headers, uri);
+  let services = state.policy_services.load_full();
   let mut known = Lookups::NONE;
-  if let (Some(honeypot), Some(ip)) = (&state.honeypot, client_ip) {
+  if let (Some(honeypot), Some(ip)) = (&services.honeypot, client_ip) {
     known.honeypot = Some(honeypot.is_flagged(ip));
   }
   let mut request = Request {
@@ -89,10 +90,10 @@ pub async fn gate_with_client(
   let mut decision = state.pow.evaluate_context(&request);
   let resolved;
   if decision.needs_lookups
-    && let (Some(dns), Some(ip)) = (&state.dns, client_ip)
+    && let (Some(dns), Some(ip)) = (&services.dns, client_ip)
   {
     let mut filled = known.clone();
-    dns.resolve(ip, state.pow.lookup_plan(), &mut filled).await;
+    dns.resolve(ip, &state.pow.lookup_plan(), &mut filled).await;
     resolved = filled;
     request = Request {
       lookups: &resolved,

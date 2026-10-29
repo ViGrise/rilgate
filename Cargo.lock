@@ -3234,6 +3234,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "libc",
  "mimalloc",
  "openssl",
  "randomx-core",
@@ -3273,6 +3274,7 @@ name = "rilgate-challenge"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "base64 0.22.1",
  "hmac",
  "http",
@@ -3358,6 +3360,7 @@ name = "rilgate-gateway"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "async-trait",
  "axum",
  "bytes",

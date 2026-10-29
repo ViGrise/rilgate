@@ -69,16 +69,19 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
     open_graph: Arc::new(
       rilgate_gateway::open_graph::OpenGraphService::new(
         cfg.open_graph.clone(),
-        service.ip_sets(),
-        service.geoip(),
+        &service.ip_sets(),
+        &service.geoip(),
       )
       .unwrap(),
     ),
-    dns: Some(DnsLookups::new(
-      &Default::default(),
-      Arc::new(CrawlerResolver),
-    )),
-    honeypot: None,
+    policy_services: rilgate_gateway::runtime::policy::PolicyServices {
+      dns: Some(DnsLookups::new(
+        &Default::default(),
+        Arc::new(CrawlerResolver),
+      )),
+      honeypot: None,
+    }
+    .into_shared(),
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone()).unwrap()),
     limiter: Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone()).unwrap()),
     web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),
