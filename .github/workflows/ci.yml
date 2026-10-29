@@ -196,6 +196,9 @@ jobs:
   # and a static musl build. Both contain the OpenSSL that pingora-openssl vendors.
   binaries:
     name: Build - ${{ matrix.platform }}
+    env:
+      RILGATE_BUILD_COMMIT: ${{ github.sha }}
+      CROSS_BUILD_ENV_PASSTHROUGH: RILGATE_BUILD_COMMIT
     needs: [version, test, browser, release-checks, dependencies, container]
     # The version job runs only for tags, so a skipped dependency does not skip this job.
     if: ${{ !cancelled() && !failure() && (startsWith(github.ref, 'refs/tags/v') || contains(github.event.pull_request.labels.*.name, 'release-build')) }}
@@ -388,7 +391,9 @@ jobs:
           file: deploy/docker/Dockerfile
           platforms: linux/${{ matrix.arch }}
           target: ${{ matrix.target }}
-          build-args: CARGO_BUILD_JOBS=4
+          build-args: |
+            CARGO_BUILD_JOBS=4
+            RILGATE_BUILD_COMMIT=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           # Each build keeps its own cache scope; the glibc scope also supplies the shared planner and asset stages.
@@ -415,7 +420,9 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile
           platforms: linux/${{ matrix.arch }}
-          build-args: CARGO_BUILD_JOBS=4
+          build-args: |
+            CARGO_BUILD_JOBS=4
+            RILGATE_BUILD_COMMIT=${{ github.sha }}
           target: ${{ matrix.binary-target }}
           outputs: type=local,dest=${{ runner.temp }}/binary
           cache-from: |

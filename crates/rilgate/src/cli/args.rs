@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// each later source overrides the earlier one. Policy rules, IP sets and
 /// signing key rotation are configured in YAML only.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about)]
+#[command(version = crate::VERSION, about, long_about)]
 pub struct Args {
   /// YAML configuration file [default: rilgate.yml, then config/rilgate.yml]
   #[arg(

@@ -39,6 +39,8 @@ RUN cargo chef cook --release --locked --package rilgate --recipe-path recipe.js
 COPY . .
 COPY --from=assets /app/crates/rilgate-web/generated crates/rilgate-web/generated
 COPY --from=assets /app/web/static/js/solvers web/static/js/solvers
+ARG RILGATE_BUILD_COMMIT
+ENV RILGATE_BUILD_COMMIT=$RILGATE_BUILD_COMMIT
 RUN cargo build --release --locked \
   && cp target/release/rilgate /app/rilgate-release
 
@@ -61,6 +63,8 @@ RUN cargo chef cook --release --locked --package rilgate --recipe-path recipe.js
 COPY . .
 COPY --from=assets /app/crates/rilgate-web/generated crates/rilgate-web/generated
 COPY --from=assets /app/web/static/js/solvers web/static/js/solvers
+ARG RILGATE_BUILD_COMMIT
+ENV RILGATE_BUILD_COMMIT=$RILGATE_BUILD_COMMIT
 RUN cargo build --release --locked -p rilgate \
   && cp target/release/rilgate /app/rilgate-release
 
