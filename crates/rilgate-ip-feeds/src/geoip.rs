@@ -1,20 +1,15 @@
-use crate::{FIRST_RETRY, FeedClient, FetchOptions, Fetched, Outcome, Validators, next_delay};
+use crate::{
+  FIRST_RETRY, FeedClient, FetchOptions, Fetched, GeoState, Outcome, next_delay, resume_delay,
+};
 use anyhow::{Context, Result, bail, ensure};
 use rilgate_policy::geoip::MAX_DATABASE_BYTES;
-use rilgate_policy::{GeoDatabase, GeoDatabases, GeoSource};
+use rilgate_policy::{GeoDatabase, GeoDatabases, GeoSource, Progress};
 use std::io::Read;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt as _;
 
 pub const MAXMIND_DOWNLOAD_BASE: &str = "https://download.maxmind.com/geoip/databases";
-
-/// The change markers of the last database a source delivered.
-#[derive(Debug, Default)]
-pub struct GeoState {
-  validators: Validators,
-  modified: Option<SystemTime>,
-}
 
 /// Loads GeoIP databases from local files and MaxMind downloads.
 pub struct GeoRefresher {
@@ -162,8 +157,21 @@ pub fn spawn_geoip(databases: &GeoDatabases) -> Result<crate::Refreshers> {
   for target in targets {
     let refresher = refresher.clone();
     refreshers.tasks.push(tokio::spawn(async move {
-      let mut state = GeoState::default();
-      let mut failures = 0u32;
+      let Some(database) = target.upgrade() else {
+        return;
+      };
+      let saved = database.progress();
+      let mut state = saved.markers;
+      let mut failures = saved.consecutive_failures;
+      let first_delay = resume_delay(
+        database.loaded_age(),
+        failures,
+        saved.next_attempt,
+        database.refresh().max(FIRST_RETRY),
+        fastrand::f64(),
+      );
+      drop(database);
+      tokio::time::sleep(first_delay).await;
       loop {
         let Some(database) = target.upgrade() else {
           break;
@@ -174,6 +182,11 @@ pub fn spawn_geoip(databases: &GeoDatabases) -> Result<crate::Refreshers> {
           _ => 0,
         };
         let delay = retry_delay(&database, failures);
+        database.save_progress(Progress {
+          markers: state.clone(),
+          consecutive_failures: failures,
+          next_attempt: Some(Instant::now() + delay),
+        });
         drop(database);
         tokio::time::sleep(delay).await;
       }

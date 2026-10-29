@@ -31,7 +31,7 @@ impl ChallengeService {
   pub fn with_registry(cfg: Arc<ChallengeConfig>, algorithms: AlgorithmRegistry) -> Result<Self> {
     cfg.validate()?;
     algorithms.get(cfg.default_algorithm)?;
-    let policy = Self::compile_policy(&cfg, &algorithms, &cfg.policy)?;
+    let policy = Self::compile_policy(&cfg, &algorithms, &cfg.policy, None)?;
     let tokens = crate::tokens::TokenSigners::new(&cfg)?;
     let binding_key = AuthBinding::derive_key(cfg.auth_signing_key.expose().as_bytes())?;
     Ok(Self {
@@ -44,8 +44,15 @@ impl ChallengeService {
   }
 
   /// Compiles a policy and checks its challenges against the registered algorithms.
+  /// Remote IP sets and GeoIP databases that the running policy also uses keep their loaded data.
   pub fn compile(&self, definition: &Definition) -> Result<CompiledPolicy> {
-    Self::compile_policy(&self.cfg, &self.algorithms, definition)
+    let running = self.policy.load();
+    Self::compile_policy(
+      &self.cfg,
+      &self.algorithms,
+      definition,
+      Some(&running.engine),
+    )
   }
 
   /// Installs a compiled policy. Requests that start afterwards use it.
@@ -63,8 +70,9 @@ impl ChallengeService {
     cfg: &ChallengeConfig,
     algorithms: &AlgorithmRegistry,
     definition: &Definition,
+    previous: Option<&PolicyEngine>,
   ) -> Result<CompiledPolicy> {
-    let engine = PolicyEngine::from_definition(definition)?;
+    let engine = PolicyEngine::from_definition_with(definition, previous)?;
     for (name, selection) in definition.challenges()? {
       let backend = algorithms
         .get(selection.algorithm.unwrap_or(cfg.default_algorithm))

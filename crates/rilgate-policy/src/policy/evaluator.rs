@@ -145,9 +145,19 @@ impl Definition {
 }
 impl PolicyEngine {
   pub fn from_definition(definition: &Definition) -> Result<Self> {
+    Self::from_definition_with(definition, None)
+  }
+
+  /// Compiles the definition. Remote IP sets and GeoIP databases whose source
+  /// matches one of `previous` keep the data that engine has loaded.
+  pub fn from_definition_with(
+    definition: &Definition,
+    previous: Option<&PolicyEngine>,
+  ) -> Result<Self> {
     let (source, default) = definition.resolved_rules()?;
-    let ip_sets = IpSets::compile(&definition.ip_sets)?;
-    let geoip = GeoDatabases::compile(definition.geoip.as_ref())?;
+    let ip_sets = IpSets::compile_with(&definition.ip_sets, previous.map(PolicyEngine::ip_sets))?;
+    let geoip =
+      GeoDatabases::compile_with(definition.geoip.as_ref(), previous.map(PolicyEngine::geoip))?;
     if let Some(dns) = &definition.dns {
       dns.validate()?;
     }

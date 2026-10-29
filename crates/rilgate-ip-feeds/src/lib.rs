@@ -2,10 +2,11 @@ mod fetch;
 mod geoip;
 mod parse;
 mod refresh;
-pub use fetch::{FeedClient, FetchOptions, Fetched, Validators};
-pub use geoip::{GeoRefresher, GeoState, MAXMIND_DOWNLOAD_BASE, spawn_geoip};
+pub use fetch::{FeedClient, FetchOptions, Fetched};
+pub use geoip::{GeoRefresher, MAXMIND_DOWNLOAD_BASE, spawn_geoip};
 pub use parse::parse;
-pub use refresh::{Outcome, next_delay, refresh_once, spawn};
+pub use refresh::{Outcome, next_delay, refresh_once, resume_delay, spawn};
+pub use rilgate_policy::{GeoState, Validators};
 use std::time::Duration;
 
 /// Background refresh tasks. Dropping the handle stops them.
