@@ -25,6 +25,7 @@ const RENAMED_VALUES: &[(&str, &str, &str)] = &[(
 /// A loaded document with warnings for the caller to report once logging is
 /// available.
 pub struct Loaded {
+  pub files: Vec<PathBuf>,
   pub document: Document,
   pub warnings: Vec<String>,
   pub lookup: Lookup,
@@ -91,6 +92,7 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
       .collect();
   }
   Ok(Loaded {
+    files: resolver.files,
     document,
     warnings,
     lookup,

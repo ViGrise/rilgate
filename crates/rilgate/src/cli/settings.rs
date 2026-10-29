@@ -54,6 +54,8 @@ macro_rules! spec {
 pub(crate) const SPECS: &[Spec] = &[
   spec!(ENVIRONMENT, Text, "environment", "environment", "RILGATE_ENVIRONMENT", Some('E'), "Runtime environment: development or production"),
   spec!(SERVER, List, "server.listen", "server-listen", "RILGATE_SERVER_LISTEN", Some('l'), "Comma-separated listen addresses, such as :8080 or [::]:8080 (IPv4 and IPv6)"),
+  spec!(SERVER, Switch, "server.operations.reload", "server-operations-reload", "RILGATE_SERVER_OPERATIONS_RELOAD", None, "Enable the operations reload route"),
+  spec!(SERVER, Switch, "server.watch_config", "server-watch-config", "RILGATE_SERVER_WATCH_CONFIG", None, "Watch configuration files for policy changes"),
   spec!(SERVER, List, "server.operations.listen", "server-operations-listen", "RILGATE_SERVER_OPERATIONS_LISTEN", None, "Comma-separated addresses serving only operational routes, such as 127.0.0.1:9090; empty disables the routes"),
   spec!(SERVER, Text, "server.upstream.url", "server-upstream-url", "RILGATE_SERVER_UPSTREAM_URL", Some('u'), "Application upstream URL"),
   spec!(SERVER, Switch, "server.upstream.preserve_host", "server-upstream-preserve-host", "RILGATE_SERVER_UPSTREAM_PRESERVE_HOST", None, "Forward the client Host header upstream"),

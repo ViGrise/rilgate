@@ -206,7 +206,13 @@ policy:
   );
   let config = parse(&source).unwrap().resolve().unwrap();
   let built = rilgate::app::build(config.clone()).await.unwrap();
-  rilgate::reload::spawn_reloader(built.policy_handle(), config, Default::default()).unwrap();
+  let _reload = rilgate::reload::spawn_reloader(
+    built.policy_handle(),
+    config,
+    Default::default(),
+    Vec::new(),
+  )
+  .unwrap();
   let gateway = TestGateway::start(built).await.unwrap();
 
   let mut status = None;

@@ -7,31 +7,85 @@ use rilgate_ip_feeds::Refreshers;
 
 const HOST_LOAD_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Starts the policy refreshers and the host load sampler, then reloads the policy on SIGHUP.
-/// The policy section is the only part of the configuration that changes at runtime. A
-/// configuration whose other sections differ from the running one is left unapplied.
-pub fn spawn_reloader(handle: PolicyHandle, running: Config, overrides: Overrides) -> Result<()> {
+pub use rilgate_gateway::runtime::reload::ReloadOutcome;
+use tokio::sync::{mpsc, oneshot};
+
+struct ReloadRequest {
+  reply: Option<oneshot::Sender<Result<ReloadOutcome>>>,
+}
+
+#[derive(Clone)]
+pub struct ReloadTrigger(mpsc::UnboundedSender<ReloadRequest>);
+
+impl ReloadTrigger {
+  pub async fn reload(&self) -> Result<ReloadOutcome> {
+    let (reply, result) = oneshot::channel();
+    self
+      .0
+      .send(ReloadRequest { reply: Some(reply) })
+      .map_err(|_| anyhow::anyhow!("Reload task stopped"))?;
+    result
+      .await
+      .map_err(|_| anyhow::anyhow!("Reload task stopped"))?
+  }
+
+  pub fn request(&self) {
+    let _ = self.0.send(ReloadRequest { reply: None });
+  }
+}
+
+#[async_trait::async_trait]
+impl rilgate_gateway::runtime::reload::ReloadControl for ReloadTrigger {
+  async fn reload(&self) -> Result<ReloadOutcome> {
+    self.reload().await
+  }
+}
+
+/// Starts background policy services and serializes configuration reload requests.
+pub fn spawn_reloader(
+  handle: PolicyHandle,
+  running: Config,
+  overrides: Overrides,
+  files: Vec<std::path::PathBuf>,
+) -> Result<ReloadTrigger> {
+  let (sender, mut requests) = mpsc::unbounded_channel::<ReloadRequest>();
+  let trigger = ReloadTrigger(sender);
+  let watcher = if running.server.watch_config {
+    ConfigWatcher::start(files, trigger.clone())?
+  } else {
+    None
+  };
   let mut reloader = Reloader {
     handle,
     running,
     overrides,
     refreshers: Refreshers::default(),
     sampler: None,
+    watcher,
   };
   reloader.start_background_tasks()?;
   #[cfg(unix)]
-  let mut hangups = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
+  {
+    let mut hangups = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
+    let trigger = trigger.clone();
+    tokio::spawn(async move {
+      while hangups.recv().await.is_some() {
+        trigger.request();
+      }
+    });
+  }
   tokio::spawn(async move {
-    #[cfg(unix)]
-    while hangups.recv().await.is_some() {
-      if let Err(error) = reloader.reload() {
+    while let Some(request) = requests.recv().await {
+      let outcome = reloader.reload();
+      if let Err(error) = &outcome {
         tracing::error!("Configuration reload failed, keeping the running policy: {error:#}");
       }
+      if let Some(reply) = request.reply {
+        let _ = reply.send(outcome);
+      }
     }
-    #[cfg(not(unix))]
-    std::future::pending::<()>().await;
   });
-  Ok(())
+  Ok(trigger)
 }
 
 struct Reloader {
@@ -40,13 +94,19 @@ struct Reloader {
   overrides: Overrides,
   refreshers: Refreshers,
   sampler: Option<tokio::task::JoinHandle<()>>,
+  watcher: Option<ConfigWatcher>,
 }
 
 impl Reloader {
-  fn reload(&mut self) -> Result<()> {
-    let config = rilgate_config::loader::load(&self.overrides)?
-      .document
-      .resolve()?;
+  fn reload(&mut self) -> Result<ReloadOutcome> {
+    let loaded = rilgate_config::loader::load(&self.overrides)?;
+    // A watch failure leaves the earlier watch set in place and never blocks the reload.
+    if let Some(watcher) = &mut self.watcher
+      && let Err(error) = watcher.update(loaded.files)
+    {
+      tracing::warn!("Configuration watch update failed: {error:#}");
+    }
+    let config = loaded.document.resolve()?;
     config.validate()?;
     let sections = changed_sections(&self.running, &config);
     if !sections.is_empty() {
@@ -54,17 +114,17 @@ impl Reloader {
         sections = sections.join(", "),
         "Configuration change needs a restart, keeping the running configuration"
       );
-      return Ok(());
+      return Ok(ReloadOutcome::RestartRequired { sections });
     }
     if format!("{:?}", self.running.pow.policy) == format!("{:?}", config.pow.policy) {
       tracing::info!("Policy is unchanged");
-      return Ok(());
+      return Ok(ReloadOutcome::Unchanged);
     }
     self.handle.replace(&config.pow.policy)?;
     self.running = config;
     self.start_background_tasks()?;
     tracing::info!("Policy reloaded");
-    Ok(())
+    Ok(ReloadOutcome::Reloaded)
   }
 
   /// Starts refreshers for the installed policy's remote sets and databases. The previous
@@ -176,5 +236,104 @@ async fn sample_host_load() {
       }
       None => {}
     }
+  }
+}
+
+#[derive(Default)]
+struct WatchedPaths {
+  files: Vec<std::path::PathBuf>,
+  links: Vec<(std::path::PathBuf, Option<std::path::PathBuf>)>,
+}
+
+struct ConfigWatcher {
+  watcher: notify::RecommendedWatcher,
+  paths: std::sync::Arc<std::sync::RwLock<WatchedPaths>>,
+  directories: std::collections::HashSet<std::path::PathBuf>,
+  task: tokio::task::JoinHandle<()>,
+}
+
+impl ConfigWatcher {
+  fn start(files: Vec<std::path::PathBuf>, trigger: ReloadTrigger) -> Result<Option<Self>> {
+    if files.is_empty() {
+      tracing::warn!(
+        "Configuration watch requested without a configuration file; there is nothing to watch"
+      );
+      return Ok(None);
+    }
+    let paths = std::sync::Arc::new(std::sync::RwLock::new(WatchedPaths::default()));
+    let watched = paths.clone();
+    let (events, mut receiver) = mpsc::channel(1);
+    let watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+      match event {
+        Ok(event) if !event.kind.is_access() => {
+          let mut paths = watched.write().unwrap();
+          let direct = event.paths.iter().any(|path| paths.files.contains(path));
+          // Symlink target changes identify recorded files replaced through a directory link.
+          let mut replaced = false;
+          for (file, target) in &mut paths.links {
+            let current = file.canonicalize().ok();
+            if current != *target {
+              *target = current;
+              replaced = true;
+            }
+          }
+          if direct || replaced {
+            let _ = events.try_send(());
+          }
+        }
+        Err(error) => tracing::warn!(%error, "Configuration watcher error"),
+        _ => {}
+      }
+    })?;
+    let task = tokio::spawn(async move {
+      while receiver.recv().await.is_some() {
+        loop {
+          match tokio::time::timeout(std::time::Duration::from_millis(500), receiver.recv()).await {
+            Ok(Some(())) => continue,
+            Ok(None) => return,
+            Err(_) => break,
+          }
+        }
+        trigger.request();
+      }
+    });
+    let mut watch = Self {
+      watcher,
+      paths,
+      directories: Default::default(),
+      task,
+    };
+    watch.update(files)?;
+    Ok(Some(watch))
+  }
+
+  fn update(&mut self, files: Vec<std::path::PathBuf>) -> Result<()> {
+    use notify::Watcher;
+    let directories: std::collections::HashSet<_> = files
+      .iter()
+      .filter_map(|path| path.parent().map(std::path::Path::to_path_buf))
+      .collect();
+    for directory in directories.difference(&self.directories) {
+      self
+        .watcher
+        .watch(directory, notify::RecursiveMode::NonRecursive)?;
+    }
+    for directory in self.directories.difference(&directories) {
+      self.watcher.unwatch(directory)?;
+    }
+    self.directories = directories;
+    let links = files
+      .iter()
+      .filter(|file| file.is_symlink())
+      .map(|file| (file.clone(), file.canonicalize().ok()))
+      .collect();
+    *self.paths.write().unwrap() = WatchedPaths { files, links };
+    Ok(())
+  }
+}
+
+impl Drop for ConfigWatcher {
+  fn drop(&mut self) {
+    self.task.abort();
   }
 }

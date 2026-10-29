@@ -1,5 +1,3 @@
-#![cfg(unix)]
-
 use std::{
   io::{BufRead, BufReader, Read, Write},
   net::{TcpListener, TcpStream},
@@ -106,6 +104,7 @@ impl Gateway {
     }
   }
 
+  #[cfg(unix)]
   fn line(&self, text: &str) -> String {
     self
       .logs
@@ -118,6 +117,7 @@ impl Gateway {
       .unwrap_or_default()
   }
 
+  #[cfg(unix)]
   fn hup(&self) {
     // SAFETY: the pid belongs to the child this value owns.
     let result = unsafe { libc::kill(self.child.id() as i32, libc::SIGHUP) };
@@ -152,6 +152,7 @@ impl Drop for Gateway {
   }
 }
 
+#[cfg(unix)]
 #[test]
 fn sighup_swaps_the_policy_and_keeps_the_running_state_on_other_changes_and_errors() {
   let directory = tempfile::tempdir().unwrap();
@@ -187,4 +188,206 @@ fn sighup_swaps_the_policy_and_keeps_the_running_state_on_other_changes_and_erro
   gateway.hup();
   gateway.wait_for("Policy reloaded", 2);
   assert_eq!(gateway.status("BadBot"), 200);
+}
+
+struct ReloadFixture {
+  directory: tempfile::TempDir,
+  file: std::path::PathBuf,
+  rules: std::path::PathBuf,
+  operations: u16,
+  gateway: Gateway,
+}
+
+impl ReloadFixture {
+  fn start(reload: bool, watch: bool) -> Self {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("rilgate.yml");
+    let rules = directory.path().join("rules.yml");
+    let (port, operations) = (free_port(), free_port());
+    let config = configuration(port, upstream(), ALLOW_ALL)
+      .replace(ALLOW_ALL, "    !include ./rules.yml\n")
+      .replace("  upstream:", &format!("  watch_config: {watch}\n  operations:\n    listen: '127.0.0.1:{operations}'\n    reload: {reload}\n  upstream:"));
+    let config = if reload {
+      config
+    } else {
+      config.replace("    reload: false\n", "")
+    };
+    std::fs::write(&rules, ALLOW_ALL).unwrap();
+    std::fs::write(&file, config).unwrap();
+    let gateway = Gateway::start(&file, port);
+    assert_eq!(gateway.status("BadBot"), 200);
+    Self {
+      directory,
+      file,
+      rules,
+      operations,
+      gateway,
+    }
+  }
+
+  fn command(&self) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_rilgate"))
+      .env_clear()
+      .current_dir(self.directory.path())
+      .args(["--config", self.file.to_str().unwrap(), "reload"])
+      .output()
+      .unwrap()
+  }
+
+  fn route(&self, method: &str, headers: &str) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", self.operations)).unwrap();
+    stream
+      .set_read_timeout(Some(Duration::from_secs(10)))
+      .unwrap();
+    write!(stream, "{method} /.well-known/rilgate/reload HTTP/1.1\r\nhost: reload.test\r\nconnection: close\r\ncontent-length: 0\r\n{headers}\r\n").unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
+  }
+
+  fn wait_status(&self, expected: u16) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+      if self.gateway.status("BadBot") == expected {
+        return;
+      }
+      assert!(
+        Instant::now() < deadline,
+        "policy did not change: {}",
+        self.gateway.logs.lock().unwrap().join("\n")
+      );
+      std::thread::sleep(Duration::from_millis(50));
+    }
+  }
+
+  fn replace(&self, path: &Path, text: &str) {
+    let temporary = self.directory.path().join("replacement.yml");
+    std::fs::write(&temporary, text).unwrap();
+    std::fs::rename(temporary, path).unwrap();
+  }
+}
+
+#[test]
+fn reload_command_applies_policy() {
+  let fixture = ReloadFixture::start(true, false);
+  std::fs::write(&fixture.rules, DENY_BAD_BOT).unwrap();
+  let output = fixture.command();
+  assert!(
+    output.status.success(),
+    "{}",
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout).trim(),
+    "Policy reloaded"
+  );
+  assert_eq!(fixture.gateway.status("BadBot"), 403);
+  assert_eq!(fixture.gateway.status("Mozilla"), 200);
+  let output = fixture.command();
+  assert!(output.status.success());
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout).trim(),
+    "Policy is unchanged"
+  );
+  let response = fixture.route("GET", "");
+  assert!(response.starts_with("HTTP/1.1 405"), "{response}");
+  assert!(response.to_ascii_lowercase().contains("allow: post"));
+  std::fs::write(&fixture.rules, "[unterminated").unwrap();
+  let response = fixture.route("POST", "");
+  assert!(response.starts_with("HTTP/1.1 500"), "{response}");
+  assert!(response.contains("\"status\":\"failed\""));
+  assert_eq!(fixture.gateway.status("BadBot"), 403);
+}
+
+#[test]
+fn reload_command_reports_restart_required() {
+  let fixture = ReloadFixture::start(true, false);
+  let config = std::fs::read_to_string(&fixture.file)
+    .unwrap()
+    .replace("  upstream:", "  max_connections: 123\n  upstream:");
+  std::fs::write(&fixture.file, config).unwrap();
+  std::fs::write(&fixture.rules, DENY_BAD_BOT).unwrap();
+  let output = fixture.command();
+  assert_eq!(output.status.code(), Some(1));
+  assert!(
+    String::from_utf8_lossy(&output.stderr)
+      .contains("Configuration change needs a restart: server")
+  );
+  assert_eq!(fixture.gateway.status("BadBot"), 200);
+}
+
+#[test]
+fn reload_route_is_off_by_default() {
+  let fixture = ReloadFixture::start(false, false);
+  assert!(fixture.route("POST", "").starts_with("HTTP/1.1 404"));
+  let output = fixture.command();
+  assert_eq!(output.status.code(), Some(1));
+  assert!(
+    String::from_utf8_lossy(&output.stderr)
+      .contains("the gateway is not running at that address or server.operations.reload is off")
+  );
+}
+
+#[test]
+fn reload_route_rejects_browser_origin() {
+  let fixture = ReloadFixture::start(true, false);
+  std::fs::write(&fixture.rules, DENY_BAD_BOT).unwrap();
+  assert!(
+    fixture
+      .route("POST", "Origin: https://example.com\r\n")
+      .starts_with("HTTP/1.1 403")
+  );
+  assert_eq!(fixture.gateway.status("BadBot"), 200);
+}
+
+#[test]
+fn watch_applies_edited_include() {
+  let fixture = ReloadFixture::start(false, true);
+  fixture.replace(&fixture.rules, DENY_BAD_BOT);
+  fixture.wait_status(403);
+  fixture.replace(&fixture.rules, "[unterminated");
+  fixture.gateway.wait_for("Configuration reload failed", 1);
+  assert_eq!(fixture.gateway.status("BadBot"), 403);
+  fixture.replace(&fixture.rules, ALLOW_ALL);
+  fixture.wait_status(200);
+}
+
+#[test]
+fn watch_follows_new_include() {
+  let fixture = ReloadFixture::start(false, true);
+  let second = fixture.directory.path().join("second.yml");
+  std::fs::write(&second, DENY_BAD_BOT).unwrap();
+  let config = std::fs::read_to_string(&fixture.file).unwrap().replace(
+    "    !include ./rules.yml",
+    "    - !include ./rules.yml\n    - !include ./second.yml",
+  );
+  // The first matching rule decides the request.
+  std::fs::write(&fixture.rules, "[]").unwrap();
+  fixture.replace(&fixture.file, &config);
+  fixture.wait_status(403);
+  fixture.replace(&second, ALLOW_ALL);
+  fixture.wait_status(200);
+}
+
+#[cfg(unix)]
+#[test]
+fn watch_follows_configmap_symlink_replacement() {
+  use std::os::unix::fs::symlink;
+  let fixture = ReloadFixture::start(false, true);
+  let first = fixture.directory.path().join("version-one");
+  let second = fixture.directory.path().join("version-two");
+  for directory in [&first, &second] {
+    std::fs::create_dir(directory).unwrap();
+  }
+  std::fs::write(first.join("rules.yml"), DENY_BAD_BOT).unwrap();
+  std::fs::write(second.join("rules.yml"), ALLOW_ALL).unwrap();
+  let data = fixture.directory.path().join("..data");
+  symlink(&first, &data).unwrap();
+  let replacement = fixture.directory.path().join("replacement.yml");
+  symlink("..data/rules.yml", &replacement).unwrap();
+  std::fs::rename(&replacement, &fixture.rules).unwrap();
+  fixture.wait_status(403);
+  symlink(&second, &replacement).unwrap();
+  std::fs::rename(&replacement, &data).unwrap();
+  fixture.wait_status(200);
 }

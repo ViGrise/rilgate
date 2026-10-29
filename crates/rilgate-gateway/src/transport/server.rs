@@ -51,6 +51,7 @@ enum ListenerRole {
 struct Handler {
   state: AppState,
   role: ListenerRole,
+  reload: Option<Arc<dyn crate::runtime::reload::ReloadControl>>,
 }
 pub struct RequestContext {
   id: http::HeaderValue,
@@ -65,6 +66,13 @@ pub struct RequestContext {
 }
 impl Gateway {
   pub fn new(state: AppState) -> Self {
+    Self::with_reload(state, None)
+  }
+
+  fn with_reload(
+    state: AppState,
+    reload: Option<Arc<dyn crate::runtime::reload::ReloadControl>>,
+  ) -> Self {
     // Share the existing Tokio timer wheel rather than register HTTP deadlines with a second clock.
     pingora::prelude::fast_timeout::set_fast_timeout_to_tokio_threshold(Some(Duration::ZERO));
     let conf = Arc::new(ServerConf {
@@ -80,6 +88,7 @@ impl Gateway {
         Handler {
           state: state.clone(),
           role,
+          reload: reload.clone(),
         },
       );
       let mut options = HttpServerOptions::default();
@@ -98,6 +107,10 @@ impl Gateway {
       state,
     }
   }
+  pub fn set_reload_control(self, control: Arc<dyn crate::runtime::reload::ReloadControl>) -> Self {
+    Self::with_reload(self.state, Some(control))
+  }
+
   /// A handle that replaces the policy while the gateway runs.
   pub fn policy_handle(&self) -> crate::runtime::policy::PolicyHandle {
     crate::runtime::policy::PolicyHandle {
@@ -305,6 +318,39 @@ impl Handler {
     let headers = session.req_header().headers.clone();
     let uri = session.req_header().uri.clone();
     let method = session.req_header().method.clone();
+    if path == "/reload"
+      && self.role == ListenerRole::Operations
+      && self.state.cfg.server.operations_reload
+    {
+      if headers.contains_key(http::header::ORIGIN) {
+        return Ok(Some(response(StatusCode::FORBIDDEN, "")));
+      }
+      if method != Method::POST {
+        let mut out = response(StatusCode::METHOD_NOT_ALLOWED, "");
+        out
+          .headers_mut()
+          .insert(http::header::ALLOW, "POST".parse().unwrap());
+        return Ok(Some(out));
+      }
+      use crate::runtime::reload::ReloadOutcome;
+      let result = match &self.reload {
+        Some(control) => control.reload().await,
+        None => Err(anyhow::anyhow!("Reload control is unavailable")),
+      };
+      let (status, body) = match result {
+        Ok(ReloadOutcome::Reloaded) => (StatusCode::OK, serde_json::json!({"status":"reloaded"})),
+        Ok(ReloadOutcome::Unchanged) => (StatusCode::OK, serde_json::json!({"status":"unchanged"})),
+        Ok(ReloadOutcome::RestartRequired { sections }) => (
+          StatusCode::CONFLICT,
+          serde_json::json!({"status":"restart_required", "sections":sections}),
+        ),
+        Err(error) => (
+          StatusCode::INTERNAL_SERVER_ERROR,
+          serde_json::json!({"status":"failed", "error":format!("{error:#}")}),
+        ),
+      };
+      return Ok(Some(json(status, &body)));
+    }
     let operational = matches!(
       path,
       "/api/live" | "/api/health" | "/api/ready" | "/api/metrics"

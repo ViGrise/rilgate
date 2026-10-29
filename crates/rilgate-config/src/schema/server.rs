@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub struct Server {
   pub listen: Listen,
   pub operations: Operations,
+  pub watch_config: bool,
   pub upstream: Upstream,
   pub max_connections: usize,
   pub max_requests: usize,
@@ -26,6 +27,7 @@ impl Default for Server {
     Self {
       listen: Listen::single(":8080"),
       operations: Operations::default(),
+      watch_config: false,
       upstream: Upstream::default(),
       max_connections: 1024,
       max_requests: 512,
@@ -41,6 +43,7 @@ impl Default for Server {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Operations {
+  pub reload: bool,
   pub listen: Listen,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]

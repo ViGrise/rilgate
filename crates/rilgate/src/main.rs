@@ -36,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     document,
     mut warnings,
     lookup,
+    files,
   } = rilgate_config::loader::load(&overrides)?;
   if let Some(Command::Verifier { command }) = command {
     let config = document.resolve_verifier()?;
@@ -97,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
       }
       Ok(())
     }
+    Some(Command::Reload) => rilgate::cli::reload::run(&config).await,
     Some(Command::Web { command }) => rilgate::cli::web::run(&config.web, command),
     Some(Command::Verifier { .. }) => unreachable!("handled before gateway configuration"),
     Some(Command::Upgrade { .. }) => unreachable!("handled before configuration loading"),
@@ -122,7 +124,7 @@ async fn main() -> anyhow::Result<()> {
       for warning in &warnings {
         tracing::warn!("{warning}");
       }
-      rilgate::cli::serve::run(config, overrides).await
+      rilgate::cli::serve::run(config, overrides, files).await
     }
   }
 }

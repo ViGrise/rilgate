@@ -71,6 +71,8 @@ pub enum Command {
   },
   /// Run the gateway (default when no command is given)
   Serve,
+  /// Reload the running gateway policy through the operations listener
+  Reload,
   /// Validate or display the resolved configuration
   Config {
     #[command(subcommand)]
