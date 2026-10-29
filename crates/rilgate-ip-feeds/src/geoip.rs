@@ -151,17 +151,17 @@ fn extract_database(archive: &[u8], max_bytes: usize) -> Result<Vec<u8>> {
 
 /// Starts a background refresher for every database in the registry.
 ///
-/// Returns the number of refreshers started.
-pub fn spawn_geoip(databases: &GeoDatabases) -> Result<usize> {
+/// Dropping the returned handle stops the refreshers.
+pub fn spawn_geoip(databases: &GeoDatabases) -> Result<crate::Refreshers> {
   let targets: Vec<_> = databases.iter().map(Arc::downgrade).collect();
   if targets.is_empty() {
-    return Ok(0);
+    return Ok(crate::Refreshers::default());
   }
   let refresher = Arc::new(GeoRefresher::new()?);
-  let started = targets.len();
+  let mut refreshers = crate::Refreshers::default();
   for target in targets {
     let refresher = refresher.clone();
-    tokio::spawn(async move {
+    refreshers.tasks.push(tokio::spawn(async move {
       let mut state = GeoState::default();
       let mut failures = 0u32;
       loop {
@@ -177,9 +177,9 @@ pub fn spawn_geoip(databases: &GeoDatabases) -> Result<usize> {
         drop(database);
         tokio::time::sleep(delay).await;
       }
-    });
+    }));
   }
-  Ok(started)
+  Ok(refreshers)
 }
 
 fn retry_delay(database: &GeoDatabase, failures: u32) -> Duration {

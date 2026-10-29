@@ -1,24 +1,71 @@
 use crate::{ChallengeConfig, authorization::binding::AuthBinding};
 use anyhow::{Context, Result};
+use arc_swap::ArcSwap;
 use http::HeaderMap;
-use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine};
+use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine, policy::schema::Definition};
 use rilgate_pow::{AlgorithmDescriptor, AlgorithmRegistry};
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 use std::sync::Arc;
 pub struct ChallengeService {
   pub(crate) cfg: Arc<ChallengeConfig>,
   pub(crate) algorithms: AlgorithmRegistry,
-  policy: PolicyEngine,
+  policy: ArcSwap<CompiledPolicy>,
   pub(crate) tokens: crate::tokens::TokenSigners,
   pub(crate) binding_key: [u8; 32],
+}
+
+/// A policy that passed every check against the service's algorithms and is ready to install.
+pub struct CompiledPolicy {
+  engine: PolicyEngine,
+  initial_weight: i32,
+  debug_header: Option<String>,
+}
+
+impl CompiledPolicy {
+  pub fn engine(&self) -> &PolicyEngine {
+    &self.engine
+  }
 }
 
 impl ChallengeService {
   pub fn with_registry(cfg: Arc<ChallengeConfig>, algorithms: AlgorithmRegistry) -> Result<Self> {
     cfg.validate()?;
-    let policy = PolicyEngine::from_definition(&cfg.policy)?;
     algorithms.get(cfg.default_algorithm)?;
-    for (name, selection) in cfg.policy.challenges()? {
+    let policy = Self::compile_policy(&cfg, &algorithms, &cfg.policy)?;
+    let tokens = crate::tokens::TokenSigners::new(&cfg)?;
+    let binding_key = AuthBinding::derive_key(cfg.auth_signing_key.expose().as_bytes())?;
+    Ok(Self {
+      tokens,
+      binding_key,
+      cfg,
+      algorithms,
+      policy: ArcSwap::from_pointee(policy),
+    })
+  }
+
+  /// Compiles a policy and checks its challenges against the registered algorithms.
+  pub fn compile(&self, definition: &Definition) -> Result<CompiledPolicy> {
+    Self::compile_policy(&self.cfg, &self.algorithms, definition)
+  }
+
+  /// Installs a compiled policy. Requests that start afterwards use it.
+  pub fn install(&self, policy: CompiledPolicy) {
+    self.policy.store(Arc::new(policy));
+  }
+
+  /// Compiles the definition and installs it. The running policy stays when a check fails.
+  pub fn replace_policy(&self, definition: &Definition) -> Result<()> {
+    self.install(self.compile(definition)?);
+    Ok(())
+  }
+
+  fn compile_policy(
+    cfg: &ChallengeConfig,
+    algorithms: &AlgorithmRegistry,
+    definition: &Definition,
+  ) -> Result<CompiledPolicy> {
+    let engine = PolicyEngine::from_definition(definition)?;
+    for (name, selection) in definition.challenges()? {
       let backend = algorithms
         .get(selection.algorithm.unwrap_or(cfg.default_algorithm))
         .with_context(|| format!("Invalid challenge policy in {name}"))?;
@@ -32,14 +79,20 @@ impl ChallengeService {
           .with_context(|| format!("Invalid challenge policy in {name}"))?;
       }
     }
-    let tokens = crate::tokens::TokenSigners::new(&cfg)?;
-    let binding_key = AuthBinding::derive_key(cfg.auth_signing_key.expose().as_bytes())?;
-    Ok(Self {
-      tokens,
-      binding_key,
-      cfg,
-      algorithms,
-      policy,
+    let (initial_weight, debug_header) = match &definition.score {
+      Some(score) => (
+        score.initial,
+        score
+          .debug_header
+          .enabled
+          .then(|| score.debug_header.name.clone()),
+      ),
+      None => (0, None),
+    };
+    Ok(CompiledPolicy {
+      engine,
+      initial_weight,
+      debug_header,
     })
   }
 
@@ -78,23 +131,23 @@ impl ChallengeService {
     self.cfg.enforce
   }
 
-  pub fn ip_sets(&self) -> &rilgate_policy::IpSets {
-    self.policy.ip_sets()
+  pub fn ip_sets(&self) -> rilgate_policy::IpSets {
+    self.policy.load().engine.ip_sets().clone()
   }
 
-  pub fn geoip(&self) -> &rilgate_policy::GeoDatabases {
-    self.policy.geoip()
+  pub fn geoip(&self) -> rilgate_policy::GeoDatabases {
+    self.policy.load().engine.geoip().clone()
   }
 
-  pub fn lookup_plan(&self) -> &rilgate_policy::LookupPlan {
-    self.policy.lookup_plan()
+  pub fn lookup_plan(&self) -> rilgate_policy::LookupPlan {
+    self.policy.load().engine.lookup_plan().clone()
   }
 
   pub fn uses_load(&self) -> bool {
-    self.policy.uses_load()
+    self.policy.load().engine.uses_load()
   }
 
-  pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision<'_> {
+  pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision {
     let host = headers
       .get(http::header::HOST)
       .and_then(|value| value.to_str().ok())
@@ -113,9 +166,10 @@ impl ChallengeService {
   pub fn evaluate_context(
     &self,
     request: &rilgate_policy::conditions::Request<'_>,
-  ) -> PolicyDecision<'_> {
-    let initial_weight = self.initial_weight(request.headers);
-    let mut decision = self.policy.evaluate_context(request, initial_weight);
+  ) -> PolicyDecision {
+    let policy = self.policy.load();
+    let initial_weight = Self::initial_weight(&policy, request.headers);
+    let mut decision = policy.engine.evaluate_context(request, initial_weight);
 
     if decision.action == PolicyAction::Challenge {
       if decision.algorithm.is_none() {
@@ -135,18 +189,15 @@ impl ChallengeService {
     decision
   }
 
-  fn initial_weight(&self, headers: &HeaderMap) -> i32 {
-    let Some(score) = &self.cfg.policy.score else {
-      return 0;
-    };
-    if score.debug_header.enabled
-      && let Some(value) = headers.get(score.debug_header.name.as_str())
+  fn initial_weight(policy: &CompiledPolicy, headers: &HeaderMap) -> i32 {
+    if let Some(name) = &policy.debug_header
+      && let Some(value) = headers.get(name.as_str())
       && let Ok(value) = value.to_str()
       && let Ok(weight) = value.parse::<i32>()
     {
       return weight;
     }
-    score.initial
+    policy.initial_weight
   }
 
   pub fn difficulty_for_weight(&self, algorithm: PowAlgorithm, weight: i32) -> Result<u64> {

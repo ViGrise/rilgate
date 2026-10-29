@@ -1,5 +1,6 @@
 use crate::{observability::metrics::Metrics, proxy::client::ProxyService};
 use anyhow::{Result, ensure};
+use arc_swap::ArcSwap;
 use http::{HeaderMap, HeaderValue, Uri};
 use moka::{Expiry, future::Cache};
 use rilgate_config::OpenGraphConfig;
@@ -42,7 +43,7 @@ impl Expiry<CacheKey, Entry> for EntryExpiry {
 
 pub struct OpenGraphService {
   config: OpenGraphConfig,
-  condition: Option<rilgate_policy::conditions::CompiledCondition>,
+  condition: ArcSwap<Option<rilgate_policy::conditions::CompiledCondition>>,
   client: reqwest::Client,
   cache: Cache<CacheKey, Entry>,
   slots: Semaphore,
@@ -77,11 +78,33 @@ impl OpenGraphService {
         .max_capacity(config.max_entries)
         .expire_after(EntryExpiry)
         .build(),
-      condition: config.compile_condition(sets, geoip)?,
+      condition: ArcSwap::from_pointee(config.compile_condition(sets, geoip)?),
       config,
       client,
       slots: Semaphore::new(MAX_CONCURRENT_FETCHES),
     })
+  }
+
+  /// Compiles `site.open_graph.when` against the given IP sets and GeoIP databases.
+  pub fn compile_condition(
+    &self,
+    sets: &rilgate_policy::IpSets,
+    geoip: &rilgate_policy::GeoDatabases,
+  ) -> Result<Option<rilgate_policy::conditions::CompiledCondition>> {
+    self.config.compile_condition(sets, geoip)
+  }
+
+  pub fn set_condition(&self, condition: Option<rilgate_policy::conditions::CompiledCondition>) {
+    self.condition.store(Arc::new(condition));
+  }
+
+  /// Reports whether `site.open_graph.when` compares the host load.
+  pub fn uses_load(&self) -> bool {
+    self
+      .config
+      .when
+      .as_ref()
+      .is_some_and(rilgate_policy::policy::schema::Condition::uses_load)
   }
 
   pub async fn lookup(
@@ -94,6 +117,8 @@ impl OpenGraphService {
     if !self.config.enabled
       || self
         .condition
+        .load()
+        .as_ref()
         .as_ref()
         .is_some_and(|condition| !condition.matches(request))
     {

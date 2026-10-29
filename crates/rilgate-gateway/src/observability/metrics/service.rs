@@ -49,9 +49,8 @@ pub fn exposition(state: &AppState) -> Response {
       "# TYPE rilgate_{name}_total counter\nrilgate_{name}_total {value}"
     );
   }
-  let sets: Vec<_> = state
-    .pow
-    .ip_sets()
+  let ip_sets = state.pow.ip_sets();
+  let sets: Vec<_> = ip_sets
     .iter()
     .filter(|set| set.remote().is_some())
     .collect();
@@ -83,7 +82,8 @@ pub fn exposition(state: &AppState) -> Response {
       }
     }
   }
-  let databases: Vec<_> = state.pow.geoip().iter().collect();
+  let geoip = state.pow.geoip();
+  let databases: Vec<_> = geoip.iter().collect();
   if !databases.is_empty() {
     for (name, kind) in [
       ("loaded", "gauge"),

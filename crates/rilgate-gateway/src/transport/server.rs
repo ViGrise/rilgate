@@ -98,6 +98,15 @@ impl Gateway {
       state,
     }
   }
+  /// A handle that replaces the policy while the gateway runs.
+  pub fn policy_handle(&self) -> crate::runtime::policy::PolicyHandle {
+    crate::runtime::policy::PolicyHandle {
+      pow: self.state.pow.clone(),
+      services: self.state.policy_services.clone(),
+      open_graph: self.state.open_graph.clone(),
+    }
+  }
+
   pub async fn serve(
     self,
     mut listeners: Vec<TcpListener>,
@@ -314,7 +323,7 @@ impl Handler {
       return Ok(Some(out));
     }
     if path.starts_with("/trap/") {
-      if let Some(honeypot) = &self.state.honeypot {
+      if let Some(honeypot) = &self.state.policy_services.load().honeypot {
         honeypot.record_hit(resolved_client_ip.ok().flatten());
         self
           .state

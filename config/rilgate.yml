@@ -29,8 +29,9 @@
 # .env.example lists every variable; rilgate --help lists every flag.
 # A working-directory .env, or --env-file, supplies variables without replacing
 # existing ones.
-# Configuration is loaded at startup; restart the process after editing YAML.
-# Resource watching below reloads web resources, not this configuration file.
+# Configuration is loaded at startup. On Unix, SIGHUP reloads the policy section
+# without a restart. A change to any other section needs a restart; Rilgate then
+# logs the section names and keeps the running configuration.
 
 # Rilgate reads rilgate.yml from the working directory, then config/rilgate.yml.
 # Select another file with --config FILE or RILGATE_CONFIG.

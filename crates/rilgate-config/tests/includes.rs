@@ -64,7 +64,7 @@ fn nested_includes_mix_rules_and_cidrs_and_preserve_policy_order() {
   document.resolve().unwrap();
   let engine = rilgate_policy::PolicyEngine::from_definition(&document.policy).unwrap();
   let headers = http::HeaderMap::new();
-  assert_eq!(engine.evaluate(&headers, "/health", 0).rule, "health");
+  assert_eq!(&*engine.evaluate(&headers, "/health", 0).rule, "health");
   let decision = engine.evaluate_context(
     &rilgate_policy::conditions::Request {
       host: "example.test",
@@ -76,8 +76,11 @@ fn nested_includes_mix_rules_and_cidrs_and_preserve_policy_order() {
     },
     0,
   );
-  assert_eq!(decision.rule, "bots");
-  assert_eq!(engine.evaluate(&headers, "/protected", 0).rule, "catchall");
+  assert_eq!(&*decision.rule, "bots");
+  assert_eq!(
+    &*engine.evaluate(&headers, "/protected", 0).rule,
+    "catchall"
+  );
   let output = document.display(true).unwrap();
   assert!(!output.contains("!include"));
   assert!(!output.contains("0123456789abcdef"));

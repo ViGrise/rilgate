@@ -8,7 +8,7 @@ use anyhow::{Result, ensure};
 use std::sync::Arc;
 
 /// The compiled GeoIP databases referenced by policy conditions.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct GeoDatabases {
   country: Option<Arc<GeoDatabase>>,
   asn: Option<Arc<GeoDatabase>>,

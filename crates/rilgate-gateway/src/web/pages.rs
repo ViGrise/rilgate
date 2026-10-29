@@ -53,7 +53,7 @@ pub fn render_challenge_page(
 /// Returns a hidden link target that is unique to one page, or an empty string when
 /// the honeypot is off.
 fn honeypot_url(state: &AppState, prefix: &str) -> String {
-  if state.honeypot.is_none() {
+  if state.policy_services.load().honeypot.is_none() {
     return String::new();
   }
   let mut segment = [0u8; 16];

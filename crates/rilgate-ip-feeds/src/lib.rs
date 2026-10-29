@@ -8,6 +8,36 @@ pub use parse::parse;
 pub use refresh::{Outcome, next_delay, refresh_once, spawn};
 use std::time::Duration;
 
+/// Background refresh tasks. Dropping the handle stops them.
+#[derive(Default)]
+pub struct Refreshers {
+  tasks: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl Refreshers {
+  /// The number of running refresh tasks.
+  pub fn len(&self) -> usize {
+    self.tasks.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.tasks.is_empty()
+  }
+
+  /// Takes over the tasks of `other`.
+  pub fn absorb(&mut self, mut other: Refreshers) {
+    self.tasks.append(&mut other.tasks);
+  }
+}
+
+impl Drop for Refreshers {
+  fn drop(&mut self) {
+    for task in &self.tasks {
+      task.abort();
+    }
+  }
+}
+
 pub const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_REDIRECTS: usize = 3;

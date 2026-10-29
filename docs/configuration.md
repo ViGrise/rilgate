@@ -241,6 +241,24 @@ Parser recursion and alias-repetition limits also
 apply. Files must contain UTF-8 YAML. URL loading, glob patterns and automatic
 reload are unsupported.
 
+### Reloading the policy
+
+On Unix, send `SIGHUP` to reload the configuration while Rilgate runs. The reload
+applies the `policy` section: rules, IP sets, GeoIP databases, DNS settings, the
+honeypot and the `site.open_graph.when` condition that uses the new IP sets and
+databases. Requests that are in progress finish with the policy they started with.
+
+The reload applies nothing in these cases, and the running configuration stays:
+
+- Another section differs from the running one. Rilgate logs the names of those
+  sections with "Configuration change needs a restart".
+- The new configuration fails to load or validate, or the new policy fails to
+  compile. A policy that removes an IP set or database that the Open Graph
+  condition uses fails in the same way. Rilgate logs the error.
+
+Remote IP sets and GeoIP databases of the new policy load again after a reload,
+because the reload compiles them anew.
+
 To split an existing configuration, move a section's value into a separate
 file, replace the value with `!include ./path.yml`, and run:
 

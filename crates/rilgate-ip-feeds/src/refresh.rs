@@ -88,20 +88,20 @@ pub fn next_delay(
 
 /// Starts a background refresher for every remote set in the registry.
 ///
-/// Returns the number of refreshers started.
-pub fn spawn(sets: &IpSets) -> Result<usize> {
+/// Dropping the returned handle stops the refreshers.
+pub fn spawn(sets: &IpSets) -> Result<crate::Refreshers> {
   let remotes: Vec<_> = sets
     .iter()
     .filter_map(|set| Some((Arc::downgrade(set), set.remote()?.clone())))
     .collect();
   if remotes.is_empty() {
-    return Ok(0);
+    return Ok(crate::Refreshers::default());
   }
   let client = Arc::new(FeedClient::new()?);
-  let started = remotes.len();
+  let mut refreshers = crate::Refreshers::default();
   for (set, remote) in remotes {
     let client = client.clone();
-    tokio::spawn(async move {
+    refreshers.tasks.push(tokio::spawn(async move {
       let mut validators = Validators::default();
       let mut failures = 0u32;
       loop {
@@ -118,7 +118,7 @@ pub fn spawn(sets: &IpSets) -> Result<usize> {
         let delay = next_delay(failures, loaded, remote.refresh, fastrand::f64());
         tokio::time::sleep(delay).await;
       }
-    });
+    }));
   }
-  Ok(started)
+  Ok(refreshers)
 }

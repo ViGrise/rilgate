@@ -205,9 +205,9 @@ policy:
 "#
   );
   let config = parse(&source).unwrap().resolve().unwrap();
-  let gateway = TestGateway::start(rilgate::app::build(config).await.unwrap())
-    .await
-    .unwrap();
+  let built = rilgate::app::build(config.clone()).await.unwrap();
+  rilgate::reload::spawn_reloader(built.policy_handle(), config, Default::default()).unwrap();
+  let gateway = TestGateway::start(built).await.unwrap();
 
   let mut status = None;
   for _ in 0..100 {

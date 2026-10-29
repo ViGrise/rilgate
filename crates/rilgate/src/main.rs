@@ -28,6 +28,7 @@ async fn main() -> anyhow::Result<()> {
   }
   let mut args = Args::parse();
   let command = args.command.take();
+  let overrides = args.overrides();
   if let Some(Command::Upgrade { version, force }) = command {
     return rilgate::cli::upgrade::run(version, force).await;
   }
@@ -35,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     document,
     mut warnings,
     lookup,
-  } = rilgate_config::loader::load(&args.overrides())?;
+  } = rilgate_config::loader::load(&overrides)?;
   if let Some(Command::Verifier { command }) = command {
     let config = document.resolve_verifier()?;
     warnings.extend(config.warnings().iter().map(ToString::to_string));
@@ -121,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
       for warning in &warnings {
         tracing::warn!("{warning}");
       }
-      rilgate::cli::serve::run(config).await
+      rilgate::cli::serve::run(config, overrides).await
     }
   }
 }

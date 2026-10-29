@@ -9,14 +9,15 @@ use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, Method};
 use std::cell::Cell;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub struct PolicyDecision<'a> {
+pub struct PolicyDecision {
   pub action: PolicyAction,
   pub weight: i32,
   pub algorithm: Option<PowAlgorithm>,
   pub difficulty: Option<u64>,
-  pub rule: &'a str,
+  pub rule: Arc<str>,
   pub unresolved: bool,
   /// A DNS condition had no result in the lookups, so evaluating again with the
   /// results can change the decision.
@@ -25,12 +26,14 @@ pub struct PolicyDecision<'a> {
 #[derive(Debug)]
 struct CompiledRule {
   rule: Rule,
+  name: Arc<str>,
   condition: Compiled,
 }
 #[derive(Debug)]
 pub struct PolicyEngine {
   rules: Vec<CompiledRule>,
   default_action: PolicyAction,
+  default_rule: Arc<str>,
   ip_sets: IpSets,
   geoip: GeoDatabases,
   lookup_plan: LookupPlan,
@@ -187,7 +190,11 @@ impl PolicyEngine {
         &ip_sets,
         &geoip,
       )?;
-      rules.push(CompiledRule { rule, condition });
+      rules.push(CompiledRule {
+        name: rule.name.as_str().into(),
+        rule,
+        condition,
+      });
     }
     let lookup_plan = LookupPlan {
       dnsbl_zones: budget.dnsbl_zones.into_iter().collect(),
@@ -195,6 +202,12 @@ impl PolicyEngine {
     };
     Ok(Self {
       rules,
+      default_rule: match default {
+        PolicyAction::Allow => "default-allow",
+        PolicyAction::Deny => "default-deny",
+        _ => "default-challenge",
+      }
+      .into(),
       default_action: default,
       ip_sets,
       geoip,
@@ -221,12 +234,7 @@ impl PolicyEngine {
   pub fn lookup_plan(&self) -> &LookupPlan {
     &self.lookup_plan
   }
-  pub fn evaluate(
-    &self,
-    headers: &HeaderMap,
-    path: &str,
-    initial_weight: i32,
-  ) -> PolicyDecision<'_> {
+  pub fn evaluate(&self, headers: &HeaderMap, path: &str, initial_weight: i32) -> PolicyDecision {
     let host = headers
       .get(http::header::HOST)
       .and_then(|value| value.to_str().ok())
@@ -244,7 +252,7 @@ impl PolicyEngine {
       initial_weight,
     )
   }
-  pub fn evaluate_context(&self, request: &Request<'_>, mut weight: i32) -> PolicyDecision<'_> {
+  pub fn evaluate_context(&self, request: &Request<'_>, mut weight: i32) -> PolicyDecision {
     // A decision is unresolved when any rule evaluated on the way to it,
     // including the deciding rule, depended on unavailable IP set data.
     let mut unresolved = false;
@@ -283,7 +291,7 @@ impl PolicyEngine {
             weight,
             algorithm: None,
             difficulty: None,
-            rule: &entry.rule.name,
+            rule: entry.name.clone(),
             unresolved,
             needs_lookups: needs_lookups.get(),
           };
@@ -310,31 +318,27 @@ impl PolicyEngine {
       weight,
       algorithm: None,
       difficulty: None,
-      rule: match self.default_action {
-        PolicyAction::Allow => "default-allow",
-        PolicyAction::Deny => "default-deny",
-        _ => "default-challenge",
-      },
+      rule: self.default_rule.clone(),
       unresolved,
       needs_lookups: needs_lookups.get(),
     }
   }
 
-  fn decision<'a>(
+  fn decision(
     &self,
-    entry: &'a CompiledRule,
+    entry: &CompiledRule,
     action: PolicyAction,
     weight: i32,
     unresolved: bool,
     needs_lookups: bool,
-  ) -> PolicyDecision<'a> {
+  ) -> PolicyDecision {
     let selection = entry.rule.challenge.as_ref();
     PolicyDecision {
       action,
       weight,
       algorithm: selection.and_then(|c| c.algorithm),
       difficulty: selection.and_then(|c| c.difficulty),
-      rule: &entry.rule.name,
+      rule: entry.name.clone(),
       unresolved,
       needs_lookups,
     }
