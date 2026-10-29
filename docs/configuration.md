@@ -344,6 +344,19 @@ Before you build the server, build the generated outputs with `cargo xtask build
 the outputs as `cargo xtask build-wasm` stages the RandomX WASM. The [development guide](development.md)
 describes the regeneration workflow.
 
+## Client IP forwarding
+
+`server.trusted_proxies` lists the immediate proxy peers allowed to supply the client IP.
+Set `server.client_ip_header` to an HTTP header name, such as `cf-connecting-ip`, to read
+one IP address from that header. The edge must overwrite the header. Duplicate values,
+address lists, and invalid IP addresses are rejected. IPv4-mapped IPv6 addresses resolve
+to IPv4. Headers from other peers are ignored.
+
+When the configured header is absent, Rilgate reads `X-Forwarded-For` from right to left
+and stops at the nearest untrusted hop. The same behavior applies when
+`server.client_ip_header` is unset. Use `RILGATE_SERVER_CLIENT_IP_HEADER` or
+`--server-client-ip-header` to set the header through the environment or CLI.
+
 ## Defaults
 
 Durations use units such as `300ms`, `5s`, `1m`, `6h`.
@@ -363,6 +376,7 @@ or overflow.
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |
 | `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
 | `server.trusted_proxies` | `[]`, trust no peers |
+| `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
 | `server.metrics_enabled`, `.readiness_timeout` | `false`, `2s` |
 | `site.name`, `.url`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `/.well-known/rilgate`, `css/rilgate.css` |
 | `site.resources.directory`, `.seed` | none, `if_empty` |

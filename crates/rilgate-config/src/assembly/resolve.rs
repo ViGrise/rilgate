@@ -138,6 +138,13 @@ impl Document {
             })
           })
           .collect::<Result<_>>()?,
+        client_ip_header: self
+          .server
+          .client_ip_header
+          .as_ref()
+          .map(|name| name.parse())
+          .transpose()
+          .context("server.client_ip_header: expected an HTTP header name")?,
         metrics_enabled: self.server.metrics_enabled,
         readiness_timeout: self.server.readiness_timeout.0,
       },

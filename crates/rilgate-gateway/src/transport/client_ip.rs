@@ -23,6 +23,20 @@ pub fn client_ip(
   if !trusted(&peer) {
     return Ok(Some(peer));
   }
+  if let Some(name) = &cfg.client_ip_header {
+    let mut values = headers.get_all(name).iter();
+    if let Some(value) = values.next() {
+      if values.next().is_some() {
+        return Err("Invalid forwarded client address");
+      }
+      let address: IpAddr = value
+        .to_str()
+        .map_err(|_| "Invalid forwarded client address")?
+        .parse()
+        .map_err(|_| "Invalid forwarded client address")?;
+      return Ok(Some(address.to_canonical()));
+    }
+  }
   let mut current = peer;
   let mut count = 0;
   // Walk from the socket towards the client; only trusted hops may assert another address.
@@ -54,6 +68,105 @@ pub fn client_ip(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  fn trusted_header_config() -> ServerConfig {
+    ServerConfig {
+      trusted_proxies: vec!["127.0.0.1/32".parse().unwrap()],
+      client_ip_header: Some("cf-connecting-ip".parse().unwrap()),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn client_ip_header_from_a_trusted_peer_names_the_client() {
+    let mut headers = HeaderMap::new();
+    headers.insert("cf-connecting-ip", "203.0.113.7".parse().unwrap());
+    headers.insert(
+      "x-forwarded-for",
+      "203.0.113.7, 198.51.100.1".parse().unwrap(),
+    );
+    assert_eq!(
+      client_ip(
+        Some("127.0.0.1".parse().unwrap()),
+        &headers,
+        &trusted_header_config()
+      ),
+      Ok(Some("203.0.113.7".parse().unwrap()))
+    );
+  }
+
+  #[test]
+  fn client_ip_header_from_an_untrusted_peer_is_ignored() {
+    let mut headers = HeaderMap::new();
+    headers.insert("cf-connecting-ip", "203.0.113.7".parse().unwrap());
+    headers.insert(
+      "x-forwarded-for",
+      "203.0.113.7, 198.51.100.1".parse().unwrap(),
+    );
+    assert_eq!(
+      client_ip(
+        Some("192.0.2.9".parse().unwrap()),
+        &headers,
+        &trusted_header_config()
+      ),
+      Ok(Some("192.0.2.9".parse().unwrap()))
+    );
+  }
+
+  #[test]
+  fn missing_client_ip_header_falls_back_to_forwarded_for() {
+    let mut headers = HeaderMap::new();
+    headers.insert("x-forwarded-for", "203.0.113.8".parse().unwrap());
+    assert_eq!(
+      client_ip(
+        Some("127.0.0.1".parse().unwrap()),
+        &headers,
+        &trusted_header_config()
+      ),
+      Ok(Some("203.0.113.8".parse().unwrap()))
+    );
+  }
+
+  #[test]
+  fn invalid_client_ip_header_is_rejected() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+      "cf-connecting-ip",
+      "203.0.113.7, 198.51.100.1".parse().unwrap(),
+    );
+    assert_eq!(
+      client_ip(
+        Some("127.0.0.1".parse().unwrap()),
+        &headers,
+        &trusted_header_config()
+      ),
+      Err("Invalid forwarded client address")
+    );
+    headers.insert("cf-connecting-ip", "203.0.113.7".parse().unwrap());
+    headers.append("cf-connecting-ip", "198.51.100.1".parse().unwrap());
+    assert_eq!(
+      client_ip(
+        Some("127.0.0.1".parse().unwrap()),
+        &headers,
+        &trusted_header_config()
+      ),
+      Err("Invalid forwarded client address")
+    );
+  }
+
+  #[test]
+  fn client_ip_header_maps_ipv4_mapped_ipv6() {
+    let mut headers = HeaderMap::new();
+    headers.insert("cf-connecting-ip", "::ffff:203.0.113.7".parse().unwrap());
+    assert_eq!(
+      client_ip(
+        Some("127.0.0.1".parse().unwrap()),
+        &headers,
+        &trusted_header_config()
+      ),
+      Ok(Some("203.0.113.7".parse().unwrap()))
+    );
+  }
 
   #[test]
   fn trust_stops_at_the_nearest_untrusted_hop() {

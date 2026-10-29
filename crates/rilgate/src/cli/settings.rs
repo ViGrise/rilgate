@@ -63,7 +63,8 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SERVER, Text, "server.max_connections", "server-max-connections", "RILGATE_SERVER_MAX_CONNECTIONS", None, "Maximum concurrent client connections"),
   spec!(SERVER, Text, "server.max_requests", "server-max-requests", "RILGATE_SERVER_MAX_REQUESTS", None, "Maximum concurrent requests"),
   spec!(SERVER, Text, "server.h2_max_streams", "server-h2-max-streams", "RILGATE_SERVER_H2_MAX_STREAMS", None, "Maximum concurrent HTTP/2 streams per connection"),
-  spec!(SERVER, List, "server.trusted_proxies", "server-trusted-proxies", "RILGATE_SERVER_TRUSTED_PROXIES", None, "Proxy networks allowed to set X-Forwarded-For"),
+  spec!(SERVER, List, "server.trusted_proxies", "server-trusted-proxies", "RILGATE_SERVER_TRUSTED_PROXIES", None, "Proxy networks allowed to supply forwarding headers"),
+  spec!(SERVER, Text, "server.client_ip_header", "server-client-ip-header", "RILGATE_SERVER_CLIENT_IP_HEADER", None, "Header containing one client IP address from a trusted proxy"),
   spec!(SERVER, Switch, "server.metrics_enabled", "server-metrics-enabled", "RILGATE_SERVER_METRICS_ENABLED", None, "Expose Prometheus metrics"),
   spec!(SERVER, Text, "server.readiness_timeout", "server-readiness-timeout", "RILGATE_SERVER_READINESS_TIMEOUT", None, "Dependency timeout for readiness probes"),
   spec!(SITE, Text, "site.name", "site-name", "RILGATE_SITE_NAME", None, "Site name shown on challenge pages"),
@@ -394,7 +395,7 @@ mod tests {
   #[test]
   fn every_path_exists_in_the_schema() {
     let defaults = defaults_of(
-      "security:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\n",
+      "server:\n  client_ip_header: cf-connecting-ip\nsecurity:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\n",
     )
     .unwrap();
     for spec in SPECS {
