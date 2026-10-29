@@ -65,6 +65,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SERVER, Text, "server.h2_max_streams", "server-h2-max-streams", "RILGATE_SERVER_H2_MAX_STREAMS", None, "Maximum concurrent HTTP/2 streams per connection"),
   spec!(SERVER, List, "server.trusted_proxies", "server-trusted-proxies", "RILGATE_SERVER_TRUSTED_PROXIES", None, "Proxy networks allowed to supply forwarding headers"),
   spec!(SERVER, Text, "server.client_ip_header", "server-client-ip-header", "RILGATE_SERVER_CLIENT_IP_HEADER", None, "Header containing one client IP address from a trusted proxy"),
+  spec!(SERVER, Text, "server.decision_log", "server-decision-log", "RILGATE_SERVER_DECISION_LOG", None, "Policy decision logs at info level: off, deny, challenge or all"),
   spec!(SERVER, Switch, "server.metrics_enabled", "server-metrics-enabled", "RILGATE_SERVER_METRICS_ENABLED", None, "Expose Prometheus metrics"),
   spec!(SERVER, Text, "server.readiness_timeout", "server-readiness-timeout", "RILGATE_SERVER_READINESS_TIMEOUT", None, "Dependency timeout for readiness probes"),
   spec!(SITE, Text, "site.name", "site-name", "RILGATE_SITE_NAME", None, "Site name shown on challenge pages"),

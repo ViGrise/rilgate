@@ -344,6 +344,18 @@ Before you build the server, build the generated outputs with `cargo xtask build
 the outputs as `cargo xtask build-wasm` stages the RandomX WASM. The [development guide](development.md)
 describes the regeneration workflow.
 
+## Policy decision logs
+
+`server.decision_log` controls policy decision logs at info level. Set it to `off` to
+suppress them, `deny` to log denied requests, `challenge` (the default) to log denied
+and challenged requests, or `all` to include allowed requests. Requests allowed by a
+valid authentication cookie are logged as `allow`. The equivalent overrides are
+`RILGATE_SERVER_DECISION_LOG` and `--server-decision-log`.
+
+Each decision includes `request_id`, `client_ip`, `method`, `host`, `path`, `action`,
+`rule`, `weight`, `algorithm`, `difficulty`, and `unresolved`. These logs contain client
+IP addresses and request paths. Algorithm and difficulty are optional policy values.
+
 ## Client IP forwarding
 
 `server.trusted_proxies` lists the immediate proxy peers allowed to supply the client IP.
@@ -377,6 +389,7 @@ or overflow.
 | `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
 | `server.trusted_proxies` | `[]`, trust no peers |
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
+| `server.decision_log` | `challenge`, log denied and challenged requests at info level |
 | `server.metrics_enabled`, `.readiness_timeout` | `false`, `2s` |
 | `site.name`, `.url`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `/.well-known/rilgate`, `css/rilgate.css` |
 | `site.resources.directory`, `.seed` | none, `if_empty` |

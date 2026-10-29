@@ -54,6 +54,7 @@ struct Handler {
 }
 pub struct RequestContext {
   id: http::HeaderValue,
+  client_ip: Option<std::net::IpAddr>,
   started: Instant,
   uploaded: usize,
   connect_attempts: usize,
@@ -290,6 +291,7 @@ impl Handler {
     session: &mut Session,
     ctx: &mut RequestContext,
     path: &str,
+    resolved_client_ip: Result<Option<std::net::IpAddr>, &'static str>,
   ) -> pingora::Result<Option<Response>> {
     let headers = session.req_header().headers.clone();
     let uri = session.req_header().uri.clone();
@@ -333,16 +335,14 @@ impl Handler {
       .map(|address| address.ip());
     let mut client_ip = None;
     if proof {
-      let peer =
-        match crate::transport::client_ip::client_ip(socket_peer, &headers, &self.state.cfg.server)
-        {
-          Ok(peer) => peer,
-          Err(message) => {
-            return Ok(Some(
-              ApiError::InvalidRequest(message.into()).into_response(),
-            ));
-          }
-        };
+      let peer = match resolved_client_ip {
+        Ok(peer) => peer,
+        Err(message) => {
+          return Ok(Some(
+            ApiError::InvalidRequest(message.into()).into_response(),
+          ));
+        }
+      };
       client_ip = peer;
       if let Err(seconds) = self.state.limiter.check(peer) {
         let mut out = ApiError::RateLimited(seconds).into_response();
@@ -504,6 +504,7 @@ impl ProxyHttp for Handler {
   fn new_ctx(&self) -> RequestContext {
     RequestContext {
       id: http::HeaderValue::from_static(""),
+      client_ip: None,
       started: Instant::now(),
       uploaded: 0,
       connect_attempts: 0,
@@ -528,6 +529,16 @@ impl ProxyHttp for Handler {
     session
       .req_header_mut()
       .insert_header("x-request-id", ctx.id.clone())?;
+    let peer = session
+      .client_addr()
+      .and_then(|address| address.as_inet())
+      .map(|address| address.ip());
+    let resolved_client_ip = crate::transport::client_ip::client_ip(
+      peer,
+      &session.req_header().headers,
+      &self.state.cfg.server,
+    );
+    ctx.client_ip = resolved_client_ip.as_ref().ok().copied().flatten();
     match self.state.requests.clone().try_acquire_owned() {
       Ok(permit) => ctx.permit = Some(permit),
       Err(_) => {
@@ -586,9 +597,14 @@ impl ProxyHttp for Handler {
       .map(str::to_owned)
     {
       let out = if path == "/api/ws" {
-        self.local(session, ctx, &path).await?
+        self.local(session, ctx, &path, resolved_client_ip).await?
       } else {
-        match tokio::time::timeout(Duration::from_secs(30), self.local(session, ctx, &path)).await {
+        match tokio::time::timeout(
+          Duration::from_secs(30),
+          self.local(session, ctx, &path, resolved_client_ip),
+        )
+        .await
+        {
           Ok(result) => result?,
           Err(_) => Some(response(StatusCode::REQUEST_TIMEOUT, "")),
         }
@@ -611,23 +627,18 @@ impl ProxyHttp for Handler {
       }
     };
     let header = session.req_header();
-    let peer = session
-      .client_addr()
-      .and_then(|address| address.as_inet())
-      .map(|address| address.ip());
-    let client_ip =
-      match crate::transport::client_ip::client_ip(peer, &header.headers, &self.state.cfg.server) {
-        Ok(ip) => ip,
-        Err(message) => {
-          send(
-            session,
-            ApiError::InvalidRequest(message.into()).into_response(),
-            ctx,
-          )
-          .await?;
-          return Ok(true);
-        }
-      };
+    let client_ip = match resolved_client_ip {
+      Ok(ip) => ip,
+      Err(message) => {
+        send(
+          session,
+          ApiError::InvalidRequest(message.into()).into_response(),
+          ctx,
+        )
+        .await?;
+        return Ok(true);
+      }
+    };
     match gate_with_client(
       &self.state,
       &header.headers,
@@ -635,6 +646,7 @@ impl ProxyHttp for Handler {
       &header.method,
       client_ip,
       crate::transport::client_ip::trusted_peer(peer, &self.state.cfg.server),
+      ctx.id.to_str().unwrap_or_default(),
     )
     .await
     {
@@ -859,7 +871,7 @@ impl ProxyHttp for Handler {
       ctx.started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
     );
     ctx.permit.take();
-    tracing::debug!(request_id = %ctx.id.to_str().unwrap_or_default(), method = %session.req_header().method, path = %session.req_header().uri.path(), status = session.response_written().map(|header| header.status.as_u16()), elapsed_us = ctx.started.elapsed().as_micros(), error = ?error, "HTTP request completed");
+    tracing::debug!(request_id = %ctx.id.to_str().unwrap_or_default(), client_ip = ?ctx.client_ip, method = %session.req_header().method, path = %session.req_header().uri.path(), status = session.response_written().map(|header| header.status.as_u16()), elapsed_us = ctx.started.elapsed().as_micros(), error = ?error, "HTTP request completed");
   }
 }
 

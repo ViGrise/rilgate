@@ -1,4 +1,15 @@
 use ipnet::IpNet;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionLog {
+  Off,
+  Deny,
+  #[default]
+  Challenge,
+  All,
+}
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -7,6 +18,7 @@ pub struct ServerConfig {
   pub h2_max_streams: u32,
   pub trusted_proxies: Vec<IpNet>,
   pub client_ip_header: Option<http::HeaderName>,
+  pub decision_log: DecisionLog,
   pub metrics_enabled: bool,
   pub readiness_timeout: std::time::Duration,
 }
@@ -20,6 +32,7 @@ impl Default for ServerConfig {
       h2_max_streams: defaults.h2_max_streams,
       trusted_proxies: vec![],
       client_ip_header: None,
+      decision_log: defaults.decision_log,
       metrics_enabled: defaults.metrics_enabled,
       readiness_timeout: defaults.readiness_timeout.0,
     }

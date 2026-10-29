@@ -2,7 +2,7 @@ mod open_graph;
 pub use open_graph::OpenGraphConfig;
 mod server;
 use serde::{Deserialize, Serialize};
-pub use server::ServerConfig;
+pub use server::{DecisionLog, ServerConfig};
 use std::str::FromStr;
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

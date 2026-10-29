@@ -17,6 +17,7 @@ pub struct Server {
     skip_serializing_if = "Option::is_none"
   )]
   pub client_ip_header: Option<String>,
+  pub decision_log: crate::runtime::DecisionLog,
   pub metrics_enabled: bool,
   pub readiness_timeout: Time,
 }
@@ -31,6 +32,7 @@ impl Default for Server {
       h2_max_streams: 64,
       trusted_proxies: vec![],
       client_ip_header: None,
+      decision_log: Default::default(),
       metrics_enabled: false,
       readiness_timeout: Time::seconds(2),
     }

@@ -150,6 +150,7 @@ cat >"$RUNDIR/rilgate.yml" <<EOF
 server:
   listen: "127.0.0.1:$PORT"
   metrics_enabled: true
+  decision_log: off
   operations:
     listen: "127.0.0.1:$OPERATIONS_PORT"
   upstream:
