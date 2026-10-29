@@ -27,6 +27,31 @@ const RENAMED_VALUES: &[(&str, &str, &str)] = &[(
 pub struct Loaded {
   pub document: Document,
   pub warnings: Vec<String>,
+  pub lookup: Lookup,
+}
+
+/// How the configuration file was found, with absolute paths for reporting.
+pub enum Lookup {
+  /// Selected by `--config` or `RILGATE_CONFIG`, so no default file is tried.
+  Selected(PathBuf),
+  /// Default files tried in order; `found` is false for each missing one.
+  Default(Vec<(PathBuf, bool)>),
+}
+
+impl Lookup {
+  /// The configuration file that was read; none when only flags and environment variables apply.
+  pub fn path(&self) -> Option<&Path> {
+    match self {
+      Self::Selected(path) => Some(path),
+      Self::Default(tried) => tried
+        .iter()
+        .find_map(|(path, found)| found.then_some(path.as_path())),
+    }
+  }
+}
+
+fn absolute(path: &Path) -> PathBuf {
+  std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 pub fn load(args: &Overrides) -> Result<Loaded> {
@@ -37,8 +62,11 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
     .or_else(|| std::env::var_os("RILGATE_CONFIG").map(PathBuf::from));
   let mut warnings = Vec::new();
   let mut resolver = includes::Resolver::default();
-  let input = match explicit {
-    Some(path) => Some((resolver.read(&path)?, path)),
+  let (input, lookup) = match explicit {
+    Some(path) => {
+      let lookup = Lookup::Selected(absolute(&path));
+      (Some((resolver.read(&path)?, path)), lookup)
+    }
     None => read_default(&mut warnings, &mut resolver)?,
   };
   let (value, config_sources) = match input {
@@ -62,7 +90,11 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
       })
       .collect();
   }
-  Ok(Loaded { document, warnings })
+  Ok(Loaded {
+    document,
+    warnings,
+    lookup,
+  })
 }
 
 /// Reads the first default file that exists and warns about each later one,
@@ -71,10 +103,13 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
 fn read_default(
   warnings: &mut Vec<String>,
   resolver: &mut includes::Resolver,
-) -> Result<Option<(String, PathBuf)>> {
+) -> Result<(Option<(String, PathBuf)>, Lookup)> {
+  let mut tried = Vec::new();
   let mut paths = DEFAULT_PATHS.iter().map(Path::new);
   while let Some(used) = paths.next() {
-    if let Some(text) = resolver.read_optional(used)? {
+    let text = resolver.read_optional(used)?;
+    tried.push((absolute(used), text.is_some()));
+    if let Some(text) = text {
       for ignored in paths.filter(|path| path.is_file()) {
         warnings.push(format!(
           "ignoring configuration file {}; using {}. Remove one, or select one with --config",
@@ -82,10 +117,10 @@ fn read_default(
           used.display()
         ));
       }
-      return Ok(Some((text, used.to_path_buf())));
+      return Ok((Some((text, used.to_path_buf())), Lookup::Default(tried)));
     }
   }
-  Ok(None)
+  Ok((None, Lookup::Default(tried)))
 }
 
 pub fn parse(text: &str) -> Result<Document> {

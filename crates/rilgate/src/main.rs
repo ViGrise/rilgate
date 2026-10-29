@@ -5,6 +5,15 @@ use rilgate::cli::{Args, Command, ConfigCommand, LogFormat, VerifierCommand};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+// Printed before text logs only, so JSON logs stay one object per line.
+const BANNER: &str = r"
+ ____  ___ _      ____    _  _____ _____
+|  _ \|_ _| |    / ___|  / \|_   _| ____|
+| |_) || || |   | |  _  / _ \ | | |  _|
+|  _ < | || |___| |_| |/ ___ \| | | |___
+|_| \_\___|_____|\____/_/   \_\_| |_____|
+";
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   // Load the environment file before parsing, because its variables can supply flag values.
@@ -25,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
   let rilgate_config::loader::Loaded {
     document,
     mut warnings,
+    lookup,
   } = rilgate_config::loader::load(&args.overrides())?;
   if let Some(Command::Verifier { command }) = command {
     let config = document.resolve_verifier()?;
@@ -36,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
           args.log_level.as_deref(),
           args.log_format == LogFormat::Json,
         );
+        log_lookup(&lookup);
         for warning in warnings {
           tracing::warn!("{warning}");
         }
@@ -93,10 +104,43 @@ async fn main() -> anyhow::Result<()> {
         args.log_level.as_deref(),
         args.log_format == LogFormat::Json,
       );
+      if args.log_format != LogFormat::Json {
+        println!("{BANNER}");
+      }
+      log_lookup(&lookup);
+      tracing::info!(
+        "Rilgate {} ({}), configuration {}, upstream {}",
+        env!("CARGO_PKG_VERSION"),
+        config.env,
+        lookup.path().map_or_else(
+          || "from flags and environment".into(),
+          |path| path.display().to_string()
+        ),
+        config.upstream.url,
+      );
       for warning in &warnings {
         tracing::warn!("{warning}");
       }
       rilgate::cli::serve::run(config).await
+    }
+  }
+}
+
+fn log_lookup(lookup: &rilgate_config::loader::Lookup) {
+  match std::env::current_dir() {
+    Ok(directory) => tracing::info!("Working directory {}", directory.display()),
+    Err(error) => tracing::warn!("Working directory is unavailable: {error}"),
+  }
+  match lookup {
+    rilgate_config::loader::Lookup::Selected(path) => tracing::info!(
+      "Using configuration file {} from --config or RILGATE_CONFIG",
+      path.display()
+    ),
+    rilgate_config::loader::Lookup::Default(tried) => {
+      for (path, found) in tried {
+        let result = if *found { "found" } else { "not found" };
+        tracing::info!("Trying configuration file {}: {result}", path.display());
+      }
     }
   }
 }
