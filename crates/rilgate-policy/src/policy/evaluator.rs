@@ -1,5 +1,6 @@
 use super::schema::{Action, Definition, Mode, Rule};
 use crate::conditions::{Budget, Compiled, Request, Truth};
+use crate::geoip::GeoDatabases;
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::IpSets;
 use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
@@ -26,6 +27,7 @@ pub struct PolicyEngine {
   rules: Vec<CompiledRule>,
   default_action: PolicyAction,
   ip_sets: IpSets,
+  geoip: GeoDatabases,
   host_load: &'static HostLoad,
 }
 
@@ -36,6 +38,7 @@ impl Definition {
         self.ip_sets.is_empty(),
         "policy: ip_sets require mode: custom"
       );
+      ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
       ensure!(
         self.rules.is_none() && self.score.is_none() && self.default_action.is_none(),
         "policy: rules, score and default_action require mode: custom"
@@ -102,6 +105,16 @@ impl Definition {
         }
       }
     }
+    if self.geoip.is_some() {
+      for rule in self.rules.iter().flatten() {
+        if rule.action == Action::Deny && rule.when.uses_geoip() {
+          choices.push((
+            format!("{} (unknown geoip)", rule.name),
+            ChallengePolicy::default(),
+          ));
+        }
+      }
+    }
     if default == Action::Challenge {
       choices.push(("policy.default_action".into(), ChallengePolicy::default()));
     }
@@ -112,6 +125,7 @@ impl PolicyEngine {
   pub fn from_definition(definition: &Definition) -> Result<Self> {
     let (source, default) = definition.resolved_rules()?;
     let ip_sets = IpSets::compile(&definition.ip_sets)?;
+    let geoip = GeoDatabases::compile(definition.geoip.as_ref())?;
     ensure!(
       source.len() <= 128,
       "policy: at most 128 rules and thresholds are supported"
@@ -146,6 +160,7 @@ impl PolicyEngine {
         0,
         &mut budget,
         &ip_sets,
+        &geoip,
       )?;
       rules.push(CompiledRule { rule, condition });
     }
@@ -153,6 +168,7 @@ impl PolicyEngine {
       rules,
       default_action: default,
       ip_sets,
+      geoip,
       host_load: &HOST_LOAD,
     })
   }
@@ -167,6 +183,9 @@ impl PolicyEngine {
   }
   pub fn ip_sets(&self) -> &IpSets {
     &self.ip_sets
+  }
+  pub fn geoip(&self) -> &GeoDatabases {
+    &self.geoip
   }
   pub fn evaluate(
     &self,

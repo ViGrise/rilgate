@@ -295,6 +295,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
         rilgate_gateway::open_graph::OpenGraphService::new(
           config.open_graph.clone(),
           service.ip_sets(),
+          service.geoip(),
         )
         .unwrap(),
       ),

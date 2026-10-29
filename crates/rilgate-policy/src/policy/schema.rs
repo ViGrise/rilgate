@@ -1,4 +1,5 @@
 use crate::ChallengePolicy;
+use rilgate_crypto::Secret;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -45,6 +46,12 @@ pub struct Definition {
   pub score: Option<Scoring>,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub ip_sets: BTreeMap<String, IpSetDefinition>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub geoip: Option<GeoIpDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -166,8 +173,33 @@ pub struct Condition {
     skip_serializing_if = "Option::is_none"
   )]
   pub load: Option<LoadMatch>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub country: Option<Vec<String>>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub asn: Option<Vec<u32>>,
 }
 impl Condition {
+  /// Reports whether this condition or any nested condition reads a GeoIP database.
+  pub fn uses_geoip(&self) -> bool {
+    self.country.is_some()
+      || self.asn.is_some()
+      || self
+        .all
+        .iter()
+        .chain(self.any.iter())
+        .flatten()
+        .any(Self::uses_geoip)
+      || self.not.as_deref().is_some_and(Self::uses_geoip)
+  }
+
   /// Reports whether this condition or any nested condition compares the host load.
   pub fn uses_load(&self) -> bool {
     self.load.is_some()
@@ -339,10 +371,79 @@ pub struct IpSetDefinition {
   pub max_stale: Option<std::time::Duration>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeoIpDefinition {
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub country: Option<GeoDatabaseDefinition>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub asn: Option<GeoDatabaseDefinition>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GeoDatabaseDefinition {
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub path: Option<std::path::PathBuf>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub maxmind: Option<MaxMindSource>,
+  #[serde(
+    default,
+    with = "humantime_serde",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub refresh: Option<std::time::Duration>,
+  #[serde(
+    default,
+    with = "humantime_serde",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub max_stale: Option<std::time::Duration>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MaxMindSource {
+  pub edition: String,
+  #[serde(deserialize_with = "text_or_number")]
+  pub account_id: String,
+  pub license_key: Secret,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeedFormat {
   IpPrefixesJson,
+}
+
+/// Reads a YAML number or string, because account identifiers are digits.
+fn text_or_number<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum Value {
+    Text(String),
+    Number(u64),
+  }
+  Ok(match Value::deserialize(deserializer)? {
+    Value::Text(text) => text,
+    Value::Number(number) => number.to_string(),
+  })
 }
 
 pub(super) fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(

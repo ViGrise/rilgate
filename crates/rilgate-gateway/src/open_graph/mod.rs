@@ -48,7 +48,11 @@ pub struct OpenGraphService {
   slots: Semaphore,
 }
 impl OpenGraphService {
-  pub fn new(config: OpenGraphConfig, sets: &rilgate_policy::IpSets) -> Result<Self> {
+  pub fn new(
+    config: OpenGraphConfig,
+    sets: &rilgate_policy::IpSets,
+    geoip: &rilgate_policy::GeoDatabases,
+  ) -> Result<Self> {
     config.validate()?;
     let client = reqwest::Client::builder()
       .no_proxy()
@@ -73,7 +77,7 @@ impl OpenGraphService {
         .max_capacity(config.max_entries)
         .expire_after(EntryExpiry)
         .build(),
-      condition: config.compile_condition(sets)?,
+      condition: config.compile_condition(sets, geoip)?,
       config,
       client,
       slots: Semaphore::new(MAX_CONCURRENT_FETCHES),

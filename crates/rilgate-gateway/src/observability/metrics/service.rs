@@ -83,6 +83,29 @@ pub fn exposition(state: &AppState) -> Response {
       }
     }
   }
+  let databases: Vec<_> = state.pow.geoip().iter().collect();
+  if !databases.is_empty() {
+    for (name, kind) in [
+      ("loaded", "gauge"),
+      ("stale", "gauge"),
+      ("refresh_failures_total", "counter"),
+    ] {
+      let _ = writeln!(text, "# TYPE rilgate_geoip_database_{name} {kind}");
+      for database in &databases {
+        let status = database.status();
+        let value = match name {
+          "loaded" => u64::from(status.loaded),
+          "stale" => u64::from(status.stale),
+          _ => status.refresh_failures,
+        };
+        let _ = writeln!(
+          text,
+          "rilgate_geoip_database_{name}{{database=\"{}\"}} {value}",
+          database.kind().label()
+        );
+      }
+    }
+  }
   if let Some(stats) = state.pow.hash_diagnostics() {
     render_hash_metrics(&mut text, stats);
   }

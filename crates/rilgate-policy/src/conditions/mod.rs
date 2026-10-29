@@ -1,3 +1,4 @@
+use crate::geoip::{GeoDatabase, GeoDatabases, Lookup, MAX_LIST_ENTRIES};
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::{IpRanges, IpSet, IpSets, MAX_SETS_PER_MATCHER, Membership};
 use crate::policy::schema::{Condition, LoadMatch, NumberMatch, StringMatch};
@@ -42,6 +43,8 @@ pub(crate) enum Compiled {
   Sets(Vec<Arc<IpSet>>),
   Score(NumberMatch),
   Load(LoadMatch),
+  Country(Arc<GeoDatabase>, Vec<[u8; 2]>),
+  Asn(Arc<GeoDatabase>, Vec<u32>),
 }
 #[derive(Debug)]
 pub(crate) enum Field {
@@ -80,6 +83,7 @@ impl Compiled {
     depth: usize,
     budget: &mut Budget,
     sets: &IpSets,
+    geoip: &GeoDatabases,
   ) -> Result<Self> {
     budget.consume(depth, path)?;
     let mut nodes = Vec::new();
@@ -100,6 +104,7 @@ impl Compiled {
               depth + 1,
               budget,
               sets,
+              geoip,
             )
           })
           .collect::<Result<Vec<_>>>()?;
@@ -117,6 +122,7 @@ impl Compiled {
         depth + 1,
         budget,
         sets,
+        geoip,
       )?)));
     }
     let mut fields = vec![
@@ -196,11 +202,51 @@ impl Compiled {
       Self::check_load(value, path)?;
       nodes.push(Self::Load(value.clone()));
     }
+    if let Some(codes) = &condition.country {
+      budget.consume(depth, path)?;
+      nodes.push(Self::compile_country(codes, path, geoip)?);
+    }
+    if let Some(numbers) = &condition.asn {
+      budget.consume(depth, path)?;
+      nodes.push(Self::compile_asn(numbers, path, geoip)?);
+    }
     ensure!(
       !nodes.is_empty(),
       "{path}: condition must contain at least one matcher"
     );
     Ok(Self::All(nodes))
+  }
+
+  fn compile_country(codes: &[String], path: &str, geoip: &GeoDatabases) -> Result<Self> {
+    let database = geoip
+      .country()
+      .with_context(|| format!("{path}.country: requires policy.geoip.country"))?;
+    ensure!(
+      (1..=MAX_LIST_ENTRIES).contains(&codes.len()),
+      "{path}.country: expected 1 to {MAX_LIST_ENTRIES} country codes"
+    );
+    let codes = codes
+      .iter()
+      .enumerate()
+      .map(|(index, code)| {
+        <[u8; 2]>::try_from(code.as_bytes())
+          .ok()
+          .filter(|code| code.iter().all(u8::is_ascii_uppercase))
+          .with_context(|| format!("{path}.country[{index}]: expected an ISO 3166-1 alpha-2 code"))
+      })
+      .collect::<Result<Vec<_>>>()?;
+    Ok(Self::Country(database.clone(), codes))
+  }
+
+  fn compile_asn(numbers: &[u32], path: &str, geoip: &GeoDatabases) -> Result<Self> {
+    let database = geoip
+      .asn()
+      .with_context(|| format!("{path}.asn: requires policy.geoip.asn"))?;
+    ensure!(
+      (1..=MAX_LIST_ENTRIES).contains(&numbers.len()),
+      "{path}.asn: expected 1 to {MAX_LIST_ENTRIES} autonomous system numbers"
+    );
+    Ok(Self::Asn(database.clone(), numbers.to_vec()))
   }
 
   fn check_load(value: &LoadMatch, path: &str) -> Result<()> {
@@ -339,6 +385,24 @@ impl Compiled {
             && test.lte.is_none_or(|v| value <= v),
         ),
       },
+      Self::Country(database, codes) => {
+        let Some(ip) = request.client_ip else {
+          return Truth::False;
+        };
+        match database.country(ip) {
+          Lookup::Unknown => Truth::Unknown,
+          Lookup::Known(code) => truth(code.is_some_and(|code| codes.contains(&code))),
+        }
+      }
+      Self::Asn(database, numbers) => {
+        let Some(ip) = request.client_ip else {
+          return Truth::False;
+        };
+        match database.asn(ip) {
+          Lookup::Unknown => Truth::Unknown,
+          Lookup::Known(number) => truth(number.is_some_and(|number| numbers.contains(&number))),
+        }
+      }
       Self::Score(test) => truth(
         test.eq.is_none_or(|v| score == v)
           && test.gt.is_none_or(|v| score > v)
@@ -433,12 +497,17 @@ impl Text {
 #[derive(Debug)]
 pub struct CompiledCondition(Compiled);
 impl CompiledCondition {
-  pub fn compile(condition: &Condition, path: &str, sets: &IpSets) -> Result<Self> {
+  pub fn compile(
+    condition: &Condition,
+    path: &str,
+    sets: &IpSets,
+    geoip: &GeoDatabases,
+  ) -> Result<Self> {
     let mut budget = Budget {
       request_only: true,
       ..Default::default()
     };
-    Compiled::compile(condition, path, 0, &mut budget, sets).map(Self)
+    Compiled::compile(condition, path, 0, &mut budget, sets, geoip).map(Self)
   }
 
   /// Selects requests whose condition evaluates to true with the current IP sets.

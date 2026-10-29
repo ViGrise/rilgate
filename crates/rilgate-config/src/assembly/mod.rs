@@ -29,9 +29,10 @@ impl Configuration {
     self.server.validate().context("server")?;
     self.pow.validate()?;
     self.open_graph.validate()?;
-    self
-      .open_graph
-      .compile_condition(&rilgate_policy::IpSets::compile(&self.pow.policy.ip_sets)?)?;
+    self.open_graph.compile_condition(
+      &rilgate_policy::IpSets::compile(&self.pow.policy.ip_sets)?,
+      &rilgate_policy::GeoDatabases::compile(self.pow.policy.geoip.as_ref())?,
+    )?;
     self.web.validate().context("site")?;
     self.upstream.validate().context("server.upstream")?;
     for key in [&self.pow.signing_key, &self.pow.auth_signing_key]

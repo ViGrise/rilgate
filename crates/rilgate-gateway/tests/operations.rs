@@ -291,6 +291,82 @@ async fn http2_advertises_the_configured_stream_limit() {
 }
 
 #[tokio::test]
+async fn unloaded_geoip_databases_fail_readiness_and_report_metrics() {
+  use rilgate_config::schema::policy::{GeoDatabaseDefinition, GeoIpDefinition};
+
+  let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let database = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../rilgate-policy/tests/data/GeoLite2-Country-Test.mmdb"
+  );
+  let mut cfg = common::config();
+  {
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
+    config.server.metrics_enabled = true;
+    config.pow.policy.geoip = Some(GeoIpDefinition {
+      country: Some(GeoDatabaseDefinition {
+        path: Some(database.into()),
+        ..Default::default()
+      }),
+      asn: None,
+    });
+  }
+  let (challenge, pool) = app::services(&cfg).unwrap();
+  let gateway = app::TestGateway::start(
+    rilgate_gateway::app::build(cfg.clone(), challenge.clone(), pool)
+      .await
+      .unwrap(),
+  )
+  .await
+  .unwrap();
+  let client = reqwest::Client::new();
+  let base = format!(
+    "http://{}/.well-known/test-pow/api",
+    gateway.operations_address()
+  );
+
+  let ready = client.get(format!("{base}/ready")).send().await.unwrap();
+  assert_eq!(ready.status(), 503);
+  let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
+  assert_eq!(body["geoip"], serde_json::Value::Bool(false));
+  let metrics = client
+    .get(format!("{base}/metrics"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert!(
+    metrics.contains(r#"rilgate_geoip_database_loaded{database="country"} 0"#),
+    "{metrics}"
+  );
+
+  challenge
+    .geoip()
+    .country()
+    .unwrap()
+    .publish(std::fs::read(database).unwrap())
+    .unwrap();
+
+  let ready = client.get(format!("{base}/ready")).send().await.unwrap();
+  assert_eq!(ready.status(), 200);
+  let metrics = client
+    .get(format!("{base}/metrics"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert!(
+    metrics.contains(r#"rilgate_geoip_database_loaded{database="country"} 1"#),
+    "{metrics}"
+  );
+}
+
+#[tokio::test]
 async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
   use rilgate_config::schema::policy::{
     Action, Condition, FeedFormat, IpMatch, IpSetDefinition, Rule,

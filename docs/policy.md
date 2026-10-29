@@ -177,11 +177,11 @@ matcher that includes its port. Host conditions are available in policy rules
 and in `site.open_graph.when`.
 
 The public `rilgate_policy::conditions::CompiledCondition` API compiles request
-conditions against an `IpSets` registry and matches them against a `Request`.
+conditions against `IpSets` and `GeoDatabases` registries and matches them against a `Request`.
 It shares the policy matcher and resource limits. Score matchers are rejected
 outside policy rules, with the supplied configuration path. An unknown result
 selects no request. `site.open_graph.when` uses this API with the live
-`policy.ip_sets` registry.
+`policy.ip_sets` and `policy.geoip` registries.
 
 Multiple fields in a condition are combined with AND. `all`, `any`, and
 `not` compose conditions recursively. `all` and `any` cannot be
@@ -193,6 +193,8 @@ empty.
 | `client_ip` | `cidr`, `in_sets` |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 | `load` | `window` (`1m`, `5m` default, `15m`), `gt`, `gte`, `lt`, `lte` |
+| `country` | a list of 1 to 256 uppercase ISO 3166-1 alpha-2 codes |
+| `asn` | a list of 1 to 256 autonomous system numbers |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
 regex explicitly selects case-insensitive matching. Header names are case-insensitive.
@@ -213,6 +215,22 @@ without a load average, so an `allow` rule on it never allows.
     all:
       - load: {window: 5m, gte: 4.0, lt: 8.0}
       - path: {prefix: /search}
+  action: score
+  score: 5
+```
+
+`country` and `asn` match the client address against the MaxMind databases in
+`policy.geoip`. A list matches when the database holds any listed value for the address.
+An address that is missing from the database, or a missing client IP, does not match.
+An IPv4-mapped IPv6 client matches as IPv4. Each condition needs its database in
+`policy.geoip` and works in policy rules and in `site.open_graph.when`.
+
+```yaml
+- name: scraper-sources
+  when:
+    any:
+      - country: [CN, RU]
+      - asn: [16509, 14061]
   action: score
   score: 5
 ```
@@ -325,12 +343,55 @@ The deny downgrade bounds the impact of a feed outage on a denylist. A decision 
 unresolved when any rule evaluated on the way to it, including the deciding rule, had an
 unknown condition. Logs and metrics report unresolved decisions so the cause stays
 visible. Configuration validation treats a deny rule that references a remote set as a
-possible default challenge for algorithm and Stratum pool checks.
+possible default challenge for algorithm and Stratum pool checks. A deny rule that uses
+`country` or `asn` gets the same treatment.
 
 A match of both a published range and a declared User-Agent confirms that the request
 comes from the publisher's network. It also confirms that the request claims the
 matching identity. It is not cryptographic proof of identity. Publishers split crawler
 groups, so each set names one group.
+
+## GeoIP databases
+
+`policy.geoip` configures one database for `country` and one for `asn`. It requires
+`mode: custom`. A database defines exactly one source: `path`, a local MaxMind `.mmdb`
+file, or `maxmind`, a download. A `country` database accepts a country or city edition
+and an `asn` database accepts an ASN edition. The software refuses a database of another type.
+
+```yaml
+policy:
+  mode: custom
+  geoip:
+    country:
+      path: /var/lib/rilgate/GeoLite2-Country.mmdb
+    asn:
+      maxmind:
+        edition: GeoLite2-ASN
+        account_id: "123456"
+        license_key: "${MAXMIND_LICENSE_KEY}"
+      refresh: 24h
+```
+
+A `maxmind` source downloads `https://download.maxmind.com/geoip/databases/{edition}/download?suffix=tar.gz`
+with HTTP basic authentication from `account_id` and `license_key`, and reads the first
+`.mmdb` file in the archive. `license_key` is a secret, so `rilgate config show` redacts it.
+`edition` has 1 to 64 characters from `A-Z`, `a-z`, `0-9` and `-`.
+
+`refresh` defaults to `24h`. Its range is `1h..=7d` for a `maxmind` source and
+`1m..=7d` for a `path` source. A `path` source reloads when the modification time of the file
+changes. `max_stale` defaults to `30d`, is at least `refresh` and at most `90d`. A download or
+file is limited to 128 MiB. A failed refresh keeps the previous database and increments a
+failure counter. A database that fails to parse never replaces a working one.
+
+Databases load in the background. The conditions are unknown until the database loads
+for the first time, and again after `max_stale` without a successful refresh. Unknown
+conditions follow the rules in [IP sets](#ip-sets). Readiness fails until each
+configured database has loaded once. `/metrics` reports
+`rilgate_geoip_database_loaded`, `rilgate_geoip_database_stale` and
+`rilgate_geoip_database_refresh_failures_total` per database.
+
+A `maxmind` source that fails retries with the delays of a loaded IP set, starting at
+5 minutes, because MaxMind limits the downloads per day for each account.
 
 ## Challenge selection and score debugging
 

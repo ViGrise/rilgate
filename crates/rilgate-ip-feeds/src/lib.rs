@@ -1,7 +1,9 @@
 mod fetch;
+mod geoip;
 mod parse;
 mod refresh;
-pub use fetch::{FeedClient, Fetched, Validators};
+pub use fetch::{FeedClient, FetchOptions, Fetched, Validators};
+pub use geoip::{GeoRefresher, GeoState, MAXMIND_DOWNLOAD_BASE, spawn_geoip};
 pub use parse::parse;
 pub use refresh::{Outcome, next_delay, refresh_once, spawn};
 use std::time::Duration;

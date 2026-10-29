@@ -7,6 +7,10 @@ pub async fn build(config: Config) -> anyhow::Result<rilgate_gateway::transport:
   if refreshers > 0 {
     tracing::info!(refreshers, "remote IP set refreshers started");
   }
+  let geoip_databases = rilgate_ip_feeds::spawn_geoip(challenge.geoip())?;
+  if geoip_databases > 0 {
+    tracing::info!(geoip_databases, "GeoIP database refreshers started");
+  }
   let open_graph_uses_load = config
     .open_graph
     .when

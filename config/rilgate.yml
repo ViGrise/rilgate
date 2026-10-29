@@ -794,3 +794,53 @@ server:
       # - min: 1
         # action: challenge
         # challenge: {algorithm: fast, difficulty: 1}
+
+
+  # MaxMind databases behind the country and asn conditions. Requires
+  # mode: custom. Each database takes exactly one source: path (a local .mmdb
+  # file) or maxmind (a download of a GeoLite2 or GeoIP2 edition). A condition
+  # that uses country or asn needs its database configured. Readiness fails
+  # until each configured database has loaded once. Before then, and after
+  # max_stale without a refresh, the conditions are unknown, so an allow rule
+  # on them never allows and a deny rule challenges.
+  #
+  # geoip:
+    # country:
+      # path: /var/lib/rilgate/GeoLite2-Country.mmdb
+      # Re-reads the file when its modification time changes.
+      # Range: 1m..7d.
+      #
+      # refresh: 1h
+    # asn:
+      # maxmind:
+        # Edition ID: 1 to 64 characters of letters, digits and hyphens.
+        #
+        # edition: GeoLite2-ASN
+        # account_id: "123456"
+
+        # Redacted by `rilgate config show`. Read it from the environment so
+        # the key stays out of version control.
+        #
+        # license_key: "${MAXMIND_LICENSE_KEY}"
+
+      # Downloads stay under 128 MiB. Range: 1h..7d for maxmind sources.
+      #
+      # refresh: 24h
+
+      # Longest age of a loaded database before conditions turn unknown.
+      # Range: refresh..90d.
+      #
+      # max_stale: 30d
+
+  # EXAMPLE rule using the databases above. country takes ISO 3166-1 alpha-2
+  # codes in upper case, asn takes autonomous system numbers, each list holds
+  # 1..256 entries, and a match on any entry is a match.
+  #
+  # rules:
+    # - name: heavy-scraper-sources
+      # when:
+        # any:
+          # - country: [CN, RU]
+          # - asn: [16509, 14061]
+      # action: score
+      # score: 5

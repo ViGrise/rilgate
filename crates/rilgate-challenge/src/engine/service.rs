@@ -82,6 +82,10 @@ impl ChallengeService {
     self.policy.ip_sets()
   }
 
+  pub fn geoip(&self) -> &rilgate_policy::GeoDatabases {
+    self.policy.geoip()
+  }
+
   pub fn uses_load(&self) -> bool {
     self.policy.uses_load()
   }

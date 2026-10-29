@@ -25,6 +25,7 @@ impl OpenGraphConfig {
   pub fn compile_condition(
     &self,
     sets: &rilgate_policy::IpSets,
+    geoip: &rilgate_policy::GeoDatabases,
   ) -> Result<Option<rilgate_policy::conditions::CompiledCondition>> {
     self
       .when
@@ -34,6 +35,7 @@ impl OpenGraphConfig {
           condition,
           "site.open_graph.when",
           sets,
+          geoip,
         )
       })
       .transpose()

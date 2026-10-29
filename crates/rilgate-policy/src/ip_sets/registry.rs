@@ -132,7 +132,7 @@ fn remote_set(path: &str, name: &str, definition: &IpSetDefinition) -> Result<Ip
   ))
 }
 
-fn describe(duration: Duration) -> String {
+pub(crate) fn describe(duration: Duration) -> String {
   let seconds = duration.as_secs();
   if seconds.is_multiple_of(86_400) {
     format!("{}d", seconds / 86_400)

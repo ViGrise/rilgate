@@ -9,16 +9,20 @@ publish = false
 anyhow.workspace = true
 bytes.workspace = true
 fastrand.workspace = true
+flate2.workspace = true
 http.workspace = true
 ipnet = "2"
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tar.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 rilgate-policy.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+tempfile.workspace = true
 axum.workspace = true
 futures-util.workspace = true
 serde_yaml_ng.workspace = true
