@@ -17,6 +17,8 @@ vendored-openssl = ["dep:openssl"]
 [dependencies]
 rilgate-pow-hashwx.workspace = true
 rilgate-policy.workspace = true
+notify.workspace = true
+async-trait.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 dotenvy.workspace = true

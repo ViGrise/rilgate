@@ -74,6 +74,8 @@ followed by the flag in upper snake case. Indexed pool and proxy entries use var
 | `server.upstream.url` | `--server-upstream-url`, `-u` | `RILGATE_SERVER_UPSTREAM_URL` |
 | `server.listen` | `--server-listen`, `-l` | `RILGATE_SERVER_LISTEN` |
 | `server.operations.listen` | `--server-operations-listen` | `RILGATE_SERVER_OPERATIONS_LISTEN` |
+| `server.operations.reload` | `--server-operations-reload` | `RILGATE_SERVER_OPERATIONS_RELOAD` |
+| `server.watch_config` | `--server-watch-config` | `RILGATE_SERVER_WATCH_CONFIG` |
 | `security.secret` | `--security-secret`, `-s` | `RILGATE_SECURITY_SECRET` |
 | `server.max_connections` | `--server-max-connections` | `RILGATE_SERVER_MAX_CONNECTIONS` |
 | `site.i18n.default` | `--site-i18n-default` | `RILGATE_SITE_I18N_DEFAULT` |
@@ -104,6 +106,7 @@ address are rejected. Dual-stack binding considers both lists together.
 
 Only the operations listeners serve `/api/live`, `/api/health`, `/api/ready` and
 `/api/metrics`, relative to `site.base_path`. Public listeners return 404 for those paths.
+Enable `server.operations.reload` to also serve `POST /reload`.
 Operations listeners return 404 for all other paths and never evaluate policy or proxy
 upstream.
 
@@ -129,6 +132,7 @@ elsewhere:
 rilgate config check
 rilgate config show
 rilgate config show --defaults
+rilgate reload
 ```
 
 `check` validates fields, cross-field constraints, policy expressions, and
@@ -238,13 +242,63 @@ sources in an include chain including the main document, 64 levels of traversal 
 65,536 visited value nodes including include nodes. Repeated includes count
 again toward the budgets. Embedded content counts toward these same budgets.
 Parser recursion and alias-repetition limits also
-apply. Files must contain UTF-8 YAML. URL loading, glob patterns and automatic
-reload are unsupported.
+apply. Files must contain UTF-8 YAML. URL loading and glob patterns are unsupported.
 
 ### Reloading the policy
 
-On Unix, send `SIGHUP` to reload the configuration while Rilgate runs. The reload
-applies the `policy` section: rules, IP sets, GeoIP databases, DNS settings, the
+Use one of these triggers to reload the policy:
+
+- On Unix, send `SIGHUP` to the gateway process.
+- Enable `server.operations.reload` and run `rilgate reload`, or send a request to the reload route.
+- Enable `server.watch_config` to watch the main file and all file-based `!include` sources.
+
+Both settings default to `false`. Use `--server-operations-reload` or
+`RILGATE_SERVER_OPERATIONS_RELOAD` for the route, and `--server-watch-config` or
+`RILGATE_SERVER_WATCH_CONFIG` for the watcher. Changes to either setting require a restart.
+The watcher ignores access events and reloads after 500 ms without a file change.
+It tracks added and removed includes after a successful load. `builtin:` sources are embedded and have no file to watch.
+With configuration from flags and environment only, Rilgate logs a warning and starts no configuration watcher.
+An invalid file keeps the running policy. The next valid save can apply.
+
+```yaml
+server:
+  operations:
+    listen: 127.0.0.1:9090
+    reload: true
+  watch_config: true
+```
+
+```sh
+rilgate --config rilgate.yml reload
+docker-compose exec rilgate rilgate reload
+```
+
+The command uses the same file lookup, environment and flags as `serve`.
+It uses the first operations address, replaces wildcard IP addresses with loopback,
+and sends plain HTTP/1.1 with a 10 s timeout. It sends no credentials and follows no redirects.
+The reload route needs an operations listener. Keep that listener private.
+A connection failure or 404 reports that the gateway may be stopped or `server.operations.reload` may be off.
+
+The route is `POST {site.base_path}/reload` on the operations listener only.
+It is absent when `server.operations.reload` is `false` (404).
+Any request with an `Origin` header receives 403. Other methods receive 405 with `Allow: POST`.
+The request body is ignored. The server reads its own configuration with its own environment,
+working directory and saved overrides. Reload requests run one at a time.
+
+| HTTP status | JSON response |
+| --- | --- |
+| 200 | `{"status":"reloaded"}` or `{"status":"unchanged"}` |
+| 409 | `{"status":"restart_required","sections":["server","site"]}` (changed section names) |
+| 500 | `{"status":"failed","error":"<error chain>"}` |
+
+Responses use `application/json`. The command prints `Policy reloaded` or `Policy is unchanged`
+and exits 0. A restart reports `Configuration change needs a restart: server, site` and exits 1.
+Other errors print `Reload failed: <error>` and exit 1. Rejected changes keep the running configuration.
+
+Docker Desktop file events from a macOS or Windows host often do not reach the container.
+Use `docker-compose exec rilgate rilgate reload` in that case.
+
+The reload applies the `policy` section: rules, IP sets, GeoIP databases, DNS settings, the
 honeypot and the `site.open_graph.when` condition that uses the new IP sets and
 databases. Requests that are in progress finish with the policy they started with.
 
@@ -403,6 +457,8 @@ or overflow.
 | `environment` | `production` |
 | `server.listen` | `:8080` (one address or a list) |
 | `server.operations.listen` | `[]` (disabled) |
+| `server.operations.reload` | `false` |
+| `server.watch_config` | `false` |
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |

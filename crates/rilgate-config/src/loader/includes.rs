@@ -15,6 +15,7 @@ const MAX_NODES: usize = 65_536;
 
 #[derive(Default)]
 pub(super) struct Resolver {
+  pub files: Vec<std::path::PathBuf>,
   bytes: usize,
   reads: usize,
   nodes: usize,
@@ -113,6 +114,15 @@ impl Resolver {
       "configuration file {}: configuration exceeds {MAX_SOURCE_READS} source reads",
       path.display()
     );
+    let absolute = std::path::absolute(path)?;
+    let absolute = absolute
+      .parent()
+      .context("configuration file parent")?
+      .canonicalize()?
+      .join(absolute.file_name().context("configuration file name")?);
+    if !self.files.contains(&absolute) {
+      self.files.push(absolute);
+    }
     self.reads += 1;
     let remaining = MAX_BYTES.saturating_sub(self.bytes);
     let mut bytes = Vec::new();

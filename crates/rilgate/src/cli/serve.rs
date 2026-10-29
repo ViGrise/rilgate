@@ -6,9 +6,15 @@ use tokio::net::TcpListener;
 
 const BACKLOG: i32 = 1024;
 
-pub async fn run(config: Config, overrides: rilgate_config::Overrides) -> Result<()> {
+pub async fn run(
+  config: Config,
+  overrides: rilgate_config::Overrides,
+  files: Vec<std::path::PathBuf>,
+) -> Result<()> {
   let gateway = crate::app::build(config.clone()).await?;
-  crate::reload::spawn_reloader(gateway.policy_handle(), config.clone(), overrides)?;
+  let trigger =
+    crate::reload::spawn_reloader(gateway.policy_handle(), config.clone(), overrides, files)?;
+  let gateway = gateway.set_reload_control(std::sync::Arc::new(trigger));
   let mut listeners = bind_all(
     &[
       config.listen_addresses.as_slice(),

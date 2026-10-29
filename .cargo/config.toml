@@ -5,3 +5,8 @@ test-randomx = "test -p randomx-core --release --test vectors -- --ignored --noc
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]
+
+# Vendored OpenSSL objects reference a PDB that the build does not ship.
+# LNK4099 reports the missing debug symbols.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "link-arg=/IGNORE:4099"]

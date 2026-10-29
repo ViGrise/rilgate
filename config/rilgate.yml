@@ -29,7 +29,8 @@
 # .env.example lists every variable; rilgate --help lists every flag.
 # A working-directory .env, or --env-file, supplies variables without replacing
 # existing ones.
-# Configuration is loaded at startup. On Unix, SIGHUP reloads the policy section
+# Configuration is loaded at startup. SIGHUP on Unix, the reload command and
+# server.watch_config reload the policy section
 # without a restart. A change to any other section needs a restart; Rilgate then
 # logs the section names and keeps the running configuration.
 
@@ -64,6 +65,11 @@ server:
   #
   # listen: ":8080"
 
+  # Watch the main configuration and included files for policy changes.
+  # Changes are applied after a 500 ms quiet period.
+  #
+  # watch_config: false
+
   operations:
     # Operational routes are served only here, relative to site.base_path.
     # An empty list disables them. Use loopback or a private monitoring network.
@@ -71,6 +77,11 @@ server:
     # Example: "127.0.0.1:9090". --port preserves these addresses.
     #
     listen: "127.0.0.1:9090"
+
+    # Enable POST {site.base_path}/reload on this listener.
+    # Requests with an Origin header receive 403. Keep this listener private.
+    #
+    # reload: false
 
   upstream:
     # REQUIRED. HTTP or HTTPS application URL, optionally including a base path.

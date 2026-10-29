@@ -13,6 +13,8 @@ pub enum DecisionLog {
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
+  pub operations_reload: bool,
+  pub watch_config: bool,
   pub max_connections: usize,
   pub max_requests: usize,
   pub h2_max_streams: u32,
@@ -27,6 +29,8 @@ impl Default for ServerConfig {
   fn default() -> Self {
     let defaults = crate::schema::server::Server::default();
     Self {
+      operations_reload: defaults.operations.reload,
+      watch_config: defaults.watch_config,
       max_connections: defaults.max_connections,
       max_requests: defaults.max_requests,
       h2_max_streams: defaults.h2_max_streams,

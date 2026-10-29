@@ -124,6 +124,8 @@ impl Document {
       operations_listen_addresses,
       secret_generated,
       server: ServerConfig {
+        operations_reload: self.server.operations.reload,
+        watch_config: self.server.watch_config,
         max_connections: self.server.max_connections,
         max_requests: self.server.max_requests,
         h2_max_streams: self.server.h2_max_streams,
