@@ -82,6 +82,10 @@ impl ChallengeService {
     self.policy.ip_sets()
   }
 
+  pub fn uses_load(&self) -> bool {
+    self.policy.uses_load()
+  }
+
   pub fn evaluate_request(&self, headers: &HeaderMap, path: &str) -> PolicyDecision<'_> {
     let host = headers
       .get(http::header::HOST)

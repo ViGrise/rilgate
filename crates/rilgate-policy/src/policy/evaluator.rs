@@ -1,5 +1,6 @@
 use super::schema::{Action, Definition, Mode, Rule};
 use crate::conditions::{Budget, Compiled, Request, Truth};
+use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::IpSets;
 use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
 use anyhow::{Context, Result, ensure};
@@ -25,6 +26,7 @@ pub struct PolicyEngine {
   rules: Vec<CompiledRule>,
   default_action: PolicyAction,
   ip_sets: IpSets,
+  host_load: &'static HostLoad,
 }
 
 impl Definition {
@@ -151,7 +153,17 @@ impl PolicyEngine {
       rules,
       default_action: default,
       ip_sets,
+      host_load: &HOST_LOAD,
     })
+  }
+  /// Reads host load samples from `load` in place of the process-wide sampler.
+  pub fn with_host_load(mut self, load: &'static HostLoad) -> Self {
+    self.host_load = load;
+    self
+  }
+  /// Reports whether any rule compares the host load.
+  pub fn uses_load(&self) -> bool {
+    self.rules.iter().any(|entry| entry.rule.when.uses_load())
   }
   pub fn ip_sets(&self) -> &IpSets {
     &self.ip_sets
@@ -183,7 +195,7 @@ impl PolicyEngine {
     // including the deciding rule, depended on unavailable IP set data.
     let mut unresolved = false;
     for entry in &self.rules {
-      let truth = entry.condition.matches(request, weight);
+      let truth = entry.condition.matches(request, weight, self.host_load);
       unresolved |= truth == Truth::Unknown;
       match (entry.rule.action, truth) {
         (_, Truth::False) => {}

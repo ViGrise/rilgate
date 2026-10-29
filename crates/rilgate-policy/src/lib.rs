@@ -1,8 +1,11 @@
 pub mod conditions;
+pub mod host_load;
 pub mod ip_sets;
 pub mod policy;
+pub use host_load::{HOST_LOAD, HostLoad, read_host_load};
 pub use ip_sets::{IpRanges, IpSet, IpSets, MAX_PREFIXES_PER_SET, Membership};
 pub use policy::config::ChallengePolicy;
 pub use policy::schema::Action as PolicyAction;
+pub use policy::schema::LoadWindow;
 pub use policy::{PolicyDecision, PolicyEngine};
 use rilgate_protocol::PowAlgorithm;
