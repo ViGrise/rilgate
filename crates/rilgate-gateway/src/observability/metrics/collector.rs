@@ -11,6 +11,7 @@ pub struct Metrics {
   pub request_rejections: AtomicU64,
   pub policy_unresolved_decisions: AtomicU64,
   pub auth_binding_mismatches: AtomicU64,
+  pub honeypot_hits: AtomicU64,
 }
 
 const BOUNDS: [u64; 7] = [1000, 5000, 10000, 50000, 100000, 1000000, 10000000];
@@ -67,6 +68,7 @@ impl Metrics {
     for (name, value) in [
       ("connections_rejected", &self.connection_rejections),
       ("requests_rejected", &self.request_rejections),
+      ("honeypot_hits", &self.honeypot_hits),
     ] {
       let _ = writeln!(
         text,

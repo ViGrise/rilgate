@@ -58,6 +58,12 @@ pub struct Definition {
     skip_serializing_if = "Option::is_none"
   )]
   pub dns: Option<DnsDefinition>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub honeypot: Option<HoneypotDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -197,6 +203,12 @@ pub struct Condition {
     skip_serializing_if = "Option::is_none"
   )]
   pub dnsbl: Option<String>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub honeypot: Option<bool>,
 }
 impl Condition {
   /// Reports whether this condition or any nested condition needs DNS lookups.
@@ -449,6 +461,45 @@ pub struct GeoDatabaseDefinition {
     skip_serializing_if = "Option::is_none"
   )]
   pub max_stale: Option<std::time::Duration>,
+}
+
+/// Settings of the hidden link that flags clients which follow it.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HoneypotDefinition {
+  /// How long a client stays flagged.
+  #[serde(with = "humantime_serde")]
+  pub ttl: std::time::Duration,
+  /// The most clients that are flagged at one time.
+  pub max_entries: usize,
+}
+
+impl Default for HoneypotDefinition {
+  fn default() -> Self {
+    Self {
+      ttl: std::time::Duration::from_secs(24 * 3600),
+      max_entries: 65_536,
+    }
+  }
+}
+
+impl HoneypotDefinition {
+  pub const MAX_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
+  pub const MAX_ENTRIES: usize = 1_048_576;
+
+  pub(crate) fn validate(&self) -> anyhow::Result<()> {
+    use anyhow::ensure;
+    ensure!(
+      (std::time::Duration::from_secs(1)..=Self::MAX_TTL).contains(&self.ttl),
+      "policy.honeypot.ttl: expected 1s to 30d"
+    );
+    ensure!(
+      (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
+      "policy.honeypot.max_entries: expected 1 to {}",
+      Self::MAX_ENTRIES
+    );
+    Ok(())
+  }
 }
 
 /// Settings of the DNS lookups behind `dnsbl` and `client_ip.reverse_dns`.

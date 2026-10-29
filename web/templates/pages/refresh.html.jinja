@@ -9,5 +9,6 @@
   <p id="status" role="status">{{ t("refresh.waiting", seconds=challenge.difficulty) }}</p>
   <p><a href="{{ challenge.url }}">{{ t("refresh.continue") }}</a></p>
   <p class="muted">{{ t("challenge.explanation", name=rilgate.name) }}</p>
+  {% if honeypot_url %}<a href="{{ honeypot_url }}" rel="nofollow" hidden aria-hidden="true" tabindex="-1"></a>{% endif %}
 </main>
 {% endblock %}

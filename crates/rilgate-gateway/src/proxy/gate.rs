@@ -74,23 +74,26 @@ pub async fn gate_with_client(
 ) -> Result<Option<Response>, ApiError> {
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let host = request_host(headers, uri);
-  let no_lookups = Lookups::NONE;
+  let mut known = Lookups::NONE;
+  if let (Some(honeypot), Some(ip)) = (&state.honeypot, client_ip) {
+    known.honeypot = Some(honeypot.is_flagged(ip));
+  }
   let mut request = Request {
     headers,
     host: &host,
     path: uri.path(),
     method,
     client_ip,
-    lookups: &no_lookups,
+    lookups: &known,
   };
   let mut decision = state.pow.evaluate_context(&request);
-  let mut resolved = Lookups::NONE;
+  let resolved;
   if decision.needs_lookups
     && let (Some(dns), Some(ip)) = (&state.dns, client_ip)
   {
-    dns
-      .resolve(ip, state.pow.lookup_plan(), &mut resolved)
-      .await;
+    let mut filled = known.clone();
+    dns.resolve(ip, state.pow.lookup_plan(), &mut filled).await;
+    resolved = filled;
     request = Request {
       lookups: &resolved,
       ..request

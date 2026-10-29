@@ -48,6 +48,8 @@ pub struct PublicChallengeInfo {
   pub expires_at: Option<i64>,
   pub expires_in: Option<u64>,
   pub solver_module_url: String,
+  /// Target of the hidden honeypot link. Empty when the honeypot is off.
+  pub honeypot_url: String,
 }
 impl Default for PublicChallengeInfo {
   fn default() -> Self {
@@ -61,6 +63,7 @@ impl Default for PublicChallengeInfo {
       expires_at: None,
       expires_in: None,
       solver_module_url: String::new(),
+      honeypot_url: String::new(),
     }
   }
 }
