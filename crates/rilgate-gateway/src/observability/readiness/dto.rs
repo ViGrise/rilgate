@@ -8,4 +8,5 @@ pub(super) struct Readiness {
   pub pools: Option<Vec<(String, bool)>>,
   pub remote: Option<bool>,
   pub ip_sets: bool,
+  pub geoip: bool,
 }

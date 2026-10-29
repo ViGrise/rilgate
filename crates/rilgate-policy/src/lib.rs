@@ -1,7 +1,9 @@
 pub mod conditions;
+pub mod geoip;
 pub mod host_load;
 pub mod ip_sets;
 pub mod policy;
+pub use geoip::{GeoDatabase, GeoDatabases, GeoKind, GeoSource, GeoStatus};
 pub use host_load::{HOST_LOAD, HostLoad, read_host_load};
 pub use ip_sets::{IpRanges, IpSet, IpSets, MAX_PREFIXES_PER_SET, Membership};
 pub use policy::config::ChallengePolicy;

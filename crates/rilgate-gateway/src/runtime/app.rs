@@ -26,6 +26,7 @@ pub async fn build(
     open_graph: Arc::new(crate::open_graph::OpenGraphService::new(
       cfg.open_graph.clone(),
       pow.ip_sets(),
+      pow.geoip(),
     )?),
     cfg,
     pow,

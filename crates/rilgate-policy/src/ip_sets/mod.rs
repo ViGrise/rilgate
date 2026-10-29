@@ -3,6 +3,7 @@ mod registry;
 mod set;
 pub use ranges::IpRanges;
 pub use registry::IpSets;
+pub(crate) use registry::describe;
 pub use set::{IpSet, IpSetStatus, Membership};
 use std::time::Duration;
 

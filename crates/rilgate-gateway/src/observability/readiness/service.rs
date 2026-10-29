@@ -47,10 +47,12 @@ pub async fn check(state: &AppState) -> Response {
     .as_ref()
     .map(|pools| pools.iter().any(|(_, ready)| *ready));
   let ip_sets = state.pow.ip_sets().all_remote_loaded();
+  let geoip = state.pow.geoip().all_loaded();
   let ready = upstream
     && pool.unwrap_or(true)
     && remote.unwrap_or(true)
     && ip_sets
+    && geoip
     && !state.shutdown.is_cancelled();
   json(
     if ready {
@@ -65,6 +67,7 @@ pub async fn check(state: &AppState) -> Response {
       pools,
       remote,
       ip_sets,
+      geoip,
     },
   )
 }

@@ -16,6 +16,22 @@ pub enum Fetched {
   NotModified,
 }
 
+/// Per-request limits and credentials for a feed fetch.
+#[derive(Debug, Clone)]
+pub struct FetchOptions<'a> {
+  pub max_bytes: usize,
+  pub basic_auth: Option<(&'a str, &'a str)>,
+}
+
+impl Default for FetchOptions<'_> {
+  fn default() -> Self {
+    Self {
+      max_bytes: MAX_BODY_BYTES,
+      basic_auth: None,
+    }
+  }
+}
+
 /// A bounded HTTP client for remote IP feeds.
 pub struct FeedClient {
   client: reqwest::Client,
@@ -32,7 +48,22 @@ impl FeedClient {
   }
 
   pub async fn fetch(&self, url: &str, validators: &Validators) -> Result<Fetched> {
+    self
+      .fetch_with(url, validators, &FetchOptions::default())
+      .await
+  }
+
+  pub async fn fetch_with(
+    &self,
+    url: &str,
+    validators: &Validators,
+    options: &FetchOptions<'_>,
+  ) -> Result<Fetched> {
+    let max_bytes = options.max_bytes;
     let mut request = self.client.get(url);
+    if let Some((user, password)) = options.basic_auth {
+      request = request.basic_auth(user, Some(password));
+    }
     if let Some(etag) = &validators.etag {
       request = request.header(http::header::IF_NONE_MATCH, etag);
     }
@@ -46,17 +77,17 @@ impl FeedClient {
     let status = response.status();
     ensure!(status.is_success(), "feed returned status {status}");
     if let Some(length) = response.content_length()
-      && length > MAX_BODY_BYTES as u64
+      && length > max_bytes as u64
     {
-      bail!("feed body exceeds {MAX_BODY_BYTES} bytes");
+      bail!("feed body exceeds {max_bytes} bytes");
     }
     let etag = response.headers().get(http::header::ETAG).cloned();
     let last_modified = response.headers().get(http::header::LAST_MODIFIED).cloned();
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.context("feed read failed")? {
       ensure!(
-        body.len() + chunk.len() <= MAX_BODY_BYTES,
-        "feed body exceeds {MAX_BODY_BYTES} bytes"
+        body.len() + chunk.len() <= max_bytes,
+        "feed body exceeds {max_bytes} bytes"
       );
       body.extend_from_slice(&chunk);
     }

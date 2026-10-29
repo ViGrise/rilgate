@@ -62,6 +62,7 @@ async fn main() -> anyhow::Result<()> {
     open_graph: Arc::new(rilgate_gateway::open_graph::OpenGraphService::new(
       cfg.open_graph.clone(),
       pow.ip_sets(),
+      pow.geoip(),
     )?),
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone())?),
     limiter: Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone())?),
