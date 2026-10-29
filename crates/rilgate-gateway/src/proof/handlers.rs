@@ -4,11 +4,14 @@ use crate::{
   transport::{
     context::request_host,
     errors::ApiError,
-    response::{Response, json},
+    response::{Response, json, response},
   },
 };
-use http::{HeaderMap, StatusCode, Uri, header::SET_COOKIE};
-use rilgate_challenge::authorization::binding::BindingInput;
+use http::{
+  HeaderMap, HeaderValue, StatusCode, Uri,
+  header::{LOCATION, SET_COOKIE},
+};
+use rilgate_challenge::{authorization::binding::BindingInput, challenge::RefreshRedemption};
 use rilgate_protocol::PowEnforcement;
 
 pub fn client_config(state: &AppState) -> Response {
@@ -75,6 +78,57 @@ pub fn exchange(
   let mut out = json(StatusCode::OK, &ExchangeResponse { status: "ok" });
   out.headers_mut().insert(SET_COOKIE, cookie);
   Ok(out)
+}
+pub fn refresh(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  binding: &BindingInput<'_>,
+  head: bool,
+) -> Result<Response, ApiError> {
+  let token = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+    .find(|(key, _)| key == "presentation_token")
+    .map(|(_, value)| value.into_owned())
+    .filter(|token| token.len() <= 16384)
+    .ok_or_else(|| ApiError::InvalidRequest("Missing or oversized presentation_token".into()))?;
+  let host = request_host(headers, uri);
+  let now = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_secs() as i64;
+  match state
+    .pow
+    .redeem_refresh(&token, &host, binding, now)
+    .map_err(ApiError::proof)?
+  {
+    RefreshRedemption::Granted { auth_token, path } => {
+      let cookie = crate::auth::cookies::auth_cookie_header(
+        &state.pow,
+        &state.cfg,
+        &auth_token,
+        &host,
+        binding,
+      )
+      .map_err(ApiError::Internal)?;
+      let mut out = response(StatusCode::SEE_OTHER, "");
+      out.headers_mut().insert(SET_COOKIE, cookie);
+      out.headers_mut().insert(
+        LOCATION,
+        HeaderValue::from_str(&path).map_err(|error| ApiError::Internal(error.into()))?,
+      );
+      Ok(out)
+    }
+    RefreshRedemption::Wait { seconds } => {
+      let (html, locale) =
+        crate::web::pages::render_refresh_page(state, &token, seconds, headers, uri);
+      Ok(crate::proxy::gate::page_response(
+        state.cfg.web.responses.challenge_status,
+        html,
+        locale,
+        head,
+      ))
+    }
+  }
 }
 pub fn websocket_admission(
   state: &AppState,

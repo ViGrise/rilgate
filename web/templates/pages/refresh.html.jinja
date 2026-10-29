@@ -1,0 +1,13 @@
+{% extends "layouts/base.html.jinja" %}
+{% block head %}
+<meta http-equiv="refresh" content="{{ challenge.difficulty }};url={{ challenge.url }}">
+{% endblock %}
+{% block content %}
+<main>
+  <h1>{{ t("refresh.title") }}</h1>
+  <p id="description">{{ t("refresh.description") }}</p>
+  <p id="status" role="status">{{ t("refresh.waiting", seconds=challenge.difficulty) }}</p>
+  <p><a href="{{ challenge.url }}">{{ t("refresh.continue") }}</a></p>
+  <p class="muted">{{ t("challenge.explanation", name=rilgate.name) }}</p>
+</main>
+{% endblock %}

@@ -424,6 +424,7 @@ server:
   # verification: local_verify
 
   # Algorithm when a challenge action omits algorithm: fast, hashwx or randomx.
+  # refresh is not allowed here because it needs an explicit delay in a policy rule.
   # Presets explicitly select fast. Selecting RandomX requires explicit Stratum pool
   # configuration for jobs, including when verification is local.
   #
@@ -755,12 +756,13 @@ server:
       # to use the default algorithm or score-derived difficulty, respectively.
       #
       # challenge:
-        # fast, hashwx or randomx. RandomX also requires pow.stratum_pool.
+        # fast, hashwx, randomx or refresh. RandomX also requires pow.stratum_pool.
         #
         # algorithm: fast
 
         # Fast: 1..64 leading zero hexadecimal digits, not bits; each added digit
         # multiplies expected work by 16. RandomX: an integer of at least 1000.
+        # Refresh: a delay of 1..10 seconds.
         #
         # difficulty: 2
 

@@ -3,6 +3,10 @@ impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::{Context, ensure};
     self.rate_limit.validate()?;
+    ensure!(
+      self.default_algorithm != crate::PowAlgorithm::Refresh,
+      "pow.default_algorithm: refresh needs an explicit difficulty, so select it in a policy rule"
+    );
     if self.hashwx_enabled {
       self.hashwx.validate().context("pow.algorithms.hashwx")?;
     }
@@ -128,10 +132,11 @@ impl PowConfig {
           }
           crate::PowAlgorithm::Fast => (1..=64).contains(&difficulty),
           crate::PowAlgorithm::RandomX => difficulty >= 1000,
+          crate::PowAlgorithm::Refresh => (1..=10).contains(&difficulty),
         };
         ensure!(
           valid,
-          "policy ({name}).challenge.difficulty: fast requires 1..64; hashwx requires 1..2^40; randomx requires at least 1000"
+          "policy ({name}).challenge.difficulty: fast requires 1..64; hashwx requires 1..2^40; randomx requires at least 1000; refresh requires 1..10 seconds"
         );
       }
     }

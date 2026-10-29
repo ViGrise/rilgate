@@ -3,7 +3,7 @@ use crate::{
   auth::cookies::cookie_value,
   runtime::state::AppState,
   transport::{context::request_host, errors::ApiError},
-  web::pages::{render_challenge_page, render_page},
+  web::pages::{render_challenge_page, render_page, render_refresh_page},
 };
 use http::{
   HeaderMap, Method, StatusCode, Uri,
@@ -12,6 +12,7 @@ use http::{
 use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
 use rilgate_config::DecisionLog;
 use rilgate_policy::{Lookups, PolicyAction, PolicyDecision, conditions::Request};
+use rilgate_protocol::PowAlgorithm;
 
 struct DecisionContext<'a> {
   request_id: &'a str,
@@ -176,9 +177,15 @@ pub async fn gate_with_client(
       },
     )
     .is_some_and(|claims| {
+      let required = decision.algorithm.expect("challenge algorithm resolved");
       claims.enforce == state.pow.enforcement()
-        && claims.algorithm == decision.algorithm.expect("challenge algorithm resolved")
-        && claims.difficulty >= required_difficulty
+        && match (required, claims.algorithm) {
+          // Any proof of work outranks a wait, so only a refresh cookie needs the difficulty check.
+          (PowAlgorithm::Refresh, algorithm) if algorithm != PowAlgorithm::Refresh => true,
+          (required, algorithm) => {
+            algorithm == required && claims.difficulty >= required_difficulty
+          }
+        }
     });
 
   if authenticated {
@@ -194,7 +201,8 @@ pub async fn gate_with_client(
 
     let challenge_url =
       crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token);
-    let open_graph = if !json && method == Method::GET {
+    let refresh = decision.algorithm == Some(PowAlgorithm::Refresh);
+    let open_graph = if !json && !refresh && method == Method::GET {
       state
         .open_graph
         .lookup(&state.proxy, uri, &request, &state.metrics)
@@ -202,8 +210,17 @@ pub async fn gate_with_client(
     } else {
       Vec::new()
     };
-    let (html, locale) =
-      render_challenge_page(state, presentation, headers, uri, json, false, &open_graph);
+    let (html, locale) = if refresh && !json {
+      render_refresh_page(
+        state,
+        &presentation.token,
+        presentation.claims.difficulty,
+        headers,
+        uri,
+      )
+    } else {
+      render_challenge_page(state, presentation, headers, uri, json, false, &open_graph)
+    };
 
     let mut out = formatted_response(
       if json {
