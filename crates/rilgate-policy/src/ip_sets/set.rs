@@ -1,8 +1,9 @@
+use crate::feed_state::{Progress, Validators, lock};
 use crate::ip_sets::{IpRanges, RemoteIpSet};
 use arc_swap::ArcSwap;
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,8 +30,15 @@ struct Snapshot {
 pub struct IpSet {
   name: String,
   remote: Option<RemoteIpSet>,
+  shared: Arc<Shared>,
+}
+
+/// The state that outlives a policy replacement when the source stays the same.
+#[derive(Debug, Default)]
+struct Shared {
   state: ArcSwap<Snapshot>,
   failures: AtomicU64,
+  progress: Mutex<Progress<Validators>>,
 }
 
 impl IpSet {
@@ -38,11 +46,13 @@ impl IpSet {
     Self {
       name,
       remote: None,
-      state: ArcSwap::from_pointee(Snapshot {
-        ranges: Some(Arc::new(ranges)),
-        loaded_at: Some(Instant::now()),
+      shared: Arc::new(Shared {
+        state: ArcSwap::from_pointee(Snapshot {
+          ranges: Some(Arc::new(ranges)),
+          loaded_at: Some(Instant::now()),
+        }),
+        ..Shared::default()
       }),
-      failures: AtomicU64::new(0),
     }
   }
 
@@ -50,9 +60,21 @@ impl IpSet {
     Self {
       name,
       remote: Some(remote),
-      state: ArcSwap::from_pointee(Snapshot::default()),
-      failures: AtomicU64::new(0),
+      shared: Arc::new(Shared::default()),
     }
+  }
+
+  /// Takes over the loaded data and refresh progress of `previous` when both
+  /// fetch the same feed. The refresh interval and staleness limit stay those
+  /// of this set.
+  pub(crate) fn adopt_state_of(mut self, previous: &IpSet) -> Self {
+    if let (Some(current), Some(earlier)) = (&self.remote, &previous.remote)
+      && current.url == earlier.url
+      && current.format == earlier.format
+    {
+      self.shared = previous.shared.clone();
+    }
+    self
   }
 
   pub fn name(&self) -> &str {
@@ -65,7 +87,7 @@ impl IpSet {
 
   /// Publishes a new membership snapshot stamped at the current instant.
   pub fn publish(&self, ranges: IpRanges) {
-    self.state.store(Arc::new(Snapshot {
+    self.shared.state.store(Arc::new(Snapshot {
       ranges: Some(Arc::new(ranges)),
       loaded_at: Some(Instant::now()),
     }));
@@ -73,17 +95,26 @@ impl IpSet {
 
   /// Re-stamps the current snapshot after a not-modified response.
   pub fn renew(&self) {
-    let snapshot = self.state.load();
+    let snapshot = self.shared.state.load();
     if snapshot.ranges.is_some() {
-      self.state.store(Arc::new(Snapshot {
+      self.shared.state.store(Arc::new(Snapshot {
         ranges: snapshot.ranges.clone(),
         loaded_at: Some(Instant::now()),
       }));
     }
   }
 
+  /// The markers and schedule that the refresher of this set saved.
+  pub fn progress(&self) -> Progress<Validators> {
+    lock(&self.shared.progress).clone()
+  }
+
+  pub fn save_progress(&self, progress: Progress<Validators>) {
+    *lock(&self.shared.progress) = progress;
+  }
+
   pub fn record_failure(&self) {
-    self.failures.fetch_add(1, Ordering::Relaxed);
+    self.shared.failures.fetch_add(1, Ordering::Relaxed);
   }
 
   pub fn membership(&self, ip: IpAddr) -> Membership {
@@ -91,7 +122,7 @@ impl IpSet {
   }
 
   pub fn membership_at(&self, ip: IpAddr, now: Instant) -> Membership {
-    let snapshot = self.state.load();
+    let snapshot = self.shared.state.load();
     let Some(ranges) = &snapshot.ranges else {
       return Membership::Unknown;
     };
@@ -110,7 +141,7 @@ impl IpSet {
   }
 
   pub fn status_at(&self, now: Instant) -> IpSetStatus {
-    let snapshot = self.state.load();
+    let snapshot = self.shared.state.load();
     let loaded = snapshot.ranges.is_some() && snapshot.loaded_at.is_some();
     IpSetStatus {
       loaded,
@@ -119,7 +150,7 @@ impl IpSet {
         .loaded_at
         .map(|at| now.saturating_duration_since(at)),
       prefixes: snapshot.ranges.as_ref().map_or(0, |r| r.prefix_count()),
-      refresh_failures: self.failures.load(Ordering::Relaxed),
+      refresh_failures: self.shared.failures.load(Ordering::Relaxed),
     }
   }
 

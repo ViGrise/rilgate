@@ -1,3 +1,4 @@
+use crate::feed_state::{GeoState, Progress, lock};
 use crate::geoip::Lookup;
 use crate::policy::schema::MaxMindSource;
 use anyhow::{Context, Result, ensure};
@@ -5,8 +6,8 @@ use arc_swap::ArcSwap;
 use maxminddb::{Reader, geoip2};
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 /// The record type a database answers.
@@ -39,6 +40,21 @@ pub enum GeoSource {
   MaxMind(MaxMindSource),
 }
 
+impl GeoSource {
+  /// Reports whether both sources deliver the same database.
+  pub fn same_origin(&self, other: &GeoSource) -> bool {
+    match (self, other) {
+      (Self::File(a), Self::File(b)) => a == b,
+      (Self::MaxMind(a), Self::MaxMind(b)) => {
+        a.edition == b.edition
+          && a.account_id == b.account_id
+          && a.license_key.expose() == b.license_key.expose()
+      }
+      _ => false,
+    }
+  }
+}
+
 #[derive(Default)]
 struct Snapshot {
   reader: Option<Arc<Reader<Vec<u8>>>>,
@@ -56,8 +72,15 @@ pub struct GeoDatabase {
   source: GeoSource,
   refresh: Duration,
   max_stale: Duration,
+  shared: Arc<Shared>,
+}
+
+/// The state that outlives a policy replacement when the source stays the same.
+#[derive(Default)]
+struct Shared {
   state: ArcSwap<Snapshot>,
   failures: AtomicU64,
+  progress: Mutex<Progress<GeoState>>,
 }
 
 impl std::fmt::Debug for GeoDatabase {
@@ -81,9 +104,18 @@ impl GeoDatabase {
       source,
       refresh,
       max_stale,
-      state: ArcSwap::from_pointee(Snapshot::default()),
-      failures: AtomicU64::new(0),
+      shared: Arc::new(Shared::default()),
     }
+  }
+
+  /// Takes over the loaded database and refresh progress of `previous` when
+  /// both read the same source. The refresh interval and staleness limit stay
+  /// those of this database.
+  pub(crate) fn adopt_state_of(mut self, previous: &GeoDatabase) -> Self {
+    if self.source.same_origin(&previous.source) {
+      self.shared = previous.shared.clone();
+    }
+    self
   }
 
   pub fn kind(&self) -> GeoKind {
@@ -114,7 +146,7 @@ impl GeoDatabase {
       "database type {database_type} does not provide {} records",
       self.kind.label()
     );
-    self.state.store(Arc::new(Snapshot {
+    self.shared.state.store(Arc::new(Snapshot {
       reader: Some(Arc::new(reader)),
       loaded_at: Some(Instant::now()),
       loaded_at_wall: Some(SystemTime::now()),
@@ -124,9 +156,9 @@ impl GeoDatabase {
 
   /// Re-stamps the current database after the source reported no change.
   pub fn renew(&self) {
-    let snapshot = self.state.load();
+    let snapshot = self.shared.state.load();
     if snapshot.reader.is_some() {
-      self.state.store(Arc::new(Snapshot {
+      self.shared.state.store(Arc::new(Snapshot {
         reader: snapshot.reader.clone(),
         loaded_at: Some(Instant::now()),
         loaded_at_wall: Some(SystemTime::now()),
@@ -134,18 +166,32 @@ impl GeoDatabase {
     }
   }
 
+  /// The time since the last successful load or renewal.
+  pub fn loaded_age(&self) -> Option<Duration> {
+    self.shared.state.load().loaded_at.map(|at| at.elapsed())
+  }
+
+  /// The markers and schedule that the refresher of this database saved.
+  pub fn progress(&self) -> Progress<GeoState> {
+    lock(&self.shared.progress).clone()
+  }
+
+  pub fn save_progress(&self, progress: Progress<GeoState>) {
+    *lock(&self.shared.progress) = progress;
+  }
+
   pub fn record_failure(&self) {
-    self.failures.fetch_add(1, Ordering::Relaxed);
+    self.shared.failures.fetch_add(1, Ordering::Relaxed);
   }
 
   pub fn status(&self) -> GeoStatus {
-    let snapshot = self.state.load();
+    let snapshot = self.shared.state.load();
     let loaded = snapshot.reader.is_some();
     GeoStatus {
       loaded,
       stale: !loaded || self.is_stale(&snapshot),
       last_success: snapshot.loaded_at_wall,
-      refresh_failures: self.failures.load(Ordering::Relaxed),
+      refresh_failures: self.shared.failures.load(Ordering::Relaxed),
     }
   }
 
@@ -173,7 +219,7 @@ impl GeoDatabase {
     ip: IpAddr,
     read: impl FnOnce(&maxminddb::LookupResult<'_, Vec<u8>>) -> Option<Option<T>>,
   ) -> Lookup<Option<T>> {
-    let snapshot = self.state.load();
+    let snapshot = self.shared.state.load();
     let Some(reader) = &snapshot.reader else {
       return Lookup::Unknown;
     };

@@ -16,17 +16,42 @@ pub struct GeoDatabases {
 
 impl GeoDatabases {
   pub fn compile(definition: Option<&GeoIpDefinition>) -> Result<Self> {
+    Self::compile_with(definition, None)
+  }
+
+  /// Compiles the definition. A database whose source matches the one in
+  /// `previous` keeps the loaded data of that database.
+  pub fn compile_with(
+    definition: Option<&GeoIpDefinition>,
+    previous: Option<&GeoDatabases>,
+  ) -> Result<Self> {
     let Some(definition) = definition else {
       return Ok(Self::default());
     };
-    let build = |kind: GeoKind, source: Option<&GeoDatabaseDefinition>| {
+    let build = |kind: GeoKind,
+                 source: Option<&GeoDatabaseDefinition>,
+                 earlier: Option<&Arc<GeoDatabase>>| {
       source
-        .map(|source| compile_database(kind, source).map(Arc::new))
+        .map(|source| {
+          let database = compile_database(kind, source)?;
+          Ok::<_, anyhow::Error>(Arc::new(match earlier {
+            Some(earlier) => database.adopt_state_of(earlier),
+            None => database,
+          }))
+        })
         .transpose()
     };
     Ok(Self {
-      country: build(GeoKind::Country, definition.country.as_ref())?,
-      asn: build(GeoKind::Asn, definition.asn.as_ref())?,
+      country: build(
+        GeoKind::Country,
+        definition.country.as_ref(),
+        previous.and_then(GeoDatabases::country),
+      )?,
+      asn: build(
+        GeoKind::Asn,
+        definition.asn.as_ref(),
+        previous.and_then(GeoDatabases::asn),
+      )?,
     })
   }
 

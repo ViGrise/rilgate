@@ -2,9 +2,9 @@ use crate::{
   FIRST_LOAD_RETRY, FIRST_RETRY, FeedClient, Fetched, JITTER_FRACTION, Validators, parse,
 };
 use anyhow::Result;
-use rilgate_policy::{IpSet, IpSets};
+use rilgate_policy::{IpSet, IpSets, Progress};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The result of a single refresh cycle.
 #[derive(Debug, PartialEq, Eq)]
@@ -86,6 +86,25 @@ pub fn next_delay(
   base + base.mul_f64(JITTER_FRACTION * jitter)
 }
 
+/// The delay before the first fetch of a refresher that takes over loaded data.
+///
+/// Data that loaded without a later failure is due one refresh interval after
+/// its last success. Otherwise the saved retry time applies. Data that never
+/// loaded and has no saved retry time is due at once.
+pub fn resume_delay(
+  age: Option<Duration>,
+  consecutive_failures: u32,
+  next_attempt: Option<Instant>,
+  refresh: Duration,
+  jitter: f64,
+) -> Duration {
+  match (age, consecutive_failures, next_attempt) {
+    (Some(age), 0, _) => next_delay(0, true, refresh.saturating_sub(age), jitter),
+    (_, _, Some(at)) => at.saturating_duration_since(Instant::now()),
+    _ => Duration::ZERO,
+  }
+}
+
 /// Starts a background refresher for every remote set in the registry.
 ///
 /// Dropping the returned handle stops the refreshers.
@@ -102,8 +121,21 @@ pub fn spawn(sets: &IpSets) -> Result<crate::Refreshers> {
   for (set, remote) in remotes {
     let client = client.clone();
     refreshers.tasks.push(tokio::spawn(async move {
-      let mut validators = Validators::default();
-      let mut failures = 0u32;
+      let Some(current) = set.upgrade() else {
+        return;
+      };
+      let saved = current.progress();
+      let mut validators = saved.markers;
+      let mut failures = saved.consecutive_failures;
+      let first_delay = resume_delay(
+        current.status().age,
+        failures,
+        saved.next_attempt,
+        remote.refresh,
+        fastrand::f64(),
+      );
+      drop(current);
+      tokio::time::sleep(first_delay).await;
       loop {
         let Some(set) = set.upgrade() else {
           break;
@@ -114,8 +146,13 @@ pub fn spawn(sets: &IpSets) -> Result<crate::Refreshers> {
           _ => 0,
         };
         let loaded = set.status().loaded;
-        drop(set);
         let delay = next_delay(failures, loaded, remote.refresh, fastrand::f64());
+        set.save_progress(Progress {
+          markers: validators.clone(),
+          consecutive_failures: failures,
+          next_attempt: Some(Instant::now() + delay),
+        });
+        drop(set);
         tokio::time::sleep(delay).await;
       }
     }));

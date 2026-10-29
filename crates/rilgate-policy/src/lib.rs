@@ -1,9 +1,11 @@
 pub mod conditions;
+pub mod feed_state;
 pub mod geoip;
 pub mod host_load;
 pub mod ip_sets;
 pub mod lookups;
 pub mod policy;
+pub use feed_state::{GeoState, Progress, Validators};
 pub use geoip::{GeoDatabase, GeoDatabases, GeoKind, GeoSource, GeoStatus};
 pub use host_load::{HOST_LOAD, HostLoad, read_host_load};
 pub use ip_sets::{IpRanges, IpSet, IpSets, MAX_PREFIXES_PER_SET, Membership};

@@ -17,6 +17,15 @@ pub struct IpSets {
 
 impl IpSets {
   pub fn compile(definitions: &BTreeMap<String, IpSetDefinition>) -> Result<Self> {
+    Self::compile_with(definitions, None)
+  }
+
+  /// Compiles the definitions. A remote set whose name and feed match a set of
+  /// `previous` keeps the loaded data of that set.
+  pub fn compile_with(
+    definitions: &BTreeMap<String, IpSetDefinition>,
+    previous: Option<&IpSets>,
+  ) -> Result<Self> {
     ensure!(
       definitions.len() <= MAX_IP_SETS,
       "policy.ip_sets: at most {MAX_IP_SETS} sets are supported"
@@ -35,7 +44,11 @@ impl IpSets {
       let set = if let Some(cidrs) = &definition.cidrs {
         static_set(&path, name, definition, cidrs)?
       } else {
-        remote_set(&path, name, definition)?
+        let set = remote_set(&path, name, definition)?;
+        match previous.and_then(|previous| previous.get(name)) {
+          Some(earlier) => set.adopt_state_of(earlier),
+          None => set,
+        }
       };
       sets.insert(name.clone(), Arc::new(set));
     }

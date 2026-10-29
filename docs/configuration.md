@@ -256,8 +256,10 @@ The reload applies nothing in these cases, and the running configuration stays:
   compile. A policy that removes an IP set or database that the Open Graph
   condition uses fails in the same way. Rilgate logs the error.
 
-Remote IP sets and GeoIP databases of the new policy load again after a reload,
-because the reload compiles them anew.
+A remote IP set or GeoIP database whose source is unchanged keeps its loaded data
+across a reload, so verified crawlers stay known and MaxMind downloads do not repeat.
+Its next fetch follows its last success and its `refresh` value. A new set or database,
+or one with a changed source, loads from the start.
 
 To split an existing configuration, move a section's value into a separate
 file, replace the value with `!include ./path.yml`, and run:

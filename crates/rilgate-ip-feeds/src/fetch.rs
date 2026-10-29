@@ -1,13 +1,7 @@
 use crate::{MAX_BODY_BYTES, MAX_REDIRECTS, REQUEST_TIMEOUT};
 use anyhow::{Context, Result, bail, ensure};
 use bytes::Bytes;
-
-/// Conditional-request validators captured from a successful response.
-#[derive(Debug, Clone, Default)]
-pub struct Validators {
-  pub etag: Option<http::HeaderValue>,
-  pub last_modified: Option<http::HeaderValue>,
-}
+use rilgate_policy::Validators;
 
 /// The result of a conditional feed fetch.
 #[derive(Debug)]
