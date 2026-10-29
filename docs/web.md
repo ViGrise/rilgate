@@ -201,3 +201,12 @@ The embedded `layouts/base.html.jinja` includes this loop in `<head>`:
 Autoescaping applies to values; the gateway supplies the attribute from the
 fixed set `property` and `name`. Custom base layouts must include the loop to
 render the metadata. `rilgate web diff` shows the embedded layout change.
+
+## Response status codes
+
+`site.responses.challenge_status` sets the HTML challenge status. It defaults to
+200 and accepts 200, 401, 403, 429 or 503. JSON challenges always return 403 with
+`Rilgate-Challenge: required` so API clients can identify the challenge.
+
+`site.responses.deny_status` sets the status for HTML and JSON policy denials.
+It defaults to 403 and accepts 403, 404, 410 or 429.

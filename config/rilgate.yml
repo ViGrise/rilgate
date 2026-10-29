@@ -299,6 +299,15 @@ server:
     #
     # format: auto
 
+    # HTML challenge status: 200, 401, 403, 429 or 503.
+    # JSON challenges always return 403 with Rilgate-Challenge: required.
+    #
+    # challenge_status: 200
+
+    # HTML and JSON denial status: 403, 404, 410 or 429.
+    #
+    # deny_status: 403
+
     # Optional API path prefixes that always receive JSON in auto mode, even if
     # a client sends Accept: text/html. Matches whole path segments: /api matches
     # /api and /api/users, but not /apiary. Up to 64 absolute paths; no escapes,

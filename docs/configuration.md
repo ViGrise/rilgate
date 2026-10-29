@@ -591,6 +591,11 @@ JSON templates under the external web resource directory can match an
 application-specific envelope. See [AJAX and API integration](api-integration.md) for
 notification headers, JSON body templates and iframe completion.
 
+`site.responses.challenge_status` sets the HTML challenge status (default 200).
+`site.responses.deny_status` sets the HTML and JSON denial status (default 403).
+JSON challenges always return 403 with `Rilgate-Challenge: required`.
+See [response status codes](web.md#response-status-codes) for allowed values.
+
 ## Dedicated RandomX verifier
 
 Run the hash service with a separate command:
