@@ -123,41 +123,55 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/advisories.sh
   container:
+    name: container - ${{ matrix.variant }}
     runs-on: ubuntu-26.04
     timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      matrix:
+        include:
+          # The Alpine image holds the static musl build and the Debian image the dynamic glibc build.
+          - variant: alpine
+            target: runtime-alpine
+            scope: linux-amd64-static
+          - variant: debian
+            target: runtime-debian
+            scope: linux-amd64
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v4
+      # Without a registry login the build reads no cache and compiles every layer.
+      - uses: docker/login-action@v4
+        continue-on-error: true
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       # Reads the layer cache that image builds on main write; this job never exports it.
-      - name: Build production image
+      # The glibc scope also supplies the shared planner and asset stages.
+      - name: Build the ${{ matrix.variant }} image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile
-          target: runtime-alpine
-          tags: rilgate:production-check
+          target: ${{ matrix.target }}
+          tags: rilgate:${{ matrix.variant }}-check
           load: true
           build-args: CARGO_BUILD_JOBS=4
           cache-from: |
-            type=gha,scope=linux-amd64-static
-            type=gha,scope=linux-amd64
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:${{ matrix.scope }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-amd64
           # Runtime stages always rebuild so their OS packages include current security updates.
-          no-cache-filters: runtime-alpine
-      - name: Build the Debian image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: deploy/docker/Dockerfile
-          target: runtime-debian
-          tags: rilgate:debian-check
-          load: true
-          build-args: CARGO_BUILD_JOBS=4
-          cache-from: type=gha,scope=linux-amd64
-          no-cache-filters: runtime-debian
+          no-cache-filters: ${{ matrix.target }}
       - name: Build the static binary
+        if: matrix.variant == 'alpine'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -166,26 +180,25 @@ jobs:
           outputs: type=local,dest=${{ runner.temp }}/binary-musl
           build-args: CARGO_BUILD_JOBS=4
           cache-from: |
-            type=gha,scope=linux-amd64-static
-            type=gha,scope=linux-amd64
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-amd64-static
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-amd64
       - name: Test the static binary without a C library
+        if: matrix.variant == 'alpine'
         run: scripts/test/static-binary.sh "$RUNNER_TEMP/binary-musl/rilgate"
       - name: Validate Compose configuration
+        if: matrix.variant == 'alpine'
         env:
           RILGATE_SECURITY_SECRET: ci-secret-with-at-least-32-random-bytes
         run: docker compose -f deploy/docker/compose.yml config --quiet
       - name: Test container lifecycle and dependency failures
+        run: scripts/test/container.sh rilgate:${{ matrix.variant }}-check
+      - name: Scan the image for fixable high and critical vulnerabilities
         run: |
-          scripts/test/container.sh rilgate:production-check
-          scripts/test/container.sh rilgate:debian-check
-      - name: Scan images for fixable high and critical vulnerabilities
-        run: |
-          for image in rilgate:production-check rilgate:debian-check; do
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-              aquasec/trivy:0.76.0 image --ignore-unfixed --severity HIGH,CRITICAL \
-              --exit-code 1 "$image"
-          done
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.0 image --ignore-unfixed --severity HIGH,CRITICAL \
+            --exit-code 1 rilgate:${{ matrix.variant }}-check
       - name: Validate edge proxy configuration
+        if: matrix.variant == 'alpine'
         run: |
           scratch="$(mktemp -d)"
           { printf 'events {}\nhttp {\n'; cat deploy/examples/nginx/nginx.conf; printf '\n}\n'; } > "$scratch/nginx.conf"
@@ -397,10 +410,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           # Each build keeps its own cache scope; the glibc scope also supplies the shared planner and asset stages.
+          # The cache lives in the registry, outside the size limit of the Actions cache.
           cache-from: |
-            type=gha,scope=linux-${{ matrix.arch }}${{ matrix.build }}
-            type=gha,scope=linux-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=linux-${{ matrix.arch }}${{ matrix.build }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-${{ matrix.arch }}${{ matrix.build }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-${{ matrix.arch }}${{ matrix.build }},mode=max,image-manifest=true,oci-mediatypes=true
           no-cache-filters: ${{ matrix.target }}
       - name: Export digest
         run: |
@@ -426,8 +440,8 @@ jobs:
           target: ${{ matrix.binary-target }}
           outputs: type=local,dest=${{ runner.temp }}/binary
           cache-from: |
-            type=gha,scope=linux-${{ matrix.arch }}${{ matrix.build }}
-            type=gha,scope=linux-${{ matrix.arch }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-${{ matrix.arch }}${{ matrix.build }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:linux-${{ matrix.arch }}
       - name: Smoke test the glibc binary on the oldest supported Debian
         if: startsWith(github.ref, 'refs/tags/v') && matrix.variant == 'debian'
         env:
