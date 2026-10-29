@@ -18,6 +18,12 @@ pub async fn build(
   let web = tokio::task::spawn_blocking(move || rilgate_web::WebManager::new(web_config)).await??;
   let web_runtime = Arc::new(rilgate_web::runtime::watcher::runtime(&web));
   let limiter = Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone())?);
+  let dns = if pow.lookup_plan().is_empty() {
+    None
+  } else {
+    let settings = cfg.pow.policy.dns.clone().unwrap_or_default();
+    Some(rilgate_dns::DnsLookups::system(&settings)?)
+  };
   Ok(Gateway::new(AppState {
     connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
@@ -29,6 +35,7 @@ pub async fn build(
       pow.geoip(),
     )?),
     cfg,
+    dns,
     pow,
     pool,
     proxy,

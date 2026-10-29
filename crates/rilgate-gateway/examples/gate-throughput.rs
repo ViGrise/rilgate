@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
       pow.ip_sets(),
       pow.geoip(),
     )?),
+    dns: None,
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone())?),
     limiter: Arc::new(RateLimiter::new(cfg.pow.rate_limit.clone())?),
     web_runtime: Arc::new(rilgate_web::runtime::watcher::runtime(&web)),

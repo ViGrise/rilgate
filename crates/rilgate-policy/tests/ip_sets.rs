@@ -59,6 +59,7 @@ fn action(engine: &PolicyEngine, ip: &str) -> PolicyAction {
         path: "/",
         method: &Method::GET,
         client_ip: Some(ip.parse().unwrap()),
+        lookups: &rilgate_policy::Lookups::NONE,
       },
       0,
     )
@@ -162,6 +163,7 @@ fn decide<'a>(
       path: "/",
       method: &Method::GET,
       client_ip: Some(ip.parse().unwrap()),
+      lookups: &rilgate_policy::Lookups::NONE,
     },
     score,
   )

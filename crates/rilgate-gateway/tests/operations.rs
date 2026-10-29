@@ -391,7 +391,7 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
       when: Condition {
         client_ip: Some(IpMatch {
           in_sets: Some(vec!["feed".into()]),
-          cidr: None,
+          ..Default::default()
         }),
         ..Default::default()
       },

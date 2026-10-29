@@ -33,6 +33,7 @@ fn weight(engine: &PolicyEngine, ip: &str) -> i32 {
         path: "/",
         method: &Method::GET,
         client_ip: Some(ip.parse().unwrap()),
+        lookups: &rilgate_policy::Lookups::NONE,
       },
       0,
     )

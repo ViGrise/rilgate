@@ -57,6 +57,7 @@ score:
       path: "/api/public",
       method: &Method::POST,
       client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
   );
@@ -70,6 +71,7 @@ score:
       path: "/api/private/info",
       method: &Method::POST,
       client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
   );
@@ -94,6 +96,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
     path: "/api/users",
     method: &Method::POST,
     client_ip: Some("192.0.2.10".parse().unwrap()),
+    lookups: &rilgate_policy::Lookups::NONE,
   };
   for (when, expected) in [
     ("{path: {exact: /api/users}}", true),
@@ -119,11 +122,13 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
   }
   let ipv6 = Request {
     client_ip: Some("2001:db8::1".parse().unwrap()),
+    lookups: &rilgate_policy::Lookups::NONE,
     ..request
   };
   assert!(matched("{client_ip: {cidr: '2001:db8::/32'}}", &ipv6, 0));
   let unknown = Request {
     client_ip: None,
+    lookups: &rilgate_policy::Lookups::NONE,
     ..ipv6
   };
   assert!(!matched("{client_ip: {cidr: '::/0'}}", &unknown, 0));
@@ -270,12 +275,14 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
 #[test]
 fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
   let headers = HeaderMap::new();
+  let lookups = rilgate_policy::Lookups::NONE;
   let request = |ip: &str| Request {
     host: "example.test",
     headers: &headers,
     path: "/",
     method: &Method::GET,
     client_ip: Some(ip.parse().unwrap()),
+    lookups: &lookups,
   };
   assert!(matched(
     "{client_ip: {cidr: '::ffff:192.0.2.0/120'}}",

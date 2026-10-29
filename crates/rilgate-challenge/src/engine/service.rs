@@ -86,6 +86,10 @@ impl ChallengeService {
     self.policy.geoip()
   }
 
+  pub fn lookup_plan(&self) -> &rilgate_policy::LookupPlan {
+    self.policy.lookup_plan()
+  }
+
   pub fn uses_load(&self) -> bool {
     self.policy.uses_load()
   }
@@ -102,6 +106,7 @@ impl ChallengeService {
       path,
       method: &http::Method::GET,
       client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
     })
   }
 

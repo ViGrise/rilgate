@@ -844,3 +844,40 @@ server:
           # - asn: [16509, 14061]
       # action: score
       # score: 5
+
+  # DNS lookups behind the dnsbl and client_ip.reverse_dns conditions. Requires
+  # mode: custom. The first request from a new client can wait up to timeout
+  # for its lookups. Later requests use the cache. A lookup that fails or times
+  # out leaves the condition unknown, so an allow rule on it never allows and a
+  # deny rule challenges. The servers come from the system configuration.
+  #
+  # dns:
+    # Time one request waits for the lookups of its client. Range: 1ms..5s.
+    #
+    # timeout: 1s
+
+    # Cache time of a listed address or a verified name. At least 1s.
+    #
+    # cache_ttl: 1h
+
+    # Cache time of an unlisted address or an unverified client. At least 1s.
+    #
+    # negative_ttl: 10m
+
+    # Range: 1..1048576.
+    #
+    # max_entries: 65536
+
+  # EXAMPLE rules using the lookups. dnsbl takes one zone, with at most 8 zones
+  # in a policy. reverse_dns takes 1..16 domains and is true when a PTR name of
+  # the client ends with a listed domain and resolves back to the client IP.
+  #
+  # rules:
+    # - name: verified-googlebot
+      # when:
+        # client_ip: {reverse_dns: [googlebot.com, google.com]}
+      # action: allow
+    # - name: listed-source
+      # when: {dnsbl: dnsbl.dronebl.org}
+      # action: score
+      # score: 10

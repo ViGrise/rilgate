@@ -1,10 +1,13 @@
 use crate::geoip::{GeoDatabase, GeoDatabases, Lookup, MAX_LIST_ENTRIES};
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::{IpRanges, IpSet, IpSets, MAX_SETS_PER_MATCHER, Membership};
+use crate::lookups::{Lookups, in_domains, normalize_name};
 use crate::policy::schema::{Condition, LoadMatch, NumberMatch, StringMatch};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
 use regex::Regex;
+use std::cell::Cell;
+use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -14,7 +17,12 @@ pub struct Request<'a> {
   pub host: &'a str,
   pub method: &'a Method,
   pub client_ip: Option<IpAddr>,
+  pub lookups: &'a Lookups,
 }
+
+pub(crate) const MAX_DNSBL_ZONES: usize = 8;
+const MAX_ZONE_BYTES: usize = 120;
+const MAX_REVERSE_DNS_DOMAINS: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Truth {
@@ -45,6 +53,8 @@ pub(crate) enum Compiled {
   Load(LoadMatch),
   Country(Arc<GeoDatabase>, Vec<[u8; 2]>),
   Asn(Arc<GeoDatabase>, Vec<u32>),
+  Dnsbl(String),
+  ReverseDns(Vec<String>),
 }
 #[derive(Debug)]
 pub(crate) enum Field {
@@ -64,6 +74,8 @@ pub(crate) struct Budget {
   nodes: usize,
   bytes: usize,
   request_only: bool,
+  pub(crate) dnsbl_zones: BTreeSet<String>,
+  pub(crate) reverse_dns: bool,
 }
 impl Budget {
   fn consume(&mut self, depth: usize, path: &str) -> Result<()> {
@@ -155,7 +167,7 @@ impl Compiled {
     }
     if let Some(value) = &condition.client_ip {
       budget.consume(depth, path)?;
-      nodes.push(Self::compile_ip(value, path, sets)?);
+      nodes.push(Self::compile_ip(value, path, sets, budget)?);
     }
     if let Some(value) = &condition.score {
       ensure!(
@@ -209,6 +221,21 @@ impl Compiled {
     if let Some(numbers) = &condition.asn {
       budget.consume(depth, path)?;
       nodes.push(Self::compile_asn(numbers, path, geoip)?);
+    }
+    if let Some(zone) = &condition.dnsbl {
+      ensure!(
+        !budget.request_only,
+        "{path}.dnsbl: dnsbl is only available in policy rules"
+      );
+      budget.consume(depth, path)?;
+      let zone = normalize_name(zone, MAX_ZONE_BYTES)
+        .with_context(|| format!("{path}.dnsbl: expected a DNS zone name"))?;
+      budget.dnsbl_zones.insert(zone.clone());
+      ensure!(
+        budget.dnsbl_zones.len() <= MAX_DNSBL_ZONES,
+        "{path}.dnsbl: policy must not use more than {MAX_DNSBL_ZONES} DNSBL zones"
+      );
+      nodes.push(Self::Dnsbl(zone));
     }
     ensure!(
       !nodes.is_empty(),
@@ -278,11 +305,40 @@ impl Compiled {
     Ok(())
   }
 
-  fn compile_ip(value: &crate::policy::schema::IpMatch, path: &str, sets: &IpSets) -> Result<Self> {
+  fn compile_ip(
+    value: &crate::policy::schema::IpMatch,
+    path: &str,
+    sets: &IpSets,
+    budget: &mut Budget,
+  ) -> Result<Self> {
     ensure!(
-      (value.cidr.is_some() as usize + value.in_sets.is_some() as usize) == 1,
-      "{path}: client_ip: expected exactly one of cidr, in_sets"
+      (value.cidr.is_some() as usize
+        + value.in_sets.is_some() as usize
+        + value.reverse_dns.is_some() as usize)
+        == 1,
+      "{path}: client_ip: expected exactly one of cidr, in_sets, reverse_dns"
     );
+    if let Some(domains) = &value.reverse_dns {
+      ensure!(
+        !budget.request_only,
+        "{path}.client_ip.reverse_dns: reverse_dns is only available in policy rules"
+      );
+      ensure!(
+        (1..=MAX_REVERSE_DNS_DOMAINS).contains(&domains.len()),
+        "{path}.client_ip.reverse_dns: expected 1 to {MAX_REVERSE_DNS_DOMAINS} domain names"
+      );
+      let domains = domains
+        .iter()
+        .enumerate()
+        .map(|(index, domain)| {
+          normalize_name(domain, 253).with_context(|| {
+            format!("{path}.client_ip.reverse_dns[{index}]: expected a domain name")
+          })
+        })
+        .collect::<Result<Vec<_>>>()?;
+      budget.reverse_dns = true;
+      return Ok(Self::ReverseDns(domains));
+    }
     if let Some(cidr) = &value.cidr {
       let network = cidr
         .parse()
@@ -304,12 +360,20 @@ impl Compiled {
     Ok(Self::Sets(resolved))
   }
 
-  pub(crate) fn matches(&self, request: &Request<'_>, score: i32, load: &HostLoad) -> Truth {
+  /// Evaluates the condition. `needs_lookups` is set when a lookup condition
+  /// has no result in `request.lookups`.
+  pub(crate) fn matches(
+    &self,
+    request: &Request<'_>,
+    score: i32,
+    load: &HostLoad,
+    needs_lookups: &Cell<bool>,
+  ) -> Truth {
     match self {
       Self::All(nodes) => {
         let mut unknown = false;
         for node in nodes {
-          match node.matches(request, score, load) {
+          match node.matches(request, score, load, needs_lookups) {
             Truth::False => return Truth::False,
             Truth::Unknown => unknown = true,
             Truth::True => {}
@@ -320,7 +384,7 @@ impl Compiled {
       Self::Any(nodes) => {
         let mut unknown = false;
         for node in nodes {
-          match node.matches(request, score, load) {
+          match node.matches(request, score, load, needs_lookups) {
             Truth::True => return Truth::True,
             Truth::Unknown => unknown = true,
             Truth::False => {}
@@ -332,7 +396,7 @@ impl Compiled {
           Truth::False
         }
       }
-      Self::Not(node) => node.matches(request, score, load).not(),
+      Self::Not(node) => node.matches(request, score, load, needs_lookups).not(),
       Self::Text(field, test) => {
         let value = match field {
           Field::Path => Some(request.path),
@@ -401,6 +465,34 @@ impl Compiled {
         match database.asn(ip) {
           Lookup::Unknown => Truth::Unknown,
           Lookup::Known(number) => truth(number.is_some_and(|number| numbers.contains(&number))),
+        }
+      }
+      Self::Dnsbl(zone) => {
+        if request.client_ip.is_none() {
+          return Truth::False;
+        }
+        match request.lookups.dnsbl.get(zone) {
+          Some(listed) => truth(*listed),
+          None => {
+            needs_lookups.set(true);
+            Truth::Unknown
+          }
+        }
+      }
+      Self::ReverseDns(domains) => {
+        if request.client_ip.is_none() {
+          return Truth::False;
+        }
+        match &request.lookups.reverse_dns {
+          Some(name) => truth(
+            name
+              .as_deref()
+              .is_some_and(|name| in_domains(name, domains)),
+          ),
+          None => {
+            needs_lookups.set(true);
+            Truth::Unknown
+          }
         }
       }
       Self::Score(test) => truth(
@@ -512,6 +604,6 @@ impl CompiledCondition {
 
   /// Selects requests whose condition evaluates to true with the current IP sets.
   pub fn matches(&self, request: &Request<'_>) -> bool {
-    self.0.matches(request, 0, &HOST_LOAD) == Truth::True
+    self.0.matches(request, 0, &HOST_LOAD, &Cell::new(false)) == Truth::True
   }
 }
