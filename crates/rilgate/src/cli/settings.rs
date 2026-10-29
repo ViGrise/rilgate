@@ -81,6 +81,8 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SITE, Text, "site.templates.recursion_limit", "site-templates-recursion-limit", "RILGATE_SITE_TEMPLATES_RECURSION_LIMIT", None, "Template recursion limit"),
   spec!(SITE, Text, "site.templates.fuel", "site-templates-fuel", "RILGATE_SITE_TEMPLATES_FUEL", None, "Template execution fuel per render"),
   spec!(SITE, Text, "site.responses.format", "site-responses-format", "RILGATE_SITE_RESPONSES_FORMAT", None, "Challenge response format selection"),
+  spec!(SITE, Text, "site.responses.challenge_status", "site-responses-challenge-status", "RILGATE_SITE_RESPONSES_CHALLENGE_STATUS", None, "HTTP status for HTML challenge responses"),
+  spec!(SITE, Text, "site.responses.deny_status", "site-responses-deny-status", "RILGATE_SITE_RESPONSES_DENY_STATUS", None, "HTTP status for HTML and JSON denial responses"),
   spec!(SITE, List, "site.responses.json_paths", "site-responses-json-paths", "RILGATE_SITE_RESPONSES_JSON_PATHS", None, "Path prefixes that always receive JSON responses"),
   spec!(SITE, Text, "site.i18n.default", "site-i18n-default", "RILGATE_SITE_I18N_DEFAULT", None, "Default locale"),
   spec!(SITE, List, "site.i18n.supported", "site-i18n-supported", "RILGATE_SITE_I18N_SUPPORTED", None, "Supported locales; empty discovers them from resources"),

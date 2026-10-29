@@ -116,7 +116,7 @@ pub async fn gate_with_client(
       };
       let (html, locale) = render_page(state, template, "", "fast", headers, uri);
       return Ok(Some(formatted_response(
-        StatusCode::FORBIDDEN,
+        state.cfg.web.responses.deny_status,
         html,
         locale,
         method == Method::HEAD,
@@ -194,7 +194,7 @@ pub async fn gate_with_client(
       if json {
         StatusCode::FORBIDDEN
       } else {
-        StatusCode::OK
+        state.cfg.web.responses.challenge_status
       },
       html,
       locale,
