@@ -26,6 +26,15 @@ impl FromStr for Environment {
   }
 }
 
+impl std::fmt::Display for Environment {
+  fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    formatter.write_str(match self {
+      Self::Development => "development",
+      Self::Production => "production",
+    })
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct UpstreamConfig {
   pub url: String,
