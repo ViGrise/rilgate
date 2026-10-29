@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
       log_lookup(&lookup);
       tracing::info!(
         "Rilgate {} ({}), configuration {}, upstream {}",
-        env!("CARGO_PKG_VERSION"),
+        rilgate::VERSION,
         config.env,
         lookup.path().map_or_else(
           || "from flags and environment".into(),

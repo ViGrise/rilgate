@@ -4,6 +4,22 @@ use axum::{
 };
 use tower::ServiceExt;
 
+#[test]
+fn version_flag_names_the_build_commit() {
+  let result = std::process::Command::new(env!("CARGO_BIN_EXE_rilgate"))
+    .arg("--version")
+    .output()
+    .unwrap();
+  assert!(result.status.success());
+  let output = String::from_utf8(result.stdout).unwrap();
+  let version = output.trim();
+  assert!(version.starts_with(&format!("rilgate {}", env!("CARGO_PKG_VERSION"))));
+  if let Some(commit) = option_env!("RILGATE_BUILD_COMMIT").filter(|commit| !commit.is_empty()) {
+    let commit: String = commit.chars().take(7).collect();
+    assert!(version.ends_with(&format!(" ({commit})")), "{version}");
+  }
+}
+
 #[tokio::test]
 async fn application_composes_backends_and_serves_configured_namespace() {
   let config = rilgate_test_utils::config::config();
