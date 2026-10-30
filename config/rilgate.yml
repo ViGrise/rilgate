@@ -899,6 +899,23 @@ server:
     #
     # max_entries: 65536
 
+  # Per-client request counts for the condition request_rate. Requires mode:
+  # custom. A count covers one IPv4 address or one IPv6 /64 over a sliding
+  # window and includes the current request, also with a valid access cookie.
+  # A request without a resolved client IP is not counted, and the condition is
+  # unknown for it. Use score rules and thresholds to raise the difficulty: a
+  # client is challenged again when its rate reaches a higher difficulty, and
+  # its cookie stays valid when the rate falls.
+  #
+  # request_rate:
+    # Range: 1s..1h.
+    #
+    # window: 1m
+
+    # Range: 1..1048576. A full table drops idle clients, then the least recent.
+    #
+    # max_entries: 65536
+
   # EXAMPLE rules using the lookups. dnsbl takes one zone, with at most 8 zones
   # in a policy. reverse_dns takes 1..16 domains and is true when a PTR name of
   # the client ends with a listed domain and resolves back to the client IP.
@@ -915,3 +932,7 @@ server:
     # - name: link-followers
       # when: {honeypot: true}
       # action: deny
+    # - name: high-request-rate
+      # when: {request_rate: {gte: 300}}
+      # action: score
+      # score: 20
