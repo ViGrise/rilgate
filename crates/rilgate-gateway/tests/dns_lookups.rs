@@ -80,7 +80,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
         Arc::new(CrawlerResolver),
       )),
       honeypot: None,
-      request_rate: None,
+      counters: Default::default(),
     }
     .into_shared(),
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone()).unwrap()),

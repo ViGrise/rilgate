@@ -128,6 +128,12 @@ See [the complete example](../config/examples/custom.yml). Rules run in declarat
 thresholds run against the final score in declaration order. A threshold matches
 `score >= min`.
 
+The last threshold can omit `min` to match every score, including zero and
+negative scores. Only one threshold can omit `min`, and it must be last. It uses
+the rule name `score fallback` in logs and tokens; other thresholds use
+`score >= N`. Explicit minimums stay unique and strictly descending, and
+thresholds cannot use the `score` action.
+
 Minimums must be unique and strictly descending. The first match wins. Otherwise
 `default_action` applies. Its default is `allow`. It can be `allow`, `deny`,
 or `challenge`, but never `score`.
@@ -196,7 +202,7 @@ empty.
 | `country` | a list of 1 to 256 uppercase ISO 3166-1 alpha-2 codes |
 | `asn` | a list of 1 to 256 autonomous system numbers |
 | `dnsbl` | one DNSBL zone name |
-| `request_rate` | `eq`, `gt`, `gte`, `lt`, `lte` on non-negative integers |
+| `rate` (named `counter`) | `eq`, `gt`, `gte`, `lt`, `lte` on non-negative integers |
 | `honeypot` | `true` or `false` |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
@@ -283,53 +289,85 @@ configuration. Results are cached per client, and a failed lookup is never cache
 `cache_ttl` applies to a listed address or a verified name. `negative_ttl` applies to an
 unlisted address or a client without a verified name.
 
-## Request rate and difficulty escalation
+## Counters and difficulty escalation
 
-`request_rate` compares the client's request count in one sliding window with
-`eq`, `gt`, `gte`, `lt`, or `lte` on non-negative integers. It works only in policy
-rules and requires `policy.request_rate`. Presets reject these settings, and
-`site.open_graph.when` rejects this condition.
+`policy.counters` defines up to 32 named request counters. Names contain 1 to
+64 ASCII letters, digits, `-` or `_`. Counters require `mode: custom`.
 
-`policy.request_rate.window` accepts `1s` to `1h` and defaults to `1m`.
-`policy.request_rate.max_entries` accepts `1` to `1048576` and defaults to `65536`.
-All conditions in a policy read the same count. The key is a canonical IPv4 address
-or an IPv6 /64, so addresses in the same IPv6 /64 share a count.
+Each counter has these settings:
 
-Every request that reaches the gate counts, including the current request and
-requests with an access cookie. Assets, the proof API, and internal routes do not
-reach the gate and do not count. Without a resolved client IP or a counter, the
-result is unknown: an `allow` rule never allows, and score rules use the existing
-unknown handling (positive scores still apply). A settings block without a rate
-condition is allowed and does not count requests.
+| Setting | Meaning |
+| --- | --- |
+| `key` | Required list of 1 to 4 parts, with no duplicates |
+| `window` | Required duration from `1s` to `1h` |
+| `max_entries` | Maximum keys retained, from `1` to `1048576`; default `65536` |
+| `count_when` | Optional request condition; absent selects every request that reaches the gate |
 
-The counter uses two fixed buckets. It adds the current bucket to the previous
-bucket weighted by the fraction of the window remaining, rounds down, and
-saturates at `u32::MAX`. Clients idle for two windows expire. At capacity, the
-oldest last request is evicted. Counts stay in process memory; a policy reload
-keeps them when the window and capacity are unchanged.
+Key parts are `client_ip`, `host`, `method`, `path`, `user_agent`, `country`, `asn`,
+or `{header: X-Name}`. Header names are case-insensitive; the first value is used.
+Host is the lowercase host used for challenge binding, including any port.
+`client_ip` defaults to IPv4 /32 and IPv6 /64. Use
+`{client_ip: {ipv4_prefix: 24, ipv6_prefix: 48}}` to change the prefixes within
+`1..32` and `1..128`. IPv4-mapped IPv6 addresses use IPv4 prefixes.
+`country` and `asn` need their corresponding `policy.geoip` databases; omitting
+the required database is a compile error. Configure an ASN database before using
+the `cloud-asn` counter in the example below.
 
-Combine score rules and thresholds to raise challenge difficulty:
+A missing key part (such as a missing client IP, header or GeoIP answer) gives no
+key: the request is not counted and its rate is unknown. Text values of at most
+256 bytes are stored as-is; longer values use a SHA-256 digest and still count.
+This bounds key memory per entry.
+
+`count_when` accepts request conditions except `score`, `rate`, `dnsbl` and
+`client_ip.reverse_dns`, including inside `all`, `any` or `not`. Only a true result
+counts; false and unknown do not count. Requests with access cookies count when
+selected. Assets, proof API routes and internal routes do not reach the gate.
+A counter that no rule reads is valid and does not count requests.
+
+`rate: {counter: login, gte: 10}` reads a named counter in policy rules. It accepts
+`eq`, `gt`, `gte`, `lt` and `lte` on non-negative integers, with AND logic and a
+nonempty range. Unknown names are compile errors. `site.open_graph.when` rejects
+`rate`. The value includes the current request when selected by `count_when`;
+unselected requests read the current count without incrementing it. Missing keys
+are unknown: an `allow` rule never allows, and positive risk scores still apply.
+Counting runs once before evaluation; DNS reevaluation reuses the same values.
+
+Each counter uses two fixed buckets. The count adds the current bucket to the
+previous bucket weighted by the fraction of the window remaining, rounds down,
+and saturates at `u32::MAX`. Keys idle for two windows expire. At `max_entries`,
+the least recent key is evicted. Counts live in process memory. Reload preserves
+a counter only when its name, key, window, capacity and `count_when` are equal.
 
 ```yaml
 policy:
   mode: custom
-  request_rate:
-    window: 1m
-    max_entries: 65536
+  counters:
+    pages:
+      key: [client_ip, host]
+      window: 30s
+      count_when:
+        not: {host: {exact: cdn.example.com}}
+    login:
+      key: [{client_ip: {ipv4_prefix: 24, ipv6_prefix: 48}}]
+      window: 1m
+      max_entries: 16384
+      count_when: {path: {prefix: /login}}
+    cloud-asn:
+      key: [asn, host]
+      window: 1m
+      count_when: {asn: [13335, 136907, 45102]}
   rules:
-    - {name: rate-60, when: {request_rate: {gte: 60}}, action: score, score: 10}
-    - {name: rate-300, when: {request_rate: {gte: 300}}, action: score, score: 20}
-    - {name: rate-flood, when: {request_rate: {gte: 2000}}, action: deny}
+    - {name: login-burst, when: {rate: {counter: login, gte: 10}}, action: deny}
+    - {name: page-rate, when: {rate: {counter: pages, gte: 60}}, action: score, score: 20}
   score:
     thresholds:
-      - {min: 30, action: challenge, challenge: {algorithm: fast, difficulty: 6}}
-      - {min: 10, action: challenge, challenge: {algorithm: fast, difficulty: 4}}
+      - {min: 30, action: challenge, challenge: {algorithm: fast, difficulty: 5}}
+      - {min: 20, action: challenge, challenge: {algorithm: fast, difficulty: 4}}
+      - {action: challenge, challenge: {algorithm: fast, difficulty: 2}}
 ```
 
-At 60 requests the required difficulty is 4; at 300 it is 6 because both scores
-apply. At 2000 requests the policy denies access. A client with a higher-difficulty
-cookie keeps it when its rate falls. A client is challenged once when its rate
-enters a tier with a higher difficulty, then the new higher-difficulty cookie
+A client with a higher-difficulty cookie keeps it when its rate falls. A client
+is challenged once when its rate enters a higher difficulty, then the new cookie
 passes requests in that tier.
 
 ## Honeypot

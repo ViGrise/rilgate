@@ -1,4 +1,5 @@
 pub mod conditions;
+pub mod counters;
 pub mod feed_state;
 pub mod geoip;
 pub mod host_load;

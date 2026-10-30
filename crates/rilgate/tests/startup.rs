@@ -96,10 +96,10 @@ fn every_distribution_template_validates_without_network_dependencies() {
     "rilgate.yml",
     "rilgate.production.yml",
     "examples/custom.yml",
-    "examples/request-rate.yml",
     "examples/hashwx.yml",
     "examples/randomx.yml",
     "examples/includes.yml",
+    "examples/counters.yml",
   ] {
     let result = distribution_command(name, &["config", "check"]);
     assert!(

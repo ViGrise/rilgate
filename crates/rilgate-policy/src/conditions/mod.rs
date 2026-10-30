@@ -2,7 +2,7 @@ use crate::geoip::{GeoDatabase, GeoDatabases, Lookup, MAX_LIST_ENTRIES};
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::{IpRanges, IpSet, IpSets, MAX_SETS_PER_MATCHER, Membership};
 use crate::lookups::{Lookups, in_domains, normalize_name};
-use crate::policy::schema::{Condition, LoadMatch, NumberMatch, StringMatch};
+use crate::policy::schema::{Condition, LoadMatch, NumberMatch, RateMatch, StringMatch};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
 use regex::Regex;
@@ -50,7 +50,7 @@ pub(crate) enum Compiled {
   Ip(IpRanges),
   Sets(Vec<Arc<IpSet>>),
   Score(NumberMatch),
-  RequestRate(NumberMatch),
+  Rate(usize, RateMatch),
   Load(LoadMatch),
   Country(Arc<GeoDatabase>, Vec<[u8; 2]>),
   Asn(Arc<GeoDatabase>, Vec<u32>),
@@ -77,15 +77,16 @@ pub(crate) struct Budget {
   bytes: usize,
   request_only: bool,
   honeypot: bool,
-  request_rate: bool,
+  counters: Vec<String>,
+  pub(crate) counter_selection: bool,
   pub(crate) dnsbl_zones: BTreeSet<String>,
   pub(crate) reverse_dns: bool,
 }
 impl Budget {
-  pub(crate) fn for_policy(honeypot: bool, request_rate: bool) -> Self {
+  pub(crate) fn for_policy(honeypot: bool, counters: Vec<String>) -> Self {
     Self {
       honeypot,
-      request_rate,
+      counters,
       ..Default::default()
     }
   }
@@ -183,6 +184,10 @@ impl Compiled {
     }
     if let Some(value) = &condition.score {
       ensure!(
+        !budget.counter_selection,
+        "{path}.score: unavailable in count_when"
+      );
+      ensure!(
         !budget.request_only,
         "{path}.score: score is only available in policy rules"
       );
@@ -221,22 +226,20 @@ impl Compiled {
       );
       nodes.push(Self::Score(value.clone()));
     }
-    if let Some(value) = &condition.request_rate {
+    if let Some(value) = &condition.rate {
       ensure!(
         !budget.request_only,
-        "{path}.request_rate: request_rate is only available in policy rules"
+        "{path}.rate: rate is only available in policy rules"
       );
       ensure!(
-        budget.request_rate,
-        "{path}.request_rate: requires policy.request_rate"
+        !budget.counter_selection,
+        "{path}.rate: unavailable in count_when"
       );
-      ensure!(
-        [value.eq, value.gt, value.gte, value.lt, value.lte]
-          .iter()
-          .flatten()
-          .all(|v| *v >= 0),
-        "{path}.request_rate: expected a non-negative integer"
-      );
+      let index = budget
+        .counters
+        .iter()
+        .position(|name| name == &value.counter)
+        .with_context(|| format!("{path}.rate.counter: unknown counter {}", value.counter))?;
       budget.consume(depth, path)?;
       ensure!(
         value.eq.is_some()
@@ -244,7 +247,7 @@ impl Compiled {
           || value.gte.is_some()
           || value.lt.is_some()
           || value.lte.is_some(),
-        "{path}.request_rate: expected a numeric comparison"
+        "{path}.rate: expected a numeric comparison"
       );
       let lower = [
         Some(0),
@@ -268,9 +271,9 @@ impl Compiled {
       .unwrap();
       ensure!(
         lower <= upper,
-        "{path}.request_rate: comparisons describe an empty range"
+        "{path}.rate: comparisons describe an empty range"
       );
-      nodes.push(Self::RequestRate(value.clone()));
+      nodes.push(Self::Rate(index, value.clone()));
     }
     if let Some(value) = &condition.load {
       budget.consume(depth, path)?;
@@ -286,6 +289,10 @@ impl Compiled {
       nodes.push(Self::compile_asn(numbers, path, geoip)?);
     }
     if let Some(zone) = &condition.dnsbl {
+      ensure!(
+        !budget.counter_selection,
+        "{path}.dnsbl: unavailable in count_when"
+      );
       ensure!(
         !budget.request_only,
         "{path}.dnsbl: dnsbl is only available in policy rules"
@@ -391,6 +398,10 @@ impl Compiled {
       "{path}: client_ip: expected exactly one of cidr, in_sets, reverse_dns"
     );
     if let Some(domains) = &value.reverse_dns {
+      ensure!(
+        !budget.counter_selection,
+        "{path}.client_ip.reverse_dns: unavailable in count_when"
+      );
       ensure!(
         !budget.request_only,
         "{path}.client_ip.reverse_dns: reverse_dns is only available in policy rules"
@@ -568,7 +579,7 @@ impl Compiled {
           }
         }
       }
-      Self::RequestRate(test) => match request.lookups.request_rate {
+      Self::Rate(index, test) => match request.lookups.rates.get(*index).copied().flatten() {
         None => Truth::Unknown,
         Some(count) => {
           let count = i64::from(count);

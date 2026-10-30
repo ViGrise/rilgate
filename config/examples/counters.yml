@@ -1,0 +1,26 @@
+server:
+  upstream:
+    url: "http://127.0.0.1:3000"
+security:
+  secret: "${RILGATE_SECURITY_SECRET}"
+policy:
+  mode: custom
+  counters:
+    pages:
+      key: [client_ip, host]
+      window: 30s
+      count_when:
+        not: {host: {exact: cdn.example.com}}
+    login:
+      key: [{client_ip: {ipv4_prefix: 24, ipv6_prefix: 48}}]
+      window: 1m
+      max_entries: 16384
+      count_when: {path: {prefix: /login}}
+  rules:
+    - {name: login-burst, when: {rate: {counter: login, gte: 10}}, action: deny}
+    - {name: page-rate, when: {rate: {counter: pages, gte: 60}}, action: score, score: 20}
+  score:
+    thresholds:
+      - {min: 30, action: challenge, challenge: {algorithm: fast, difficulty: 5}}
+      - {min: 20, action: challenge, challenge: {algorithm: fast, difficulty: 4}}
+      - {action: challenge, challenge: {algorithm: fast, difficulty: 2}}

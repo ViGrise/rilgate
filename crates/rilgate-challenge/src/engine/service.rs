@@ -151,8 +151,17 @@ impl ChallengeService {
     self.policy.load().engine.lookup_plan().clone()
   }
 
-  pub fn uses_request_rate(&self) -> bool {
-    self.policy.load().engine.uses_request_rate()
+  pub fn counter_values(
+    &self,
+    request: &rilgate_policy::conditions::Request<'_>,
+    mut read: impl FnMut(&str, rilgate_policy::counters::CounterKey, bool) -> Option<u32>,
+  ) -> Vec<Option<u32>> {
+    let policy = self.policy.load();
+    policy
+      .engine
+      .counter_values(request, |index, key, selected| {
+        read(&policy.engine.counters()[index].name, key, selected)
+      })
   }
 
   pub fn uses_load(&self) -> bool {
