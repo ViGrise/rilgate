@@ -142,7 +142,13 @@ impl WebSnapshot {
               name.into(),
               AssetMetadata::memory(
                 name,
-                source.replace("__WASM_REVISION__", &revision).into_bytes(),
+                source
+                  .replace("__WASM_REVISION__", &revision)
+                  .replace(
+                    "__RX_DEVELOPMENT__",
+                    if config.development { "true" } else { "false" },
+                  )
+                  .into_bytes(),
               ),
             );
           }
@@ -259,6 +265,7 @@ impl WebSnapshot {
       "js/solvers/randomx/solver.js",
       "js/solvers/randomx/randomx-worker.js",
       "js/solvers/randomx/randomx_wasm.wasm",
+      "js/solvers/randomx/randomx_wasm_scalar.wasm",
     ] {
       ensure!(
         self.assets.contains_key(name),

@@ -9,6 +9,8 @@ use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 pub struct BrowserConfig {
   // Relative paths are resolved below the configured web namespace.
   pub solver_module_path: String,
+  pub max_workers: u8,
+  pub store_cache: bool,
 }
 
 #[derive(Debug, Clone)]

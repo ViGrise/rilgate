@@ -27,6 +27,7 @@ impl Algorithm for FastAlgorithm {
       solver_module_path: "/static/js/solvers/fast/solver.js".into(),
       requires_consent: false,
       memory_bytes: 0,
+      browser: None,
     }
   }
   fn difficulty_for_weight(&self, weight: i32) -> u64 {

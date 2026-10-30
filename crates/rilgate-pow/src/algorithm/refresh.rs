@@ -26,6 +26,7 @@ impl Algorithm for RefreshAlgorithm {
       solver_module_path: String::new(),
       requires_consent: false,
       memory_bytes: 0,
+      browser: None,
     }
   }
 

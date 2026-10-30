@@ -16,3 +16,5 @@ tmp/
 /web/randomx
 
 /tests/e2e/node_modules
+
+/web/static/js/solvers/randomx/randomx_wasm_scalar.wasm

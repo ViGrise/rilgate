@@ -5,7 +5,7 @@
 [![CI](https://github.com/ViGrise/rilgate/actions/workflows/ci.yml/badge.svg)](https://github.com/ViGrise/rilgate/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![Rust: stable](https://img.shields.io/badge/Rust-stable-dea584.svg)](rust-toolchain.toml)
-[![WebAssembly: SIMD128](https://img.shields.io/badge/WebAssembly-SIMD128-654ff0.svg)](docs/pow.md#randomx-throughput)
+[![WebAssembly](https://img.shields.io/badge/WebAssembly-SIMD_optional-654ff0.svg)](docs/pow.md#randomx-throughput)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange.svg)](#project-status)
 
 Rilgate is a reverse proxy gateway that uses proof-of-work challenges. It places a browser
@@ -57,8 +57,9 @@ HashWX provides local CPU work with generated WASM and an interpreted verifier.
 It needs no pool. Its difficulty defaults await a mid-range phone measurement.
 See [the HashWX example](config/examples/hashwx.yml).
 
-Fast proofs run in a browser worker. RandomX uses roughly 256 MiB for its cache, plus
-scratchpads and runtime memory. It requires WebAssembly SIMD128. Both RandomX modes get
+Fast proofs run in a browser worker. RandomX uses roughly 256 MiB per worker for its
+cache, plus scratchpads and runtime memory. It requires Worker, WebAssembly and BigInt;
+SIMD is optional. See [RandomX throughput](docs/pow.md#randomx-throughput). Both RandomX modes get
 work from a Stratum pool Stratum endpoint.
 
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host

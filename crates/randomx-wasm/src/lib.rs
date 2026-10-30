@@ -6,7 +6,12 @@
 
 use std::cell::RefCell;
 
-use randomx_core::RandomX;
+use argon2::Block;
+use randomx_core::{
+  RandomX,
+  cache::RandomXCache,
+  constants::{ARGON_MEMORY, CACHE_SIZE},
+};
 
 /// Status returned by every fallible export.
 const RX_OK: i32 = 0;
@@ -23,11 +28,12 @@ struct Instance {
 
 struct Registry {
   instances: Vec<Option<Instance>>,
+  imported: Option<Vec<Block>>,
 }
 
 thread_local! {
   static REGISTRY: RefCell<Registry> =
-    const { RefCell::new(Registry { instances: Vec::new() }) };
+    const { RefCell::new(Registry { instances: Vec::new(), imported: None }) };
 }
 
 /// Creates a Light mode hasher from `seed_len` bytes at `seed_ptr`.
@@ -51,6 +57,10 @@ pub unsafe extern "C" fn rx_create(seed_ptr: *const u8, seed_len: usize) -> i32 
     return RX_ERROR;
   };
 
+  register(instance)
+}
+
+fn register(instance: RandomX) -> i32 {
   let instance = Instance {
     #[cfg(target_arch = "wasm32")]
     dataset_module: instance.cache().dataset_module(),
@@ -66,6 +76,73 @@ pub unsafe extern "C" fn rx_create(seed_ptr: *const u8, seed_len: usize) -> i32 
 
     registry.instances.push(Some(instance));
     (registry.instances.len() - 1) as i32
+  })
+}
+
+/// Returns the required raw cache length.
+#[unsafe(no_mangle)]
+pub extern "C" fn rx_cache_size() -> usize {
+  CACHE_SIZE
+}
+
+/// Allocates the raw cache import buffer in module memory.
+#[unsafe(no_mangle)]
+pub extern "C" fn rx_cache_import_ptr() -> usize {
+  REGISTRY.with(|registry| {
+    let mut registry = registry.borrow_mut();
+    let memory = registry
+      .imported
+      .get_or_insert_with(|| vec![Block::new(); ARGON_MEMORY as usize]);
+    memory.as_mut_ptr() as usize
+  })
+}
+
+/// Creates a hasher from the filled import buffer and seed.
+///
+/// # Safety
+/// The seed pointer must reference seed_len readable bytes for the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rx_create_from_cache(
+  seed_ptr: *const u8,
+  seed_len: usize,
+  cache_len: usize,
+) -> i32 {
+  if seed_len == 0 || seed_len > RX_MAX_INPUT || cache_len != CACHE_SIZE {
+    return RX_ERROR;
+  }
+  let memory = REGISTRY.with(|registry| registry.borrow_mut().imported.take());
+  let Some(memory) = memory else {
+    return RX_ERROR;
+  };
+  let seed = unsafe { std::slice::from_raw_parts(seed_ptr, seed_len) };
+  register(RandomX::from_cache(RandomXCache::from_memory(seed, memory)))
+}
+
+/// Returns the address of the handle's raw cache bytes.
+#[unsafe(no_mangle)]
+pub extern "C" fn rx_cache_ptr(handle: i32) -> usize {
+  REGISTRY.with(|registry| {
+    registry
+      .borrow()
+      .instances
+      .get(handle as usize)
+      .and_then(Option::as_ref)
+      .map_or(0, |instance| {
+        instance.hasher.cache().bytes().as_ptr() as usize
+      })
+  })
+}
+
+/// Returns the length of a valid handle's raw cache.
+#[unsafe(no_mangle)]
+pub extern "C" fn rx_cache_len(handle: i32) -> usize {
+  REGISTRY.with(|registry| {
+    registry
+      .borrow()
+      .instances
+      .get(handle as usize)
+      .and_then(Option::as_ref)
+      .map_or(0, |instance| instance.hasher.cache().bytes().len())
   })
 }
 

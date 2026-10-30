@@ -10,19 +10,26 @@ let moduleId = 0;
 
 async function solver(t) {
   const instances = [];
+  let postFailure = false;
   class Worker {
     messages = [];
     terminated = false;
     constructor() { instances.push(this); }
-    postMessage(message) { this.messages.push(structuredClone(message)); }
+    postMessage(message) {
+      if (postFailure) throw new Error("post failed");
+      this.messages.push(structuredClone(message));
+    }
     terminate() { this.terminated = true; }
     emit(message) { this.onmessage({ data: message }); }
   }
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { hardwareConcurrency: 2, deviceMemory: 2 } });
+  t.after(() => Object.defineProperty(globalThis, "navigator", previousNavigator));
   const previous = globalThis.Worker;
   globalThis.Worker = Worker;
   t.after(() => { globalThis.Worker = previous; });
   const module = await import(`${solverUrl.href}?test=${++moduleId}`);
-  return { solve: module.solve, cancel: module.cancel, instances };
+  return { solve: module.solve, cancel: module.cancel, instances, failPosts: value => { postFailure = value; } };
 }
 
 const job = { blob: "00".repeat(64), seed_hash: "ab".repeat(32), difficulty: 1000, nonceOffset: 39 };
@@ -52,12 +59,13 @@ test("job rotation rejects the old solve and ignores its late replies", async (t
   const rejected = assert.rejects(old, { name: "SupersededError" });
   let settled = false;
   const current = solve(job).then((value) => { settled = true; return value; });
-  const currentId = lastRequest(worker).requestId;
+  const currentWorker = instances[1];
+  const currentId = lastRequest(currentWorker).requestId;
   worker.emit({ type: "solved", requestId: oldId, nonce: "stale" });
   worker.emit({ type: "error", requestId: oldId, message: "stale" });
   await Promise.resolve();
   assert.equal(settled, false);
-  worker.emit({ type: "solved", requestId: currentId, nonce: "current", result: "00".repeat(32) });
+  currentWorker.emit({ type: "solved", requestId: currentId, nonce: "current", result: "00".repeat(32) });
   assert.equal((await current).nonce, "current");
   await rejected;
 });
@@ -77,16 +85,13 @@ test("worker errors allow a later solve to create a fresh worker", async (t) => 
 });
 
 test("a failed postMessage rejects cleanly and does not strand the next solve", async (t) => {
-  const { solve, instances } = await solver(t);
-  const first = solve(job);
-  const worker = instances[0];
-  worker.emit({ type: "solved", requestId: lastRequest(worker).requestId, nonce: "first" });
-  await first;
-  const post = worker.postMessage;
-  worker.postMessage = () => { throw new Error("post failed"); };
+  const { solve, instances, failPosts } = await solver(t);
+  failPosts(true);
   await assert.rejects(solve(job), /post failed/);
-  worker.postMessage = post;
+  assert.equal(instances[0].terminated, true);
+  failPosts(false);
   const next = solve(job);
+  const worker = instances[1];
   worker.emit({ type: "solved", requestId: lastRequest(worker).requestId, nonce: "next" });
   assert.equal((await next).nonce, "next");
 });
@@ -103,12 +108,12 @@ async function workerHarness(instantiateStreaming, clock = Date, startNonce = 0)
       return 0;
     },
   };
-  const self = { postMessage: (message) => messages.push(message) };
+  const self = { postMessage: (message) => { if (message.type !== "cache-built") messages.push(message); } };
   const context = vm.createContext({
     self, Uint8Array, Date: clock, BigInt, setTimeout, fetch: async () => new Response(new Uint8Array([0])),
     WebAssembly: { instantiateStreaming, instantiate: async () => ({ instance: { exports } }) },
   });
-  const source = (await readFile(workerUrl, "utf8")).replace("let nonce = 0;", `let nonce = ${startNonce};`);
+  const source = (await readFile(workerUrl, "utf8")).replace("let nonce = (job.workerIndex || 0) * 3;", `let nonce = ${startNonce};`);
   vm.runInContext(source, context);
   return { self, messages, memory, exports, wasmApi: context.WebAssembly };
 }

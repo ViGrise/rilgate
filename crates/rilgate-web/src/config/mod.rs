@@ -8,6 +8,8 @@ pub use validation::valid_cookie_name;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebConfig {
+  #[serde(skip)]
+  pub development: bool,
   pub name: String,
   pub website_url: String,
   pub base_path: String,
@@ -23,6 +25,7 @@ pub struct WebConfig {
 impl Default for WebConfig {
   fn default() -> Self {
     Self {
+      development: false,
       name: "Rilgate".into(),
       website_url: "https://rilgate.com".into(),
       base_path: "/.well-known/rilgate".into(),

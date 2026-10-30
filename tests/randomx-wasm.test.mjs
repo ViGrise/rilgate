@@ -18,8 +18,9 @@ async function installDatasetKernel(exports, handle, slot) {
   return { slot, triple: instance.exports.dataset_triple, kernel: instance.exports.dataset_item, pair: instance.exports.dataset_pair };
 }
 
-test("built WASM reproduces reference and nonce vectors with a reused cache", async () => {
-  const bytes = await readFile(new URL("../web/static/js/solvers/randomx/randomx_wasm.wasm", import.meta.url));
+for (const moduleName of ["randomx_wasm.wasm", "randomx_wasm_scalar.wasm"]) {
+test(`${moduleName} reproduces reference and nonce vectors with a reused cache`, async () => {
+  const bytes = await readFile(new URL(`../web/static/js/solvers/randomx/${moduleName}`, import.meta.url));
   const { instance } = await WebAssembly.instantiate(bytes, {});
   const { memory, rx_create, rx_hash, rx_destroy } = instance.exports;
   const seed = new TextEncoder().encode("test key 000");
@@ -70,6 +71,8 @@ test("built WASM reproduces reference and nonce vectors with a reused cache", as
     assert.equal(rx_destroy(handle), 0);
   }
 });
+
+}
 
 test("Rust-generated dataset kernels match interpretation across seeds and u64 item boundaries", async () => {
   const bytes = await readFile(new URL("../web/static/js/solvers/randomx/randomx_wasm.wasm", import.meta.url));
@@ -146,4 +149,28 @@ test("Rust-generated dataset kernels match interpretation across seeds and u64 i
   assert.equal(exports.rx_set_dataset_pair_function(-1, slot + 1), -1);
   assert.equal(exports.rx_dataset_module_len(-1), 0);
   assert.equal(exports.rx_dataset_module_ptr(-1), 0);
+});
+
+
+test("imported cache reproduces the reference hash with regenerated kernels", async () => {
+  const bytes = await readFile(new URL("../web/static/js/solvers/randomx/randomx_wasm.wasm", import.meta.url));
+  const { instance: { exports } } = await WebAssembly.instantiate(bytes, {});
+  const seed = new TextEncoder().encode("test key 000");
+  const pointer = exports.memory.buffer.byteLength;
+  exports.memory.grow(1);
+  new Uint8Array(exports.memory.buffer, pointer, seed.length).set(seed);
+  const original = exports.rx_create(pointer, seed.length);
+  const length = exports.rx_cache_len(original);
+  const cache = new Uint8Array(exports.memory.buffer, exports.rx_cache_ptr(original), length).slice();
+  exports.rx_destroy(original);
+  const importedPointer = exports.rx_cache_import_ptr();
+  new Uint8Array(exports.memory.buffer, importedPointer, length).set(cache);
+  const handle = exports.rx_create_from_cache(pointer, seed.length, length);
+  assert.ok(handle >= 0);
+  await installDatasetKernel(exports, handle);
+  const input = new TextEncoder().encode("This is a test");
+  new Uint8Array(exports.memory.buffer, pointer, input.length).set(input);
+  assert.equal(exports.rx_hash(handle, pointer, input.length, pointer + 256), 0);
+  assert.equal(Buffer.from(exports.memory.buffer, pointer + 256, 32).toString("hex"), "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f");
+  exports.rx_destroy(handle);
 });

@@ -138,6 +138,8 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.score_step", "pow-algorithms-randomx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_SCORE_STEP", None, "Score that doubles RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.difficulty.max", "pow-algorithms-randomx-difficulty-max", "RILGATE_POW_ALGORITHMS_RANDOMX_DIFFICULTY_MAX", None, "Highest RandomX difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.browser.module", "pow-algorithms-randomx-browser-module", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_MODULE", None, "Browser RandomX solver module path"),
+  spec!(POW, Text, "pow.algorithms.randomx.browser.max_workers", "pow-algorithms-randomx-browser-max-workers", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_MAX_WORKERS", None, "Maximum browser RandomX workers (1 to 8)"),
+  spec!(POW, Switch, "pow.algorithms.randomx.browser.store_cache", "pow-algorithms-randomx-browser-store-cache", "RILGATE_POW_ALGORITHMS_RANDOMX_BROWSER_STORE_CACHE", None, "Store the browser RandomX cache in IndexedDB"),
   spec!(POOL, Text, "pow.stratum_pool.failover.cooldown", "pow-stratum-pool-failover-cooldown", "RILGATE_POW_STRATUM_POOL_FAILOVER_COOLDOWN", None, "Pool and proxy connection failure cooldown"),
   spec!(POOL, Text, "pow.stratum_pool.failover.timeout", "pow-stratum-pool-failover-timeout", "RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT", None, "Total Stratum pool connection timeout"),
   spec!(POOL, Text, "pow.stratum_pool.agent", "pow-stratum-pool-agent", "RILGATE_POW_STRATUM_POOL_AGENT", None, "Stratum user agent"),

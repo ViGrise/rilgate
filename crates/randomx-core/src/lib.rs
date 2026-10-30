@@ -75,6 +75,16 @@ impl RandomX {
     })
   }
 
+  /// Creates a hasher with an imported cache.
+  pub fn from_cache(cache: RandomXCache) -> Self {
+    Self {
+      cache,
+      vm: VirtualMachine::new(),
+      pair_vm: None,
+      third_vm: None,
+    }
+  }
+
   #[cfg(target_arch = "wasm32")]
   pub fn cache_mut(&mut self) -> &mut RandomXCache {
     &mut self.cache

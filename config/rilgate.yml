@@ -595,6 +595,10 @@ server:
         # Must be a local safe resource path, not an arbitrary external URL.
         #
         # module: /static/js/solvers/randomx/solver.js
+        # Maximum browser workers, from 1 to 8. CPU and memory can reduce this count.
+        # max_workers: 8
+        # Store the seed cache in IndexedDB for reuse across solves.
+        # store_cache: true
 
       # Optional fallback while every pool is in its failure cooldown.
       # Both fields are required. Requires local_verify and an enabled algorithm.

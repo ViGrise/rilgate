@@ -16,6 +16,7 @@ let tripleReady = false;
 let pending = null;
 let pumping = false;
 let generation = 0;
+let storeCache = true;
 
 // Linear memory offsets for the reusable hash buffers. Browsers cap wasm
 // memory, so the search loop must not allocate per candidate.
@@ -26,7 +27,13 @@ let seedPointer = 0;
 self.onmessage = (event) => {
   const message = event.data;
 
+  if (message.type === "persist-cache") {
+    persistCache();
+    return;
+  }
+
   if (message.type === "solve") {
+    storeCache = message.job.storeCache ?? true;
     pending = {
       ...message.job,
       requestId: message.requestId,
@@ -68,7 +75,7 @@ async function pump() {
 }
 
 async function solveJob(job) {
-  const started = Date.now();
+
   checkDeadline(job);
   const blob = hexToBytes(job.blob);
   const seed = hexToBytes(job.seedHash);
@@ -79,12 +86,15 @@ async function solveJob(job) {
     throw new Error("RandomX nonce offset is outside the hashing blob");
   }
   const target = targetFor(job.difficulty);
-  await ensureInstance(job.seedHash, job.wasmUrl, seed);
-  const batchSize = tripleReady && wasm.exports.rx_hash_triple ? 3 : pairReady && wasm.exports.rx_hash_pair ? 2 : 1;
+  const builtCache = await ensureInstance(job.seedHash, job.wasmUrl, seed);
+  if (job.generation !== generation) return null;
+  if (builtCache) self.postMessage({ type: "cache-built", requestId: job.requestId });
+  const started = Date.now();
+  const batchSize = 3;
   const result = new Uint8Array(32 * batchSize);
   let attempts = 0;
 
-  for (let nonce = 0; nonce < NONCE_SPACE; nonce += batchSize) {
+  for (let nonce = (job.workerIndex || 0) * 3; nonce < NONCE_SPACE; nonce += (job.workerCount || 1) * 3) {
     if (job.generation !== generation) {
       return null;
     }
@@ -150,7 +160,14 @@ async function ensureInstance(seedHash, wasmUrl, seed) {
     seedPointer = grow(wasm.exports.memory, 32);
   }
   new Uint8Array(wasm.exports.memory.buffer, seedPointer, seed.length).set(seed);
-  handle = wasm.exports.rx_create(seedPointer, seed.length);
+  const cached = await readCache(seedHash);
+  if (cached) {
+    const pointer = wasm.exports.rx_cache_import_ptr();
+    new Uint8Array(wasm.exports.memory.buffer, pointer, cached.byteLength).set(new Uint8Array(cached));
+    handle = wasm.exports.rx_create_from_cache(seedPointer, seed.length, cached.byteLength);
+  } else {
+    handle = wasm.exports.rx_create(seedPointer, seed.length);
+  }
 
   if (handle < 0) {
     handle = -1;
@@ -159,6 +176,7 @@ async function ensureInstance(seedHash, wasmUrl, seed) {
 
   await installDatasetKernel();
   activeSeed = seedHash;
+  return !cached;
 }
 
 function clearDatasetKernel() {
@@ -265,13 +283,18 @@ function hash(input, output, nonceOffset, nonce, lanes) {
     writeNonce(candidate, nonceOffset, nonce + lane);
   }
 
-  let status;
-  if (lanes === 3) {
+  let status = 0;
+  if (lanes === 3 && tripleReady) {
     status = wasm.exports.rx_hash_triple(handle, inputPointer, input.length, outputPointer);
-  } else if (lanes === 2) {
-    status = wasm.exports.rx_hash_pair(handle, inputPointer, inputPointer + 256, input.length, outputPointer);
   } else {
-    status = wasm.exports.rx_hash(handle, inputPointer, input.length, outputPointer);
+    let lane = 0;
+    if (lanes >= 2 && pairReady) {
+      status = wasm.exports.rx_hash_pair(handle, inputPointer, inputPointer + 256, input.length, outputPointer);
+      lane = 2;
+    }
+    for (; lane < lanes && status === 0; lane += 1) {
+      status = wasm.exports.rx_hash(handle, inputPointer + lane * 256, input.length, outputPointer + lane * 32);
+    }
   }
 
   if (status !== 0) {
@@ -343,5 +366,67 @@ function checkDeadline(job) {
   }
   if (Date.now() >= job.deadline) {
     throw new Error("RandomX challenge expired. Retry to request new work.");
+  }
+}
+
+
+function openCache() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("rilgate-randomx", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("caches");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("RandomX cache database is blocked"));
+  });
+}
+
+function cacheTransaction(database, mode, operation) {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction("caches", mode);
+    const request = operation(transaction.objectStore("caches"));
+    transaction.oncomplete = () => resolve(request?.result);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+async function cacheDigest(bytes) {
+  return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
+}
+
+async function readCache(seedHash) {
+  if (!storeCache) return null;
+  let database;
+  try {
+    database = await openCache();
+    const entry = await cacheTransaction(database, "readonly", store => store.get(seedHash.toLowerCase()));
+    if (!entry) return null;
+    if (entry.bytes?.byteLength === wasm.exports.rx_cache_size() && await cacheDigest(entry.bytes) === entry.digest) return entry.bytes;
+    await cacheTransaction(database, "readwrite", store => store.delete(seedHash.toLowerCase()));
+  } catch {
+    // Cache storage is optional in every browser session.
+  } finally {
+    database?.close();
+  }
+  return null;
+}
+
+async function persistCache() {
+  if (!storeCache) return;
+  let database;
+  try {
+    if (handle < 0 || !activeSeed) return;
+    const key = activeSeed.toLowerCase();
+    const bytes = new Uint8Array(wasm.exports.memory.buffer, wasm.exports.rx_cache_ptr(handle), wasm.exports.rx_cache_len(handle)).slice().buffer;
+    const digest = await cacheDigest(bytes);
+    database = await openCache();
+    await cacheTransaction(database, "readwrite", store => {
+      store.clear();
+      return store.put({ bytes, digest }, key);
+    });
+  } catch {
+    // Cache storage is optional in every browser session.
+  } finally {
+    database?.close();
   }
 }

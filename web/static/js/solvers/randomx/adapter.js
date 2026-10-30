@@ -2,11 +2,9 @@
   const { t, status, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
-    const simd = [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11];
     if (typeof Worker !== "function" || typeof WebAssembly !== "object" ||
-        typeof WebAssembly.validate !== "function" || typeof BigInt !== "function" ||
-        !WebAssembly.validate(new Uint8Array(simd))) {
-      return Promise.reject(new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly SIMD, BigInt, and workers is required.")));
+        typeof WebAssembly.validate !== "function" || typeof BigInt !== "function") {
+      return Promise.reject(new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly, BigInt, and workers is required.")));
     }
     if (!moduleUrl) return Promise.reject(new Error("RandomX solver module URL is empty"));
     return window.PowClient.loadSolver(window.POW_SOLVER_MODULE_URL);
@@ -87,14 +85,19 @@
   async function run(config) {
       const description = document.querySelector("#description");
       description.textContent = config.enforce === "stratum_pool_accepted"
-        ? t("pow.disclosure.mining", "Your browser will perform RandomX mining work submitted to the gateway's mining pool. This uses about 256 MiB of memory and CPU time, and can take a long time. Start only if you agree to contribute this work.")
-        : t("pow.disclosure.randomx", "Your browser will calculate a RandomX proof using about 256 MiB of memory and CPU time. This can take a long time.");
+        ? t("pow.disclosure.mining", "Your browser will perform RandomX mining work submitted to the gateway's mining pool. This uses CPU time and about 256 MiB of memory per worker, and can take a long time. Start only if you agree to contribute this work.")
+        : t("pow.disclosure.randomx", "Your browser will calculate a RandomX proof using CPU time and about 256 MiB of memory per worker. This can take a long time.");
       status(t("challenge.status.waiting", "Waiting for you to start RandomX work."));
       const startButton = document.querySelector("#randomx-start");
       startButton.hidden = false;
       await new Promise((resolve) => once(startButton, "click", resolve));
       startButton.hidden = true;
-      const solver = await loadRandomXSolver();
+      const module = await loadRandomXSolver();
+      const options = config.algorithms.find((entry) => entry.id === "randomx")?.browser;
+      const solver = {
+        solve: (job) => module.solve(job, options),
+        cancel: () => module.cancel?.(),
+      };
       const removePagehide = once(window, "pagehide", () => solver.cancel?.());
       try {
         if (config.enforce === "local_verify") {

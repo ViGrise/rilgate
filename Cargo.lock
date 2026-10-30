@@ -3121,7 +3121,9 @@ dependencies = [
 name = "randomx-wasm"
 version = "0.4.0"
 dependencies = [
+ "argon2",
  "randomx-core",
+ "wasmparser",
 ]
 
 [[package]]

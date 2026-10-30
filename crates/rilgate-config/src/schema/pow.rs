@@ -149,11 +149,15 @@ impl Default for Difficulty {
 #[serde(default, deny_unknown_fields)]
 pub struct Browser {
   pub module: String,
+  pub max_workers: u8,
+  pub store_cache: bool,
 }
 impl Default for Browser {
   fn default() -> Self {
     Self {
       module: "/static/js/solvers/randomx/solver.js".into(),
+      max_workers: 8,
+      store_cache: true,
     }
   }
 }
