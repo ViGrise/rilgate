@@ -93,6 +93,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SECURITY, Secret, "security.secret", "security-secret", "RILGATE_SECURITY_SECRET", Some('s'), "Signing secret of at least 32 bytes; prefer the variable over the flag"),
   spec!(SECURITY, Text, "security.auth.cookie", "security-auth-cookie", "RILGATE_SECURITY_AUTH_COOKIE", None, "Authentication cookie name"),
   spec!(SECURITY, Text, "security.auth.ttl", "security-auth-ttl", "RILGATE_SECURITY_AUTH_TTL", None, "Authentication cookie lifetime"),
+  spec!(SECURITY, Text, "security.auth.bind.client_ip.max_networks", "security-auth-bind-client-ip-max-networks", "RILGATE_SECURITY_AUTH_BIND_CLIENT_IP_MAX_NETWORKS", None, "Maximum client networks remembered in an access cookie (1 to 8; default 1)"),
   spec!(SECURITY, Text, "security.auth.bind.client_ip.ipv4_prefix", "security-auth-bind-client-ip-ipv4-prefix", "RILGATE_SECURITY_AUTH_BIND_CLIENT_IP_IPV4_PREFIX", None, "IPv4 prefix length the cookie is bound to; setting either prefix enables client IP binding"),
   spec!(SECURITY, Text, "security.auth.bind.client_ip.ipv6_prefix", "security-auth-bind-client-ip-ipv6-prefix", "RILGATE_SECURITY_AUTH_BIND_CLIENT_IP_IPV6_PREFIX", None, "IPv6 prefix length the cookie is bound to; setting either prefix enables client IP binding"),
   spec!(SECURITY, Text, "security.auth.bind.user_agent", "security-auth-bind-user-agent", "RILGATE_SECURITY_AUTH_BIND_USER_AGENT", None, "Bind the cookie to the User-Agent: full or family"),

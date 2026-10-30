@@ -1,4 +1,5 @@
 use super::dto::*;
+use crate::auth::cookies::cookie_value;
 use crate::{
   runtime::state::AppState,
   transport::{
@@ -13,6 +14,7 @@ use http::{
 };
 use rilgate_challenge::{authorization::binding::BindingInput, challenge::RefreshRedemption};
 use rilgate_protocol::PowEnforcement;
+use std::sync::atomic::Ordering;
 
 pub fn client_config(state: &AppState) -> Response {
   let snapshot = state.web.current();
@@ -98,8 +100,19 @@ fn exchange_cookie(
 ) -> Result<HeaderValue, ApiError> {
   let issued = state
     .pow
-    .exchange_receipt_with_claims(receipt, &request_host(headers, uri), binding)
+    .exchange_receipt_with_claims(
+      receipt,
+      &request_host(headers, uri),
+      binding,
+      cookie_value(headers, &state.cfg.pow.auth_cookie_name),
+    )
     .map_err(ApiError::proof)?;
+  if issued.network_merged {
+    state
+      .metrics
+      .auth_network_merges
+      .fetch_add(1, Ordering::Relaxed);
+  }
   crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)
     .map_err(ApiError::Internal)
 }
@@ -122,10 +135,26 @@ pub fn refresh(
     .as_secs() as i64;
   match state
     .pow
-    .redeem_refresh(&token, &host, binding, now)
+    .redeem_refresh(
+      &token,
+      &host,
+      binding,
+      now,
+      cookie_value(headers, &state.cfg.pow.auth_cookie_name),
+    )
     .map_err(ApiError::proof)?
   {
-    RefreshRedemption::Granted { auth_token, path } => {
+    RefreshRedemption::Granted {
+      auth_token,
+      path,
+      network_merged,
+    } => {
+      if network_merged {
+        state
+          .metrics
+          .auth_network_merges
+          .fetch_add(1, Ordering::Relaxed);
+      }
       let cookie = crate::auth::cookies::auth_cookie_header(
         &state.pow,
         &state.cfg,

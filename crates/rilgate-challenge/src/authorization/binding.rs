@@ -25,12 +25,13 @@ pub struct AuthBinding {
   pub proxy_headers: Vec<String>,
 }
 
-/// Network prefix lengths that identify a client address.
+/// Client network binding settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ClientIpBinding {
   pub ipv4_prefix: u8,
   pub ipv6_prefix: u8,
+  pub max_networks: u8,
 }
 
 impl Default for ClientIpBinding {
@@ -38,6 +39,7 @@ impl Default for ClientIpBinding {
     Self {
       ipv4_prefix: 24,
       ipv6_prefix: 64,
+      max_networks: 1,
     }
   }
 }
@@ -93,6 +95,10 @@ impl AuthBinding {
         ip.ipv6_prefix <= 128,
         "security.auth.bind.client_ip.ipv6_prefix: expected 0 to 128"
       );
+      ensure!(
+        (1..=8).contains(&ip.max_networks),
+        "security.auth.bind.client_ip.max_networks: expected 1 to 8"
+      );
     }
     let mut seen = Vec::new();
     for (path, names) in [
@@ -130,6 +136,26 @@ impl AuthBinding {
     }
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
     mac.update(self.canonical(input).as_bytes());
+    Some(URL_SAFE_NO_PAD.encode(&mac.finalize().into_bytes()[..DIGEST_BYTES]))
+  }
+
+  pub fn client_digest(&self, key: &[u8; 32], input: &BindingInput<'_>) -> Option<String> {
+    let client = Self {
+      client_ip: None,
+      ..self.clone()
+    };
+    client.digest(key, input)
+  }
+
+  pub fn network_digest(&self, key: &[u8; 32], input: &BindingInput<'_>) -> Option<String> {
+    self.client_ip?;
+    let network = Self {
+      client_ip: self.client_ip,
+      ..Default::default()
+    };
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+    mac.update(b"net\n");
+    mac.update(network.canonical(input).as_bytes());
     Some(URL_SAFE_NO_PAD.encode(&mac.finalize().into_bytes()[..DIGEST_BYTES]))
   }
 
@@ -273,6 +299,7 @@ mod tests {
       client_ip: Some(ClientIpBinding {
         ipv4_prefix: 16,
         ipv6_prefix: 48,
+        ..Default::default()
       }),
       ..Default::default()
     };

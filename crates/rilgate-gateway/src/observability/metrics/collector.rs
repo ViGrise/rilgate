@@ -12,6 +12,7 @@ pub struct Metrics {
   pub request_rejections: AtomicU64,
   pub policy_unresolved_decisions: AtomicU64,
   pub auth_binding_mismatches: AtomicU64,
+  pub auth_network_merges: AtomicU64,
   pub honeypot_hits: AtomicU64,
 }
 

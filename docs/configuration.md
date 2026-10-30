@@ -640,6 +640,13 @@ security:
 - `client_ip` binds the network of the resolved client IP. If the section is present,
   even as `{}`, it enables the binding with the defaults shown. Prefixes are 0
   to 32 and 0 to 128. The resolved IP honors `server.trusted_proxies`, so that list must be correct.
+- `client_ip.max_networks` accepts integers from 1 to 8, with default 1 preserving the
+  legacy cookie format. Set it to 4 to remember up to four proven networks. Each new
+  network still needs a solved challenge. Entries expire independently, and a merged
+  cookie uses the lower difficulty. A different bound User-Agent family or algorithm
+  starts a new cookie. With several gateway instances, deploy the same version
+  everywhere before raising this value: older instances reject the network form and
+  challenge again. `rilgate_auth_network_merges_total` counts successful merges.
 - `user_agent` is `full` for the exact header or `family` for the header
   without version numbers. A browser update keeps a `family` cookie valid. A
   different browser does not.

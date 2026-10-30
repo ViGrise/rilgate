@@ -80,6 +80,16 @@ pub struct AuthClaims {
   pub expires_at: i64,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub binding: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub networks: Option<Vec<NetworkBinding>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkBinding {
+  #[serde(rename = "d")]
+  pub digest: String,
+  #[serde(rename = "e")]
+  pub expires_at: i64,
 }
 
 impl ChallengeClaims {

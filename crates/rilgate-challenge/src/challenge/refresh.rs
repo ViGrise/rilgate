@@ -6,7 +6,11 @@ use rilgate_protocol::PowAlgorithm;
 pub enum RefreshRedemption {
   /// The delay has passed. `path` is the original request path, safe to use as a same-site
   /// redirect target.
-  Granted { auth_token: String, path: String },
+  Granted {
+    auth_token: String,
+    path: String,
+    network_merged: bool,
+  },
   /// The delay has not passed yet.
   Wait { seconds: u64 },
 }
@@ -20,6 +24,7 @@ impl ChallengeService {
     host: &str,
     binding: &BindingInput<'_>,
     now: i64,
+    previous: Option<&str>,
   ) -> Result<RefreshRedemption> {
     let claims = self.verify_presentation(token, host)?;
     ensure!(
@@ -39,9 +44,11 @@ impl ChallengeService {
       claims.enforce,
       now,
       binding,
+      previous,
     )?;
     Ok(RefreshRedemption::Granted {
       auth_token: issued.token,
+      network_merged: issued.network_merged,
       path: same_site_path(claims.path),
     })
   }

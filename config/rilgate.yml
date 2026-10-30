@@ -257,6 +257,14 @@ server:
         #
         # ipv6_prefix: 64
 
+        # Maximum remembered client networks. 1 to 8; default 1 keeps one network.
+        # Each new network needs a solved challenge; entries expire independently.
+        # Merged cookies use the lower difficulty. A different bound User-Agent
+        # family or algorithm starts a new cookie. Deploy the same version on every
+        # gateway instance before raising this value; older instances challenge again.
+        #
+        # max_networks: 1
+
       # Bind to the User-Agent header. Absent means not bound. 'full' requires the
       # exact value; 'family' ignores version numbers, so browser updates keep
       # the cookie valid while a different browser needs a new solve.
