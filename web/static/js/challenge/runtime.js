@@ -110,6 +110,14 @@
     });
   }
 
+  async function verify(challenge_token, nonce) {
+    const verified = await jsonFetch(endpoint("/api/verify"), {
+      method: "POST",
+      body: JSON.stringify({ challenge_token, nonce, set_cookie: true }),
+    });
+    if (verified.cookie_set !== true) await exchange(verified.receipt);
+  }
+
   async function requestChallenge() {
     const challenge = await jsonFetch(endpoint("/api/challenge"), {
       method: "POST",
@@ -147,5 +155,5 @@
     });
   }
 
-  window.PowClient = { loadSolver, solverLoaded, t, status, endpoint, jsonFetch, exchange, requestChallenge, progressEl, once };
+  window.PowClient = { loadSolver, solverLoaded, t, status, endpoint, jsonFetch, exchange, verify, requestChallenge, progressEl, once };
 })();

@@ -217,18 +217,13 @@ gateway
       RandomX in browser
           |
           v
-      POST nonce to /api/verify
+      POST nonce + set_cookie: true to /api/verify
           |
           v
       gateway recomputes RandomX
           |
           v
-      signed short-lived receipt
-          |
-          v
-      /api/exchange
-          |
-          v
+      signed short-lived receipt + cookie_set: true
       HttpOnly access cookie
           |
           v
@@ -296,6 +291,19 @@ does not need sticky-session configuration.
 
 After success, the normal access cookie is stateless and can be verified by any gateway
 that shares the auth key.
+
+HTTP proof clients may send the optional boolean `set_cookie` to `/api/verify`.
+It defaults to `false`: verification returns only `receipt` and sets no cookie.
+With `set_cookie: true`, successful verification also runs receipt exchange with the
+same host and client binding checks and returns `receipt` plus `cookie_set: true`,
+with the HttpOnly access cookie in the same response. Verification errors set no
+cookie; exchange errors use the same response as `/api/exchange`. Each verify
+request still consumes one proof quota unit.
+
+The browser requests this option for Fast, HashWX and local RandomX proofs. If
+`cookie_set: true` is absent, it calls `/api/exchange` with the returned receipt
+for compatibility with older gateways. Pool mode uses its WebSocket receipt and
+`/api/exchange`. The refresh challenge uses its existing redemption flow.
 
 ## Browser RandomX adapter
 

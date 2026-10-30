@@ -463,7 +463,17 @@ impl Handler {
           Err(out) => Ok(*out),
         },
         "/api/verify" => match read_json(session).await {
-          Ok(value) => handlers::verify(&self.state, &headers, &uri, value).await,
+          Ok(value) => {
+            let binding = BindingInput {
+              client_ip,
+              headers: &headers,
+              trusted_peer: crate::transport::client_ip::trusted_peer(
+                socket_peer,
+                &self.state.cfg.server,
+              ),
+            };
+            handlers::verify(&self.state, &headers, &uri, value, &binding).await
+          }
           Err(out) => Ok(*out),
         },
         "/api/exchange" => match read_json(session).await {

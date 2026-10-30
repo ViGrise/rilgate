@@ -1,5 +1,5 @@
 (() => {
-  const { t, status, endpoint, jsonFetch, exchange, requestChallenge, progressEl } = window.PowClient;
+  const { t, status, verify, requestChallenge, progressEl } = window.PowClient;
   async function fastVerify() {
     status(t("challenge.status.requesting", "Requesting {algorithm} proof-of-work challenge…", { algorithm: "lightweight" }));
 
@@ -20,15 +20,7 @@
 
     status(t("challenge.status.verifying", "Verifying {algorithm} proof…", { algorithm: "lightweight" }));
 
-    const verified = await jsonFetch(endpoint("/api/verify"), {
-      method: "POST",
-      body: JSON.stringify({
-        challenge_token: challenge.challenge_token,
-        nonce: solution.nonce,
-      }),
-    });
-
-    await exchange(verified.receipt);
+    await verify(challenge.challenge_token, solution.nonce);
   }
 
 

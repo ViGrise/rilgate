@@ -20,6 +20,7 @@ struct Fixture {
   client: reqwest::Client,
   address: std::net::SocketAddr,
   signing_key: String,
+  service: rilgate_challenge::ChallengeService,
   _gateway: app::TestGateway,
   upstream: tokio::task::JoinHandle<()>,
 }
@@ -46,11 +47,13 @@ async fn fixture(binding: AuthBinding, trust_peer: bool) -> Fixture {
     let router = axum::Router::new().fallback(|| async { "upstream-ok" });
     axum::serve(listener, router).await.unwrap();
   });
+  let service = app::service(&cfg).unwrap();
   let gateway = app::router(cfg).await.unwrap();
   Fixture {
     client: reqwest::Client::new(),
     address: gateway.address(),
     signing_key,
+    service,
     _gateway: gateway,
     upstream,
   }
@@ -94,6 +97,54 @@ impl Fixture {
     assert_eq!(response.status(), 200);
     let cookie = response.headers()["set-cookie"].to_str().unwrap();
     cookie.split(';').next().unwrap().to_owned()
+  }
+
+  async fn verify(
+    &self,
+    set_cookie: Option<bool>,
+    valid: bool,
+    headers: &[(&str, &str)],
+  ) -> reqwest::Response {
+    let decision = self
+      .service
+      .evaluate_request(&http::HeaderMap::new(), "/protected");
+    let presentation = self
+      .service
+      .issue_presentation("example.test".into(), "/protected".into(), &decision)
+      .unwrap();
+    let rilgate_protocol::ChallengeResponse::Fast {
+      challenge_token,
+      challenge,
+      difficulty,
+    } = self
+      .service
+      .issue_challenge(&presentation, "example.test")
+      .await
+      .unwrap()
+    else {
+      panic!("expected fast challenge")
+    };
+    let nonce = (0..100_000)
+      .map(|value| value.to_string())
+      .find(|nonce| {
+        rilgate_pow_hash::sha256::verifier::verify_fast(&challenge, nonce, difficulty).unwrap()
+          == valid
+      })
+      .unwrap();
+    let mut body = serde_json::json!({ "challenge_token": challenge_token, "nonce": nonce });
+    if let Some(value) = set_cookie {
+      body["set_cookie"] = value.into();
+    }
+    let mut request = self
+      .client
+      .post(self.url("/.well-known/test-pow/api/verify"))
+      .header("host", "example.test")
+      .header("content-type", "application/json")
+      .body(body.to_string());
+    for (name, value) in headers {
+      request = request.header(*name, *value);
+    }
+    request.send().await.unwrap()
   }
 
   /// Requests a protected page and reports whether the upstream served it.
@@ -296,4 +347,103 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
       .verify_auth_token(&stored, "example.test", &unbound())
       .is_ok()
   );
+}
+
+#[tokio::test]
+async fn verify_can_set_a_cookie_that_authenticates_protected_requests() {
+  let gateway = fixture(AuthBinding::default(), false).await;
+  let response = gateway.verify(Some(true), true, &[]).await;
+  assert_eq!(response.status(), 200);
+  let cookie = response
+    .headers()
+    .get("set-cookie")
+    .expect("verify access cookie")
+    .to_str()
+    .unwrap()
+    .split(';')
+    .next()
+    .unwrap()
+    .to_owned();
+  let body: serde_json::Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+  assert!(
+    body["receipt"]
+      .as_str()
+      .is_some_and(|receipt| !receipt.is_empty())
+  );
+  assert_eq!(body["cookie_set"], true);
+  assert!(gateway.reaches_upstream(&cookie, &[]).await);
+}
+
+#[tokio::test]
+async fn verify_leaves_cookie_issuance_opt_in() {
+  let gateway = fixture(AuthBinding::default(), false).await;
+  for flag in [None, Some(false)] {
+    let response = gateway.verify(flag, true, &[]).await;
+    assert_eq!(response.status(), 200);
+    assert!(!response.headers().contains_key("set-cookie"));
+    let body: serde_json::Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+    assert!(body["receipt"].is_string());
+    assert_eq!(body.as_object().unwrap().len(), 1);
+  }
+}
+
+#[tokio::test]
+async fn invalid_proofs_with_cookie_opt_in_preserve_the_error_and_set_no_cookie() {
+  let gateway = fixture(AuthBinding::default(), false).await;
+  let ordinary = gateway.verify(None, false, &[]).await;
+  let opted_in = gateway.verify(Some(true), false, &[]).await;
+  assert_eq!(opted_in.status(), ordinary.status());
+  assert_eq!(opted_in.status(), 401);
+  assert!(!opted_in.headers().contains_key("set-cookie"));
+  assert_eq!(
+    opted_in.text().await.unwrap(),
+    ordinary.text().await.unwrap()
+  );
+}
+
+#[tokio::test]
+async fn verify_cookies_use_exchange_client_binding() {
+  let binding = AuthBinding {
+    client_ip: Some(ClientIpBinding::default()),
+    user_agent: Some(UserAgentBinding::Family),
+    proxy_headers: vec!["x-ja4".into()],
+    ..Default::default()
+  };
+  for trusted in [true, false] {
+    let gateway = fixture(binding.clone(), trusted).await;
+    let client = [
+      ("x-forwarded-for", "203.0.113.10"),
+      ("user-agent", CHROME_130),
+      ("x-ja4", "fingerprint-a"),
+    ];
+    let response = gateway.verify(Some(true), true, &client).await;
+    assert_eq!(response.status(), 200);
+    let cookie = response
+      .headers()
+      .get("set-cookie")
+      .expect("bound verify cookie")
+      .to_str()
+      .unwrap()
+      .split(';')
+      .next()
+      .unwrap()
+      .to_owned();
+    let exchange_cookie = gateway.solve(&client).await;
+    for cookie in [&cookie, &exchange_cookie] {
+      assert!(gateway.reaches_upstream(cookie, &client).await);
+      for (name, value, accepted) in [
+        ("x-forwarded-for", "198.51.100.7", !trusted),
+        ("user-agent", FIREFOX, false),
+        ("x-ja4", "fingerprint-b", !trusted),
+      ] {
+        let mut changed = client;
+        changed.iter_mut().find(|(key, _)| *key == name).unwrap().1 = value;
+        assert_eq!(
+          gateway.reaches_upstream(cookie, &changed).await,
+          accepted,
+          "{name}, trusted={trusted}"
+        );
+      }
+    }
+  }
 }

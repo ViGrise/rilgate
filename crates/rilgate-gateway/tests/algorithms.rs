@@ -343,7 +343,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
       "nonce": "00000000",
     }))
     .unwrap();
-    let response = handlers::verify(&state, &HeaderMap::new(), &uri, request)
+    let response = handlers::verify(&state, &HeaderMap::new(), &uri, request, &unbound())
       .await
       .unwrap_or_else(ApiError::into_response);
     assert_eq!(response.status(), expected, "outcome {outcome:?}");

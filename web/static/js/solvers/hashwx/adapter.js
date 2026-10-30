@@ -1,5 +1,5 @@
 (() => {
-  const { t, status, endpoint, jsonFetch, exchange, requestChallenge, progressEl, once } = window.PowClient;
+  const { t, status, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadSolver() {
     if (typeof Worker !== 'function' || typeof WebAssembly !== 'object' ||
         typeof WebAssembly.instantiate !== 'function') {
@@ -20,8 +20,7 @@
         status(t('challenge.status.progress', '{attempts} attempts · {rate} H/s', { attempts: attempts.toLocaleString(), rate: Math.round(attempts * 1000 / Math.max(1, elapsedMs)) }));
       } });
       status(t('challenge.status.verifying', 'Verifying {algorithm} proof…', { algorithm: 'HashWX' }));
-      const verified = await jsonFetch(endpoint('/api/verify'), { method: 'POST', body: JSON.stringify({ challenge_token: challenge.challenge_token, nonce: solution.nonce }) });
-      await exchange(verified.receipt);
+      await verify(challenge.challenge_token, solution.nonce);
     } finally { removePagehide(); solver.cancel(); }
   }
   window.PowClient.register('hashwx', { run });

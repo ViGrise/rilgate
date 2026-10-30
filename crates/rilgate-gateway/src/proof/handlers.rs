@@ -49,6 +49,7 @@ pub async fn verify(
   headers: &HeaderMap,
   uri: &Uri,
   request: VerifyRequest,
+  binding: &BindingInput<'_>,
 ) -> Result<Response, ApiError> {
   let receipt = state
     .pow
@@ -59,7 +60,22 @@ pub async fn verify(
     )
     .await
     .map_err(ApiError::proof)?;
-  Ok(json(StatusCode::OK, &VerifyResponse { receipt }))
+  let cookie = if request.set_cookie {
+    Some(exchange_cookie(state, headers, uri, &receipt, binding)?)
+  } else {
+    None
+  };
+  let mut out = json(
+    StatusCode::OK,
+    &VerifyResponse {
+      receipt,
+      cookie_set: cookie.as_ref().map(|_| true),
+    },
+  );
+  if let Some(cookie) = cookie {
+    out.headers_mut().insert(SET_COOKIE, cookie);
+  }
+  Ok(out)
 }
 pub fn exchange(
   state: &AppState,
@@ -68,16 +84,24 @@ pub fn exchange(
   request: ExchangeRequest,
   binding: &BindingInput<'_>,
 ) -> Result<Response, ApiError> {
-  let issued = state
-    .pow
-    .exchange_receipt_with_claims(&request.receipt, &request_host(headers, uri), binding)
-    .map_err(ApiError::proof)?;
-  let cookie =
-    crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)
-      .map_err(ApiError::Internal)?;
+  let cookie = exchange_cookie(state, headers, uri, &request.receipt, binding)?;
   let mut out = json(StatusCode::OK, &ExchangeResponse { status: "ok" });
   out.headers_mut().insert(SET_COOKIE, cookie);
   Ok(out)
+}
+fn exchange_cookie(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  receipt: &str,
+  binding: &BindingInput<'_>,
+) -> Result<HeaderValue, ApiError> {
+  let issued = state
+    .pow
+    .exchange_receipt_with_claims(receipt, &request_host(headers, uri), binding)
+    .map_err(ApiError::proof)?;
+  crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)
+    .map_err(ApiError::Internal)
 }
 pub fn refresh(
   state: &AppState,
