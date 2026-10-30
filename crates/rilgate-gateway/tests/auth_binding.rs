@@ -307,7 +307,7 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
   };
   let bound = app::service(&bound_cfg).unwrap();
   let issued = bound
-    .exchange_receipt_with_claims(&issue(&bound_cfg), "example.test", &unbound())
+    .exchange_receipt_with_claims(&issue(&bound_cfg), "example.test", &unbound(), None)
     .unwrap();
   assert!(issued.claims.binding.is_some());
   let mut headers = http::HeaderMap::new();
@@ -324,7 +324,7 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
   let plain_cfg = common::config();
   let plain = app::service(&plain_cfg).unwrap();
   let issued = plain
-    .exchange_receipt_with_claims(&issue(&plain_cfg), "example.test", &unbound())
+    .exchange_receipt_with_claims(&issue(&plain_cfg), "example.test", &unbound(), None)
     .unwrap();
   assert!(issued.claims.binding.is_none());
 
@@ -445,5 +445,67 @@ async fn verify_cookies_use_exchange_client_binding() {
         );
       }
     }
+  }
+}
+
+#[tokio::test]
+async fn solved_networks_are_remembered_up_to_the_configured_limit() {
+  for max_networks in [1, 2] {
+    let gateway = fixture(
+      AuthBinding {
+        client_ip: Some(ClientIpBinding {
+          max_networks,
+          ..Default::default()
+        }),
+        ..Default::default()
+      },
+      true,
+    )
+    .await;
+    let a = "192.0.2.10";
+    let b = "198.51.100.10";
+    let c = "203.0.113.10";
+    let cookie = gateway.solve(&[("x-forwarded-for", a)]).await;
+    assert!(
+      !gateway
+        .reaches_upstream(&cookie, &[("x-forwarded-for", b)])
+        .await
+    );
+    // Expiry ordering determines which proven networks remain in the cookie.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let cookie = gateway
+      .solve(&[("x-forwarded-for", b), ("cookie", &cookie)])
+      .await;
+    assert!(
+      gateway
+        .reaches_upstream(&cookie, &[("x-forwarded-for", b)])
+        .await
+    );
+    assert_eq!(
+      gateway
+        .reaches_upstream(&cookie, &[("x-forwarded-for", a)])
+        .await,
+      max_networks == 2
+    );
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let cookie = gateway
+      .solve(&[("x-forwarded-for", c), ("cookie", &cookie)])
+      .await;
+    assert!(
+      gateway
+        .reaches_upstream(&cookie, &[("x-forwarded-for", c)])
+        .await
+    );
+    assert!(
+      !gateway
+        .reaches_upstream(&cookie, &[("x-forwarded-for", a)])
+        .await
+    );
+    assert_eq!(
+      gateway
+        .reaches_upstream(&cookie, &[("x-forwarded-for", b)])
+        .await,
+      max_networks == 2
+    );
   }
 }

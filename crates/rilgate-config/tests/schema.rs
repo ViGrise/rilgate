@@ -316,6 +316,14 @@ fn auth_binding_is_disabled_by_default_and_enabled_by_any_component() {
 fn invalid_auth_binding_reports_the_configuration_path() {
   for (bind, path) in [
     (
+      "client_ip: {max_networks: 0}",
+      "security.auth.bind.client_ip.max_networks: expected 1 to 8",
+    ),
+    (
+      "client_ip: {max_networks: 9}",
+      "security.auth.bind.client_ip.max_networks: expected 1 to 8",
+    ),
+    (
       "client_ip: {ipv4_prefix: 33}",
       "security.auth.bind.client_ip.ipv4_prefix: expected 0 to 32",
     ),

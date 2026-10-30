@@ -55,6 +55,10 @@ pub fn exposition(state: &AppState) -> Response {
         .auth_binding_mismatches
         .load(Ordering::Relaxed),
     ),
+    (
+      "auth_network_merges",
+      state.metrics.auth_network_merges.load(Ordering::Relaxed),
+    ),
   ] {
     let _ = writeln!(
       text,
