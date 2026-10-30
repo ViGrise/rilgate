@@ -67,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
     policy_services: rilgate_gateway::runtime::policy::PolicyServices {
       dns: None,
       honeypot: None,
+      request_rate: None,
     }
     .into_shared(),
     proxy: Arc::new(ProxyService::new(cfg.upstream.clone())?),

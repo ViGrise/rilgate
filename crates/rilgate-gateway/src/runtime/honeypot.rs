@@ -1,7 +1,8 @@
+use super::client_key::key;
 use rilgate_policy::policy::schema::HoneypotDefinition;
 use std::{
   collections::{BTreeMap, HashMap},
-  net::{IpAddr, Ipv6Addr},
+  net::IpAddr,
   sync::Mutex,
   time::{Duration, Instant},
 };
@@ -20,13 +21,6 @@ struct Entries {
   /// key is the oldest and any expired key precedes every live one.
   order: BTreeMap<(Instant, u64), IpAddr>,
   sequence: u64,
-}
-
-fn key(ip: IpAddr) -> IpAddr {
-  match ip.to_canonical() {
-    IpAddr::V6(ip) => IpAddr::V6(Ipv6Addr::from(u128::from(ip) & (u128::MAX << 64))),
-    ip => ip,
-  }
 }
 
 impl Honeypot {

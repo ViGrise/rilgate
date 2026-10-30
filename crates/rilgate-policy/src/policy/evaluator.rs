@@ -50,6 +50,10 @@ impl Definition {
       ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
       ensure!(self.dns.is_none(), "policy: dns requires mode: custom");
       ensure!(
+        self.request_rate.is_none(),
+        "policy: request_rate requires mode: custom"
+      );
+      ensure!(
         self.honeypot.is_none(),
         "policy: honeypot requires mode: custom"
       );
@@ -161,6 +165,9 @@ impl PolicyEngine {
     if let Some(dns) = &definition.dns {
       dns.validate()?;
     }
+    if let Some(settings) = &definition.request_rate {
+      settings.validate()?;
+    }
     if let Some(honeypot) = &definition.honeypot {
       honeypot.validate()?;
     }
@@ -169,7 +176,10 @@ impl PolicyEngine {
       "policy: at most 128 rules and thresholds are supported"
     );
     let mut names = std::collections::HashSet::new();
-    let mut budget = Budget::for_policy(definition.honeypot.is_some());
+    let mut budget = Budget::for_policy(
+      definition.honeypot.is_some(),
+      definition.request_rate.is_some(),
+    );
     let mut rules = Vec::new();
     for (index, rule) in source.into_iter().enumerate() {
       let explicit = definition.rules.as_ref().map_or(0, Vec::len);
@@ -233,6 +243,13 @@ impl PolicyEngine {
   /// Reports whether any rule compares the host load.
   pub fn uses_load(&self) -> bool {
     self.rules.iter().any(|entry| entry.rule.when.uses_load())
+  }
+  /// Reports whether any rule compares the client request count.
+  pub fn uses_request_rate(&self) -> bool {
+    self
+      .rules
+      .iter()
+      .any(|entry| entry.rule.when.uses_request_rate())
   }
   pub fn ip_sets(&self) -> &IpSets {
     &self.ip_sets

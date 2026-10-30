@@ -50,6 +50,7 @@ pub(crate) enum Compiled {
   Ip(IpRanges),
   Sets(Vec<Arc<IpSet>>),
   Score(NumberMatch),
+  RequestRate(NumberMatch),
   Load(LoadMatch),
   Country(Arc<GeoDatabase>, Vec<[u8; 2]>),
   Asn(Arc<GeoDatabase>, Vec<u32>),
@@ -76,13 +77,15 @@ pub(crate) struct Budget {
   bytes: usize,
   request_only: bool,
   honeypot: bool,
+  request_rate: bool,
   pub(crate) dnsbl_zones: BTreeSet<String>,
   pub(crate) reverse_dns: bool,
 }
 impl Budget {
-  pub(crate) fn for_policy(honeypot: bool) -> Self {
+  pub(crate) fn for_policy(honeypot: bool, request_rate: bool) -> Self {
     Self {
       honeypot,
+      request_rate,
       ..Default::default()
     }
   }
@@ -217,6 +220,57 @@ impl Compiled {
         "{path}.score: comparisons describe an empty range"
       );
       nodes.push(Self::Score(value.clone()));
+    }
+    if let Some(value) = &condition.request_rate {
+      ensure!(
+        !budget.request_only,
+        "{path}.request_rate: request_rate is only available in policy rules"
+      );
+      ensure!(
+        budget.request_rate,
+        "{path}.request_rate: requires policy.request_rate"
+      );
+      ensure!(
+        [value.eq, value.gt, value.gte, value.lt, value.lte]
+          .iter()
+          .flatten()
+          .all(|v| *v >= 0),
+        "{path}.request_rate: expected a non-negative integer"
+      );
+      budget.consume(depth, path)?;
+      ensure!(
+        value.eq.is_some()
+          || value.gt.is_some()
+          || value.gte.is_some()
+          || value.lt.is_some()
+          || value.lte.is_some(),
+        "{path}.request_rate: expected a numeric comparison"
+      );
+      let lower = [
+        Some(0),
+        value.eq.map(i64::from),
+        value.gte.map(i64::from),
+        value.gt.map(|v| i64::from(v) + 1),
+      ]
+      .into_iter()
+      .flatten()
+      .max()
+      .unwrap();
+      let upper = [
+        Some(u32::MAX as i64),
+        value.eq.map(i64::from),
+        value.lte.map(i64::from),
+        value.lt.map(|v| i64::from(v) - 1),
+      ]
+      .into_iter()
+      .flatten()
+      .min()
+      .unwrap();
+      ensure!(
+        lower <= upper,
+        "{path}.request_rate: comparisons describe an empty range"
+      );
+      nodes.push(Self::RequestRate(value.clone()));
     }
     if let Some(value) = &condition.load {
       budget.consume(depth, path)?;
@@ -514,6 +568,19 @@ impl Compiled {
           }
         }
       }
+      Self::RequestRate(test) => match request.lookups.request_rate {
+        None => Truth::Unknown,
+        Some(count) => {
+          let count = i64::from(count);
+          truth(
+            test.eq.is_none_or(|v| count == i64::from(v))
+              && test.gt.is_none_or(|v| count > i64::from(v))
+              && test.gte.is_none_or(|v| count >= i64::from(v))
+              && test.lt.is_none_or(|v| count < i64::from(v))
+              && test.lte.is_none_or(|v| count <= i64::from(v)),
+          )
+        }
+      },
       Self::Score(test) => truth(
         test.eq.is_none_or(|v| score == v)
           && test.gt.is_none_or(|v| score > v)

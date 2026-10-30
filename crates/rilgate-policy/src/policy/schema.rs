@@ -64,6 +64,12 @@ pub struct Definition {
     skip_serializing_if = "Option::is_none"
   )]
   pub honeypot: Option<HoneypotDefinition>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub request_rate: Option<RequestRateDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -209,6 +215,12 @@ pub struct Condition {
     skip_serializing_if = "Option::is_none"
   )]
   pub honeypot: Option<bool>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub request_rate: Option<NumberMatch>,
 }
 impl Condition {
   /// Reports whether this condition or any nested condition needs DNS lookups.
@@ -250,6 +262,18 @@ impl Condition {
         .flatten()
         .any(Self::uses_load)
       || self.not.as_deref().is_some_and(Self::uses_load)
+  }
+
+  /// Reports whether this condition or any nested condition compares the client request count.
+  pub fn uses_request_rate(&self) -> bool {
+    self.request_rate.is_some()
+      || self
+        .all
+        .iter()
+        .chain(self.any.iter())
+        .flatten()
+        .any(Self::uses_request_rate)
+      || self.not.as_deref().is_some_and(Self::uses_request_rate)
   }
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -496,6 +520,45 @@ impl HoneypotDefinition {
     ensure!(
       (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
       "policy.honeypot.max_entries: expected 1 to {}",
+      Self::MAX_ENTRIES
+    );
+    Ok(())
+  }
+}
+
+/// Settings of the per-client sliding request window.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RequestRateDefinition {
+  /// The duration of the sliding window.
+  #[serde(with = "humantime_serde")]
+  pub window: std::time::Duration,
+  /// The most clients retained at one time.
+  pub max_entries: usize,
+}
+
+impl Default for RequestRateDefinition {
+  fn default() -> Self {
+    Self {
+      window: std::time::Duration::from_secs(60),
+      max_entries: 65_536,
+    }
+  }
+}
+
+impl RequestRateDefinition {
+  pub const MAX_WINDOW: std::time::Duration = std::time::Duration::from_secs(3600);
+  pub const MAX_ENTRIES: usize = 1_048_576;
+
+  pub(crate) fn validate(&self) -> anyhow::Result<()> {
+    use anyhow::ensure;
+    ensure!(
+      (std::time::Duration::from_secs(1)..=Self::MAX_WINDOW).contains(&self.window),
+      "policy.request_rate.window: expected 1s to 1h"
+    );
+    ensure!(
+      (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
+      "policy.request_rate.max_entries: expected 1 to {}",
       Self::MAX_ENTRIES
     );
     Ok(())

@@ -112,6 +112,7 @@ pub fn config() -> Config {
         geoip: None,
         dns: None,
         honeypot: None,
+        request_rate: None,
       },
       browser: BrowserConfig {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
