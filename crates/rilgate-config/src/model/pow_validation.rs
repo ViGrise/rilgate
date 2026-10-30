@@ -127,6 +127,10 @@ impl PowConfig {
         && self.difficulty.weight_step > 0,
       "pow.algorithms.randomx.difficulty: requires base >= 1000, max >= base, and a positive score_step"
     );
+    ensure!(
+      (1..=8).contains(&self.browser.max_workers),
+      "pow.algorithms.randomx.browser.max_workers: expected 1 to 8"
+    );
     anyhow::ensure!(
       !self.browser.solver_module_path.is_empty(),
       "pow.algorithms.randomx.browser.module: cannot be empty"

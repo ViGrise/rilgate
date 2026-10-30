@@ -1038,3 +1038,16 @@ fn open_graph_tags_reject_invalid_entries_and_overrides_outside_the_allowlist() 
     "{error:#}"
   );
 }
+
+#[test]
+fn randomx_browser_rejects_worker_caps_outside_the_supported_range() {
+  for max_workers in [0, 9] {
+    let config = format!(
+      "{BASE}pow:\n  algorithms:\n    randomx:\n      browser:\n        max_workers: {max_workers}\n"
+    );
+    assert_eq!(
+      resolve(&config).unwrap_err().to_string(),
+      "pow.algorithms.randomx.browser.max_workers: expected 1 to 8"
+    );
+  }
+}

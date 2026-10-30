@@ -461,3 +461,87 @@ and up to two workers. Prototype solve medians are not production medians.
 See [proposal section 8](proposals/browser-pow-algorithms.md#8-measurement-before-defaults)
 for full rates, individual-result file names, solve medians and benchmark
 commands. Result JSON stays in the ignored `target/hashwx-bench/` directory.
+
+## RandomX browser measurements, 2026-10-30
+
+The desktop is an Apple M4 Pro with 12 logical CPUs, running Chrome 156.0.8078.76
+on macOS. Chrome reports `hardwareConcurrency = 12` and `deviceMemory = 16` GiB.
+The mid-range phone is a Samsung Galaxy A17 with Chrome 156.0.8078.47, reporting
+8 logical CPUs and 8 GiB. These results describe these devices and browser
+versions; they are not capacity promises for other devices.
+
+The single-worker baseline uses commit `8bb4481afcb91b2a61d705f3960f97dac2a35316`.
+Parallel measurements use `f86309f`; `01ed64c` changes documentation and memory
+disclosure wording without changing hashing. The release confirmation uses this
+change's working tree, based on `f822bd9` with the parallel changes and automatic
+cap 8. Its browser hashing code matches the release commit containing this section.
+
+The parallel rate trials use a development-only RandomX policy at difficulty
+1000000. Each configuration has two runs. Each run clears cookies and origin
+storage, starts after explicit consent, and reads the cumulative summed rate at
+least 45 seconds after the first progress status. Polling is approximately
+100 ms. Setup runs measure the interval from the difficulty status to the first
+progress status. Cold setup clears storage; warm setup preserves the stored entry
+and creates new workers. Builds and tests complete before rate measurements.
+The earlier desktop and phone series ran concurrently; release confirmation runs
+only on the desktop. The phone was not re-measured for the cap change.
+
+The earlier single-worker baseline was 28.76 H/s on desktop and 5.71 H/s on the
+phone, with approximately 1.0 s and 4.6 s setup. Baseline desktop proof trials
+reached an upstream error page; the rates are observations before that error,
+not successful end-to-end solve times. The following parallel tables use their
+own single-worker runs for speedup comparisons.
+
+### Desktop worker counts
+
+| Configuration | Run 1 H/s | Run 2 H/s | Mean H/s | Speedup vs 1 worker |
+| --- | ---: | ---: | ---: | ---: |
+| 1 worker | 29.33 | 29.25 | 29.290 | 1.00x |
+| 2 workers | 61.51 | 61.17 | 61.340 | 2.09x |
+| 4 workers | 120.21 | 120.57 | 120.390 | 4.11x |
+| 8 workers | 202.10 | 200.68 | 201.390 | 6.88x |
+| Automatic, earlier cap 4 | 118.12 | 117.56 | 117.840 | 4.02x |
+| Scalar, automatic with cap 4 | 52.82 | 53.01 | 52.915 | 1.81x |
+| Automatic, release cap 8 | 200.17 | 201.27 | 200.720 | 6.85x |
+
+Both release runs used automatic N = 8. A CDP target inventory during run 2
+confirmed 8 live workers. Their hashing windows were
+45.101 s and 45.060 s. No worker startup or allocation
+failures were observed in the earlier or release desktop trials.
+
+### Galaxy A17 worker counts
+
+| Configuration | Run 1 H/s | Run 2 H/s | Mean H/s | Speedup vs 1 worker |
+| --- | ---: | ---: | ---: | ---: |
+| 1 worker | 6.32 | 6.48 | 6.400 | 1.00x |
+| 2 workers | 12.41 | 12.55 | 12.480 | 1.95x |
+| 4 workers | 16.10 | 16.05 | 16.075 | 2.51x |
+| Automatic, 4 workers | 16.22 | 15.92 | 16.070 | 2.51x |
+| Scalar, automatic, 4 workers | 10.86 | 10.91 | 10.885 | 1.70x |
+
+The Galaxy A17 gains 1.95x with 2 workers and 2.51x with 4 workers.
+Its automatic worker count stays 4 with cap 8. No worker startup or allocation
+failures were observed. Battery temperature before the trials ranged from
+32.4 to 33.0 degrees C.
+
+### Stored cache setup and solve estimates
+
+These setup measurements use the earlier automatic configuration: 4 workers on
+both devices. Each cold and warm setup measurement is one run, with one stored
+IndexedDB entry. The scalar rate rows also use the earlier automatic count of 4;
+scalar throughput with 8 automatic desktop workers was not measured.
+
+| Device | Cold setup, s | Warm setup, s |
+| --- | ---: | ---: |
+| M4 Pro | 1.0156 | 0.8135 |
+| Galaxy A17 | 7.1469 | 4.9551 |
+
+At difficulty 1000, expected hashing time is difficulty divided by measured
+throughput. The release desktop automatic estimate is `1000 / 200.720 = 4.98 s`; the phone automatic estimate is `1000 / 16.07 = 62.23 s`.
+These estimates exclude setup, networking and verification. Individual solve
+times vary because finding a valid nonce is probabilistic.
+
+See [RandomX throughput](pow.md#randomx-throughput) for worker selection, cache
+storage and browser requirements. Raw results remain outside the repository in
+`/tmp/rilgate-randomx-parallel/`, with release confirmation in its `release/`
+subdirectory. Generated benchmark secrets are deleted during cleanup.

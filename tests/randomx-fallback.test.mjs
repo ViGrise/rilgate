@@ -29,14 +29,14 @@ test("RandomX reloads once per URL and clears the guard after challenge success"
     document: { querySelector: () => ({}) },
     sessionStorage: { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) },
   });
-  await adapter.run({ enforce: "local_verify" });
+  await adapter.run({ enforce: "local_verify", algorithms: [] });
   assert.equal(reloads, 1);
-  await assert.rejects(adapter.run({ enforce: "local_verify" }), error => error === unavailable);
+  await assert.rejects(adapter.run({ enforce: "local_verify", algorithms: [] }), error => error === unavailable);
   assert.equal(reloads, 1);
   failure = false;
-  await adapter.run({ enforce: "local_verify" });
+  await adapter.run({ enforce: "local_verify", algorithms: [] });
   assert.equal(values.has("rilgate-work-unavailable-reload"), false);
   failure = true;
-  await adapter.run({ enforce: "local_verify" });
+  await adapter.run({ enforce: "local_verify", algorithms: [] });
   assert.equal(reloads, 2);
 });

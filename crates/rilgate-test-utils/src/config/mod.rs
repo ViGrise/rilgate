@@ -117,6 +117,8 @@ pub fn config() -> Config {
       },
       browser: BrowserConfig {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
+        max_workers: 8,
+        store_cache: true,
       },
     },
   })

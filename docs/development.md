@@ -20,6 +20,19 @@ formatting, Rust tests, Clippy and Node tests. They build incrementally in the w
 target directory. Dependencies and reports stay in temporary directories. The native
 RandomX reference tests below are opt-in and allocate substantial memory.
 
+## Browser checks
+
+With `environment: development`, the RandomX challenge URL accepts these query parameters:
+
+| Parameter | Accepted values | Effect |
+| --- | --- | --- |
+| `rx_workers` | `1` through `8` | Select the worker count for browser measurements. |
+| `rx_scalar` | `1` | Use `randomx_wasm_scalar.wasm` even when SIMD is available. |
+
+Production ignores both parameters. Without an accepted override, the solver selects
+its worker count and module from browser capabilities. See
+[RandomX throughput](pow.md#randomx-throughput) for the selection rules.
+
 ## Browser resource generation
 
 1. Edit readable sources under `web/`.

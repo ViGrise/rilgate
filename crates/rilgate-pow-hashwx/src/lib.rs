@@ -37,6 +37,7 @@ impl Algorithm for HashWxAlgorithm {
       solver_module_path: "/static/js/solvers/hashwx/solver.js".into(),
       requires_consent: false,
       memory_bytes: 16392,
+      browser: None,
     }
   }
 

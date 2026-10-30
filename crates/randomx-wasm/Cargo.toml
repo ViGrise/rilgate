@@ -10,7 +10,11 @@ description = "Raw wasm32 ABI for the workspace RandomX implementation"
 crate-type = ["cdylib"]
 
 [dependencies]
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc"] }
 randomx-core = { workspace = true }
 
 [features]
 validation = ["randomx-core/validation"]
+
+[dev-dependencies]
+wasmparser = "0.240"

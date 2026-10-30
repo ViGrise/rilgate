@@ -400,8 +400,9 @@ be enabled. This compatibility target is established by syntax checks and API fa
 tests. The Playwright suite exercises current Chromium, Firefox and WebKit, not those
 historical browser releases.
 
-RandomX requires a modern browser with ES modules, workers, BigInt and WebAssembly SIMD,
-plus about 256 MiB of memory for its cache. An incapable browser displays the localized
+RandomX requires a modern browser with ES modules, workers, BigInt and WebAssembly,
+plus about 256 MiB per worker for its cache. See [RandomX throughput](pow.md#randomx-throughput)
+for worker selection and the scalar module. An incapable browser displays the localized
 failure and retry controls after consent. It never switches a RandomX challenge to the
 fast algorithm on the client.
 

@@ -28,6 +28,8 @@ pub(super) fn services(
         difficulty: cfg.difficulty.clone(),
         ttl: cfg.randomx_challenge_ttl_seconds,
         solver_module_path: cfg.browser.solver_module_path.clone(),
+        max_workers: cfg.browser.max_workers,
+        store_cache: cfg.browser.store_cache,
         nonce_offset: cfg.nonce_offset,
         queue_capacity: cfg.verifier_queue_capacity,
         cache_idle_timeout: cfg.randomx_cache_idle_timeout,

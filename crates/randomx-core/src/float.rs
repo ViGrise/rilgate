@@ -1,5 +1,5 @@
 mod accelerated;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 mod simd;
 
 use ieee_apsqrt::sqrt_accurate;
@@ -51,7 +51,7 @@ fn bits(value: Double) -> u64 {
 
 #[inline]
 pub fn add(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
-  #[cfg(target_arch = "wasm32")]
+  #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
   if let Some(value) = unsafe { simd::add(a, b, mode) } {
     return value;
   }
@@ -64,7 +64,7 @@ pub fn add(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
 
 #[inline]
 pub fn sub(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
-  #[cfg(target_arch = "wasm32")]
+  #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
   if let Some(value) = unsafe { simd::add(a, FReg([b.0[0] ^ (1 << 63), b.0[1] ^ (1 << 63)]), mode) }
   {
     return value;
@@ -78,7 +78,7 @@ pub fn sub(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
 
 #[inline]
 pub fn mul(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
-  #[cfg(target_arch = "wasm32")]
+  #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
   if let Some(value) = unsafe { simd::mul(a, b, mode) } {
     return value;
   }
@@ -91,7 +91,7 @@ pub fn mul(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
 
 #[inline]
 pub fn div(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
-  #[cfg(target_arch = "wasm32")]
+  #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
   if let Some(value) = unsafe { simd::div(a, b, mode) } {
     return value;
   }
@@ -104,7 +104,7 @@ pub fn div(a: FReg, b: FReg, mode: RoundingMode) -> FReg {
 
 #[inline]
 pub fn sqrt(value: FReg, mode: RoundingMode) -> FReg {
-  #[cfg(all(target_arch = "wasm32", feature = "std"))]
+  #[cfg(all(target_arch = "wasm32", target_feature = "simd128", feature = "std"))]
   if let Some(value) = unsafe { simd::sqrt(value, mode) } {
     return value;
   }

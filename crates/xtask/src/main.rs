@@ -63,17 +63,29 @@ fn target_directory(root: &Path) -> Option<PathBuf> {
 fn build_wasm() -> ExitCode {
   let root = workspace_root();
   for (package, output, target) in ARTIFACTS {
-    if !build_artifact(&root, package, output, target) {
+    if !build_artifact(&root, package, output, target, false) {
       return ExitCode::FAILURE;
     }
+  }
+  if !build_artifact(
+    &root,
+    "randomx-wasm",
+    "web/static/js/solvers/randomx/randomx_wasm_scalar.wasm",
+    "wasm32-unknown-unknown",
+    true,
+  ) {
+    return ExitCode::FAILURE;
   }
   ExitCode::SUCCESS
 }
 
-fn build_artifact(root: &Path, package: &str, output: &str, target: &str) -> bool {
+fn build_artifact(root: &Path, package: &str, output: &str, target: &str, scalar: bool) -> bool {
   let output = root.join(output);
   let mut command = Command::new(cargo());
 
+  if scalar {
+    command.env("CARGO_ENCODED_RUSTFLAGS", "-C\x1ftarget-feature=-simd128");
+  }
   let status = command
     .current_dir(root)
     .env("CARGO_PROFILE_RELEASE_LTO", "fat")

@@ -1,5 +1,5 @@
 {
-  "challenge.randomx_unsupported": "This browser cannot run RandomX. A browser with WebAssembly SIMD, BigInt, and workers is required.",
+  "challenge.randomx_unsupported": "This browser cannot run RandomX. A browser with WebAssembly, BigInt, and workers is required.",
   "challenge.javascript_required": "JavaScript is required to verify your browser and access this site.",
   "challenge.title": "Checking your browser",
   "challenge.description": "This website uses a lightweight proof-of-work challenge before continuing.",
@@ -22,8 +22,8 @@
   "common.continue": "Continue",
   "pow.disclosure.title": "Proof of Work",
   "pow.disclosure.start": "Start RandomX work",
-  "pow.disclosure.randomx": "Your browser will calculate a RandomX proof using about 256 MiB of memory and CPU time. This can take a long time.",
-  "pow.disclosure.mining": "Your browser will perform RandomX mining work submitted to the gateway's mining pool. This uses about 256 MiB of memory and CPU time, and can take a long time. Start only if you agree to contribute this work.",
+  "pow.disclosure.randomx": "Your browser will calculate a RandomX proof using CPU time and about 256 MiB of memory per worker. This can take a long time.",
+  "pow.disclosure.mining": "Your browser will perform RandomX mining work submitted to the gateway's mining pool. This uses CPU time and about 256 MiB of memory per worker, and can take a long time. Start only if you agree to contribute this work.",
   "pow.progress_label": "Proof-of-work progress",
   "footer.powered_by": "Protected by",
   "denied.title": "Access denied",

@@ -366,7 +366,8 @@ startup bundle confirms browser capabilities and consent:
 static/js/solvers/loader.js          ES module importing the configured solver
 static/js/solvers/randomx/solver.js          ES module exporting solve(job)
 static/js/solvers/randomx/randomx-worker.js  Web Worker owning the WASM instance
-static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32
+static/js/solvers/randomx/randomx_wasm.wasm  randomx-core compiled to wasm32 with SIMD
+static/js/solvers/randomx/randomx_wasm_scalar.wasm  module for browsers without SIMD
 ```
 
 `solver.js` exports:
@@ -389,7 +390,7 @@ the module and gateway. The build script runs `cargo xtask build-wasm` and `carg
 scripts/build.sh --release
 ```
 
-Light mode keeps roughly 256 MiB of Argon2d cache in the worker. It derives dataset
+Light mode keeps roughly 256 MiB of Argon2d cache in each worker. It derives dataset
 items on demand. It does not materialize the ~2 GiB dataset.
 
 ### Proof scope and lifetime
@@ -444,21 +445,39 @@ same challenge can still issue receipts until that challenge expires.
 ### RandomX throughput
 
 The native core corrects binary64 rounding with exact residuals or integer significand
-comparisons. The WASM core uses two-lane SIMD and normalized Dekker residuals, and
+comparisons. The SIMD WASM core uses two-lane SIMD and normalized Dekker residuals, and
 retains software arithmetic for exceptional values. All four RandomX rounding modes
 remain exact. Directed division and square root reuse the nearest-rounded result when
 they compute residuals. The `no_std` build retains software square root. WASM assets
-need SIMD128 support.
+include `randomx_wasm_scalar.wasm` for browsers without SIMD128 support.
 
 Rust generates seed-specialized SuperscalarHash kernels for one, two or three dataset
 items. Integer high multiplication is inlined, and cache-line reads begin before the
 independent arithmetic. The worker compiles the module against the existing cache,
-reuses three table slots across seed changes, and hashes three consecutive nonces in one
-worker.
+reuses three table slots across seed changes, and hashes groups of three consecutive
+nonces. Worker `i` of `N` takes group indexes `i, i + N, i + 2N` and so on. The first
+solution terminates the worker pool. Progress sums attempts and rates across workers.
 
 Each nonce has independent VM state. The extra scratchpad costs about 4 MiB relative to
-a single VM alongside the shared 256 MiB cache. Kernel installation failure retains
-single-hash interpretation. No C++, Emscripten or extra workers are required.
+a single VM alongside each worker's 256 MiB cache. Kernel installation failure retains
+interpretation within the assigned nonce groups. No C++ or Emscripten is required.
+
+The worker count is `max(1, min(byCores, byMemory, max_workers))`, where
+`byCores = max(1, (cores || 2) - 1)` and
+`byMemory = deviceMemory ? floor(deviceMemory / 2) : 2`. Missing core and memory reports use
+2 cores and a 2-worker memory budget. Set `pow.algorithms.randomx.browser.max_workers`
+to an integer from 1 to 8 (default 8) to cap the count, including the development
+`rx_workers` override. CPU and memory limits can select fewer workers.
+
+Set `pow.algorithms.randomx.browser.store_cache` to `false` to disable IndexedDB
+reads and writes. Workers build the cache for each solve. The default is `true`.
+
+Each worker owns its cache. IndexedDB retains
+one seed cache in `rilgate-randomx` / `caches`, with a SHA-256 digest checked before
+import. Storage failures are ignored and workers build the cache directly. Memory use
+is up to `N x 256 MiB` plus scratchpads and runtime memory. The browser requires
+Worker, WebAssembly and BigInt. SIMD is optional. See the
+[development browser checks](development.md#browser-checks) for measurement overrides.
 
 Native throughput can be measured with:
 

@@ -19,6 +19,7 @@ pub struct RandomXAlgorithm {
   ttl: u64,
   nonce_offset: usize,
   solver_module_path: String,
+  browser: rilgate_pow::algorithm::BrowserSolverOptions,
   hasher: OrderedHasher,
   local_hasher: Option<Arc<LocalHasher>>,
   provider: Arc<dyn WorkProvider<Work = StratumJob>>,
@@ -29,6 +30,8 @@ pub struct RandomXConfig {
   pub ttl: u64,
   pub nonce_offset: usize,
   pub solver_module_path: String,
+  pub max_workers: u8,
+  pub store_cache: bool,
   pub queue_capacity: usize,
   pub cache_idle_timeout: Duration,
 }
@@ -111,6 +114,10 @@ impl RandomXAlgorithm {
       ttl: config.ttl,
       nonce_offset: config.nonce_offset,
       solver_module_path: config.solver_module_path.clone(),
+      browser: rilgate_pow::algorithm::BrowserSolverOptions {
+        max_workers: config.max_workers,
+        store_cache: config.store_cache,
+      },
       hasher,
       local_hasher: None,
       provider,
@@ -143,6 +150,7 @@ impl Algorithm for RandomXAlgorithm {
       solver_module_path: self.solver_module_path.clone(),
       requires_consent: true,
       memory_bytes: 256 * 1024 * 1024,
+      browser: Some(self.browser.clone()),
     }
   }
   fn difficulty_for_weight(&self, weight: i32) -> u64 {
@@ -286,6 +294,8 @@ mod tests {
       },
       ttl: 60,
       solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
+      max_workers: 8,
+      store_cache: true,
       nonce_offset: 39,
       queue_capacity: 8,
       cache_idle_timeout: Duration::from_secs(60),

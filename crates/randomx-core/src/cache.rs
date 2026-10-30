@@ -39,6 +39,12 @@ impl RandomXCache {
       .fill_memory(key, ARGON_SALT, &mut memory)
       .map_err(Error::Argon2)?;
 
+    Ok(Self::from_memory(key, memory))
+  }
+
+  /// Reconstructs a cache from its raw Argon2d blocks and seed.
+  pub fn from_memory(key: &[u8], memory: Vec<Block>) -> Self {
+    assert_eq!(memory.len(), ARGON_MEMORY as usize);
     let mut generator = Blake2Generator::new(key, 0);
     let mut programs = Vec::with_capacity(CACHE_ACCESSES);
 
@@ -50,7 +56,7 @@ impl RandomXCache {
       .iter()
       .map(CompiledSuperscalarProgram::new)
       .collect();
-    Ok(Self {
+    Self {
       memory,
       compiled_programs,
       programs,
@@ -60,7 +66,13 @@ impl RandomXCache {
       dataset_pair_function: None,
       #[cfg(target_arch = "wasm32")]
       dataset_triple_function: None,
-    })
+    }
+  }
+
+  /// Raw cache bytes in the host byte order.
+  pub fn bytes(&self) -> &[u8] {
+    // Argon2 blocks contain contiguous u64 words with no padding.
+    unsafe { core::slice::from_raw_parts(self.memory.as_ptr().cast(), CACHE_SIZE) }
   }
 
   #[inline]

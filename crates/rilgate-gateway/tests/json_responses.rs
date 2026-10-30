@@ -274,3 +274,40 @@ fn unsupported_status_is_rejected() {
     );
   }
 }
+
+#[tokio::test]
+async fn client_config_exposes_randomx_browser_options_only_for_randomx() {
+  let mut cfg = common::config();
+  let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
+  pow.randomx_enabled = true;
+  pow.browser.max_workers = 2;
+  pow.browser.store_cache = false;
+  let router = app::router(cfg).await.unwrap();
+  let response = router
+    .oneshot(
+      Request::builder()
+        .uri("/.well-known/test-pow/api/client-config")
+        .header("host", "example.test")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+  let body: Value =
+    serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+  let algorithms = body["algorithms"].as_array().unwrap();
+  let randomx = algorithms
+    .iter()
+    .find(|entry| entry["id"] == "randomx")
+    .unwrap();
+  assert_eq!(
+    randomx["browser"],
+    serde_json::json!({"max_workers": 2, "store_cache": false})
+  );
+  let fast = algorithms
+    .iter()
+    .find(|entry| entry["id"] == "fast")
+    .unwrap();
+  assert!(fast.get("browser").is_none());
+}
