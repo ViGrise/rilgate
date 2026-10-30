@@ -16,10 +16,10 @@ async fn cookies_follow_the_required_rate_difficulty_in_both_directions() {
   config.upstream.url = format!("http://{}", listener.local_addr().unwrap());
   config.pow.policy = serde_json::from_value(serde_json::json!({
     "mode": "custom",
-    "request_rate": {"window": "1s"},
+    "counters": {"login": {"key": ["client_ip"], "window": "1s", "count_when": {"path": {"prefix": "/login"}}}},
     "rules": [
-      {"name": "low", "when": {"request_rate": {"gte": 1}}, "action": "score", "score": 10},
-      {"name": "high", "when": {"request_rate": {"gte": 4}}, "action": "score", "score": 20}
+      {"name": "low", "when": {"rate": {"counter": "login", "gte": 1}}, "action": "score", "score": 10},
+      {"name": "high", "when": {"rate": {"counter": "login", "gte": 4}}, "action": "score", "score": 20}
     ],
     "score": {"thresholds": [
       {"min": 30, "action": "challenge", "challenge": {"algorithm": "fast", "difficulty": 6}},
@@ -65,25 +65,28 @@ async fn cookies_follow_the_required_rate_difficulty_in_both_directions() {
   });
   let gateway = app::router(cfg).await.unwrap();
   let client = reqwest::Client::new();
-  let get = |cookie: String| {
+  let get = |path: &str, cookie: String| {
     client
-      .get(format!("http://{}/page", gateway.address()))
+      .get(format!("http://{}{path}", gateway.address()))
       .header("host", "example.test")
       .header("accept", "application/json")
       .header("cookie", cookie)
       .send()
   };
+  for _ in 0..8 {
+    assert_eq!(get("/page", low.clone()).await.unwrap().status(), 200);
+  }
   for _ in 0..3 {
-    let response = get(low.clone()).await.unwrap();
+    let response = get("/login", low.clone()).await.unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(response.text().await.unwrap(), "upstream-ok");
   }
-  let response = get(low.clone()).await.unwrap();
+  let response = get("/login", low.clone()).await.unwrap();
   assert_eq!(response.status(), 403);
   assert_eq!(response.headers()["rilgate-challenge"], "required");
-  assert_eq!(get(high.clone()).await.unwrap().status(), 200);
+  assert_eq!(get("/login", high.clone()).await.unwrap().status(), 200);
   tokio::time::sleep(Duration::from_secs(2)).await;
-  assert_eq!(get(high).await.unwrap().status(), 200);
-  assert_eq!(get(low).await.unwrap().status(), 200);
+  assert_eq!(get("/login", high).await.unwrap().status(), 200);
+  assert_eq!(get("/login", low).await.unwrap().status(), 200);
   upstream.abort();
 }

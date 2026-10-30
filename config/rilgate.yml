@@ -798,6 +798,7 @@ server:
     # EXAMPLE thresholds, not defaults. Evaluated after rules only if no terminal
     # action matched. First score >= min wins; min values must be strictly
     # descending and unique. Actions: allow, deny, challenge, never score.
+    # The last threshold can omit min to match every score.
     # If none match, default_action applies. Challenge fields follow rule syntax.
     #
     # thresholds:
@@ -809,6 +810,8 @@ server:
         # challenge: {algorithm: fast, difficulty: 2}
       # - min: 1
         # action: challenge
+        # challenge: {algorithm: fast, difficulty: 1}
+      # - action: challenge
         # challenge: {algorithm: fast, difficulty: 1}
 
 
@@ -899,6 +902,23 @@ server:
     #
     # max_entries: 65536
 
+  # Named request counters for custom policy rules. At most 32 counters; names
+  # contain 1 to 64 ASCII letters, digits, - or _. Rules read with rate.
+  # counters:
+    # pages:
+      # Required key: 1 to 4 unique parts. Also supports method, path, user_agent,
+      # country, asn and {header: X-Name}. GeoIP parts require their databases.
+      # key: [client_ip, host]
+      # Optional client_ip prefixes default to IPv4 /32 and IPv6 /64.
+      # key: [{client_ip: {ipv4_prefix: 24, ipv6_prefix: 48}}, host]
+      # Required sliding window, from 1s to 1h.
+      # window: 30s
+      # Maximum keys in memory, from 1 to 1048576; defaults to 65536.
+      # max_entries: 65536
+      # Optional condition; absent selects every request that reaches the gate.
+      # Only true counts. Excludes score, rate, dnsbl and client_ip.reverse_dns.
+      # count_when: {path: {prefix: /login}}
+
   # EXAMPLE rules using the lookups. dnsbl takes one zone, with at most 8 zones
   # in a policy. reverse_dns takes 1..16 domains and is true when a PTR name of
   # the client ends with a listed domain and resolves back to the client IP.
@@ -915,3 +935,8 @@ server:
     # - name: link-followers
       # when: {honeypot: true}
       # action: deny
+    # - name: page-rate
+      # Counter name plus eq, gt, gte, lt or lte on non-negative integers.
+      # when: {rate: {counter: pages, gte: 60}}
+      # action: score
+      # score: 20

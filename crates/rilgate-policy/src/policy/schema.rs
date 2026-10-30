@@ -69,7 +69,7 @@ pub struct Definition {
     deserialize_with = "present",
     skip_serializing_if = "Option::is_none"
   )]
-  pub request_rate: Option<RequestRateDefinition>,
+  pub counters: Option<BTreeMap<String, CounterDefinition>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -116,7 +116,12 @@ impl Default for DebugHeader {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Threshold {
-  pub min: i32,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub min: Option<i32>,
   pub action: Action,
   #[serde(
     default,
@@ -126,7 +131,7 @@ pub struct Threshold {
   pub challenge: Option<ChallengePolicy>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Condition {
   #[serde(
@@ -220,7 +225,7 @@ pub struct Condition {
     deserialize_with = "present",
     skip_serializing_if = "Option::is_none"
   )]
-  pub request_rate: Option<NumberMatch>,
+  pub rate: Option<RateMatch>,
 }
 impl Condition {
   /// Reports whether this condition or any nested condition needs DNS lookups.
@@ -264,19 +269,18 @@ impl Condition {
       || self.not.as_deref().is_some_and(Self::uses_load)
   }
 
-  /// Reports whether this condition or any nested condition compares the client request count.
-  pub fn uses_request_rate(&self) -> bool {
-    self.request_rate.is_some()
+  pub(crate) fn reads_counter(&self, name: &str) -> bool {
+    self.rate.as_ref().is_some_and(|rate| rate.counter == name)
       || self
         .all
         .iter()
         .chain(self.any.iter())
         .flatten()
-        .any(Self::uses_request_rate)
-      || self.not.as_deref().is_some_and(Self::uses_request_rate)
+        .any(|c| c.reads_counter(name))
+      || self.not.as_deref().is_some_and(|c| c.reads_counter(name))
   }
 }
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct StringMatch {
   #[serde(
@@ -310,7 +314,7 @@ pub struct StringMatch {
   )]
   pub regex: Option<String>,
 }
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct NumberMatch {
   #[serde(
@@ -354,7 +358,7 @@ pub enum LoadWindow {
   #[serde(rename = "15m")]
   FifteenMinutes,
 }
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct LoadMatch {
   pub window: LoadWindow,
@@ -383,7 +387,7 @@ pub struct LoadMatch {
   )]
   pub lte: Option<f64>,
 }
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct IpMatch {
   #[serde(
@@ -526,43 +530,93 @@ impl HoneypotDefinition {
   }
 }
 
-/// Settings of the per-client sliding request window.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct RequestRateDefinition {
-  /// The duration of the sliding window.
+/// Settings of a named sliding request counter.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CounterDefinition {
+  pub key: Vec<CounterKeyPart>,
   #[serde(with = "humantime_serde")]
   pub window: std::time::Duration,
-  /// The most clients retained at one time.
+  #[serde(default = "counter_capacity")]
   pub max_entries: usize,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub count_when: Option<Condition>,
+}
+fn counter_capacity() -> usize {
+  65_536
 }
 
-impl Default for RequestRateDefinition {
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum CounterKeyPart {
+  Field(CounterField),
+  ClientIp { client_ip: CounterIp },
+  Header { header: String },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CounterField {
+  ClientIp,
+  Host,
+  Method,
+  Path,
+  UserAgent,
+  Country,
+  Asn,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CounterIp {
+  pub ipv4_prefix: u8,
+  pub ipv6_prefix: u8,
+}
+impl Default for CounterIp {
   fn default() -> Self {
     Self {
-      window: std::time::Duration::from_secs(60),
-      max_entries: 65_536,
+      ipv4_prefix: 32,
+      ipv6_prefix: 64,
     }
   }
 }
 
-impl RequestRateDefinition {
-  pub const MAX_WINDOW: std::time::Duration = std::time::Duration::from_secs(3600);
-  pub const MAX_ENTRIES: usize = 1_048_576;
-
-  pub(crate) fn validate(&self) -> anyhow::Result<()> {
-    use anyhow::ensure;
-    ensure!(
-      (std::time::Duration::from_secs(1)..=Self::MAX_WINDOW).contains(&self.window),
-      "policy.request_rate.window: expected 1s to 1h"
-    );
-    ensure!(
-      (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
-      "policy.request_rate.max_entries: expected 1 to {}",
-      Self::MAX_ENTRIES
-    );
-    Ok(())
-  }
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RateMatch {
+  pub counter: String,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub eq: Option<u32>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub gt: Option<u32>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub gte: Option<u32>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub lt: Option<u32>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub lte: Option<u32>,
 }
 
 /// Settings of the DNS lookups behind `dnsbl` and `client_ip.reverse_dns`.

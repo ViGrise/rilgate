@@ -32,6 +32,7 @@ struct CompiledRule {
 #[derive(Debug)]
 pub struct PolicyEngine {
   rules: Vec<CompiledRule>,
+  counters: Vec<crate::counters::CompiledCounter>,
   default_action: PolicyAction,
   default_rule: Arc<str>,
   ip_sets: IpSets,
@@ -50,8 +51,8 @@ impl Definition {
       ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
       ensure!(self.dns.is_none(), "policy: dns requires mode: custom");
       ensure!(
-        self.request_rate.is_none(),
-        "policy: request_rate requires mode: custom"
+        self.counters.is_none(),
+        "policy: counters requires mode: custom"
       );
       ensure!(
         self.honeypot.is_none(),
@@ -72,6 +73,16 @@ impl Definition {
     if let Some(score) = &self.score {
       http::HeaderName::from_bytes(score.debug_header.name.as_bytes())
         .context("policy.score.debug_header.name: expected an HTTP header name")?;
+      for threshold in score
+        .thresholds
+        .iter()
+        .take(score.thresholds.len().saturating_sub(1))
+      {
+        ensure!(
+          threshold.min.is_some(),
+          "policy.score.thresholds: only the last threshold can omit min"
+        );
+      }
       for pair in score.thresholds.windows(2) {
         ensure!(
           pair[0].min > pair[1].min,
@@ -84,10 +95,13 @@ impl Definition {
           "policy.score.thresholds: score is not terminal"
         );
         rules.push(Rule {
-          name: format!("score >= {}", threshold.min),
+          name: threshold
+            .min
+            .map_or_else(|| "score fallback".into(), |min| format!("score >= {min}")),
           when: super::schema::Condition {
             score: Some(super::schema::NumberMatch {
-              gte: Some(threshold.min),
+              // The lowest score makes the fallback match the complete score range.
+              gte: Some(threshold.min.unwrap_or(i32::MIN)),
               ..Default::default()
             }),
             ..Default::default()
@@ -165,9 +179,6 @@ impl PolicyEngine {
     if let Some(dns) = &definition.dns {
       dns.validate()?;
     }
-    if let Some(settings) = &definition.request_rate {
-      settings.validate()?;
-    }
     if let Some(honeypot) = &definition.honeypot {
       honeypot.validate()?;
     }
@@ -178,7 +189,11 @@ impl PolicyEngine {
     let mut names = std::collections::HashSet::new();
     let mut budget = Budget::for_policy(
       definition.honeypot.is_some(),
-      definition.request_rate.is_some(),
+      definition
+        .counters
+        .iter()
+        .flat_map(|c| c.keys().cloned())
+        .collect(),
     );
     let mut rules = Vec::new();
     for (index, rule) in source.into_iter().enumerate() {
@@ -216,12 +231,14 @@ impl PolicyEngine {
         condition,
       });
     }
+    let counters = crate::counters::compile(definition, &ip_sets, &geoip, &mut budget)?;
     let lookup_plan = LookupPlan {
       dnsbl_zones: budget.dnsbl_zones.into_iter().collect(),
       reverse_dns: budget.reverse_dns,
     };
     Ok(Self {
       rules,
+      counters,
       default_rule: match default {
         PolicyAction::Allow => "default-allow",
         PolicyAction::Deny => "default-deny",
@@ -240,16 +257,38 @@ impl PolicyEngine {
     self.host_load = load;
     self
   }
-  /// Reports whether any rule compares the host load.
+  /// Reports whether rules or counter selection compare the host load.
   pub fn uses_load(&self) -> bool {
     self.rules.iter().any(|entry| entry.rule.when.uses_load())
+      || self.counters.iter().any(|counter| {
+        counter
+          .definition
+          .count_when
+          .as_ref()
+          .is_some_and(|c| c.uses_load())
+      })
   }
-  /// Reports whether any rule compares the client request count.
-  pub fn uses_request_rate(&self) -> bool {
+  pub fn counters(&self) -> &[crate::counters::CompiledCounter] {
+    &self.counters
+  }
+  pub fn counter_values(
+    &self,
+    request: &Request<'_>,
+    mut read: impl FnMut(usize, crate::counters::CounterKey, bool) -> Option<u32>,
+  ) -> Vec<Option<u32>> {
     self
-      .rules
+      .counters
       .iter()
-      .any(|entry| entry.rule.when.uses_request_rate())
+      .enumerate()
+      .map(|(index, counter)| {
+        if !counter.used {
+          return None;
+        }
+        counter
+          .key(request, &self.geoip)
+          .and_then(|key| read(index, key, counter.selects(request, self.host_load)))
+      })
+      .collect()
   }
   pub fn ip_sets(&self) -> &IpSets {
     &self.ip_sets

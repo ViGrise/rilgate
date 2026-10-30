@@ -1,4 +1,4 @@
-use super::{honeypot::Honeypot, request_rate::RequestRate};
+use super::{counters::CounterStore, honeypot::Honeypot};
 use crate::open_graph::OpenGraphService;
 use anyhow::Result;
 use arc_swap::ArcSwap;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub struct PolicyServices {
   pub dns: Option<rilgate_dns::DnsLookups>,
   pub honeypot: Option<Arc<Honeypot>>,
-  pub request_rate: Option<Arc<RequestRate>>,
+  pub counters: std::collections::BTreeMap<String, Arc<CounterStore>>,
 }
 
 impl PolicyServices {
@@ -33,17 +33,23 @@ impl PolicyServices {
       .honeypot
       .as_ref()
       .map(|settings| Arc::new(Honeypot::new(settings)));
-    let request_rate = definition.request_rate.as_ref().map(|settings| {
-      previous
-        .and_then(|services| services.request_rate.as_ref())
-        .filter(|counter| counter.settings == *settings)
-        .cloned()
-        .unwrap_or_else(|| Arc::new(RequestRate::new(settings)))
-    });
+    let counters = definition
+      .counters
+      .iter()
+      .flat_map(|counters| counters.iter())
+      .map(|(name, settings)| {
+        let store = previous
+          .and_then(|services| services.counters.get(name))
+          .filter(|counter| counter.settings == *settings)
+          .cloned()
+          .unwrap_or_else(|| Arc::new(CounterStore::new(settings)));
+        (name.clone(), store)
+      })
+      .collect();
     Ok(Self {
       dns,
       honeypot,
-      request_rate,
+      counters,
     })
   }
 
@@ -91,25 +97,38 @@ impl PolicyHandle {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use rilgate_policy::policy::schema::RequestRateDefinition;
+  use rilgate_policy::counters::{CounterKey, KeyPart};
 
   #[test]
-  fn reload_keeps_counts_until_the_window_or_capacity_changes() {
-    let mut definition = Definition {
-      request_rate: Some(RequestRateDefinition::default()),
-      ..Default::default()
-    };
+  fn reload_preserves_equal_definitions_and_resets_changed_counters() {
+    let mut definition: Definition =
+      serde_json::from_value(serde_json::json!({"mode": "custom", "counters": {"pages": {"key": ["client_ip"], "window": "1m"}}}))
+        .unwrap();
     let plan = LookupPlan::default();
+    let key = || -> CounterKey { vec![KeyPart::Number(1)].into_boxed_slice() };
     let original = PolicyServices::new(&definition, &plan).unwrap();
-    let ip = "192.0.2.1".parse().unwrap();
-    assert_eq!(original.request_rate.as_ref().unwrap().record(ip), 1);
+    assert_eq!(original.counters["pages"].record(key()), 1);
     let reloaded = PolicyServices::with_previous(&definition, &plan, Some(&original)).unwrap();
-    assert_eq!(reloaded.request_rate.as_ref().unwrap().record(ip), 2);
-    definition.request_rate.as_mut().unwrap().window *= 2;
+    assert_eq!(reloaded.counters["pages"].record(key()), 2);
+    definition
+      .counters
+      .as_mut()
+      .unwrap()
+      .get_mut("pages")
+      .unwrap()
+      .window *= 2;
     let changed = PolicyServices::with_previous(&definition, &plan, Some(&reloaded)).unwrap();
-    assert_eq!(changed.request_rate.as_ref().unwrap().record(ip), 1);
-    definition.request_rate.as_mut().unwrap().max_entries *= 2;
+    assert_eq!(changed.counters["pages"].peek(key()), 0);
+    assert_eq!(changed.counters["pages"].record(key()), 1);
+    definition
+      .counters
+      .as_mut()
+      .unwrap()
+      .get_mut("pages")
+      .unwrap()
+      .count_when =
+      Some(serde_json::from_value(serde_json::json!({"path": {"prefix": "/login"}})).unwrap());
     let changed = PolicyServices::with_previous(&definition, &plan, Some(&changed)).unwrap();
-    assert_eq!(changed.request_rate.as_ref().unwrap().record(ip), 1);
+    assert_eq!(changed.counters["pages"].peek(key()), 0);
   }
 }

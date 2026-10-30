@@ -79,11 +79,25 @@ pub async fn gate_with_client(
   if let (Some(honeypot), Some(ip)) = (&services.honeypot, client_ip) {
     known.honeypot = Some(honeypot.is_flagged(ip));
   }
-  if state.pow.uses_request_rate()
-    && let (Some(counter), Some(ip)) = (&services.request_rate, client_ip)
-  {
-    known.request_rate = Some(counter.record(ip));
-  }
+  known.rates = state.pow.counter_values(
+    &Request {
+      headers,
+      host: &host,
+      path: uri.path(),
+      method,
+      client_ip,
+      lookups: &known,
+    },
+    |name, key, selected| {
+      services.counters.get(name).map(|counter| {
+        if selected {
+          counter.record(key)
+        } else {
+          counter.peek(key)
+        }
+      })
+    },
+  );
   let mut request = Request {
     headers,
     host: &host,

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-/// Results of the network lookups for one client, filled in by the caller.
+/// Lookup results and counter values for one request, filled in by the caller.
 ///
 /// A missing entry means the lookup was not performed or did not finish. Conditions
 /// that depend on a missing entry evaluate to unknown.
@@ -12,8 +12,8 @@ pub struct Lookups {
   pub reverse_dns: Option<Option<String>>,
   /// Whether the client followed the honeypot link. A missing entry counts as not flagged.
   pub honeypot: Option<bool>,
-  /// Requests in the client window, including the current request.
-  pub request_rate: Option<u32>,
+  /// Counts indexed by compiled counter position, including selected current requests.
+  pub rates: Vec<Option<u32>>,
 }
 
 impl Lookups {
@@ -22,7 +22,7 @@ impl Lookups {
     dnsbl: BTreeMap::new(),
     reverse_dns: None,
     honeypot: None,
-    request_rate: None,
+    rates: Vec::new(),
   };
 }
 

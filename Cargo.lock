@@ -3447,6 +3447,7 @@ dependencies = [
  "rilgate-protocol",
  "serde",
  "serde_yaml_ng",
+ "sha2",
 ]
 
 [[package]]
