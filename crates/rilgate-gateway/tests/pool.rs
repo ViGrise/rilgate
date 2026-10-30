@@ -597,3 +597,225 @@ async fn transport_and_login_each_have_a_full_connect_timeout() {
   );
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
+  use axum::{
+    body::{Body, to_bytes},
+    http::Request,
+  };
+  use rilgate_config::{PowAlgorithm, model::pow::RandomXFallback};
+  use rilgate_test_utils::gateway as app;
+  use std::sync::Arc;
+  use tower::ServiceExt;
+
+  let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let upstream = origin.local_addr().unwrap();
+  let origin_task = tokio::spawn(async move {
+    loop {
+      let (mut socket, _) = origin.accept().await.unwrap();
+      tokio::spawn(async move {
+        let mut buffer = [0; 4096];
+        let _ = socket.read(&mut buffer).await;
+        let _ = socket
+          .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+          .await;
+      });
+    }
+  });
+  for fallback in [true, false] {
+    let reserved = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = reserved.local_addr().unwrap();
+    drop(reserved);
+    let mut cfg = common::config();
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.upstream.url = format!("http://{upstream}");
+    config.server.metrics_enabled = true;
+    config.pow.stratum_pool.pools[0].port = address.port();
+    config.pow.stratum_pool.cooldown = Duration::from_secs(1);
+    let choice = config.pow.policy.rules.as_mut().unwrap()[0]
+      .challenge
+      .as_mut()
+      .unwrap();
+    choice.algorithm = Some(PowAlgorithm::RandomX);
+    choice.difficulty = Some(1000);
+    if fallback {
+      config.pow.randomx_fallback = Some(RandomXFallback {
+        algorithm: PowAlgorithm::Fast,
+        difficulty: 2,
+      });
+    }
+    let router = app::router(cfg).await.unwrap();
+    let request = |path: &str| Request::builder().uri(path).header("host", "example.test");
+    let page = router
+      .clone()
+      .oneshot(request("/protected").body(Body::empty()).unwrap())
+      .await
+      .unwrap();
+    let html =
+      String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
+    assert!(
+      html.contains("window.POW_ALGORITHM = \"randomx\""),
+      "{html}"
+    );
+    let page = router
+      .clone()
+      .oneshot(
+        request("/protected")
+          .header("accept", "application/json")
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    let body: serde_json::Value =
+      serde_json::from_slice(&to_bytes(page.into_body(), 100000).await.unwrap()).unwrap();
+    let issue = |token: &str| {
+      request("/.well-known/test-pow/api/challenge")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"presentation_token": token}).to_string()))
+        .unwrap()
+    };
+    let failed = router
+      .clone()
+      .oneshot(issue(body["challenge"]["token"].as_str().unwrap()))
+      .await
+      .unwrap();
+    assert_eq!(failed.status(), 503);
+    assert_eq!(failed.headers()["retry-after"], "1");
+    assert_eq!(failed.headers()["cache-control"], "no-store");
+    assert_eq!(
+      serde_json::from_slice::<serde_json::Value>(
+        &to_bytes(failed.into_body(), 10000).await.unwrap()
+      )
+      .unwrap(),
+      json!({"code": "work_unavailable"})
+    );
+    let client = reqwest::Client::new();
+    let ready = client
+      .get(format!(
+        "http://{}/.well-known/test-pow/api/ready",
+        router.operations_address()
+      ))
+      .send()
+      .await
+      .unwrap();
+    assert_eq!(ready.status().as_u16(), if fallback { 200 } else { 503 });
+    let readiness: serde_json::Value =
+      serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
+    assert_eq!(readiness["pool"], false);
+    assert_eq!(readiness["pools"][0][1], false);
+    let page = router
+      .clone()
+      .oneshot(request("/protected").body(Body::empty()).unwrap())
+      .await
+      .unwrap();
+    let html =
+      String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
+    let algorithm = if fallback { "fast" } else { "randomx" };
+    assert!(
+      html.contains(&format!("window.POW_ALGORITHM = \"{algorithm}\"")),
+      "{html}"
+    );
+    let page = router
+      .clone()
+      .oneshot(
+        request("/protected")
+          .header("accept", "application/json")
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    let body: serde_json::Value =
+      serde_json::from_slice(&to_bytes(page.into_body(), 100000).await.unwrap()).unwrap();
+    let issued = router
+      .clone()
+      .oneshot(issue(body["challenge"]["token"].as_str().unwrap()))
+      .await
+      .unwrap();
+    if !fallback {
+      assert_eq!(issued.status(), 503);
+      continue;
+    }
+    assert_eq!(issued.status(), 200);
+    let challenge: serde_json::Value =
+      serde_json::from_slice(&to_bytes(issued.into_body(), 100000).await.unwrap()).unwrap();
+    assert_eq!(challenge["algorithm"], "fast");
+    assert_eq!(challenge["difficulty"], 2);
+    let nonce = (0..100000)
+      .map(|n| n.to_string())
+      .find(|nonce| {
+        rilgate_pow_hash::sha256::verifier::verify_fast(
+          challenge["challenge"].as_str().unwrap(),
+          nonce,
+          2,
+        )
+        .unwrap()
+      })
+      .unwrap();
+    let verified = router.clone().oneshot(request("/.well-known/test-pow/api/verify").method("POST").header("content-type", "application/json").body(Body::from(json!({"challenge_token": challenge["challenge_token"], "nonce": nonce, "set_cookie": true}).to_string())).unwrap()).await.unwrap();
+    assert_eq!(verified.status(), 200);
+    let cookie = verified.headers()["set-cookie"]
+      .to_str()
+      .unwrap()
+      .split(';')
+      .next()
+      .unwrap()
+      .to_string();
+    let passed = router
+      .clone()
+      .oneshot(
+        request("/protected")
+          .header("cookie", &cookie)
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(passed.status(), 200);
+    let pool = TcpListener::bind(address).await.unwrap();
+    let server = tokio::spawn(async move {
+      let (socket, _) = pool.accept().await.unwrap();
+      let _session = login(socket, 1000).await;
+      std::future::pending::<()>().await;
+    });
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let recovered = router
+      .clone()
+      .oneshot(
+        request("/protected")
+          .header("cookie", cookie)
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    let html = String::from_utf8(
+      to_bytes(recovered.into_body(), 100000)
+        .await
+        .unwrap()
+        .to_vec(),
+    )
+    .unwrap();
+    assert!(html.contains("window.POW_ALGORITHM = \"randomx\""));
+    let metrics = client
+      .get(format!(
+        "http://{}/.well-known/test-pow/api/metrics",
+        router.operations_address()
+      ))
+      .send()
+      .await
+      .unwrap()
+      .text()
+      .await
+      .unwrap();
+    assert!(
+      metrics.contains("rilgate_pow_fallback_total{from=\"randomx\",to=\"fast\"} 2"),
+      "{metrics}"
+    );
+    server.abort();
+  }
+  origin_task.abort();
+}

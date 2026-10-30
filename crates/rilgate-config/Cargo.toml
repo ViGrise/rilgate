@@ -19,6 +19,7 @@ humantime.workspace = true
 http.workspace = true
 url.workspace = true
 rilgate-pow.workspace = true
+rilgate-pow-hash.workspace = true
 rilgate-web.workspace = true
 rilgate-challenge.workspace = true
 rilgate-policy.workspace = true

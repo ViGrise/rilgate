@@ -8,6 +8,18 @@ use std::sync::atomic::Ordering;
 
 pub fn exposition(state: &AppState) -> Response {
   let mut text = state.metrics.render();
+  if let Some(fallback) = &state.cfg.pow.randomx_fallback {
+    let _ = writeln!(
+      text,
+      "# TYPE rilgate_pow_fallback_total counter\nrilgate_pow_fallback_total{{from=\"randomx\",to=\"{}\"}} {}",
+      match fallback.algorithm {
+        rilgate_protocol::PowAlgorithm::Fast => "fast",
+        rilgate_protocol::PowAlgorithm::Hashwx => "hashwx",
+        _ => unreachable!("validated fallback algorithm"),
+      },
+      state.metrics.pow_fallback.load(Ordering::Relaxed)
+    );
+  }
   text.push_str(&state.pool.connection_metrics());
   let (fetch, capacity) = state.pool.failures();
   let web = state.web.diagnostics();

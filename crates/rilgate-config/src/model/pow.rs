@@ -12,7 +12,14 @@ pub struct BrowserConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct RandomXFallback {
+  pub algorithm: PowAlgorithm,
+  pub difficulty: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct PowConfig {
+  pub randomx_fallback: Option<RandomXFallback>,
   pub hashwx_enabled: bool,
   pub hashwx: rilgate_pow_hashwx::HashWxConfig,
   pub enforce: PowEnforcement,

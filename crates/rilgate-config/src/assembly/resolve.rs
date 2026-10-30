@@ -179,6 +179,20 @@ impl Document {
         },
       },
       pow: PowConfig {
+        randomx_fallback: randomx
+          .fallback
+          .as_ref()
+          .map(|fallback| {
+            Ok::<_, anyhow::Error>(crate::model::pow::RandomXFallback {
+              algorithm: fallback.algorithm.parse().map_err(|_| {
+                anyhow::anyhow!(
+                  "pow.algorithms.randomx.fallback.algorithm: expected fast or hashwx"
+                )
+              })?,
+              difficulty: fallback.difficulty,
+            })
+          })
+          .transpose()?,
         hashwx_enabled: self.pow.verification == PowEnforcement::LocalVerify
           && self.policy.challenges()?.iter().any(|(_, choice)| {
             choice.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::Hashwx

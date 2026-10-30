@@ -178,7 +178,17 @@ impl Algorithm for RandomXAlgorithm {
     Box::pin(async move {
       self.validate_enforcement(request.enforce)?;
       self.validate_difficulty(request.difficulty)?;
-      let mut job = self.provider.fetch(request.difficulty).await?;
+      let mut job = self
+        .provider
+        .fetch(request.difficulty)
+        .await
+        .map_err(|error| {
+          if error.is::<rilgate_pool::provider::AllPoolsUnavailable>() {
+            anyhow::Error::new(rilgate_pow::WorkUnavailable)
+          } else {
+            error
+          }
+        })?;
       if self
         .nonce_offset
         .checked_add(4)

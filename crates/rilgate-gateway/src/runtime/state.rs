@@ -4,6 +4,7 @@ use rilgate_config::Config;
 use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
+  pub randomx_fallback_active: Arc<std::sync::atomic::AtomicBool>,
   pub cfg: Config,
   pub metrics: Arc<crate::observability::metrics::Metrics>,
   pub connections: Arc<tokio::sync::Semaphore>,

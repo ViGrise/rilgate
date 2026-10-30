@@ -55,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
   let (pow, pool) = rilgate_test_utils::gateway::services(&cfg)?;
   let web = rilgate_web::WebManager::new(cfg.web.clone())?;
   let state = AppState {
+    randomx_fallback_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     metrics: Arc::new(Default::default()),
     connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),

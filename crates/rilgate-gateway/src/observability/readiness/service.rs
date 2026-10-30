@@ -49,7 +49,7 @@ pub async fn check(state: &AppState) -> Response {
   let ip_sets = state.pow.ip_sets().all_remote_loaded();
   let geoip = state.pow.geoip().all_loaded();
   let ready = upstream
-    && pool.unwrap_or(true)
+    && (state.cfg.pow.randomx_fallback.is_some() || pool.unwrap_or(true))
     && remote.unwrap_or(true)
     && ip_sets
     && geoip

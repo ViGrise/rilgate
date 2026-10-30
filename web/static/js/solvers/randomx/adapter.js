@@ -50,7 +50,20 @@
   async function randomxLocalVerify(solver) {
     status(t("challenge.status.requesting", "Requesting {algorithm} proof-of-work challenge…", { algorithm: "RandomX" }));
 
-    const challenge = await requestChallenge();
+    const reloadKey = "rilgate-work-unavailable-reload";
+    let challenge;
+    try {
+      challenge = await requestChallenge();
+      sessionStorage.removeItem(reloadKey);
+    } catch (error) {
+      if (error.status === 503 && error.code === "work_unavailable" &&
+          sessionStorage.getItem(reloadKey) !== window.location.href) {
+        sessionStorage.setItem(reloadKey, window.location.href);
+        window.location.reload();
+        return;
+      }
+      throw error;
+    }
 
     if (challenge.algorithm !== "randomx") {
       throw new Error(

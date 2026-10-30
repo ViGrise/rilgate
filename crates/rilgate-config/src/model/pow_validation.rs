@@ -3,6 +3,37 @@ impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::{Context, ensure};
     self.rate_limit.validate()?;
+    if let Some(fallback) = &self.randomx_fallback {
+      use crate::{PowAlgorithm, PowEnforcement};
+      use rilgate_pow::Algorithm;
+      ensure!(
+        matches!(
+          fallback.algorithm,
+          PowAlgorithm::Fast | PowAlgorithm::Hashwx
+        ),
+        "pow.algorithms.randomx.fallback.algorithm: expected fast or hashwx"
+      );
+      ensure!(
+        self.enforce == PowEnforcement::LocalVerify,
+        "pow.algorithms.randomx.fallback: requires pow.verification: local_verify"
+      );
+      ensure!(
+        fallback.algorithm != PowAlgorithm::Hashwx || self.hashwx_enabled,
+        "pow.algorithms.randomx.fallback.algorithm: hashwx is not enabled"
+      );
+      let backend: Box<dyn Algorithm> = match fallback.algorithm {
+        PowAlgorithm::Fast => Box::new(rilgate_pow_hash::FastAlgorithm::new(
+          &rilgate_pow_hash::FastConfig {
+            ttl: self.challenge_ttl_seconds,
+          },
+        )),
+        PowAlgorithm::Hashwx => Box::new(rilgate_pow_hashwx::HashWxAlgorithm::new(&self.hashwx)?),
+        _ => unreachable!(),
+      };
+      backend
+        .validate_difficulty(fallback.difficulty)
+        .map_err(|error| anyhow::anyhow!("pow.algorithms.randomx.fallback.difficulty: {error}"))?;
+    }
     ensure!(
       self.default_algorithm != crate::PowAlgorithm::Refresh,
       "pow.default_algorithm: refresh needs an explicit difficulty, so select it in a policy rule"
