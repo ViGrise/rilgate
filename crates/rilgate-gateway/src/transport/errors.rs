@@ -7,6 +7,9 @@ pub use rilgate_core::error::{CapacityExceeded, PowBackendUnavailable};
 
 #[derive(Error, Debug)]
 pub enum ApiError {
+  #[error("All Stratum pools are unavailable")]
+  WorkUnavailable,
+
   #[error("Invalid request: {0}")]
   InvalidRequest(String),
 
@@ -40,7 +43,21 @@ struct ApiErrorResponse {
 
 impl ApiError {
   pub fn into_response(self) -> Response {
+    if matches!(self, Self::WorkUnavailable) {
+      let mut response = json(
+        StatusCode::SERVICE_UNAVAILABLE,
+        &serde_json::json!({"code": "work_unavailable"}),
+      );
+      response
+        .headers_mut()
+        .insert(http::header::RETRY_AFTER, "1".parse().unwrap());
+      response
+        .headers_mut()
+        .insert(http::header::CACHE_CONTROL, "no-store".parse().unwrap());
+      return response;
+    }
     let status = match self {
+      Self::WorkUnavailable => StatusCode::SERVICE_UNAVAILABLE,
       Self::InvalidRequest(_) => StatusCode::BAD_REQUEST,
       Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
       Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
@@ -82,7 +99,9 @@ impl ApiError {
 
 impl ApiError {
   pub fn proof(error: anyhow::Error) -> Self {
-    if error.is::<CapacityExceeded>() || error.is::<PowBackendUnavailable>() {
+    if error.is::<rilgate_pow::WorkUnavailable>() {
+      Self::WorkUnavailable
+    } else if error.is::<CapacityExceeded>() || error.is::<PowBackendUnavailable>() {
       Self::ServiceUnavailable(error.to_string())
     } else {
       Self::Unauthorized(error.to_string())

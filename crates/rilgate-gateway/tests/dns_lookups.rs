@@ -62,6 +62,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
   let (service, pool) = gateway::services(&cfg).unwrap();
   let web = rilgate_web::WebManager::new(cfg.web.clone()).unwrap();
   let state = AppState {
+    randomx_fallback_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),
     probes: Arc::new(tokio::sync::Semaphore::new(1)),

@@ -92,6 +92,7 @@ pub struct Algorithms {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RandomX {
+  pub fallback: Option<Fallback>,
   pub challenge_ttl: Time,
   pub nonce_offset: usize,
   pub verifier_queue: usize,
@@ -104,6 +105,7 @@ pub struct RandomX {
 impl Default for RandomX {
   fn default() -> Self {
     Self {
+      fallback: None,
       challenge_ttl: Time::seconds(3600),
       nonce_offset: 39,
       verifier_queue: 8,
@@ -387,4 +389,11 @@ impl Default for HashWxDifficulty {
       max: 5000000,
     }
   }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fallback {
+  pub algorithm: String,
+  pub difficulty: u64,
 }

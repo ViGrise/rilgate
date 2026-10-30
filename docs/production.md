@@ -190,8 +190,11 @@ The following routes are relative to `site.base_path`:
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/api/live`    | The process can serve HTTP requests                                                                                                                                                                                                                                      |
 | `/api/health`  | Existing web diagnostics and cumulative pool failures                                                                                                                                                                                                                    |
-| `/api/ready`   | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS. Returns 503 when unavailable or during drain |
+| `/api/ready`   | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS, unless a RandomX fallback is configured. Returns 503 when unavailable or during drain |
 | `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true`                                                                                                                                                                                                  |
+
+With a configured RandomX fallback, pool readiness does not affect `/api/ready`.
+The response still includes `pool` and `pools`. See [RandomX fallback](pow.md#when-every-pool-is-unavailable).
 
 Readiness probes have a positive timeout up to 30s (default 2s). They probe dependencies
 concurrently. Only one probe runs at a time per instance.
@@ -232,6 +235,9 @@ Concurrent gauges and histograms are snapshots. Use `RILGATE_LOG_FORMAT=json` fo
 `deploy/monitoring/` contains a Prometheus scrape example and initial alerts. Tune thresholds
 for the workload. Monitor readiness externally in addition to metrics.
 Exercise alerts during staging failure tests.
+
+`rilgate_pow_fallback_total{from="randomx",to="<fallback id>"}` counts each fallback
+challenge page or JSON challenge response served by the gate.
 
 ## Key rotation and token lifetime
 

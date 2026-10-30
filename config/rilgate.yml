@@ -588,6 +588,11 @@ server:
         #
         # module: /static/js/solvers/randomx/solver.js
 
+      # Optional fallback while every pool is in its failure cooldown.
+      # Both fields are required. Requires local_verify and an enabled algorithm.
+      # fallback:
+        # algorithm: fast
+        # difficulty: 4
 
   # Omitted by default. Required whenever RandomX jobs or pool acceptance are
   # selected. Merely adding this section does not switch the policy to RandomX.

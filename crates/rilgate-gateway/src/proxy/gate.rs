@@ -18,6 +18,7 @@ struct DecisionContext<'a> {
   request_id: &'a str,
   request: &'a Request<'a>,
   action: PolicyAction,
+  fallback: bool,
 }
 
 fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: DecisionContext<'_>) {
@@ -50,6 +51,7 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: Decision
     algorithm = ?decision.algorithm,
     difficulty = ?decision.difficulty,
     unresolved = decision.unresolved,
+    fallback = context.fallback,
     "Policy decision"
   );
 }
@@ -127,6 +129,16 @@ pub async fn gate_with_client(
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 
+  let mut effective = decision.clone();
+  if decision.algorithm == Some(PowAlgorithm::RandomX)
+    && let Some(fallback) = &state.cfg.pow.randomx_fallback
+    && !state.pool.work_available()
+  {
+    effective.algorithm = Some(fallback.algorithm);
+    effective.difficulty = Some(fallback.difficulty);
+  }
+  let fallback =
+    effective.algorithm != decision.algorithm || effective.difficulty != decision.difficulty;
   let log = |action| {
     log_decision(
       state.cfg.server.decision_log,
@@ -135,6 +147,7 @@ pub async fn gate_with_client(
         request_id,
         request: &request,
         action,
+        fallback,
       },
     )
   };
@@ -200,6 +213,13 @@ pub async fn gate_with_client(
       },
     )
     .is_some_and(|claims| {
+      if fallback
+        && claims.enforce == state.pow.enforcement()
+        && Some(claims.algorithm) == effective.algorithm
+        && claims.difficulty >= effective.difficulty.expect("challenge difficulty resolved")
+      {
+        return true;
+      }
       let required = decision.algorithm.expect("challenge algorithm resolved");
       claims.enforce == state.pow.enforcement()
         && match (required, claims.algorithm) {
@@ -219,7 +239,7 @@ pub async fn gate_with_client(
   if json || method == Method::GET || method == Method::HEAD {
     let presentation = state
       .pow
-      .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &decision)
+      .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &effective)
       .map_err(ApiError::Internal)?;
 
     let challenge_url =
@@ -266,6 +286,20 @@ pub async fn gate_with_client(
           .parse()
           .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?,
       );
+    }
+    if decision.algorithm == Some(PowAlgorithm::RandomX) {
+      use std::sync::atomic::Ordering;
+      let previous = state
+        .randomx_fallback_active
+        .swap(fallback, Ordering::Relaxed);
+      if fallback {
+        state.metrics.pow_fallback.fetch_add(1, Ordering::Relaxed);
+        if !previous {
+          tracing::warn!("RandomX work is unavailable; serving the fallback challenge");
+        }
+      } else if previous {
+        tracing::info!("RandomX work is available again");
+      }
     }
     log(PolicyAction::Challenge);
     return Ok(Some(out));

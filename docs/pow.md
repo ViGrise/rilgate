@@ -136,6 +136,41 @@ accepts the share.
 `fast` and `hashwx` support local verification. Policies that select either with `stratum_pool_accepted`
 are rejected. Pool-accepted deployments must select RandomX.
 
+### When every pool is unavailable
+
+`pow.algorithms.randomx.fallback` is optional and absent by default. With
+`pow.verification: local_verify`, configure both fields to serve another challenge
+while every Stratum pool is in its failure cooldown:
+
+```yaml
+pow:
+  algorithms:
+    randomx:
+      fallback:
+        algorithm: fast
+        difficulty: 4
+```
+
+The algorithm must be `fast` or an enabled `hashwx`. Its backend validates the
+difficulty. Both flags or environment variables must be supplied together:
+`--pow-algorithms-randomx-fallback-algorithm` /
+`RILGATE_POW_ALGORITHMS_RANDOMX_FALLBACK_ALGORITHM` and
+`--pow-algorithms-randomx-fallback-difficulty` /
+`RILGATE_POW_ALGORITHMS_RANDOMX_FALLBACK_DIFFICULTY`.
+
+The gate selects the solver before rendering the page or JSON challenge response.
+A cookie satisfying the RandomX policy still passes during an outage. A fallback
+cookie passes only while fallback is active, with the same enforcement, host and
+binding checks and at least the configured fallback difficulty. When a pool becomes
+eligible again, that cookie receives a RandomX challenge.
+
+A RandomX page rendered just before failure can receive HTTP 503 with
+`{"code":"work_unavailable"}`, `Retry-After: 1` and `Cache-Control: no-store`
+from `/api/challenge`. The adapter reloads once per page URL to select the fallback.
+A second failure on that URL shows the existing error. A successful challenge clears
+the reload guard. Without the setting, pages remain RandomX and issuance returns
+that 503 while pools cannot supply work.
+
 ### Pool selection
 
 Configure a pool list with ordered backups. A pooled job session stays on the

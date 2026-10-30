@@ -284,6 +284,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
     let pool = Arc::new(rilgate_pool::StratumPoolProvider::new(cfg.stratum_pool.clone()).unwrap());
     let web = rilgate_web::WebManager::new(config.web.clone()).unwrap();
     let state = AppState {
+      randomx_fallback_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
       connections: Arc::new(tokio::sync::Semaphore::new(config.server.max_connections)),
       requests: Arc::new(tokio::sync::Semaphore::new(config.server.max_requests)),
       probes: Arc::new(tokio::sync::Semaphore::new(1)),

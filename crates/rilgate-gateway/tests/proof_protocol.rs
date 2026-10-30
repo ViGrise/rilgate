@@ -312,7 +312,7 @@ async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
     .issue_challenge(&presentation, "example.test")
     .await
     .unwrap_err();
-  assert!(error.is::<rilgate_gateway::transport::errors::PowBackendUnavailable>());
+  assert!(error.is::<rilgate_pow::WorkUnavailable>());
 }
 
 #[test]

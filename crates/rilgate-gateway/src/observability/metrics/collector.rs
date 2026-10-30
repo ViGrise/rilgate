@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub struct Metrics {
+  pub pow_fallback: AtomicU64,
   requests: [AtomicU64; 6],
   open_graph: [AtomicU64; 6],
   duration: [AtomicU64; 8],

@@ -48,6 +48,16 @@ impl Connections {
     })
   }
 
+  pub fn work_available(&self) -> bool {
+    let states = self.states.lock().unwrap_or_else(|e| e.into_inner());
+    states.is_empty()
+      || states.iter().any(|state| {
+        state
+          .failed_at
+          .is_none_or(|time| time.elapsed() >= self.config.cooldown)
+      })
+  }
+
   fn order(&self) -> Vec<usize> {
     let states = self.states.lock().unwrap_or_else(|e| e.into_inner());
     let eligible: Vec<_> = states
@@ -180,7 +190,7 @@ impl Connections {
         }
       }
     }
-    Err(anyhow!("All Stratum pools are unavailable"))
+    Err(super::AllPoolsUnavailable.into())
   }
 
   pub async fn readiness(&self, timeout: Duration) -> Vec<(String, bool)> {
@@ -334,6 +344,26 @@ mod tests {
       }
     });
     (port, task)
+  }
+
+  #[tokio::test(start_paused = true)]
+  async fn work_availability_tracks_failures_cooldown_and_reconnection() {
+    let connections = Connections::new(config(1)).unwrap();
+    assert!(connections.work_available());
+    for state in connections.states.lock().unwrap().iter_mut() {
+      state.failed_at = Some(Instant::now());
+    }
+    assert!(!connections.work_available());
+    tokio::time::advance(Duration::from_secs(30)).await;
+    assert!(connections.work_available());
+    for state in connections.states.lock().unwrap().iter_mut() {
+      state.failed_at = Some(Instant::now());
+    }
+    connections.states.lock().unwrap()[0].failed_at = None;
+    assert!(connections.work_available());
+    let mut empty = config(1);
+    empty.pools.clear();
+    assert!(Connections::new(empty).unwrap().work_available());
   }
 
   #[tokio::test]

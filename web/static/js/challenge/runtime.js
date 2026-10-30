@@ -35,7 +35,10 @@
       const retry = code === 429 && isFinite(retryAfter) && retryAfter > 0
         ? t("challenge.retry_after", " Try again in {seconds} seconds.", { seconds: Math.ceil(retryAfter) })
         : "";
-      throw new Error((body?.message || `HTTP ${code}`) + retry);
+      const error = new Error((body?.message || `HTTP ${code}`) + retry);
+      error.status = code;
+      error.code = body?.code;
+      throw error;
     }
     return body;
   }

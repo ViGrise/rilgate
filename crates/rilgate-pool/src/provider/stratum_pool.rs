@@ -24,6 +24,7 @@ use tokio::{
 struct SessionUsage {
   last_requested: Instant,
   active: bool,
+  work_unavailable: bool,
 }
 
 struct SessionLifetime(Arc<Mutex<SessionUsage>>);
@@ -66,6 +67,14 @@ impl PooledSession {
   async fn current_job(mut self) -> Result<StratumJob> {
     loop {
       if self.is_closed() {
+        if self
+          .usage
+          .lock()
+          .unwrap_or_else(|error| error.into_inner())
+          .work_unavailable
+        {
+          return Err(super::AllPoolsUnavailable.into());
+        }
         return Err(anyhow::anyhow!(
           "pooled Stratum pool session is no longer running"
         ));
@@ -73,11 +82,7 @@ impl PooledSession {
       if let Some(job) = self.jobs.borrow_and_update().clone() {
         return Ok(job);
       }
-      self
-        .jobs
-        .changed()
-        .await
-        .map_err(|_| anyhow::anyhow!("pooled Stratum pool session did not initialize"))?;
+      let _ = self.jobs.changed().await;
     }
   }
 }
@@ -118,6 +123,10 @@ impl StratumPoolProvider {
 
   pub async fn readiness(&self, timeout: Duration) -> Vec<(String, bool)> {
     self.connections.readiness(timeout).await
+  }
+
+  pub fn work_available(&self) -> bool {
+    self.connections.work_available()
   }
 
   pub fn connection_metrics(&self) -> String {
@@ -165,6 +174,7 @@ impl StratumPoolProvider {
     let usage = Arc::new(Mutex::new(SessionUsage {
       last_requested: Instant::now(),
       active: true,
+      work_unavailable: false,
     }));
     let session = PooledSession {
       jobs: receiver,
@@ -244,6 +254,11 @@ async fn run_session(
   let mut session = match connected {
     Ok(session) => session,
     Err(error) => {
+      lifetime
+        .0
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .work_unavailable = error.is::<super::AllPoolsUnavailable>();
       tracing::debug!(?error, "Unable to open pooled Stratum pool session");
       return;
     }
@@ -295,7 +310,11 @@ impl WorkProvider for StratumPoolProvider {
     Box::pin(async move {
       self.job(difficulty).await.map_err(|error| {
         self.record_failure(&error);
-        PowBackendUnavailable.into()
+        if error.is::<super::AllPoolsUnavailable>() {
+          super::AllPoolsUnavailable.into()
+        } else {
+          PowBackendUnavailable.into()
+        }
       })
     })
   }

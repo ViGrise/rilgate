@@ -3307,6 +3307,7 @@ dependencies = [
  "rilgate-policy",
  "rilgate-pool",
  "rilgate-pow",
+ "rilgate-pow-hash",
  "rilgate-pow-hashwx",
  "rilgate-pow-randomx",
  "rilgate-protocol",
