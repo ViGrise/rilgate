@@ -14,10 +14,10 @@ async function request(path, data) {
   return response;
 }
 const html = await (await request('/protected')).text();
-const match = html.match(/window\.POW_PRESENTATION_TOKEN = ("[^"\n]+");/);
+const match = html.match(/<script type="application\/json" id="pow-bootstrap">([\s\S]*?)<\/script>/);
 if (!match) throw new Error('Missing production presentation token');
 const api = '/.well-known/rilgate/api';
-const work = await (await request(`${api}/challenge`, { presentation_token: JSON.parse(match[1]) })).json();
+const work = await (await request(`${api}/challenge`, { presentation_token: JSON.parse(match[1]).presentation_token })).json();
 if (work.algorithm !== 'fast' || work.difficulty !== 2) throw new Error('Production smoke requires Fast difficulty 2');
 let nonce;
 const deadline = Date.now() + 30_000;

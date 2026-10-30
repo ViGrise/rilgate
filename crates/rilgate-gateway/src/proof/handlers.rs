@@ -172,13 +172,14 @@ pub fn refresh(
       Ok(out)
     }
     RefreshRedemption::Wait { seconds } => {
-      let (html, locale) =
+      let (html, locale, policy) =
         crate::web::pages::render_refresh_page(state, &token, seconds, headers, uri);
       Ok(crate::proxy::gate::page_response(
         state.cfg.web.responses.challenge_status,
         html,
         locale,
         head,
+        policy,
       ))
     }
   }

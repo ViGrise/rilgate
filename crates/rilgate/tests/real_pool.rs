@@ -56,15 +56,18 @@ async fn real_pool_challenge_and_upstream() -> Result<()> {
   let response = client.get(format!("{base}{path}")).send().await?;
   println!("GET {path}: {}", response.status());
   let html = response.text().await?;
-  let token: String = serde_json::from_str(
+  let bootstrap: Value = serde_json::from_str(
     html
-      .split("window.POW_PRESENTATION_TOKEN = ")
+      .split("id=\"pow-bootstrap\">")
       .nth(1)
       .context("presentation token in challenge page")?
-      .split(';')
+      .split("</script>")
       .next()
       .unwrap(),
   )?;
+  let token = bootstrap["presentation_token"]
+    .as_str()
+    .context("presentation token in bootstrap")?;
   let config: Value = serde_json::from_slice(
     &client
       .get(format!("{base}{prefix}/api/client-config"))

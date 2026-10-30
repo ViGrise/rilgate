@@ -654,10 +654,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
       .unwrap();
     let html =
       String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
-    assert!(
-      html.contains("window.POW_ALGORITHM = \"randomx\""),
-      "{html}"
-    );
+    assert!(html.contains("\"algorithm\":\"randomx\""), "{html}");
     let page = router
       .clone()
       .oneshot(
@@ -715,7 +712,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
       String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
     let algorithm = if fallback { "fast" } else { "randomx" };
     assert!(
-      html.contains(&format!("window.POW_ALGORITHM = \"{algorithm}\"")),
+      html.contains(&format!("\"algorithm\":\"{algorithm}\"")),
       "{html}"
     );
     let page = router
@@ -799,7 +796,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
         .to_vec(),
     )
     .unwrap();
-    assert!(html.contains("window.POW_ALGORITHM = \"randomx\""));
+    assert!(html.contains("\"algorithm\":\"randomx\""));
     let metrics = client
       .get(format!(
         "http://{}/.well-known/test-pow/api/metrics",

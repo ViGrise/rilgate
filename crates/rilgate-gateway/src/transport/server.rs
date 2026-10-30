@@ -924,7 +924,7 @@ impl ProxyHttp for Handler {
           status,
           StatusCode::BAD_GATEWAY | StatusCode::GATEWAY_TIMEOUT
         ) {
-        let (html, locale) = render_page(
+        let (html, locale, policy) = render_page(
           &self.state,
           "pages/error.html.jinja",
           "",
@@ -937,6 +937,7 @@ impl ProxyHttp for Handler {
           html,
           locale,
           session.req_header().method == Method::HEAD,
+          policy,
         )
       } else if status == StatusCode::REQUEST_TIMEOUT {
         response(status, "")

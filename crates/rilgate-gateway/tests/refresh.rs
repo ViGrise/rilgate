@@ -103,7 +103,7 @@ fn cookie_pair(response: &reqwest::Response) -> String {
 }
 
 #[tokio::test]
-async fn refresh_page_has_a_meta_refresh_and_no_script() {
+async fn refresh_page_has_a_meta_refresh_without_the_challenge_bundle() {
   let fixture = fixture(503, 1).await;
   let response = fixture.get("/protected", "example.test", None).await;
   assert_eq!(response.status(), 503);
@@ -116,7 +116,8 @@ async fn refresh_page_has_a_meta_refresh_and_no_script() {
     body.contains("api&#x2f;refresh?presentation_token="),
     "{body}"
   );
-  assert!(!body.contains("<script"), "{body}");
+  assert!(!body.contains("challenge.bundle.js"), "{body}");
+  assert!(!body.contains("pow-bootstrap"), "{body}");
 }
 
 #[tokio::test]

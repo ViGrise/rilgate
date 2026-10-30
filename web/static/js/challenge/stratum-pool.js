@@ -1,7 +1,7 @@
 (() => {
-  const { t, status, endpoint, exchange, progressEl, once } = window.PowClient;
+  const { state, endpoint, exchange, progressEl, once } = window.PowClient;
   async function stratumPoolAccepted(solver) {
-    status(t("challenge.status.connecting", "Connecting to the mining pool proof-of-work service…"));
+    state("pool");
 
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const presentation = encodeURIComponent(window.POW_PRESENTATION_TOKEN);
@@ -34,10 +34,8 @@
             if (message.type === "job") {
               const myGeneration = ++generation;
 
-              status(
-                t("challenge.status.difficulty", "Calculating {algorithm} proof (difficulty {difficulty})…", { algorithm: "RandomX", difficulty: message.difficulty }),
-              );
-              progressEl.removeAttribute("value");
+              state("initializing");
+              if (progressEl) progressEl.removeAttribute("value");
 
               const solution = await window.PowClient.solveRandomX(
                 solver,
@@ -55,7 +53,7 @@
                 result: solution.result,
               }));
 
-              status(t("challenge.status.submitted", "Proof submitted; waiting for mining pool acceptance…"));
+              state("pool");
               return;
             }
 
@@ -68,9 +66,7 @@
             }
 
             if (message.type === "rejected") {
-              status(
-                t("challenge.status.rejected", "The mining pool rejected the proof: {reason}\nWaiting for another job…", { reason: message.reason }),
-              );
+              state("pool");
               return;
             }
 

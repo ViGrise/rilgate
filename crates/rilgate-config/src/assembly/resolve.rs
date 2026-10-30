@@ -165,6 +165,7 @@ impl Document {
         website_url: site.url.clone(),
         base_path: site.base_path.clone(),
         stylesheet_path: site.stylesheet.clone(),
+        content_security_policy: site.content_security_policy.clone(),
         root: site.resources.directory.clone(),
         seed: rilgate_web::config::SeedConfig {
           empty_directory: matches!(site.resources.seed, Seed::IfEmpty),

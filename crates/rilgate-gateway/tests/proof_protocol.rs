@@ -483,7 +483,7 @@ async fn http2_exchange_and_proxy_preserve_host_scope() {
     if expected == "upstream" {
       assert_eq!(body, "upstream");
     } else {
-      assert!(body.contains("POW_PRESENTATION_TOKEN"));
+      assert!(body.contains("pow-bootstrap"));
     }
   }
   server.abort();

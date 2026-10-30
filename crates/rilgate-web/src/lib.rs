@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod config;
+pub mod csp;
 pub mod i18n;
 pub mod management;
 pub mod resources;

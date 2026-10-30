@@ -1,0 +1,16 @@
+{% set dialogs = namespace(rendered=false) %}
+{% for id in ["privacy", "terms"] %}
+  {% set prefix = "legal." ~ id %}
+  {% if has_t(prefix ~ ".label") %}
+    · {% if has_t(prefix ~ ".url") %}<a href="{{ t(prefix ~ '.url') }}" rel="noopener noreferrer">{{ t(prefix ~ ".label") }}</a>
+    {% else %}<button type="button" data-dialog="{{ id }}">{{ t(prefix ~ ".label") }}</button>
+    {% set dialogs.rendered = true %}
+    <dialog id="{{ id }}" aria-labelledby="{{ id }}-heading">
+      <h2 id="{{ id }}-heading">{{ t(prefix ~ ".title") }}</h2>
+      {% for paragraph in t(prefix ~ ".body") | split("\n\n") %}<p>{{ paragraph }}</p>{% endfor %}
+      <form method="dialog"><button>{{ t("common.close") }}</button></form>
+    </dialog>
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{% if dialogs.rendered %}<script defer src="{{ rilgate.static_url }}/js/page.js"></script>{% endif %}

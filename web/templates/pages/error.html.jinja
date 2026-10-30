@@ -1,4 +1,10 @@
 {% extends "layouts/base.html.jinja" %}
 {% block content %}
-<main><h1>{{ t("error.title") }}</h1><p>{{ t("error.description") }}</p><button type="button" onclick="location.reload()">{{ t("common.retry") }}</button></main>
+<main>
+  <h1 id="title">{{ t("error.title") }}</h1>
+  <p id="description">{{ t("error.description") }}</p>
+  <p id="status" role="status">{{ t("error.status") }}</p>
+  <div class="actions"><button type="button" data-action="reload">{{ t("common.retry") }}</button></div>
+</main>
+<script defer src="{{ rilgate.static_url }}/js/page.js"></script>
 {% endblock %}

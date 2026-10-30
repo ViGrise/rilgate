@@ -166,13 +166,14 @@ pub async fn gate_with_client(
       } else {
         "pages/denied.html.jinja"
       };
-      let (html, locale) = render_page(state, template, "", "fast", headers, uri);
+      let (html, locale, policy) = render_page(state, template, "", "fast", headers, uri);
       return Ok(Some(formatted_response(
         state.cfg.web.responses.deny_status,
         html,
         locale,
         method == Method::HEAD,
         json,
+        policy,
       )));
     }
 
@@ -253,7 +254,7 @@ pub async fn gate_with_client(
     } else {
       Vec::new()
     };
-    let (html, locale) = if refresh && !json {
+    let (html, locale, policy) = if refresh && !json {
       render_refresh_page(
         state,
         &presentation.token,
@@ -275,6 +276,7 @@ pub async fn gate_with_client(
       locale,
       method == Method::HEAD,
       json,
+      policy,
     );
     if json {
       out
@@ -317,8 +319,9 @@ pub(crate) fn page_response(
   html: String,
   locale: String,
   head: bool,
+  policy: Option<String>,
 ) -> Response {
-  formatted_response(status, html, locale, head, false)
+  formatted_response(status, html, locale, head, false, policy)
 }
 
 fn formatted_response(
@@ -327,6 +330,7 @@ fn formatted_response(
   locale: String,
   head: bool,
   json: bool,
+  policy: Option<String>,
 ) -> Response {
   let mut out = response(status, if head { String::new() } else { body });
   let headers = out.headers_mut();
@@ -340,6 +344,12 @@ fn formatted_response(
     .parse()
     .unwrap(),
   );
+  if !json && let Some(policy) = policy {
+    headers.insert(
+      "content-security-policy",
+      policy.parse().expect("Validated page policy"),
+    );
+  }
   headers.insert(CACHE_CONTROL, "no-store".parse().unwrap());
   headers.insert(
     http::header::VARY,

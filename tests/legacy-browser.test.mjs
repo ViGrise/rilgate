@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+const english = JSON.parse(readFileSync(new URL("../web/i18n/en.json", import.meta.url), "utf8"));
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -85,12 +87,17 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? '
   let reloads = 0;
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
-      hidden: true, textContent: '', removeAttribute() {},
+      style: {}, hidden: true, textContent: '', removeAttribute() {},
       addEventListener(type, handler) { this[type] = handler; },
       removeEventListener(type) { delete this[type]; },
     });
     return elements.get(id);
   }
+  element("#pow-i18n").textContent = JSON.stringify(english);
+  element("#pow-bootstrap").textContent = JSON.stringify({
+    algorithm, internal_prefix: '/gate', presentation_token: 'presentation', embedded: false,
+    solver_module_url: '/gate/static/js/solvers/randomx/solver.js',
+  });
   class XMLHttpRequest {
     headers = {};
     open(method, url) { this.method = method; this.url = url; }
@@ -108,8 +115,6 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? '
   const context = vm.createContext({
     Promise: undefined, Worker: undefined, TextEncoder: undefined, fetch: undefined,
     AbortController: undefined, AbortSignal: undefined, XMLHttpRequest, setTimeout, clearTimeout,
-    POW_ALGORITHM: algorithm, POW_INTERNAL_PREFIX: '/gate', POW_PRESENTATION_TOKEN: 'presentation',
-    POW_SOLVER_MODULE_URL: '/gate/static/js/solvers/randomx/solver.js',
     addEventListener() {}, removeEventListener() {},
     location: { reload() { reloads++; } },
     document: { querySelector: element,
@@ -122,15 +127,15 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? '
     context.Worker = function () { assert.fail('incapable RandomX must not create a worker'); };
     context.WebAssembly = randomx === 'unsupported' ? undefined : WebAssembly;
     element('#pow-i18n').textContent = JSON.stringify({
+      ...english,
       'challenge.randomx_unsupported': 'Localized RandomX requirements',
-      'challenge.failed': 'Localized failure: {message}',
     });
   }
   if (algorithm === 'hashwx') {
     context.WebAssembly = undefined;
     element('#pow-i18n').textContent = JSON.stringify({
+      ...english,
       'challenge.hashwx_unsupported': 'Localized HashWX requirements',
-      'challenge.failed': 'Localized failure: {message}',
     });
   }
   vm.runInContext('Object.hasOwn = undefined; Number.isFinite = undefined; Number.isInteger = undefined; Map = undefined; Symbol = undefined; Iterator = undefined; URL = undefined; Object.assign = undefined; Array.prototype.includes = undefined; String.prototype.startsWith = undefined;', context);
@@ -154,8 +159,8 @@ test('fast page completes over XHR with Promise, workers, TextEncoder and modern
 
 test('XHR errors retain Retry-After handling and expose retry controls', async () => {
   const state = legacyPage(429);
-  await until(() => state.elements.get('#retry')?.hidden === false);
-  assert.match(state.elements.get('#status').textContent, /HTTP 429.*Try again in 7 seconds/);
+  await until(() => state.elements.get('#status')?.textContent.includes('Try again in 7 seconds'));
+  assert.equal(state.elements.get('#retry').hidden, true);
   assert.equal(state.reloads(), 0);
 });
 
@@ -165,8 +170,8 @@ test('RandomX without WebAssembly fails after consent through localized retry co
   await until(() => state.elements.get('#randomx-start')?.hidden === false);
   assert.equal(state.errors.length, 0);
   state.elements.get('#randomx-start').click();
-  await until(() => state.elements.get('#retry')?.hidden === false);
-  assert.equal(state.elements.get('#status').textContent, 'Localized failure: Localized RandomX requirements');
+  await until(() => state.elements.get('#status')?.textContent === english['challenge.state.unsupported.status']);
+  assert.equal(state.elements.get('#retry').hidden, true);
   assert.equal(state.requests.length, 1);
   assert.equal(state.reloads(), 0);
 });
@@ -176,7 +181,7 @@ test('RandomX module load failures reach retry controls without requesting fast 
   await until(() => state.elements.get('#randomx-start')?.hidden === false);
   state.elements.get('#randomx-start').click();
   await until(() => state.elements.get('#retry')?.hidden === false);
-  assert.match(state.elements.get('#status').textContent, /Localized failure: Solver module failed to load/);
+  assert.equal(state.elements.get('#status').textContent, english['challenge.state.failed.status']);
   assert.equal(state.requests.length, 1);
   assert.equal(state.reloads(), 0);
 });
@@ -196,8 +201,8 @@ test('standalone generated fast worker solves with no TextEncoder or Promise', a
 
 test('HashWX capability failure uses localized retry controls without requesting other work', async () => {
   const state = legacyPage(200, null, 'hashwx');
-  await until(() => state.elements.get('#retry')?.hidden === false);
-  assert.equal(state.elements.get('#status').textContent, 'Localized failure: Localized HashWX requirements');
+  await until(() => state.elements.get('#status')?.textContent === english['challenge.state.unsupported.status']);
+  assert.equal(state.elements.get('#retry').hidden, true);
   assert.equal(state.requests.length, 1);
   assert.equal(state.reloads(), 0);
 });

@@ -16,11 +16,11 @@ async function request(path, data) {
 }
 
 const html = await (await request('/protected')).text();
-const match = html.match(/window\.POW_PRESENTATION_TOKEN = ("[^"\n]+");/);
+const match = html.match(/<script type="application\/json" id="pow-bootstrap">([\s\S]*?)<\/script>/);
 if (!match) throw new Error('Missing presentation token');
 const prefix = '/.well-known/rilgate/api';
 const challenge = await (await request(`${prefix}/challenge`, {
-  presentation_token: JSON.parse(match[1]),
+  presentation_token: JSON.parse(match[1]).presentation_token,
 })).json();
 if (challenge.algorithm !== 'fast' || challenge.difficulty !== 1) {
   throw new Error('Performance lab requires Fast difficulty 1');

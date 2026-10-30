@@ -31,6 +31,7 @@ const NOTICE: &str = include_str!("web-notice.txt");
 pub fn build(root: &Path) -> Result<()> {
   let directory = root.join("crates/rilgate-web/generated");
   let compiler = Compiler::new(Lrc::<SourceMap>::default());
+  validate_es5(&fs::read_to_string(root.join("web/static/js/page.js"))?)?;
   let mut outputs = BTreeMap::new();
   let mut entries = Vec::new();
   let mut bundle = String::new();

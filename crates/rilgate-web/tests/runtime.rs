@@ -25,7 +25,7 @@ fn public(snapshot: &WebSnapshot) -> TemplateContext {
     rilgate: snapshot.public.clone(),
     page: PageInfo {
       open_graph: Vec::new(),
-      title: "Checking your browser".into(),
+      title: "Just a moment".into(),
       description: String::new(),
     },
     challenge: PublicChallengeInfo {
@@ -117,17 +117,17 @@ fn partial_translations_overlay_keys_and_fall_back_through_parent_and_default_lo
   write(
     root.path(),
     "i18n/en.json",
-    r#"{"challenge.description":"Custom English"}"#,
+    r#"{"challenge.state.preparing.description":"Custom English"}"#,
   );
   write(
     root.path(),
     "i18n/vi.json",
-    r#"{"challenge.title":"Kiểm tra", "challenge.explanation":"Xin chào {name}"}"#,
+    r#"{"challenge.state.preparing.title":"Kiểm tra", "challenge.details.body":"Xin chào Rilgate"}"#,
   );
   write(
     root.path(),
     "i18n/vi-VN.json",
-    r#"{"challenge.status.preparing":"Đang chuẩn bị"}"#,
+    r#"{"challenge.state.preparing.status":"Đang chuẩn bị"}"#,
   );
   let mut config = config(root.path());
   config.i18n.supported_locales = ["en".into(), "vi".into(), "vi-VN".into()].to_vec();
@@ -206,7 +206,7 @@ fn templates_escape_public_data_translations_and_script_json() {
   write(
     root.path(),
     "i18n/en.json",
-    r#"{"challenge.title":"<img src=x onerror=alert(1)>", "challenge.status.preparing":"</script><script>alert(1)</script>"}"#,
+    r#"{"challenge.state.preparing.title":"<img src=x onerror=alert(1)>", "challenge.state.preparing.status":"</script><script>alert(1)</script>"}"#,
   );
   let mut config = config(root.path());
   config.name = "<Acme & Co> __INTERNAL_PREFIX__".into();
@@ -230,7 +230,7 @@ fn invalid_edits_leave_the_previous_generation_and_held_snapshots_intact() {
   write(
     root.path(),
     "templates/pages/challenge.html.jinja",
-    "First {{ t('challenge.title') }}",
+    "First {{ t('challenge.state.preparing.title') }}",
   );
   let manager = WebManager::new(config(root.path())).unwrap();
   let first = manager.current();
@@ -245,7 +245,7 @@ fn invalid_edits_leave_the_previous_generation_and_held_snapshots_intact() {
   write(
     root.path(),
     "templates/pages/challenge.html.jinja",
-    "Second {{ t('challenge.title') }}",
+    "Second {{ t('challenge.state.preparing.title') }}",
   );
   manager.reload().unwrap();
   assert_eq!(manager.current().generation, first.generation + 1);
@@ -268,7 +268,7 @@ fn startup_errors_fall_back_but_validation_reports_them() {
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_err());
   assert!(rilgate_web::management::validate(&config(root.path()), root.path()).is_err());
   let manager = WebManager::new(config(root.path())).unwrap();
-  assert!(render(&manager.current(), "en").contains("Checking your browser"));
+  assert!(render(&manager.current(), "en").contains("Just a moment"));
   assert!(
     manager
       .diagnostics()
@@ -358,7 +358,7 @@ fn static_overrides_have_immutable_bytes_and_matching_cache_metadata() {
   );
   fs::remove_dir_all(root.path()).unwrap();
   assert_eq!(first.assets["images/logo.svg"].bytes().unwrap(), b"first");
-  assert!(render(&second, "en").contains("Checking your browser"));
+  assert!(render(&second, "en").contains("Just a moment"));
 }
 
 #[test]
@@ -474,7 +474,7 @@ fn validation_checks_both_fast_and_randomx_template_branches() {
   write(
     root.path(),
     "templates/pages/challenge.html.jinja",
-    "{% if challenge.difficulty >= 1000 %}{{ t('challenge.expires_in', seconds=challenge.expires_in) }}{% endif %}",
+    "{% if challenge.difficulty >= 1000 %}{{ t('refresh.waiting', seconds=challenge.expires_in) }}{% endif %}",
   );
   assert!(WebSnapshot::build(&config(root.path()), 1, true).is_ok());
 }
@@ -512,7 +512,7 @@ fn cached_challenge_shell_preserves_locales_and_isolates_bootstrap_data() {
   write(
     root.path(),
     "i18n/vi.json",
-    r#"{"challenge.title":"Kiểm tra"}"#,
+    r#"{"challenge.state.preparing.title":"Kiểm tra"}"#,
   );
   let snapshot = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
   for locale in ["en", "vi"] {
@@ -539,13 +539,16 @@ fn cached_challenge_shell_preserves_locales_and_isolates_bootstrap_data() {
       assert!(!cached.contains("</script><script>alert("));
       assert!(!cached.contains("data-rilgate-bootstrap"));
       let json = cached
-        .split("window.POW_PRESENTATION_TOKEN = ")
+        .split("id=\"pow-bootstrap\">")
         .nth(1)
         .unwrap()
-        .split(';')
+        .split("</script>")
         .next()
         .unwrap();
-      assert_eq!(serde_json::from_str::<String>(json).unwrap(), token);
+      assert_eq!(
+        serde_json::from_str::<serde_json::Value>(json).unwrap()["presentation_token"],
+        token
+      );
     }
     let fresh = snapshot
       .render_challenge(
@@ -565,8 +568,13 @@ fn customized_templates_keep_dynamic_challenge_branches() {
   let root = tempfile::tempdir().unwrap();
   write(
     root.path(),
-    "templates/partials/pow-info.html.jinja",
+    "templates/partials/operator-info.html.jinja",
     "{% if challenge.difficulty >= 1000 %}RX {{ challenge.expires_in }}{% else %}FAST{% endif %}",
+  );
+  write(
+    root.path(),
+    "templates/pages/challenge.html.jinja",
+    "{% include 'partials/operator-info.html.jinja' %}",
   );
   let snapshot = WebSnapshot::build(&config(root.path()), 1, true).unwrap();
   let mut challenge = public(&snapshot).challenge;
@@ -595,7 +603,7 @@ fn challenge_shells_and_i18n_json_follow_snapshot_generations() {
   write(
     root.path(),
     "i18n/en.json",
-    r#"{"challenge.title":"New title", "challenge.status.preparing":"New status </script>"}"#,
+    r#"{"challenge.state.preparing.title":"New title", "challenge.state.preparing.status":"New status </script>"}"#,
   );
   manager.reload().unwrap();
   let second = manager.current();
@@ -678,7 +686,9 @@ fn generated_manifest_matches_sources_and_declares_startup_order() {
   assert!(html.contains("<script defer src="));
   assert!(html.contains("/js/challenge.bundle.js"));
   assert!(!html.contains("type=\"module\""));
-  assert!(html.contains("<noscript><p>JavaScript is required"));
+  assert!(
+    html.contains("<noscript><style>.bar,#status{display:none}</style><p>Please enable JavaScript")
+  );
 }
 
 #[test]
@@ -739,4 +749,60 @@ fn wasm_revision_is_shared_by_module_and_bundle_overrides() {
     assert!(text.contains(revision));
     assert!(!text.contains("__WASM_REVISION__"));
   }
+}
+
+#[test]
+fn optional_legal_translations_share_fallback_and_escape_dialog_paragraphs() {
+  let mut embedded_config = WebConfig::default();
+  embedded_config.i18n.strict = true;
+  let embedded = WebSnapshot::build(&embedded_config, 1, true).unwrap();
+  let html = render(&embedded, "en");
+  assert!(!html.contains("Privacy"));
+  assert!(!html.contains("Terms"));
+  assert!(!html.contains("data-dialog=\"privacy\""));
+  assert!(!html.contains("data-dialog=\"terms\""));
+  for name in ["challenge", "refresh", "denied", "error"] {
+    embedded
+      .render(
+        &format!("pages/{name}.html.jinja"),
+        &public(&embedded),
+        "en",
+      )
+      .unwrap();
+  }
+  let root = tempfile::tempdir().unwrap();
+  write(
+    root.path(),
+    "i18n/en.json",
+    r#"{
+    "legal.privacy.label":"Privacy",
+    "legal.privacy.title":"Privacy information",
+    "legal.privacy.body":"First paragraph.\n\n<script>alert(1)</script>",
+    "legal.terms.label":"Terms",
+    "legal.terms.url":"https://example.com/terms"
+  }"#,
+  );
+  write(
+    root.path(),
+    "templates/pages/lookup.html.jinja",
+    "{{ has_t('common.close') }} {{ has_t('missing.key') }} {{ has_t('legal.privacy.label') }}",
+  );
+  let mut config = config(root.path());
+  config.i18n.strict = true;
+  let snapshot = WebSnapshot::build(&config, 1, true).unwrap();
+  assert_eq!(
+    snapshot
+      .render("pages/lookup.html.jinja", &public(&snapshot), "en-US")
+      .unwrap(),
+    "True False True"
+  );
+  let html = render(&snapshot, "en");
+  assert!(html.contains("<dialog id=\"privacy\""));
+  assert!(
+    html.contains("<p>First paragraph.</p><p>&lt;script&gt;alert(1)&lt;&#x2f;script&gt;</p>")
+  );
+  assert!(html.contains(
+    "<a href=\"https:&#x2f;&#x2f;example.com&#x2f;terms\" rel=\"noopener noreferrer\">Terms</a>"
+  ));
+  assert!(!html.contains("<script>alert(1)</script>"));
 }

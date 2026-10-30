@@ -8,7 +8,7 @@ pub fn render_challenge_page(
   json: bool,
   embedded: bool,
   open_graph: &[rilgate_web::templates::context::OpenGraphTag],
-) -> (String, String) {
+) -> (String, String, Option<String>) {
   use rilgate_web::templates::context::PublicChallengeInfo;
   let snapshot = state.web.current();
   let locale = negotiate_locale(&snapshot, headers, uri);
@@ -38,16 +38,18 @@ pub fn render_challenge_page(
   };
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
     if json {
-      snapshot.render_challenge_json(&challenge, &locale)
+      snapshot
+        .render_challenge_json(&challenge, &locale)
+        .map(|html| (html, None))
     } else {
-      snapshot.render_challenge_with_open_graph(&challenge, &locale, open_graph)
+      snapshot.render_challenge_with_policy(&challenge, &locale, open_graph)
     }
   };
-  let html = render(&snapshot).unwrap_or_else(|error| {
+  let (html, policy) = render(&snapshot).unwrap_or_else(|error| {
     tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
     render(&state.web.fallback()).expect("Validated embedded challenge template")
   });
-  (html, locale)
+  (html, locale, policy)
 }
 
 /// Returns a hidden link target that is unique to one page, or an empty string when
@@ -89,12 +91,14 @@ pub(crate) fn challenge_page(
     .verify_presentation(&token, &request_host(headers, uri))
     .map_err(ApiError::proof)?;
   let issued = rilgate_challenge::IssuedToken { token, claims };
-  let (html, locale) = render_challenge_page(state, issued, headers, uri, false, true, &[]);
-  let mut out = crate::proxy::gate::page_response(http::StatusCode::OK, html, locale, head);
-  out.headers_mut().insert(
-    "content-security-policy",
-    "frame-ancestors 'self'".parse().unwrap(),
-  );
+  let (html, locale, policy) = render_challenge_page(state, issued, headers, uri, false, true, &[]);
+  let mut out = crate::proxy::gate::page_response(http::StatusCode::OK, html, locale, head, policy);
+  if !out.headers().contains_key("content-security-policy") {
+    out.headers_mut().insert(
+      "content-security-policy",
+      "frame-ancestors 'self'".parse().unwrap(),
+    );
+  }
   out
     .headers_mut()
     .insert("x-frame-options", "SAMEORIGIN".parse().unwrap());
@@ -128,7 +132,7 @@ pub fn render_page(
   algorithm: &str,
   headers: &HeaderMap,
   uri: &Uri,
-) -> (String, String) {
+) -> (String, String, Option<String>) {
   use rilgate_web::templates::context::{PageInfo, PublicChallengeInfo, TemplateContext};
   let snapshot = state.web.current();
   let locale = negotiate_locale(&snapshot, headers, uri);
@@ -186,27 +190,31 @@ pub fn render_page(
       ..Default::default()
     },
   };
-  let html = snapshot
-    .render(template, &public, &locale)
-    .unwrap_or_else(|error| {
-      tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
-      state
-        .web
-        .fallback()
-        .render(template, &public, &locale)
-        .expect("Validated embedded page template")
-    });
-  (html, locale)
+  let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
+    snapshot.render(template, &public, &locale).map(|html| {
+      let policy = if template.ends_with(".html.jinja") {
+        snapshot.page_policy(&html)
+      } else {
+        None
+      };
+      (html, policy)
+    })
+  };
+  let (html, policy) = render(&snapshot).unwrap_or_else(|error| {
+    tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
+    render(&state.web.fallback()).expect("Validated embedded page template")
+  });
+  (html, locale, policy)
 }
 
-/// Renders the script-free page whose meta refresh opens the refresh URL after `seconds`.
+/// Renders the page whose meta refresh opens the refresh URL after `seconds`.
 pub fn render_refresh_page(
   state: &AppState,
   token: &str,
   seconds: u64,
   headers: &HeaderMap,
   uri: &Uri,
-) -> (String, String) {
+) -> (String, String, Option<String>) {
   use rilgate_web::templates::context::{PageInfo, PublicChallengeInfo, TemplateContext};
   let snapshot = state.web.current();
   let locale = negotiate_locale(&snapshot, headers, uri);
@@ -235,17 +243,21 @@ pub fn render_refresh_page(
     },
   };
   let template = "pages/refresh.html.jinja";
-  let html = snapshot
-    .render(template, &public, &locale)
-    .unwrap_or_else(|error| {
-      tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
-      state
-        .web
-        .fallback()
-        .render(template, &public, &locale)
-        .expect("Validated embedded page template")
-    });
-  (html, locale)
+  let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
+    snapshot.render(template, &public, &locale).map(|html| {
+      let policy = if template.ends_with(".html.jinja") {
+        snapshot.page_policy(&html)
+      } else {
+        None
+      };
+      (html, policy)
+    })
+  };
+  let (html, policy) = render(&snapshot).unwrap_or_else(|error| {
+    tracing::error!(error = %format!("{error:#}"), "Web page rendering failed");
+    render(&state.web.fallback()).expect("Validated embedded page template")
+  });
+  (html, locale, policy)
 }
 
 pub(crate) fn resolve_gateway_asset(prefix: &str, configured: &str) -> String {

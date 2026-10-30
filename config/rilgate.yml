@@ -300,10 +300,25 @@ server:
   #
   # base_path: /.well-known/rilgate
 
-  # Logical stylesheet path under the static resource tree, not an external URL.
+  # Logical stylesheet path under static resources, or an absolute HTTP/HTTPS URL.
   # The bundled default resolves to static/css/rilgate.css.
   #
   # stylesheet: css/rilgate.css
+
+  # Hash-based Content Security Policy for HTML pages. External stylesheet origins
+  # are included automatically. JSON responses have no CSP header.
+  #
+  # content_security_policy:
+    # enabled: true
+    # Additional CSP source expressions, YAML only. Supported directives are listed
+    # below. Each list allows up to 16 nonempty sources without whitespace, ; or ,.
+    #
+    # extra_sources:
+      # script-src: []
+      # style-src: []
+      # img-src: []
+      # font-src: []
+      # connect-src: []
 
 
   # Challenge and denial response formats. auto honors explicit Accept preferences;

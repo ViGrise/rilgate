@@ -101,7 +101,7 @@ test('production policy protects missing and arbitrary user agents and unsafe me
   for (const userAgent of ['', 'curl/8.0', 'Mozilla/5.0']) {
     const response = await request.get(`${base}/protected?query=kept`, { headers: { 'user-agent': userAgent } });
     expect(response.status()).toBe(200);
-    expect(await response.text()).toContain('POW_PRESENTATION');
+    expect(await response.text()).toContain('pow-bootstrap');
     expect(await response.text()).not.toContain('Protected origin');
   }
   const post = await request.post(`${base}/protected`, { data: 'payload' });
@@ -189,7 +189,7 @@ for (const missing of [['fetch'], ['Promise'], ['TextEncoder'], ['Worker'], ['Ab
   });
 }
 
-test('RandomX without WebAssembly reaches the localized retry UI before loading a module', async ({ page, context }) => {
+test('RandomX without WebAssembly reaches the localized unsupported state before loading a module', async ({ page, context }) => {
   const errors = [];
   const workRequests = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -199,7 +199,7 @@ test('RandomX without WebAssembly reaches the localized retry UI before loading 
   await page.addInitScript(() => { window.WebAssembly = undefined; });
   await page.route('**/randomx-incapable', async route => {
     const response = await route.fetch();
-    const html = (await response.text()).replace('window.POW_ALGORITHM = "fast"', 'window.POW_ALGORITHM = "randomx"');
+    const html = (await response.text()).replace('"algorithm":"fast"', '"algorithm":"randomx"');
     await route.fulfill({ response, body: html });
   });
   await page.route('**/api/client-config', route => route.fulfill({ json: {
@@ -207,8 +207,8 @@ test('RandomX without WebAssembly reaches the localized retry UI before loading 
   } }));
   await page.goto(`${base}/randomx-incapable`);
   await page.locator('#randomx-start').click();
-  await expect(page.locator('#status')).toContainText('This browser cannot run RandomX');
-  await expect(page.locator('#retry')).toBeVisible();
+  await expect(page.locator('#status')).toContainText('An up-to-date browser may help.');
+  await expect(page.locator('#retry')).toBeHidden();
   expect(workRequests).toEqual([]);
   expect((await context.cookies()).some(cookie => cookie.name === 'rilgate_auth')).toBe(false);
   expect(errors).toEqual([]);

@@ -8,6 +8,7 @@ pub use validation::valid_cookie_name;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebConfig {
+  pub content_security_policy: crate::csp::ContentSecurityPolicy,
   #[serde(skip)]
   pub development: bool,
   pub name: String,
@@ -25,6 +26,7 @@ pub struct WebConfig {
 impl Default for WebConfig {
   fn default() -> Self {
     Self {
+      content_security_policy: crate::csp::ContentSecurityPolicy::default(),
       development: false,
       name: "Rilgate".into(),
       website_url: "https://rilgate.com".into(),

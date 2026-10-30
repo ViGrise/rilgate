@@ -1,5 +1,5 @@
 (() => {
-  const { t, status, endpoint } = window.PowClient;
+  const { stats, endpoint } = window.PowClient;
   function solveFast(challenge) {
     return new Promise((resolve, reject) => {
       let worker = null;
@@ -35,10 +35,7 @@
           const seconds = Math.max(message.elapsed_ms / 1000, 0.001);
           const rate = Math.round(message.attempts / seconds);
 
-          status(
-            t("challenge.status.solving", "Calculating {algorithm} proof…", { algorithm: "SHA-256" }) + "\n" +
-            t("challenge.status.progress", "{attempts} attempts · {rate} H/s", { attempts: message.attempts.toLocaleString(), rate: rate.toLocaleString() }),
-          );
+          stats(message.attempts, rate);
           return;
         }
 
