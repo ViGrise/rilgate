@@ -302,6 +302,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
       policy_services: rilgate_gateway::runtime::policy::PolicyServices {
         dns: None,
         honeypot: None,
+        request_rate: None,
       }
       .into_shared(),
       proxy: Arc::new(ProxyService::new(config.upstream.clone()).unwrap()),

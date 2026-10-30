@@ -196,6 +196,7 @@ empty.
 | `country` | a list of 1 to 256 uppercase ISO 3166-1 alpha-2 codes |
 | `asn` | a list of 1 to 256 autonomous system numbers |
 | `dnsbl` | one DNSBL zone name |
+| `request_rate` | `eq`, `gt`, `gte`, `lt`, `lte` on non-negative integers |
 | `honeypot` | `true` or `false` |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
@@ -281,6 +282,55 @@ configuration. Results are cached per client, and a failed lookup is never cache
 
 `cache_ttl` applies to a listed address or a verified name. `negative_ttl` applies to an
 unlisted address or a client without a verified name.
+
+## Request rate and difficulty escalation
+
+`request_rate` compares the client's request count in one sliding window with
+`eq`, `gt`, `gte`, `lt`, or `lte` on non-negative integers. It works only in policy
+rules and requires `policy.request_rate`. Presets reject these settings, and
+`site.open_graph.when` rejects this condition.
+
+`policy.request_rate.window` accepts `1s` to `1h` and defaults to `1m`.
+`policy.request_rate.max_entries` accepts `1` to `1048576` and defaults to `65536`.
+All conditions in a policy read the same count. The key is a canonical IPv4 address
+or an IPv6 /64, so addresses in the same IPv6 /64 share a count.
+
+Every request that reaches the gate counts, including the current request and
+requests with an access cookie. Assets, the proof API, and internal routes do not
+reach the gate and do not count. Without a resolved client IP or a counter, the
+result is unknown: an `allow` rule never allows, and score rules use the existing
+unknown handling (positive scores still apply). A settings block without a rate
+condition is allowed and does not count requests.
+
+The counter uses two fixed buckets. It adds the current bucket to the previous
+bucket weighted by the fraction of the window remaining, rounds down, and
+saturates at `u32::MAX`. Clients idle for two windows expire. At capacity, the
+oldest last request is evicted. Counts stay in process memory; a policy reload
+keeps them when the window and capacity are unchanged.
+
+Combine score rules and thresholds to raise challenge difficulty:
+
+```yaml
+policy:
+  mode: custom
+  request_rate:
+    window: 1m
+    max_entries: 65536
+  rules:
+    - {name: rate-60, when: {request_rate: {gte: 60}}, action: score, score: 10}
+    - {name: rate-300, when: {request_rate: {gte: 300}}, action: score, score: 20}
+    - {name: rate-flood, when: {request_rate: {gte: 2000}}, action: deny}
+  score:
+    thresholds:
+      - {min: 30, action: challenge, challenge: {algorithm: fast, difficulty: 6}}
+      - {min: 10, action: challenge, challenge: {algorithm: fast, difficulty: 4}}
+```
+
+At 60 requests the required difficulty is 4; at 300 it is 6 because both scores
+apply. At 2000 requests the policy denies access. A client with a higher-difficulty
+cookie keeps it when its rate falls. A client is challenged once when its rate
+enters a tier with a higher difficulty, then the new higher-difficulty cookie
+passes requests in that tier.
 
 ## Honeypot
 

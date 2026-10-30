@@ -151,6 +151,10 @@ impl ChallengeService {
     self.policy.load().engine.lookup_plan().clone()
   }
 
+  pub fn uses_request_rate(&self) -> bool {
+    self.policy.load().engine.uses_request_rate()
+  }
+
   pub fn uses_load(&self) -> bool {
     self.policy.load().engine.uses_load()
   }

@@ -12,6 +12,8 @@ pub struct Lookups {
   pub reverse_dns: Option<Option<String>>,
   /// Whether the client followed the honeypot link. A missing entry counts as not flagged.
   pub honeypot: Option<bool>,
+  /// Requests in the client window, including the current request.
+  pub request_rate: Option<u32>,
 }
 
 impl Lookups {
@@ -20,6 +22,7 @@ impl Lookups {
     dnsbl: BTreeMap::new(),
     reverse_dns: None,
     honeypot: None,
+    request_rate: None,
   };
 }
 
