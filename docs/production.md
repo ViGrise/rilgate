@@ -64,6 +64,64 @@ must overwrite incoming client headers as the examples do. An upstream that
 independently trusts forwarded headers must also configure its own trust boundary.
 Rilgate does not rewrite the application's forwarding headers.
 
+## Web frontends and caches
+
+An asset request without a valid `rilgate_auth` cookie can receive HTML at the asset
+URL. This can occur with bots, link previews, prefetches or an expired cookie.
+Module scripts then fail with a strict MIME type error, and the app loses client-side
+routing. The browser receives the cookie after a successful challenge.
+
+Allow public, immutable static asset paths before challenge rules. Presets reject
+custom rules, so use `policy.mode: custom`. Rules run in declaration order, and
+`allow` is terminal:
+
+```yaml
+policy:
+  mode: custom
+  default_action: allow
+  rules:
+    - !include builtin:rules/public-endpoints.yml
+    - name: static-assets
+      when: {path: {prefix: /assets/}}
+      action: allow
+    - !include builtin:rules/challenge-all.yml
+```
+
+Only allow paths that hold public files. Use `/assets/` for Vite,
+`/_next/static/` for Next.js, or `/_astro/` for Astro (or its configured
+`build.assets` directory).
+
+HTML challenges default to 200 and carry `Cache-Control: no-store` and
+`Vary: Accept, Content-Type, X-Requested-With, Accept-Language, Cookie`.
+A CDN rule that overrides origin cache headers can store HTML under an asset URL
+and serve it to visitors who passed the challenge. Cloudflare does not use
+`Vary: Cookie` in its cache key. Make the rule follow origin cache headers, or
+bypass the cache when `rilgate_auth` is absent. Purge affected URLs if HTML was cached.
+
+Most caches store a 403 response only when a rule tells them to. Behind such caches,
+set `site.responses.challenge_status: 403`. The default remains 200. See
+[Response status codes](web.md#response-status-codes) for allowed values and JSON responses.
+
+A Workbox `CacheFirst` runtime cache can store 200 responses without checking the
+content type. Add a scripts cache plugin with `cacheWillUpdate` to require
+`response.ok` and a `content-type` containing `javascript`. Use
+`cachedResponseWillBeUsed` to require the same content type on existing entries.
+Return `null` from either hook when its check fails.
+
+Use a corresponding content-type check for stylesheet caches. Workbox precache entries
+are fetched at install and checked only for an OK status. Keep precached public assets
+on the allowed paths. Remove affected service-worker cache entries if HTML was stored.
+
+Replace `<file>.js` with a real build output file and run without a cookie:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' -A 'Mozilla/5.0' 'https://example.com/assets/<file>.js'
+```
+
+The response must have the asset content type, such as `application/javascript`,
+and must not be `text/html`. Then complete a browser challenge and check app loading,
+client-side navigation and reloads.
+
 ## Pool network access
 
 Some networks and hosting providers block Stratum traffic or known pool hosts.

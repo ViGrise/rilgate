@@ -313,6 +313,8 @@ server:
 
     # HTML challenge status: 200, 401, 403, 429 or 503.
     # JSON challenges always return 403 with Rilgate-Challenge: required.
+    # Use 403 behind a CDN or service worker that ignores Cache-Control: no-store,
+    # so that it does not store a challenge page as the requested resource.
     #
     # challenge_status: 200
 

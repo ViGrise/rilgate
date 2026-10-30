@@ -208,5 +208,15 @@ render the metadata. `rilgate web diff` shows the embedded layout change.
 200 and accepts 200, 401, 403, 429 or 503. JSON challenges always return 403 with
 `Rilgate-Challenge: required` so API clients can identify the challenge.
 
+A challenge page answers at the URL of the requested resource and carries
+`Cache-Control: no-store`. Some caches ignore that header, for example a CDN rule
+that overrides origin cache headers or a service worker that stores every 200
+response. Such a cache can keep a 200 challenge page as the resource, such as a
+script or a stylesheet, and serve it to clients that passed the challenge. Behind
+such a cache, set `challenge_status` to 403, because most caches store a 403
+response only when a rule tells them to. Also allow public static asset paths in
+the policy, so that these paths never receive a challenge. See [Web frontends and
+caches](production.md#web-frontends-and-caches) for policy and cache examples.
+
 `site.responses.deny_status` sets the status for HTML and JSON policy denials.
 It defaults to 403 and accepts 403, 404, 410 or 429.
