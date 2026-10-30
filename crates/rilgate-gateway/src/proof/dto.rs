@@ -18,11 +18,15 @@ pub struct ChallengeRequest {
 pub struct VerifyRequest {
   pub challenge_token: String,
   pub nonce: String,
+  #[serde(default)]
+  pub set_cookie: bool,
 }
 
 #[derive(Debug, Serialize)]
 pub struct VerifyResponse {
   pub receipt: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub cookie_set: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

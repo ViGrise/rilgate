@@ -48,6 +48,15 @@ challenge presentation metadata and proof API endpoints. `challenge.token` is a 
 token. Clients that implement a native solver first exchange it at the advertised
 challenge endpoint to get actual work.
 
+Native solvers and JSON clients can POST `challenge_token`, `nonce` and the optional
+boolean `set_cookie` to the advertised verify endpoint. `set_cookie` defaults to
+`false`; the response contains `receipt` and sets no cookie. With `set_cookie: true`,
+a successful response still contains `receipt`, adds `cookie_set: true` and sets the
+access cookie with the same host and client binding rules as receipt exchange.
+Clients can then retry the protected request with that cookie. If `cookie_set: true`
+is absent, POST the receipt to the advertised exchange endpoint first. Proof and
+exchange failures retain their existing errors and set no cookie.
+
 RandomX with Stratum pool acceptance uses the advertised WebSocket endpoint. It does not use
 HTTP proof issuance and verification. A policy denial returns 403 with `code: access_denied` and
 no challenge notification headers. A PoW solution cannot override a deny policy. HEAD

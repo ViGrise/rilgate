@@ -67,9 +67,15 @@ worker.js    performs expensive calculation off the page thread
 as WebAssembly loads as a separate module after the adapter checks browser capabilities,
 as RandomX does. The page entrypoint selects an adapter through the registry and checks
 the algorithm list returned by client-config. Shared fetch, translation, exchange, and
-status helpers belong to the challenge runtime. Mining transport belongs to the Stratum pool
-browser module. Keep resource paths in the server descriptor and configuration aligned
-with packaged assets.
+status helpers belong to the challenge runtime. HTTP proof adapters call
+`window.PowClient.verify(challenge_token, nonce)` to complete verification and access.
+The helper sends the optional boolean `set_cookie: true` to `/api/verify`. The field
+defaults to `false` for other clients, and successful verification always returns
+`receipt`. The helper skips exchange only when the response has `cookie_set: true`;
+otherwise it calls `/api/exchange` with the receipt for compatibility with older
+gateways. Pool mode keeps the WebSocket receipt and shared `exchange(receipt)` path.
+Mining transport belongs to the Stratum pool browser module. Keep resource paths in
+the server descriptor and configuration aligned with packaged assets.
 
 Declare consent and memory requirements in the algorithm descriptor. Fast and
 HashWX start automatically. RandomX requires consent before calculation or

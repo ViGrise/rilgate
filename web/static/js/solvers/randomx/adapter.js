@@ -1,5 +1,5 @@
 (() => {
-  const { t, status, jsonFetch, endpoint, exchange, requestChallenge, progressEl, once } = window.PowClient;
+  const { t, status, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
     const simd = [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11];
@@ -67,15 +67,7 @@
 
     status(t("challenge.status.verifying", "Verifying {algorithm} proof…", { algorithm: "RandomX" }));
 
-    const verified = await jsonFetch(endpoint("/api/verify"), {
-      method: "POST",
-      body: JSON.stringify({
-        challenge_token: challenge.challenge_token,
-        nonce: solution.nonce,
-      }),
-    });
-
-    await exchange(verified.receipt);
+    await verify(challenge.challenge_token, solution.nonce);
   }
 
 
