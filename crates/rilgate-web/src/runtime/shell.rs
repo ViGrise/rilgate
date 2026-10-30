@@ -6,6 +6,7 @@ use std::io::Write;
 pub(super) const BOOTSTRAP_SLOT: &str = "<script data-rilgate-bootstrap></script>";
 
 pub(super) struct ChallengeShell {
+  pub(super) hashes: crate::csp::InlineHashes,
   before: String,
   after: String,
 }
@@ -20,6 +21,7 @@ impl ChallengeShell {
       "Duplicate challenge bootstrap slot"
     );
     Ok(Self {
+      hashes: crate::csp::inline_hashes(&html.replace(BOOTSTRAP_SLOT, "")),
       before: before.into(),
       after: after.into(),
     })
@@ -89,17 +91,18 @@ fn write_bootstrap(
   prefix: &str,
   challenge: &PublicChallengeInfo,
 ) -> Result<()> {
-  output.extend_from_slice(b"<script>\n  window.POW_INTERNAL_PREFIX = ");
-  write_script_json(output, &prefix)?;
-  output.extend_from_slice(b";\n  window.POW_SOLVER_MODULE_URL = ");
-  write_script_json(output, &challenge.solver_module_url)?;
-  output.extend_from_slice(b";\n  window.POW_PRESENTATION_TOKEN = ");
-  write_script_json(output, &challenge.token)?;
-  output.extend_from_slice(b";\n  window.POW_ALGORITHM = ");
-  write_script_json(output, &challenge.algorithm)?;
-  output.extend_from_slice(b";\n  window.POW_EMBEDDED = ");
-  write_script_json(output, &challenge.embedded)?;
-  output.extend_from_slice(b";\n</script>");
+  output.extend_from_slice(b"<script type=\"application/json\" id=\"pow-bootstrap\">");
+  write_script_json(
+    output,
+    &serde_json::json!({
+      "internal_prefix": prefix,
+      "solver_module_url": challenge.solver_module_url,
+      "presentation_token": challenge.token,
+      "algorithm": challenge.algorithm,
+      "embedded": challenge.embedded,
+    }),
+  )?;
+  output.extend_from_slice(b"</script>");
   Ok(())
 }
 

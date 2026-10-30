@@ -188,19 +188,22 @@ test("invalid RandomX job data fails before allocating a WASM cache", async () =
   assert.equal(downloads, 0);
 });
 
-test("RandomX mining is disclosed and waits for a click before loading the solver", async () => {
+test("RandomX asks for consent before loading the solver", async () => {
   const elements = new Map();
   const element = (selector) => {
     if (!elements.has(selector)) {
-      elements.set(selector, { textContent: "", hidden: true, removeAttribute() {}, removeEventListener() {}, addEventListener(type, handler) { this[type] = handler; } });
+      elements.set(selector, { style: {}, textContent: "", hidden: true, removeAttribute() {}, removeEventListener() {}, addEventListener(type, handler) { this[type] = handler; } });
     }
     return elements.get(selector);
   };
+  const english = JSON.parse(await readFile(new URL("../web/i18n/en.json", import.meta.url), "utf8"));
+  element("#pow-i18n").textContent = JSON.stringify(english);
+  element("#pow-bootstrap").textContent = JSON.stringify({ internal_prefix: "/gateway", algorithm: "randomx", embedded: false, presentation_token: "presentation", solver_module_url: "/solver.js" });
   const calls = [];
   const context = vm.createContext({
     AbortSignal, AbortController, setTimeout, clearTimeout,
     document: { querySelector: element },
-    window: { POW_INTERNAL_PREFIX: "/gateway", POW_ALGORITHM: "randomx" },
+    window: {},
     fetch: async (url) => {
       calls.push(url);
       return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ enforce: "stratum_pool_accepted" }) };
@@ -209,8 +212,8 @@ test("RandomX mining is disclosed and waits for a click before loading the solve
   });
   vm.runInContext(challengeSource, context);
   await until(() => !element("#randomx-start").hidden);
-  assert.match(element("#description").textContent, /mining work.*mining pool/);
-  assert.match(element("#description").textContent, /256 MiB/);
+  assert.equal(element("#description").textContent, english["challenge.state.consent.description"]);
+  assert.equal(element("#status").textContent, english["challenge.state.consent.status"]);
   assert.equal(typeof element("#randomx-start").click, "function");
   assert.deepEqual(calls, ["/gateway/api/client-config"]);
 });

@@ -54,7 +54,9 @@ impl WebSnapshot {
       .collect::<AssetIndex>();
     let mut custom_i18n = BTreeMap::new();
     let mut custom_templates = false;
-    if !assets.contains_key(&config.stylesheet_path) {
+    if url::Url::parse(&config.stylesheet_path).is_err()
+      && !assets.contains_key(&config.stylesheet_path)
+    {
       assets.insert(
         config.stylesheet_path.clone(),
         AssetMetadata::embedded(
@@ -248,6 +250,7 @@ impl WebSnapshot {
         .with_context(|| format!("Missing page {page}"))?;
     }
     for name in [
+      "js/page.js",
       "js/challenge.bundle.js",
       "js/challenge.js",
       "js/challenge/runtime.js",
@@ -319,6 +322,35 @@ impl WebSnapshot {
     let mut public = self.challenge_context(challenge.clone(), locale)?;
     public.page.open_graph = tags.to_vec();
     self.render("pages/challenge.html.jinja", &public, locale)
+  }
+
+  pub fn render_challenge_with_policy(
+    &self,
+    challenge: &PublicChallengeInfo,
+    locale: &str,
+    tags: &[crate::templates::context::OpenGraphTag],
+  ) -> Result<(String, Option<String>)> {
+    let html = self.render_challenge_with_open_graph(challenge, locale, tags)?;
+    let hashes = if challenge.honeypot_url.is_empty() && tags.is_empty() {
+      self.challenge_shells.get(locale).map(|shell| &shell.hashes)
+    } else {
+      None
+    };
+    let policy = match hashes {
+      Some(hashes) => self
+        .config
+        .content_security_policy
+        .header(hashes, &self.config.stylesheet_path),
+      None => self.page_policy(&html),
+    };
+    Ok((html, policy))
+  }
+
+  pub fn page_policy(&self, html: &str) -> Option<String> {
+    self.config.content_security_policy.header(
+      &crate::csp::inline_hashes(html),
+      &self.config.stylesheet_path,
+    )
   }
 
   pub fn render_challenge_json(

@@ -1,9 +1,11 @@
 (() => {
-  const { t, status, verify, requestChallenge, progressEl, once } = window.PowClient;
+  const { t, state, stats, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadSolver() {
     if (typeof Worker !== 'function' || typeof WebAssembly !== 'object' ||
         typeof WebAssembly.instantiate !== 'function') {
-      return Promise.reject(new Error(t('challenge.hashwx_unsupported', 'This browser cannot run HashWX. WebAssembly and workers are required.')));
+      const error = new Error(t('challenge.hashwx_unsupported', 'This browser cannot run HashWX. WebAssembly and workers are required.'));
+      error.code = "unsupported_browser";
+      return Promise.reject(error);
     }
     return window.PowClient.loadSolver(window.POW_SOLVER_MODULE_URL);
   }
@@ -11,15 +13,15 @@
     const solver = await loadSolver();
     const removePagehide = once(window, 'pagehide', () => solver.cancel());
     try {
-      status(t('challenge.status.requesting', 'Requesting {algorithm} proof-of-work challenge…', { algorithm: 'HashWX' }));
+      state("preparing");
       const challenge = await requestChallenge();
       if (challenge.algorithm !== 'hashwx') throw new Error('Expected HashWX challenge');
-      progressEl.removeAttribute('value');
-      status(t('challenge.status.solving', 'Calculating {algorithm} proof…', { algorithm: 'HashWX' }));
+      if (progressEl) progressEl.removeAttribute('value');
+      state("hashwx");
       const solution = await solver.solve(challenge, { onProgress: ({ attempts, elapsedMs }) => {
-        status(t('challenge.status.progress', '{attempts} attempts · {rate} H/s', { attempts: attempts.toLocaleString(), rate: Math.round(attempts * 1000 / Math.max(1, elapsedMs)) }));
+        stats(attempts, attempts * 1000 / Math.max(1, elapsedMs));
       } });
-      status(t('challenge.status.verifying', 'Verifying {algorithm} proof…', { algorithm: 'HashWX' }));
+      state("verifying");
       await verify(challenge.challenge_token, solution.nonce);
     } finally { removePagehide(); solver.cancel(); }
   }

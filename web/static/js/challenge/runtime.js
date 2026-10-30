@@ -1,4 +1,8 @@
 (() => {
+  const bootstrap = JSON.parse(document.querySelector("#pow-bootstrap").textContent);
+  Object.keys(bootstrap).forEach((name) => {
+    window["POW_" + name.toUpperCase()] = bootstrap[name];
+  });
   const statusEl = document.querySelector("#status");
   const progressEl = document.querySelector("#progress");
   const prefix = window.POW_INTERNAL_PREFIX;
@@ -11,6 +15,7 @@
   }
 
   function once(target, type, listener) {
+    if (!target) return () => {};
     function handle(event) {
       target.removeEventListener(type, handle);
       listener(event);
@@ -20,7 +25,102 @@
   }
 
   function status(message) {
-    statusEl.textContent = message;
+    if (statusEl) statusEl.textContent = message;
+  }
+
+  const modes = {
+    preparing: "run",
+    fast: "run",
+    hashwx: "run",
+    consent: "start",
+    initializing: "run",
+    randomx: "run",
+    pool: "run",
+    verifying: "run",
+    success: "done",
+    expired: "retry",
+    failed: "retry",
+    network: "retry",
+    unsupported: "none",
+    limited: "none",
+    unavailable: "retry",
+  };
+  let previousMode = "none";
+  let currentState = "preparing";
+  let attemptsCount = 0;
+  function element(id) { return document.querySelector("#" + id); }
+  function hidden(id, value) {
+    const target = element(id);
+    if (target) target.hidden = value;
+  }
+  function updateBar(mode) {
+    const shimmer = element("bar-shimmer");
+    const complete = element("bar-complete");
+    const wasRunning = previousMode === "run";
+    previousMode = mode;
+    hidden("bar", mode !== "run" && mode !== "done");
+    hidden("bar-shimmer", mode !== "run");
+    if (mode === "run") {
+      if (complete) {
+        complete.style.transition = "none";
+        complete.style.transform = "scaleX(0)";
+      }
+      if (!wasRunning && shimmer) {
+        shimmer.style.animation = "none";
+        void shimmer.offsetWidth;
+        shimmer.style.animation = "";
+      }
+    } else if (mode === "done" && complete) {
+      complete.style.transition = "none";
+      complete.style.transform = "scaleX(0)";
+      const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduced || typeof requestAnimationFrame !== "function") {
+        complete.style.transform = "scaleX(1)";
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (previousMode !== "done") return;
+          complete.style.transition = "transform .55s ease-out";
+          complete.style.transform = "scaleX(1)";
+        }));
+      }
+    }
+  }
+  function showStats() {
+    const solving = ["fast", "hashwx", "randomx"].indexOf(currentState) !== -1;
+    const retaining = ["verifying", "pool", "success"].indexOf(currentState) !== -1 && attemptsCount > 0;
+    hidden("stats", !solving && !retaining);
+  }
+  function state(name, values) {
+    currentState = name;
+    ["title", "description", "status"].forEach((id) => {
+      const target = element(id);
+      if (target) target.textContent = t("challenge.state." + name + "." + id, "", values);
+    });
+    const mode = modes[name];
+    updateBar(mode);
+    hidden("randomx-start", mode !== "start");
+    hidden("retry", mode !== "retry");
+    if (progressEl) {
+      if (mode === "done") { progressEl.max = 1; progressEl.value = 1; }
+      else progressEl.removeAttribute("value");
+      progressEl.hidden = mode !== "run" && mode !== "done";
+    }
+    if (["fast", "hashwx", "randomx"].indexOf(name) === -1) {
+      const rate = element("hashrate");
+      if (rate) rate.textContent = "0";
+    }
+    showStats();
+  }
+  function stats(attempts, rate) {
+    attemptsCount = Math.max(0, Number(attempts) || 0);
+    const locale = document.documentElement && document.documentElement.lang || "en";
+    const formatter = typeof Intl === "object" && Intl.NumberFormat
+      ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }) : null;
+    [["attempts", attemptsCount], ["hashrate", Math.max(0, Number(rate) || 0)]].forEach((entry) => {
+      const target = element(entry[0]);
+      if (target) target.textContent = formatter ? formatter.format(entry[1]) : String(Math.round(entry[1]));
+    });
+    hidden("stats", false);
   }
 
   function endpoint(path) {
@@ -38,6 +138,7 @@
       const error = new Error((body?.message || `HTTP ${code}`) + retry);
       error.status = code;
       error.code = body?.code;
+      error.retryAfter = retry;
       throw error;
     }
     return body;
@@ -65,8 +166,8 @@
           resolve(responseBody(request.responseText, request.status, request.getResponseHeader("retry-after")));
         } catch (error) { reject(error); }
       };
-      request.onerror = () => { cleanup(); reject(new Error("Network request failed")); };
-      request.ontimeout = () => { cleanup(); reject(new Error("Request timed out")); };
+      request.onerror = () => { cleanup(); reject(new TypeError("Network request failed")); };
+      request.ontimeout = () => { cleanup(); reject(new TypeError("Request timed out")); };
       request.onabort = () => { cleanup(); reject(new Error("Request canceled")); };
       if (signal) {
         if (signal.aborted) { abort(); return; }
@@ -158,5 +259,5 @@
     });
   }
 
-  window.PowClient = { loadSolver, solverLoaded, t, status, endpoint, jsonFetch, exchange, verify, requestChallenge, progressEl, once };
+  window.PowClient = { loadSolver, solverLoaded, t, status, state, stats, endpoint, jsonFetch, exchange, verify, requestChallenge, progressEl, once };
 })();

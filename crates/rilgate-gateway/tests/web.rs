@@ -162,7 +162,7 @@ async fn denied_and_upstream_error_pages_preserve_http_status_and_hide_internal_
       .to_vec(),
   )
   .unwrap();
-  assert!(html.contains("Access denied"));
+  assert!(html.contains("This page is unavailable"));
   let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
   let address = listener.local_addr().unwrap();
   drop(listener);
@@ -186,6 +186,6 @@ async fn denied_and_upstream_error_pages_preserve_http_status_and_hide_internal_
       .to_vec(),
   )
   .unwrap();
-  assert!(html.contains("Unable to continue"));
+  assert!(html.contains("A short delay"));
   assert!(!html.contains(&address.to_string()));
 }

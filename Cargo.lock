@@ -3600,6 +3600,7 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "base64 0.22.1",
  "bytes",
  "cap-std",
  "futures-util",

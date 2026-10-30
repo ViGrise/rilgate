@@ -1,4 +1,8 @@
 {% extends "layouts/base.html.jinja" %}
 {% block content %}
-<main><h1>{{ t("denied.title") }}</h1><p>{{ t("denied.description") }}</p></main>
+<main>
+  <h1 id="title">{{ t("denied.title") }}</h1>
+  <p id="description">{{ t("denied.description") }}</p>
+  <p id="status" role="status">{{ t("denied.status") }}</p>
+</main>
 {% endblock %}

@@ -12,7 +12,7 @@ for (const algorithm of ['hashwx', 'randomx']) {
       Worker: function () {}, WebAssembly, BigInt, Promise, setTimeout, clearTimeout,
       document: { querySelector: () => element },
       window: { POW_SOLVER_MODULE_URL: moduleUrl, PowClient: {
-        t: (_, text) => text, status() {}, once: (_, __, callback) => { callback(); return () => {}; },
+        t: (_, text) => text, status() {}, state() {}, stats() {}, once: (_, __, callback) => { callback(); return () => {}; },
         register: (_, value) => { adapter = value; },
         loadSolver: async url => { selected = url; throw new Error('Module request captured'); },
       } },

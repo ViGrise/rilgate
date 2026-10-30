@@ -190,7 +190,7 @@ wait_for_http "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/health"
 health_body="$(curl -fsS "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/health")"
 node --input-type=module -e 'if (JSON.parse(process.argv[1]).status !== "ok") process.exit(1)' "$health_body"
 challenge_body="$(curl -fsS -H "User-Agent: $BROWSER_UA" "http://127.0.0.1:$PORT/protected")"
-if [[ "$challenge_body" != *"window.POW_PRESENTATION_TOKEN = "* ]]; then
+if ! node --input-type=module -e 'const match = process.argv[1].match(/<script type="application\/json" id="pow-bootstrap">([\s\S]*?)<\/script>/); if (!match || !JSON.parse(match[1]).presentation_token) process.exit(1)' "$challenge_body"; then
   echo "perf-gate: /protected did not return a challenge page" >&2
   exit 1
 fi

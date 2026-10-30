@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+const english = JSON.parse(readFileSync(new URL("../web/i18n/en.json", import.meta.url), "utf8"));
 import assert from "node:assert/strict";
 import {challengeSource as source} from "./support/challenge-source.mjs";
 import test from "node:test";
@@ -13,11 +15,13 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
   const messages = [];
   const element = (id) => {
     if (!elements.has(id)) {
-      elements.set(id, { hidden: true, textContent: "", removeAttribute() {}, removeEventListener() {}, addEventListener(type, handler) { this[type] = handler; } });
+      elements.set(id, { style: {}, hidden: true, textContent: "", removeAttribute() {}, removeEventListener() {}, addEventListener(type, handler) { this[type] = handler; } });
     }
     return elements.get(id);
   };
-  if (translations) { element("#pow-i18n").textContent = JSON.stringify(translations); }
+  element("#pow-i18n").textContent = JSON.stringify({ ...english, ...translations });
+  const bootstrap = { internal_prefix: "/gateway", algorithm: "fast", presentation_token: "presentation", embedded, solver_module_url: "/gateway/static/js/solvers/fast/solver.js" };
+  element("#pow-bootstrap").textContent = JSON.stringify(bootstrap);
   class Worker {
     constructor() { workers.push(this); }
     terminate() { this.terminated = true; }
@@ -30,8 +34,7 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
     AbortSignal, AbortController, DOMException, Worker, setTimeout, clearTimeout,
     document: { querySelector: element },
     window: {
-      POW_EMBEDDED: embedded, parent: { postMessage: (message, origin) => messages.push({ message, origin }) },
-      POW_INTERNAL_PREFIX: "/gateway", POW_ALGORITHM: "fast", POW_PRESENTATION_TOKEN: "presentation",
+      parent: { postMessage: (message, origin) => messages.push({ message, origin }) },
       addEventListener(type, handler) { listeners.set(type, handler); },
       removeEventListener(type) { listeners.delete(type); },
     },
@@ -43,6 +46,9 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
     },
   });
   vm.runInContext(source, context);
+  for (const [name, value] of Object.entries(bootstrap)) {
+    assert.equal(context.window["POW_" + name.toUpperCase()], value);
+  }
   return { element, workers, listeners, requests, messages, reloads: () => reloads };
 }
 
@@ -62,7 +68,7 @@ function challengeFetch(url) {
 test("failed API calls expose a retry action and carry a bounded abort signal", async () => {
   const state = page(async () => { throw new Error("network unavailable"); });
   await until(() => !state.element("#retry").hidden);
-  assert.match(state.element("#status").textContent, /network unavailable/);
+  assert.match(state.element("#status").textContent, /You can try again/);
   const options = state.requests[0].options;
   assert.ok(options.signal instanceof AbortSignal);
   assert.equal(options.cache, "no-store");
@@ -86,7 +92,7 @@ test("postMessage failures terminate the worker and allow the user to retry", as
   await until(() => !state.element("#retry").hidden);
   assert.equal(state.workers[0].terminated, true);
   assert.equal(state.listeners.has("pagehide"), false);
-  assert.match(state.element("#status").textContent, /post failed/);
+  assert.match(state.element("#status").textContent, /You can try again/);
 });
 
 test("completed fast proofs fall back to exchange when cookie_set is missing", async () => {
@@ -113,22 +119,23 @@ test("rate-limit failures display the server's retry delay", async () => {
     ok: false, status: 429, headers: { get: () => "10" },
     text: async () => JSON.stringify({ message: "Too many proof-of-work requests" }),
   }));
-  await until(() => !state.element("#retry").hidden);
+  await until(() => state.element("#status").textContent.includes("Try again in 10 seconds"));
+  assert.equal(state.element("#retry").hidden, true);
   assert.match(state.element("#status").textContent, /Try again in 10 seconds/);
   assert.equal(state.reloads(), 0);
 });
 
-test("server-rendered translations localize statuses and named placeholders", async () => {
+test("server-rendered translations localize state messages", async () => {
   const state = page(async (url) => {
     if (url.endsWith("verify")) { return response({ receipt: "receipt" }); }
     if (url.endsWith("exchange")) { return response({ status: "ok" }); }
     return challengeFetch(url);
   }, false, {
-    "challenge.status.fast_difficulty": "Travail {difficulty}",
-    "challenge.success": "Vérification terminée",
+    "challenge.state.fast.status": "Travail",
+    "challenge.state.success.status": "Vérification terminée",
   });
   await until(() => state.workers[0]?.request);
-  assert.equal(state.element("#status").textContent, "Travail 1");
+  assert.equal(state.element("#status").textContent, "Travail");
   state.workers[0].onmessage({ data: { type: "solved", nonce: "153" } });
   await until(() => state.reloads() === 1);
   assert.equal(state.element("#status").textContent, "Vérification terminée");

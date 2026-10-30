@@ -11,6 +11,7 @@ pub fn valid_cookie_name(name: &str) -> bool {
 impl WebConfig {
   pub fn validate(&self) -> Result<()> {
     self.responses.validate()?;
+    self.content_security_policy.validate()?;
     ensure!(
       !self.name.trim().is_empty() && !self.name.chars().any(char::is_control),
       "site.name must contain visible text without control characters"
@@ -36,7 +37,17 @@ impl WebConfig {
             || matches!(c, '"' | '\'' | '<' | '>' | '\\' | '?' | '#' | '{' | '}')),
       "site.base_path must be a safe non-root URL path without a trailing slash"
     );
-    crate::resources::loader::logical_path(&self.stylesheet_path).context("site.stylesheet")?;
+    if let Ok(url) = url::Url::parse(&self.stylesheet_path) {
+      ensure!(
+        matches!(url.scheme(), "http" | "https")
+          && url.host_str().is_some()
+          && url.username().is_empty()
+          && url.password().is_none(),
+        "site.stylesheet: expected an HTTP or HTTPS URL without credentials"
+      );
+    } else {
+      crate::resources::loader::logical_path(&self.stylesheet_path).context("site.stylesheet")?;
+    }
     ensure!(
       self.root.as_ref().is_none_or(|p| !p.as_os_str().is_empty()),
       "site.resources.directory cannot be empty"

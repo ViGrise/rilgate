@@ -20,7 +20,11 @@ impl From<&WebConfig> for PublicRilgateInfo {
       website_url: config.website_url.clone(),
       docs_url: config.website_url.clone(),
       base_path: config.base_path.clone(),
-      stylesheet_url: format!("{}/static/{}", config.base_path, config.stylesheet_path),
+      stylesheet_url: if url::Url::parse(&config.stylesheet_path).is_ok() {
+        config.stylesheet_path.clone()
+      } else {
+        format!("{}/static/{}", config.base_path, config.stylesheet_path)
+      },
       static_url: format!("{}/static", config.base_path),
     }
   }

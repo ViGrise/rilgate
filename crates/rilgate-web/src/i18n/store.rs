@@ -45,19 +45,27 @@ pub struct TranslationStore {
   pub strict: bool,
 }
 impl TranslationStore {
+  pub fn has(&self, locale: &str, key: &str) -> bool {
+    self.message(locale, key).is_some()
+  }
+
+  fn message(&self, locale: &str, key: &str) -> Option<&CompiledMessage> {
+    let chain = locale::parents(locale)
+      .into_iter()
+      .chain(locale::parents(&self.default_locale))
+      .chain(std::iter::once("en".into()));
+    chain
+      .filter_map(|tag| self.locales.get(&tag))
+      .find_map(|map| map.get(key))
+  }
+
   pub fn translate(
     &self,
     locale: &str,
     key: &str,
     args: &BTreeMap<String, String>,
   ) -> Result<String, Error> {
-    let chain = locale::parents(locale)
-      .into_iter()
-      .chain(locale::parents(&self.default_locale))
-      .chain(std::iter::once("en".into()));
-    let message = chain
-      .filter_map(|tag| self.locales.get(&tag))
-      .find_map(|map| map.get(key));
+    let message = self.message(locale, key);
     let Some(message) = message else {
       // Rendering resolves every visible key on every request, so a missing
       // translation would otherwise emit one line per key per render. A missing

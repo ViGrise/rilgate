@@ -59,14 +59,16 @@ async fn ajax_challenge_has_a_valid_same_origin_html_page_and_signed_token() {
       .unwrap();
     assert_eq!(page.status(), StatusCode::OK);
     assert_eq!(page.headers()["content-type"], "text/html; charset=utf-8");
-    assert_eq!(
-      page.headers()["content-security-policy"],
-      "frame-ancestors 'self'"
+    assert!(
+      page.headers()["content-security-policy"]
+        .to_str()
+        .unwrap()
+        .contains("frame-ancestors 'self'")
     );
     assert_eq!(page.headers()["referrer-policy"], "no-referrer");
     let html =
       String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
-    assert!(html.contains("window.POW_EMBEDDED = true"));
+    assert!(html.contains("\"embedded\":true"));
     assert!(html.contains(body["challenge"]["token"].as_str().unwrap()));
     let wrong_host = router
       .clone()

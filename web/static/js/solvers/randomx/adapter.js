@@ -1,10 +1,12 @@
 (() => {
-  const { t, status, verify, requestChallenge, progressEl, once } = window.PowClient;
+  const { t, state, stats, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
     if (typeof Worker !== "function" || typeof WebAssembly !== "object" ||
         typeof WebAssembly.validate !== "function" || typeof BigInt !== "function") {
-      return Promise.reject(new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly, BigInt, and workers is required.")));
+      const error = new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly, BigInt, and workers is required."));
+      error.code = "unsupported_browser";
+      return Promise.reject(error);
     }
     if (!moduleUrl) return Promise.reject(new Error("RandomX solver module URL is empty"));
     return window.PowClient.loadSolver(window.POW_SOLVER_MODULE_URL);
@@ -25,10 +27,8 @@
     const seconds = Math.max(elapsedMs / 1000, 0.001);
     const rate = (attempts / seconds).toFixed(2);
 
-    status(
-      t("challenge.status.solving", "Calculating {algorithm} proof…", { algorithm: "RandomX" }) + "\n" +
-        t("challenge.status.progress", "{attempts} attempts · {rate} H/s", { attempts: attempts.toLocaleString(), rate }),
-    );
+    state("randomx");
+    stats(attempts, rate);
   }
 
   // The solver abandons an in-flight attempt when the pool publishes a newer job,
@@ -46,7 +46,7 @@
   }
 
   async function randomxLocalVerify(solver) {
-    status(t("challenge.status.requesting", "Requesting {algorithm} proof-of-work challenge…", { algorithm: "RandomX" }));
+    state("preparing");
 
     const reloadKey = "rilgate-work-unavailable-reload";
     let challenge;
@@ -69,29 +69,24 @@
       );
     }
 
-    status(t("challenge.status.difficulty", "Calculating {algorithm} proof (difficulty {difficulty})…", { algorithm: "RandomX", difficulty: challenge.difficulty }));
-    progressEl.removeAttribute("value");
+    state("initializing");
+    if (progressEl) progressEl.removeAttribute("value");
 
     const solution = await solver.solve(
       randomxJob(challenge.job, challenge.difficulty, challenge.nonce_offset, challenge.expires_in, challenge.received_at),
     );
 
-    status(t("challenge.status.verifying", "Verifying {algorithm} proof…", { algorithm: "RandomX" }));
+    state("verifying");
 
     await verify(challenge.challenge_token, solution.nonce);
   }
 
 
   async function run(config) {
-      const description = document.querySelector("#description");
-      description.textContent = config.enforce === "stratum_pool_accepted"
-        ? t("pow.disclosure.mining", "Your browser will perform RandomX mining work submitted to the gateway's mining pool. This uses CPU time and about 256 MiB of memory per worker, and can take a long time. Start only if you agree to contribute this work.")
-        : t("pow.disclosure.randomx", "Your browser will calculate a RandomX proof using CPU time and about 256 MiB of memory per worker. This can take a long time.");
-      status(t("challenge.status.waiting", "Waiting for you to start RandomX work."));
+      state("consent");
       const startButton = document.querySelector("#randomx-start");
-      startButton.hidden = false;
       await new Promise((resolve) => once(startButton, "click", resolve));
-      startButton.hidden = true;
+      state("initializing");
       const module = await loadRandomXSolver();
       const options = config.algorithms.find((entry) => entry.id === "randomx")?.browser;
       const solver = {

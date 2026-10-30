@@ -133,6 +133,102 @@ Mount that directory read-only in the deployment. Site settings use the same YAM
 structure in development and production. Environment variables can supply individual
 values through `${VARIABLE_NAME}` string references.
 
+## Challenge page design
+
+Challenge, refresh, denied and error pages share a light or dark layout.
+The bar shimmers while work runs and fills on success. Reduced-motion preferences
+stop the shimmer and success transition. No environment provides a state preview.
+Statistics occupy a separate line and use the page locale with no fraction digits.
+They remain visible through verifying, pool and success when attempts exceed zero.
+RandomX asks for consent before starting; details explain the check and permission.
+
+`window.PowClient.state(name, values)` updates translated title, description and
+status using `challenge.state.<name>.{title,description,status}`. Placeholder values
+come from `values`. `stats(attempts, rate)` updates statistics. `status(message)`
+continues to support custom status messages.
+
+| State | Mode | Trigger |
+| --- | --- | --- |
+| `preparing` | `run` | Page startup and challenge request. |
+| `fast` | `run` | Fast hashing. |
+| `hashwx` | `run` | HashWX hashing. |
+| `consent` | `start` | Wait for RandomX consent. |
+| `initializing` | `run` | RandomX module and cache setup. |
+| `randomx` | `run` | RandomX hashing. |
+| `pool` | `run` | Pool connection and acceptance wait. |
+| `verifying` | `run` | Proof verification. |
+| `success` | `done` | Verification completed. |
+| `expired` | `retry` | Local solver deadline exceeded. |
+| `failed` | `retry` | Other failure; details remain in console. |
+| `network` | `retry` | Fetch TypeError or XHR network failure. |
+| `unsupported` | `none` | Missing RandomX or HashWX browser features. |
+| `limited` | `none` | HTTP 429; append Retry-After text. |
+| `unavailable` | `retry` | HTTP 503 after the single RandomX reload. |
+
+Modes `run` and `done` show the bar. `start` shows the consent button, `retry`
+shows the reload button, and `none` hides both actions and the bar.
+The catch handler keeps diagnostic error messages in the console only.
+
+| Element ID | Purpose |
+| --- | --- |
+| `title` | State title. |
+| `description` | State description. |
+| `bar` | Shimmer or completed track. |
+| `bar-shimmer` | Running shimmer. |
+| `bar-complete` | Success fill. |
+| `progress` | Visually hidden progress. |
+| `status` | Live state status. |
+| `stats` | Attempt and hash rate line. |
+| `attempts` | Localized attempt count. |
+| `hashrate` | Localized hashes per second. |
+| `randomx-start` | RandomX consent button. |
+| `retry` | Reload button. |
+| `pow-i18n` | Client translation JSON. |
+
+Every element is optional. Missing IDs are skipped, and templates with only
+`status` still receive status updates. Keep `randomx-start` to collect RandomX
+consent, and `retry` for reload actions. Preserve the `.actions` wrapper,
+`noscript`, honeypot link, `pow-i18n`, `challenge_bootstrap` and bundle script
+when adapting the embedded challenge template. The `progress` element remains
+visually hidden. The former `partials/pow-info.html.jinja` include is removed.
+
+## Legal notices
+
+The footer says Protected by and links to `rilgate.website_url` with the public
+name. Embedded translations contain no `legal.*` keys or legal text. Add notices
+under your resource directory. Review this example for your website's practices.
+
+```json title="i18n/en.json"
+{
+  "legal.privacy.label": "Privacy",
+  "legal.privacy.title": "Privacy information",
+  "legal.privacy.body": "This website uses a browser check to manage automated traffic.\n\nThe website owner's privacy policy applies.",
+  "legal.terms.label": "Terms",
+  "legal.terms.url": "https://example.com/terms"
+}
+```
+
+```json title="i18n/vi.json"
+{
+  "legal.privacy.label": "Quyền riêng tư",
+  "legal.privacy.title": "Thông tin về quyền riêng tư",
+  "legal.privacy.body": "Website này dùng bước kiểm tra trình duyệt để quản lý lưu lượng tự động.\n\nChính sách quyền riêng tư của chủ website vẫn áp dụng.",
+  "legal.terms.label": "Điều khoản",
+  "legal.terms.url": "https://example.com/terms"
+}
+```
+
+For each `privacy` and `terms` entry, a missing `legal.<id>.label` hides the entry.
+An existing `.url` produces a link with `rel="noopener noreferrer"`. Otherwise,
+supply `.title` and `.body` for a dialog with a Close button. Blank lines in the
+body produce separate escaped `<p>` paragraphs. Legal values are text.
+
+`has_t(key)` returns a boolean using the same locale fallback chain as `t` and
+never fails in strict mode. The legal partial guards dynamic keys with `has_t`,
+so missing optional entries do not fail load-time translation validation.
+Its ES5 inline script opens dialogs on challenge, refresh, denied and error pages.
+Reload resources and run `rilgate web validate ./custom-web` after editing.
+
 ## HashWX browser requirements
 
 HashWX uses the classic adapter in `challenge.bundle.js` to load its modern
@@ -158,7 +254,7 @@ memory and stack, generated modules and JavaScript state. The default solver
 uses up to two workers. All workers are terminated on success, error, expiry,
 cancellation or page exit. It uses the signed batch size and covers distinct
 batches in each worker. The classic adapter reports unavailable capabilities
-through localized failure and retry controls. It never selects another algorithm.
+through the localized unsupported state. It never selects another algorithm.
 
 Rilgate's challenge response sets `frame-ancestors 'self'`. An operator or edge
 can add a more restrictive CSP. Permit worker creation under `worker-src` and
