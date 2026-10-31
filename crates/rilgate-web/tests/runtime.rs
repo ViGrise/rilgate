@@ -111,35 +111,48 @@ fn concurrent_initialization_never_replaces_destinations() {
 #[test]
 fn partial_translations_overlay_keys_and_fall_back_through_parent_and_default_locales() {
   let root = tempfile::tempdir().unwrap();
+
   write(
     root.path(),
     "i18n/en.json",
     r#"{"challenge.state.preparing.description":"Custom English"}"#,
   );
+
   write(
     root.path(),
-    "i18n/vi.json",
-    r#"{"challenge.state.preparing.title":"Kiểm tra", "challenge.details.body":"Xin chào Rilgate"}"#,
+    "i18n/qaa.json",
+    r#"{"challenge.state.preparing.title":"Parent Title","challenge.details.body":"Parent Description"}"#,
   );
+
   write(
     root.path(),
-    "i18n/vi-VN.json",
-    r#"{"challenge.state.preparing.status":"Đang chuẩn bị"}"#,
+    "i18n/qaa-001.json",
+    r#"{"challenge.state.preparing.status":"Regional Status"}"#,
   );
+
   let mut config = config(root.path());
-  config.i18n.supported_locales = ["en".into(), "vi".into(), "vi-VN".into()].to_vec();
+  config.i18n.supported_locales = ["en".into(), "qaa".into(), "qaa-001".into()].to_vec();
+
   let manager = WebManager::new(config).unwrap();
   let snapshot = manager.current();
-  let html = render(&snapshot, "vi-VN");
-  assert!(html.contains("Kiểm tra"));
+  let html = render(&snapshot, "qaa-001");
+
+  // Parent locale fallback
+  assert!(html.contains("Parent Title"));
+  assert!(html.contains("Parent Description"));
+
+  // Exact regional locale
+  assert!(html.contains("Regional Status"));
+
+  // Default English locale fallback
   assert!(html.contains("Custom English"));
-  assert!(html.contains("Đang chuẩn bị"));
-  assert!(html.contains("Xin chào Rilgate"));
   assert!(html.contains("Try again"));
+
+  // Missing keys fall back to the key itself
   assert_eq!(
     snapshot
       .translations
-      .translate("vi-VN", "missing.key", &BTreeMap::new())
+      .translate("qaa-001", "missing.key", &BTreeMap::new())
       .unwrap(),
     "missing.key"
   );
