@@ -1,6 +1,6 @@
 use http::{HeaderMap, StatusCode, header};
 use http_body_util::BodyExt;
-use rilgate_web::assets::AssetMetadata;
+use rilgate_web::assets::{AssetCache, AssetMetadata};
 
 #[tokio::test]
 async fn asset_responses_preserve_bytes_and_cache_semantics() {
@@ -14,7 +14,9 @@ async fn asset_responses_preserve_bytes_and_cache_semantics() {
     assert_eq!(memory.etag, file.etag);
     for asset in [memory, file] {
       assert_eq!(asset.bytes().unwrap(), bytes);
-      let head = asset.response(&HeaderMap::new(), true).unwrap();
+      let head = asset
+        .response(&HeaderMap::new(), true, AssetCache::Revalidate)
+        .unwrap();
       assert_eq!(head.status(), StatusCode::OK);
       assert_eq!(head.headers()[header::CONTENT_LENGTH], size.to_string());
       assert_eq!(head.headers()[header::CONTENT_TYPE], "application/wasm");
@@ -35,7 +37,9 @@ async fn asset_responses_preserve_bytes_and_cache_semantics() {
       ] {
         let mut headers = HeaderMap::new();
         headers.insert(header::IF_NONE_MATCH, value.parse().unwrap());
-        let response = asset.response(&headers, false).unwrap();
+        let response = asset
+          .response(&headers, false, AssetCache::Revalidate)
+          .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
         assert_eq!(response.headers()[header::ETAG], asset.etag);
         assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
@@ -51,11 +55,11 @@ async fn asset_responses_preserve_bytes_and_cache_semantics() {
       }
 
       let first = asset
-        .response(&HeaderMap::new(), false)
+        .response(&HeaderMap::new(), false, AssetCache::Revalidate)
         .unwrap()
         .into_body();
       let second = asset
-        .response(&HeaderMap::new(), false)
+        .response(&HeaderMap::new(), false, AssetCache::Revalidate)
         .unwrap()
         .into_body();
       std::fs::write(&path, b"replacement").unwrap();
@@ -87,7 +91,9 @@ async fn challenge_assets_revalidate_the_bundle_and_individual_scripts() {
     "hash-worker.js",
   ] {
     let asset = &snapshot.assets[rilgate_web::assets::canonical_asset(name)];
-    let response = asset.response(&HeaderMap::new(), false).unwrap();
+    let response = asset
+      .response(&HeaderMap::new(), false, AssetCache::Revalidate)
+      .unwrap();
     assert_eq!(response.status(), StatusCode::OK, "{name}");
     assert_eq!(response.headers()[header::ETAG], asset.etag);
     assert_eq!(
@@ -106,7 +112,9 @@ async fn challenge_assets_revalidate_the_bundle_and_individual_scripts() {
     );
     let mut headers = HeaderMap::new();
     headers.insert(header::IF_NONE_MATCH, asset.etag.parse().unwrap());
-    let response = asset.response(&headers, false).unwrap();
+    let response = asset
+      .response(&headers, false, AssetCache::Revalidate)
+      .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{name}");
     assert!(
       response

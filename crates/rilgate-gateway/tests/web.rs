@@ -189,3 +189,128 @@ async fn denied_and_upstream_error_pages_preserve_http_status_and_hide_internal_
   assert!(html.contains("A short delay"));
   assert!(!html.contains(&address.to_string()));
 }
+
+async fn get(router: &app::TestGateway, uri: &str) -> http::Response<Body> {
+  router
+    .clone()
+    .oneshot(
+      Request::builder()
+        .uri(uri)
+        .header("host", "example.test")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
+/// Returns the quoted value in `html` that ends with `suffix`.
+fn quoted_ending_with(html: &str, suffix: &str) -> String {
+  let end = html
+    .find(suffix)
+    .unwrap_or_else(|| panic!("{suffix} missing"))
+    + suffix.len();
+  let start = html[..end].rfind('"').unwrap() + 1;
+  html[start..end].to_string()
+}
+
+#[tokio::test]
+async fn challenge_page_links_resolve_to_immutable_revisioned_assets() {
+  let router = app::router(common::config()).await.unwrap();
+  let response = get(&router, "/protected").await;
+  let html = String::from_utf8(
+    to_bytes(response.into_body(), 100_000)
+      .await
+      .unwrap()
+      .to_vec(),
+  )
+  .unwrap()
+  .replace("&#x2f;", "/");
+  let bootstrap: serde_json::Value = serde_json::from_str(
+    html
+      .split_once("id=\"pow-bootstrap\">")
+      .unwrap()
+      .1
+      .split_once("</script>")
+      .unwrap()
+      .0,
+  )
+  .unwrap();
+  let static_url = bootstrap["static_url"].as_str().unwrap();
+  let revision = static_url
+    .strip_prefix("/.well-known/test-pow/static/v-")
+    .unwrap();
+  assert_eq!(revision.len(), 12);
+  for link in [
+    quoted_ending_with(&html, "challenge.bundle.js"),
+    quoted_ending_with(&html, ".css"),
+    bootstrap["solver_module_url"].as_str().unwrap().to_string(),
+    static_url.to_string() + "/js/solvers/loader.js",
+  ] {
+    assert!(link.starts_with(static_url), "{link}");
+    let response = get(&router, &link).await;
+    assert_eq!(response.status(), StatusCode::OK, "{link}");
+    assert_eq!(
+      response.headers()["cache-control"],
+      "public, max-age=31536000, immutable",
+      "{link}"
+    );
+  }
+}
+
+#[tokio::test]
+async fn static_urls_with_another_revision_are_served_for_revalidation() {
+  let router = app::router(common::config()).await.unwrap();
+  for (path, status, cache) in [
+    (
+      "/.well-known/test-pow/static/v-000000000000/js/page.js",
+      StatusCode::OK,
+      Some("public, max-age=0, must-revalidate"),
+    ),
+    (
+      "/.well-known/test-pow/static/js/page.js",
+      StatusCode::OK,
+      Some("public, max-age=0, must-revalidate"),
+    ),
+    (
+      "/.well-known/test-pow/static/v-../js/page.js",
+      StatusCode::NOT_FOUND,
+      None,
+    ),
+    (
+      "/.well-known/test-pow/static/v-ZZZ/js/page.js",
+      StatusCode::NOT_FOUND,
+      None,
+    ),
+  ] {
+    let response = get(&router, path).await;
+    assert_eq!(response.status(), status, "{path}");
+    if let Some(cache) = cache {
+      assert_eq!(response.headers()["cache-control"], cache, "{path}");
+    }
+  }
+}
+
+#[tokio::test]
+async fn client_config_versions_the_solver_module_and_keeps_descriptor_paths() {
+  let router = app::router(common::config()).await.unwrap();
+  let response = get(&router, "/.well-known/test-pow/api/client-config").await;
+  let body: serde_json::Value =
+    serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+  let module = body["solver_module_url"].as_str().unwrap();
+  let revision = module
+    .strip_prefix("/.well-known/test-pow/static/v-")
+    .and_then(|rest| rest.split('/').next())
+    .unwrap();
+  assert_eq!(revision.len(), 12);
+  let fast = body["algorithms"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .find(|entry| entry["id"] == "fast")
+    .unwrap();
+  assert_eq!(
+    fast["solver_module_path"],
+    "/static/js/solvers/fast/solver.js"
+  );
+}

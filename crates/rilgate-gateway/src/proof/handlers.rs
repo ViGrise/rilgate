@@ -25,10 +25,7 @@ pub fn client_config(state: &AppState) -> Response {
       algorithms: state.pow.algorithm_descriptors(),
       enforce: state.pow.enforcement(),
       internal_prefix: prefix.clone(),
-      solver_module_url: crate::web::pages::resolve_gateway_asset(
-        prefix,
-        &state.cfg.pow.browser.solver_module_path,
-      ),
+      solver_module_url: snapshot.asset_url(&state.cfg.pow.browser.solver_module_path),
       websocket_url: format!("{prefix}/api/ws"),
     },
   )

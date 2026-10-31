@@ -32,7 +32,7 @@ pub fn render_challenge_page(
     difficulty: Some(issued.claims.difficulty),
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
-    solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
+    solver_module_url: snapshot.asset_url(&solver_module_path),
     honeypot_url: honeypot_url(state, &snapshot.config.base_path),
     ..Default::default()
   };
@@ -186,7 +186,7 @@ pub fn render_page(
           .as_secs() as i64;
         claims.expires_at.saturating_sub(now).max(0) as u64
       }),
-      solver_module_url: resolve_gateway_asset(&snapshot.config.base_path, &solver_module_path),
+      solver_module_url: snapshot.asset_url(&solver_module_path),
       ..Default::default()
     },
   };
@@ -258,18 +258,6 @@ pub fn render_refresh_page(
     render(&state.web.fallback()).expect("Validated embedded page template")
   });
   (html, locale, policy)
-}
-
-pub(crate) fn resolve_gateway_asset(prefix: &str, configured: &str) -> String {
-  format!(
-    "{}{}",
-    prefix.trim_end_matches('/'),
-    if configured.starts_with('/') {
-      configured.to_string()
-    } else {
-      format!("/{configured}")
-    }
-  )
 }
 
 /// Reads the `lang` query parameter from a request URI.

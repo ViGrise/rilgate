@@ -29,10 +29,7 @@ fn public(snapshot: &WebSnapshot) -> TemplateContext {
       description: String::new(),
     },
     challenge: PublicChallengeInfo {
-      solver_module_url: format!(
-        "{}/static/js/solvers/randomx/solver.js",
-        snapshot.config.base_path
-      ),
+      solver_module_url: snapshot.asset_url("/static/js/solvers/randomx/solver.js"),
       ..Default::default()
     },
   }
@@ -320,8 +317,24 @@ fn undefined_variables_recursion_and_fuel_are_checked_before_publication() {
 }
 
 #[test]
+fn asset_revision_follows_asset_bytes() {
+  let revision = |value: &str| {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "static/images/logo.svg", value);
+    WebManager::new(config(root.path()))
+      .unwrap()
+      .current()
+      .asset_revision
+      .clone()
+  };
+  assert_eq!(revision("first"), revision("first"));
+  assert_ne!(revision("first"), revision("second"));
+}
+
+#[test]
 fn static_overrides_have_immutable_bytes_and_matching_cache_metadata() {
   use http::{HeaderMap, StatusCode};
+  use rilgate_web::assets::AssetCache;
   let root = tempfile::tempdir().unwrap();
   write(root.path(), "static/images/logo.svg", "first");
   let manager = WebManager::new(config(root.path())).unwrap();
@@ -337,21 +350,21 @@ fn static_overrides_have_immutable_bytes_and_matching_cache_metadata() {
   headers.insert("if-none-match", etag.parse().unwrap());
   assert_eq!(
     first.assets["images/logo.svg"]
-      .response(&headers, false)
+      .response(&headers, false, AssetCache::Revalidate)
       .unwrap()
       .status(),
     StatusCode::NOT_MODIFIED
   );
   assert_eq!(
     second.assets["images/logo.svg"]
-      .response(&headers, false)
+      .response(&headers, false, AssetCache::Revalidate)
       .unwrap()
       .status(),
     StatusCode::OK
   );
   assert_eq!(
     second.assets["images/logo.svg"]
-      .response(&HeaderMap::new(), true)
+      .response(&HeaderMap::new(), true, AssetCache::Revalidate)
       .unwrap()
       .headers()["content-length"],
     "6"

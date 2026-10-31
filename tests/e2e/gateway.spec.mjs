@@ -177,7 +177,7 @@ for (const missing of [['fetch'], ['Promise'], ['TextEncoder'], ['Worker'], ['Ab
       }
     }, missing);
     if (missing.includes('TextEncoder')) {
-      await page.route('**/static/js/solvers/fast/worker.js', async route => {
+      await page.route('**/static/**/js/solvers/fast/worker.js', async route => {
         const response = await route.fetch();
         await route.fulfill({ response, body: `self.TextEncoder = undefined;\n${await response.text()}` });
       });

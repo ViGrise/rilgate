@@ -14,6 +14,7 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use minijinja::{Environment, context};
+use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// Translations the browser is handed for one locale.
@@ -27,6 +28,8 @@ pub struct WebSnapshot {
   pub templates: Environment<'static>,
   pub translations: Arc<TranslationStore>,
   pub assets: AssetIndex,
+  /// Short digest of every served asset, used as the version segment of static URLs.
+  pub asset_revision: String,
   /// Locales this deployment serves, resolved once.
   pub supported: SupportedLocales,
   /// Public site details, derived from config once.
@@ -168,13 +171,15 @@ impl WebSnapshot {
         ))
       })
       .collect::<Result<_>>()?;
-    let public = Arc::new(PublicRilgateInfo::from(config));
+    let asset_revision = asset_revision(&assets);
+    let public = Arc::new(PublicRilgateInfo::new(config, &asset_revision));
     let mut snapshot = Self {
       generation,
       config: config.clone(),
       templates,
       translations,
       assets,
+      asset_revision,
       supported,
       public,
       client_i18n,
@@ -199,6 +204,20 @@ impl WebSnapshot {
     Ok(snapshot)
   }
 
+  /// Public URL of a gateway path. Paths under `/static/` carry the asset revision.
+  pub fn asset_url(&self, path: &str) -> String {
+    let prefix = self.config.base_path.trim_end_matches('/');
+    let path = if path.starts_with('/') {
+      path.to_string()
+    } else {
+      format!("/{path}")
+    };
+    match path.strip_prefix("/static/") {
+      Some(rest) => format!("{prefix}/static/v-{}/{rest}", self.asset_revision),
+      None => format!("{prefix}{path}"),
+    }
+  }
+
   fn validate(&self) -> Result<()> {
     let challenge = PublicChallengeInfo {
       id: "validation".into(),
@@ -206,10 +225,7 @@ impl WebSnapshot {
       difficulty: Some(1),
       expires_at: Some(2_000_000_000),
       expires_in: Some(60),
-      solver_module_url: format!(
-        "{}/static/js/solvers/randomx/solver.js",
-        self.config.base_path
-      ),
+      solver_module_url: self.asset_url("/static/js/solvers/randomx/solver.js"),
       ..Default::default()
     };
     let mut public = TemplateContext {
@@ -304,7 +320,7 @@ impl WebSnapshot {
     if challenge.honeypot_url.is_empty()
       && let Some(shell) = self.challenge_shells.get(locale)
     {
-      return shell.render(&self.public.base_path, challenge);
+      return shell.render(&self.public, challenge);
     }
     let public = self.challenge_context(challenge.clone(), locale)?;
     self.render("pages/challenge.html.jinja", &public, locale)
@@ -367,7 +383,7 @@ impl WebSnapshot {
       name,
       public,
       locale,
-      shell::bootstrap(&public.rilgate.base_path, &public.challenge)?,
+      shell::bootstrap(&public.rilgate, &public.challenge)?,
     )
   }
 
@@ -405,6 +421,18 @@ impl WebSnapshot {
     crate::templates::json::validate(name, &html)?;
     Ok(html)
   }
+}
+
+/// Digest over the names and ETags of all served assets, in name order.
+fn asset_revision(assets: &AssetIndex) -> String {
+  let mut digest = Sha256::new();
+  for (name, asset) in assets {
+    digest.update(name.as_bytes());
+    digest.update([0]);
+    digest.update(asset.etag.as_bytes());
+    digest.update(b"\n");
+  }
+  hex::encode(digest.finalize())[..12].to_string()
 }
 
 /// Resolves the translations the browser is handed, for each served locale.

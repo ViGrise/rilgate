@@ -1,7 +1,7 @@
 mod metadata;
 mod response;
 pub use metadata::{AssetMetadata, AssetSource};
-pub use response::{Body, body};
+pub use response::{AssetCache, Body, body};
 use std::collections::BTreeMap;
 
 pub type AssetIndex = BTreeMap<String, AssetMetadata>;

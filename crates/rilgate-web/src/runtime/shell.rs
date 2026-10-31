@@ -1,4 +1,4 @@
-use crate::templates::context::PublicChallengeInfo;
+use crate::templates::context::{PublicChallengeInfo, PublicRilgateInfo};
 use anyhow::{Result, ensure};
 use serde::Serialize;
 use std::io::Write;
@@ -27,12 +27,16 @@ impl ChallengeShell {
     })
   }
 
-  pub(super) fn render(&self, prefix: &str, challenge: &PublicChallengeInfo) -> Result<String> {
+  pub(super) fn render(
+    &self,
+    rilgate: &PublicRilgateInfo,
+    challenge: &PublicChallengeInfo,
+  ) -> Result<String> {
     let mut html = Vec::with_capacity(
-      self.before.len() + self.after.len() + bootstrap_capacity(prefix, challenge),
+      self.before.len() + self.after.len() + bootstrap_capacity(rilgate, challenge),
     );
     html.extend_from_slice(self.before.as_bytes());
-    write_bootstrap(&mut html, prefix, challenge)?;
+    write_bootstrap(&mut html, rilgate, challenge)?;
     html.extend_from_slice(self.after.as_bytes());
     Ok(String::from_utf8(html)?)
   }
@@ -78,9 +82,10 @@ pub(super) fn script_json(value: &impl Serialize) -> Result<String> {
   Ok(String::from_utf8(json)?)
 }
 
-fn bootstrap_capacity(prefix: &str, challenge: &PublicChallengeInfo) -> usize {
+fn bootstrap_capacity(rilgate: &PublicRilgateInfo, challenge: &PublicChallengeInfo) -> usize {
   256
-    + prefix.len()
+    + rilgate.base_path.len()
+    + rilgate.static_url.len()
     + challenge.solver_module_url.len()
     + challenge.token.len()
     + challenge.algorithm.len()
@@ -88,14 +93,15 @@ fn bootstrap_capacity(prefix: &str, challenge: &PublicChallengeInfo) -> usize {
 
 fn write_bootstrap(
   output: &mut Vec<u8>,
-  prefix: &str,
+  rilgate: &PublicRilgateInfo,
   challenge: &PublicChallengeInfo,
 ) -> Result<()> {
   output.extend_from_slice(b"<script type=\"application/json\" id=\"pow-bootstrap\">");
   write_script_json(
     output,
     &serde_json::json!({
-      "internal_prefix": prefix,
+      "internal_prefix": rilgate.base_path,
+      "static_url": rilgate.static_url,
       "solver_module_url": challenge.solver_module_url,
       "presentation_token": challenge.token,
       "algorithm": challenge.algorithm,
@@ -106,9 +112,12 @@ fn write_bootstrap(
   Ok(())
 }
 
-pub(super) fn bootstrap(prefix: &str, challenge: &PublicChallengeInfo) -> Result<String> {
-  let mut output = Vec::with_capacity(bootstrap_capacity(prefix, challenge));
-  write_bootstrap(&mut output, prefix, challenge)?;
+pub(super) fn bootstrap(
+  rilgate: &PublicRilgateInfo,
+  challenge: &PublicChallengeInfo,
+) -> Result<String> {
+  let mut output = Vec::with_capacity(bootstrap_capacity(rilgate, challenge));
+  write_bootstrap(&mut output, rilgate, challenge)?;
   Ok(String::from_utf8(output)?)
 }
 
