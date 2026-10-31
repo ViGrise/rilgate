@@ -3,9 +3,12 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Path filters do not apply to tag pushes, so releases always build.
+    paths-ignore: ['**.md', 'docs/**']
   # The release-build label makes a pull request build every release file without publishing.
   pull_request:
     types: [opened, synchronize, reopened, labeled]
+    paths-ignore: ['**.md', 'docs/**']
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
