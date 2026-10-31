@@ -1,6 +1,6 @@
 use http::HeaderMap;
 use http_body_util::BodyExt;
-use rilgate_web::assets::AssetMetadata;
+use rilgate_web::assets::{AssetCache, AssetMetadata};
 use std::{hint::black_box, time::Instant};
 
 #[tokio::main(flavor = "current_thread")]
@@ -25,7 +25,9 @@ async fn main() -> anyhow::Result<()> {
         let start = Instant::now();
         let mut frames = 0u64;
         for _ in 0..iterations {
-          let mut body = asset.response(black_box(&headers), false)?.into_body();
+          let mut body = asset
+            .response(black_box(&headers), false, AssetCache::Revalidate)?
+            .into_body();
           let mut received = 0;
           while let Some(frame) = body.frame().await {
             if let Ok(data) = frame?.into_data() {

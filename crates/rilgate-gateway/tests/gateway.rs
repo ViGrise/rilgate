@@ -249,11 +249,9 @@ async fn challenge_stays_at_original_url_and_reserves_only_configured_namespace(
       .to_vec(),
   )
   .unwrap();
-  assert!(
-    html
-      .replace("&#x2f;", "/")
-      .contains("/.well-known/test-pow/static/js/challenge.bundle.js")
-  );
+  let html = html.replace("&#x2f;", "/");
+  assert!(html.contains("/.well-known/test-pow/static/v-"));
+  assert!(html.contains("/js/challenge.bundle.js"));
   assert!(!html.contains("__PRESENTATION_TOKEN__"));
   let response = router
     .clone()

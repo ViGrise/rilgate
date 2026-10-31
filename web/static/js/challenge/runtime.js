@@ -127,6 +127,10 @@
     return `${prefix}${path}`;
   }
 
+  function asset(path) {
+    return window.POW_STATIC_URL ? window.POW_STATIC_URL + path : endpoint("/static" + path);
+  }
+
   function responseBody(text, code, retryHeader) {
     let body;
     try { body = JSON.parse(text); } catch (_) { body = {}; }
@@ -253,11 +257,11 @@
       }
       solverRequests[request] = finish;
       script.type = "module";
-      script.src = endpoint("/static/js/solvers/loader.js") + "?request=" + request + "&module=" + encodeURIComponent(moduleUrl);
+      script.src = asset("/js/solvers/loader.js") + "?request=" + request + "&module=" + encodeURIComponent(moduleUrl);
       script.onerror = () => finish(null, new Error("Solver module failed to load"));
       try { document.head.appendChild(script); } catch (error) { finish(null, error); }
     });
   }
 
-  window.PowClient = { loadSolver, solverLoaded, t, status, state, stats, endpoint, jsonFetch, exchange, verify, requestChallenge, progressEl, once };
+  window.PowClient = { loadSolver, solverLoaded, t, status, state, stats, endpoint, asset, jsonFetch, exchange, verify, requestChallenge, progressEl, once };
 })();

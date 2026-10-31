@@ -12,8 +12,9 @@ pub struct PublicRilgateInfo {
   pub static_url: String,
   pub stylesheet_url: String,
 }
-impl From<&WebConfig> for PublicRilgateInfo {
-  fn from(config: &WebConfig) -> Self {
+impl PublicRilgateInfo {
+  pub fn new(config: &WebConfig, asset_revision: &str) -> Self {
+    let static_url = format!("{}/static/v-{asset_revision}", config.base_path);
     Self {
       name: config.name.clone(),
       version: env!("CARGO_PKG_VERSION"),
@@ -23,9 +24,9 @@ impl From<&WebConfig> for PublicRilgateInfo {
       stylesheet_url: if url::Url::parse(&config.stylesheet_path).is_ok() {
         config.stylesheet_path.clone()
       } else {
-        format!("{}/static/{}", config.base_path, config.stylesheet_path)
+        format!("{static_url}/{}", config.stylesheet_path)
       },
-      static_url: format!("{}/static", config.base_path),
+      static_url,
     }
   }
 }

@@ -1,5 +1,5 @@
 (() => {
-  const { stats, endpoint } = window.PowClient;
+  const { stats, asset } = window.PowClient;
   function solveFast(challenge) {
     return new Promise((resolve, reject) => {
       let worker = null;
@@ -53,7 +53,7 @@
       try {
         const data = { challenge: challenge.challenge, difficulty: challenge.difficulty, start: 0 };
         if (typeof Worker === "function") {
-          worker = new Worker(endpoint("/static/js/solvers/fast/worker.js"));
+          worker = new Worker(asset("/js/solvers/fast/worker.js"));
           worker.onmessage = onmessage;
           worker.onerror = onerror;
           worker.postMessage(data);

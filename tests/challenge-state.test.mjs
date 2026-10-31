@@ -6,13 +6,13 @@ import vm from 'node:vm';
 const runtime = readFileSync(new URL('../web/static/js/challenge/runtime.js', import.meta.url), 'utf8');
 const startup = readFileSync(new URL('../web/static/js/challenge.js', import.meta.url), 'utf8');
 const english = JSON.parse(readFileSync(new URL('../web/i18n/en.json', import.meta.url), 'utf8'));
-function page(ids = ['status']) {
+function page(ids = ['status'], bootstrap = {}) {
   const elements = new Map(ids.map(id => ['#' + id, {
     style: {}, hidden: true, textContent: '', removeAttribute() {},
     addEventListener() {}, removeEventListener() {},
   }]));
   elements.set('#pow-i18n', { textContent: JSON.stringify(english) });
-  elements.set('#pow-bootstrap', { textContent: JSON.stringify({ internal_prefix: '/gateway', algorithm: 'fast', presentation_token: 'presentation', embedded: false, solver_module_url: '/solver.js' }) });
+  elements.set('#pow-bootstrap', { textContent: JSON.stringify({ internal_prefix: '/gateway', algorithm: 'fast', presentation_token: 'presentation', embedded: false, solver_module_url: '/solver.js', ...bootstrap }) });
   const context = vm.createContext({
     document: { documentElement: { lang: 'en' }, querySelector: id => elements.get(id) || null },
     window: {}, console: { error() {} }, TypeError,
@@ -28,6 +28,12 @@ test('custom templates can omit new elements and retain status updates', () => {
   assert.equal(elements.get('#status').textContent, english['challenge.state.verifying.status']);
   client.status('Operator status');
   assert.equal(elements.get('#status').textContent, 'Operator status');
+});
+
+test('asset paths use the static URL from the page bootstrap', () => {
+  const { client } = page(['status'], { static_url: '/gateway/static/v-3f2a9c01b7de' });
+  assert.equal(client.asset('/js/x.js'), '/gateway/static/v-3f2a9c01b7de/js/x.js');
+  assert.equal(page().client.asset('/js/x.js'), '/gateway/static/js/x.js');
 });
 
 test('statistics use page locale and remain visible through result confirmation', () => {
