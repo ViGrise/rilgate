@@ -18,19 +18,19 @@ browser completes the required work.
 
 ## Features
 
-- **Two PoW algorithms:** lightweight SHA-256 (`fast`) and memory-intensive
-  RandomX.
+- **Four challenge types:** lightweight SHA-256 (`fast`), local CPU work (`hashwx`),
+  memory-intensive RandomX (`randomx`) and a delay without JavaScript (`refresh`).
 - **Request policies:** allow, deny, challenge or adjust the score of a request.
-  Policies match paths, methods, user agents, headers, client IP ranges and
-  published IP sets.
-- **Two RandomX modes:** local verification or access granted after Stratum pool accepts a
-  submitted share. RandomX starts only after explicit browser consent.
-- **Shared Rust implementation:** native verification and browser WebAssembly use the
-  same RandomX core.
-- **Customizable web UI:** templates, branding, translations, cookie names and internal
-  paths come from configuration or filesystem overrides.
+  Policies match paths, methods, user agents, headers, IP ranges, GeoIP data and
+  request rates. The score selects the challenge and its difficulty.
+- **Honeypot:** a hidden link on the challenge pages flags crawlers that follow every link.
+  A policy rule can then deny or challenge them.
+- **Two RandomX modes:** local verification or access granted after a Stratum pool accepts
+  a submitted share. Rilgate uses several pools with failover.
+- **Customizable web UI:** templates, branding, translations and legal notices come from
+  configuration or filesystem overrides.
 - **Bounded resources:** proof rate limits, verifier queues, pool sessions, request
-  bodies and timeouts. Web resources support atomic reloads.
+  bodies and timeouts.
 
 ## How it works
 
@@ -58,9 +58,10 @@ It needs no pool. Its difficulty defaults await a mid-range phone measurement.
 See [the HashWX example](config/examples/hashwx.yml).
 
 Fast proofs run in a browser worker. RandomX uses roughly 256 MiB per worker for its
-cache, plus scratchpads and runtime memory. It requires Worker, WebAssembly and BigInt;
-SIMD is optional. See [RandomX throughput](docs/pow.md#randomx-throughput). Both RandomX modes get
-work from a Stratum pool Stratum endpoint.
+cache, plus scratchpads and runtime memory. It requires Worker, WebAssembly and BigInt.
+SIMD is optional. See [RandomX throughput](docs/pow.md#randomx-throughput). Both RandomX
+modes get work from a Stratum pool. See
+[when every pool is unavailable](docs/pow.md#when-every-pool-is-unavailable) for the fallback.
 
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host
 binding, lifetime and enforcement details.
@@ -139,8 +140,7 @@ conflicting settings fail validation in every environment.
 
 Use `rilgate config check` to validate and `rilgate config show --defaults` to inspect all defaults with secrets
 redacted. You can also supply every setting as a flag or `RILGATE_*` variable. See
-`rilgate --help`. The schema has no version field and replaces the unreleased previous
-format.
+`rilgate --help`.
 
 See [the default configuration](config/rilgate.yml), [configuration examples](config/examples/),
 [built-in policies and rules](docs/policy.md#built-in-policies-and-rules), [configuration](docs/configuration.md),
@@ -158,9 +158,9 @@ this repository track the source:
 | [Architecture](docs/architecture.md)      | Crate boundaries, dependencies and detailed source tree |
 | [Configuration](docs/configuration.md)    | Loading, precedence, scaling and a full example         |
 | [Gateway](docs/gateway.md)                | Routing, reverse proxy behavior and resource limits     |
-| [Policies](docs/policy.md)                | Matchers, IP sets, request weights and algorithm selection |
-| [Proof of work](docs/pow.md)              | Fast, RandomX, Stratum pool modes and token lifecycle         |
-| [Web resources](docs/web.md)              | Branding, templates, translation fallback and reloads   |
+| [Policies](docs/policy.md)                | Conditions, counters, honeypot, IP sets, GeoIP and algorithm selection |
+| [Proof of work](docs/pow.md)              | Fast, HashWX, refresh, RandomX, Stratum pools, fallback and token lifecycle |
+| [Web resources](docs/web.md)              | Branding, page design, legal notices, templates, translations and reloads |
 | [AJAX and API integration](docs/api-integration.md) | JSON challenge responses and iframe completion |
 | [Adding an algorithm](docs/algorithms.md) | Backend, provider and browser contracts                 |
 | [Production operations](docs/production.md) | Deployment hardening, monitoring, rotation and rollback |
@@ -169,7 +169,7 @@ this repository track the source:
 
 ## Project status
 
-Rilgate is experimental. Fast, HashWX and RandomX are implemented. GhostRider and BLAKE3 are
+Rilgate is experimental. Fast, HashWX, refresh and RandomX are implemented. GhostRider and BLAKE3 are
 potential extensions.
 
 HTTP serving and upstream forwarding use Pingora, including application WebSocket
