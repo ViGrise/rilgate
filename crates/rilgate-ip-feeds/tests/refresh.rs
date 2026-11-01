@@ -80,7 +80,7 @@ async fn failures_keep_the_previous_snapshot() {
   ))
   .unwrap();
   let engine = PolicyEngine::from_definition(&definition).unwrap();
-  let set = engine.ip_sets().get("feed").unwrap().clone();
+  let set = engine.sets().ip.get("feed").unwrap().clone();
   let ip = "192.0.2.1".parse().unwrap();
   let client = FeedClient::new().unwrap();
   let mut validators = Validators::default();

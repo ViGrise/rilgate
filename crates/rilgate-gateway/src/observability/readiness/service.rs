@@ -46,11 +46,14 @@ pub async fn check(state: &AppState) -> Response {
   let pool = pools
     .as_ref()
     .map(|pools| pools.iter().any(|(_, ready)| *ready));
-  let ip_sets = state.pow.ip_sets().all_remote_loaded();
+  let sets = state.pow.sets();
+  let ip_sets = sets.ip.all_remote_loaded();
+  let asn_sets = sets.asn.all_remote_loaded();
   let geoip = state.pow.geoip().all_loaded();
   let ready = upstream
     && (state.cfg.pow.randomx_fallback.is_some() || pool.unwrap_or(true))
     && remote.unwrap_or(true)
+    && asn_sets
     && ip_sets
     && geoip
     && !state.shutdown.is_cancelled();
@@ -67,6 +70,7 @@ pub async fn check(state: &AppState) -> Response {
       pools,
       remote,
       ip_sets,
+      asn_sets,
       geoip,
     },
   )

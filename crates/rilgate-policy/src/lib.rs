@@ -1,6 +1,12 @@
+pub mod asn_sets;
 pub mod conditions;
 pub mod counters;
+pub mod feed_sets;
 pub mod feed_state;
+pub mod sets;
+pub use asn_sets::{AsnList, AsnSet, AsnSets};
+pub use feed_sets::{FeedFormat, FeedIndex, FeedSet, FeedSetStatus, FeedSets};
+pub use sets::PolicySets;
 pub mod geoip;
 pub mod host_load;
 pub mod ip_sets;

@@ -63,19 +63,19 @@ async fn reload_keeps_an_unchanged_remote_ip_set_loaded() {
   let feed = feed_server().await;
   let url = format!("{}/first", feed.base);
   let first = PolicyEngine::from_definition(&feed_policy(&url, "allow")).unwrap();
-  let _first_refreshers = spawn(first.ip_sets()).unwrap();
-  let set = first.ip_sets().get("feed").unwrap().clone();
+  let _first_refreshers = spawn(&first.sets().ip).unwrap();
+  let set = first.sets().ip.get("feed").unwrap().clone();
   until("the first load", || set.status().loaded).await;
 
   let second =
     PolicyEngine::from_definition_with(&feed_policy(&url, "deny"), Some(&first)).unwrap();
-  let carried = second.ip_sets().get("feed").unwrap().clone();
+  let carried = second.sets().ip.get("feed").unwrap().clone();
   let ip = "192.0.2.1".parse().unwrap();
   assert!(carried.status().loaded);
   assert_eq!(carried.membership(ip), Membership::Member);
-  assert!(second.ip_sets().all_remote_loaded());
+  assert!(second.sets().ip.all_remote_loaded());
 
-  let _second_refreshers = spawn(second.ip_sets()).unwrap();
+  let _second_refreshers = spawn(&second.sets().ip).unwrap();
   tokio::time::sleep(QUIET_WINDOW).await;
   assert_eq!(feed.hits.load(Ordering::SeqCst), 1);
   assert_eq!(carried.membership(ip), Membership::Member);
@@ -86,16 +86,16 @@ async fn reload_reloads_a_set_whose_source_changed() {
   let feed = feed_server().await;
   let first =
     PolicyEngine::from_definition(&feed_policy(&format!("{}/first", feed.base), "allow")).unwrap();
-  let _first_refreshers = spawn(first.ip_sets()).unwrap();
-  let set = first.ip_sets().get("feed").unwrap().clone();
+  let _first_refreshers = spawn(&first.sets().ip).unwrap();
+  let set = first.sets().ip.get("feed").unwrap().clone();
   until("the first load", || set.status().loaded).await;
 
   let moved = feed_policy(&format!("{}/second", feed.base), "allow");
   let second = PolicyEngine::from_definition_with(&moved, Some(&first)).unwrap();
-  let replaced = second.ip_sets().get("feed").unwrap().clone();
+  let replaced = second.sets().ip.get("feed").unwrap().clone();
   assert!(!replaced.status().loaded);
 
-  let _second_refreshers = spawn(second.ip_sets()).unwrap();
+  let _second_refreshers = spawn(&second.sets().ip).unwrap();
   until("the new source to load", || replaced.status().loaded).await;
   assert_eq!(
     replaced.membership("198.51.100.1".parse().unwrap()),

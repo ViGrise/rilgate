@@ -1,8 +1,8 @@
 use crate::{
+  PolicySets,
   conditions::{Budget, Compiled, Request, Truth},
   geoip::{GeoDatabases, Lookup},
   host_load::HostLoad,
-  ip_sets::IpSets,
   policy::schema::{CounterDefinition, CounterField, CounterIp, CounterKeyPart, Definition},
 };
 use anyhow::{Context, Result, ensure};
@@ -95,7 +95,7 @@ fn text(value: &[u8]) -> KeyPart {
 
 pub(crate) fn compile(
   definition: &Definition,
-  sets: &IpSets,
+  sets: &PolicySets,
   geoip: &GeoDatabases,
   budget: &mut Budget,
 ) -> Result<Vec<CompiledCounter>> {

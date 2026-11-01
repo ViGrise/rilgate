@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     probes: Arc::new(tokio::sync::Semaphore::new(1)),
     open_graph: Arc::new(rilgate_gateway::open_graph::OpenGraphService::new(
       cfg.open_graph.clone(),
-      &pow.ip_sets(),
+      &pow.sets(),
       &pow.geoip(),
     )?),
     policy_services: rilgate_gateway::runtime::policy::PolicyServices {

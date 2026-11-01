@@ -105,7 +105,7 @@ fn lookup_conditions_are_rejected_outside_policy_rules() {
     rilgate_policy::conditions::CompiledCondition::compile(
       &serde_yaml_ng::from_str(text).unwrap(),
       "site.open_graph.when",
-      &rilgate_policy::IpSets::default(),
+      &rilgate_policy::PolicySets::default(),
       &rilgate_policy::GeoDatabases::default(),
     )
   };

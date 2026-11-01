@@ -46,6 +46,8 @@ pub struct Definition {
   pub score: Option<Scoring>,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub ip_sets: BTreeMap<String, IpSetDefinition>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub asn_sets: BTreeMap<String, AsnSetDefinition>,
   #[serde(
     default,
     deserialize_with = "present",
@@ -207,7 +209,7 @@ pub struct Condition {
     deserialize_with = "present",
     skip_serializing_if = "Option::is_none"
   )]
-  pub asn: Option<Vec<u32>>,
+  pub asn: Option<AsnMatch>,
   #[serde(
     default,
     deserialize_with = "present",
@@ -419,6 +421,41 @@ pub struct IpSetDefinition {
     skip_serializing_if = "Option::is_none"
   )]
   pub cidrs: Option<Vec<String>>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub url: Option<String>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub format: Option<FeedFormat>,
+  #[serde(
+    default,
+    with = "humantime_serde",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub refresh: Option<std::time::Duration>,
+  #[serde(
+    default,
+    with = "humantime_serde",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub max_stale: Option<std::time::Duration>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AsnSetDefinition {
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub asns: Option<Vec<u32>>,
   #[serde(
     default,
     deserialize_with = "present",
@@ -683,11 +720,7 @@ pub struct MaxMindSource {
   pub license_key: Secret,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum FeedFormat {
-  IpPrefixesJson,
-}
+pub use crate::feed_sets::FeedFormat;
 
 /// Reads a YAML number or string, because account identifiers are digits.
 fn text_or_number<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
@@ -729,5 +762,62 @@ impl Condition {
         .not
         .as_ref()
         .is_some_and(|value| value.references(names))
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AsnMatch {
+  Numbers(Vec<u32>),
+  Sets(Vec<String>),
+}
+impl<'de> Deserialize<'de> for AsnMatch {
+  fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    struct AsnVisitor;
+    impl<'de> serde::de::Visitor<'de> for AsnVisitor {
+      type Value = AsnMatch;
+      fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a list of autonomous system numbers or {in_sets: [...]}")
+      }
+      fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<AsnMatch, A::Error> {
+        let mut values = Vec::new();
+        while let Some(value) = seq.next_element()? {
+          values.push(value);
+        }
+        Ok(AsnMatch::Numbers(values))
+      }
+      fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<AsnMatch, M::Error> {
+        let Some(key) = map.next_key::<String>()? else {
+          return Err(serde::de::Error::custom(
+            "expected a list of autonomous system numbers or {in_sets: [...]}",
+          ));
+        };
+        if key != "in_sets" {
+          return Err(serde::de::Error::custom(format!(
+            "unknown asn key {key}, expected in_sets"
+          )));
+        }
+        let values = map.next_value()?;
+        if let Some(key) = map.next_key::<String>()? {
+          return Err(serde::de::Error::custom(format!(
+            "unknown asn key {key}, expected in_sets"
+          )));
+        }
+        Ok(AsnMatch::Sets(values))
+      }
+    }
+    deserializer.deserialize_any(AsnVisitor)
+  }
+}
+impl Serialize for AsnMatch {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    match self {
+      Self::Numbers(values) => values.serialize(serializer),
+      Self::Sets(values) => {
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry("in_sets", values)?;
+        map.end()
+      }
+    }
   }
 }

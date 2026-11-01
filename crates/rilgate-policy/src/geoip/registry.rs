@@ -1,8 +1,8 @@
+use crate::feed_sets::describe;
 use crate::geoip::{
   DEFAULT_MAX_STALE, DEFAULT_REFRESH, GeoDatabase, GeoKind, GeoSource, MAX_MAX_STALE, MAX_REFRESH,
   MIN_FILE_REFRESH, MIN_MAXMIND_REFRESH,
 };
-use crate::ip_sets::describe;
 use crate::policy::schema::{GeoDatabaseDefinition, GeoIpDefinition, MaxMindSource};
 use anyhow::{Result, ensure};
 use std::sync::Arc;

@@ -70,7 +70,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
     open_graph: Arc::new(
       rilgate_gateway::open_graph::OpenGraphService::new(
         cfg.open_graph.clone(),
-        &service.ip_sets(),
+        &service.sets(),
         &service.geoip(),
       )
       .unwrap(),

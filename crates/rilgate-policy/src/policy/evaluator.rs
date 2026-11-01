@@ -2,8 +2,8 @@ use super::schema::{Action, Definition, Mode, Rule};
 use crate::conditions::{Budget, Compiled, Request, Truth};
 use crate::geoip::GeoDatabases;
 use crate::host_load::{HOST_LOAD, HostLoad};
-use crate::ip_sets::IpSets;
 use crate::lookups::{LookupPlan, Lookups};
+use crate::{AsnSets, IpSets, PolicySets};
 use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, Method};
@@ -35,7 +35,7 @@ pub struct PolicyEngine {
   counters: Vec<crate::counters::CompiledCounter>,
   default_action: PolicyAction,
   default_rule: Arc<str>,
-  ip_sets: IpSets,
+  sets: PolicySets,
   geoip: GeoDatabases,
   lookup_plan: LookupPlan,
   host_load: &'static HostLoad,
@@ -47,6 +47,10 @@ impl Definition {
       ensure!(
         self.ip_sets.is_empty(),
         "policy: ip_sets require mode: custom"
+      );
+      ensure!(
+        self.asn_sets.is_empty(),
+        "policy: asn_sets require mode: custom"
       );
       ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
       ensure!(self.dns.is_none(), "policy: dns requires mode: custom");
@@ -166,14 +170,21 @@ impl PolicyEngine {
     Self::from_definition_with(definition, None)
   }
 
-  /// Compiles the definition. Remote IP sets and GeoIP databases whose source
+  /// Compiles the definition. Remote feed sets and GeoIP databases whose source
   /// matches one of `previous` keep the data that engine has loaded.
   pub fn from_definition_with(
     definition: &Definition,
     previous: Option<&PolicyEngine>,
   ) -> Result<Self> {
     let (source, default) = definition.resolved_rules()?;
-    let ip_sets = IpSets::compile_with(&definition.ip_sets, previous.map(PolicyEngine::ip_sets))?;
+    let sets = PolicySets {
+      ip: IpSets::compile_with(&definition.ip_sets, previous.map(|e| &e.sets().ip))?,
+      asn: AsnSets::compile_with(
+        "policy.asn_sets",
+        &definition.asn_sets,
+        previous.map(|e| &e.sets().asn),
+      )?,
+    };
     let geoip =
       GeoDatabases::compile_with(definition.geoip.as_ref(), previous.map(PolicyEngine::geoip))?;
     if let Some(dns) = &definition.dns {
@@ -222,7 +233,7 @@ impl PolicyEngine {
         &format!("{path}.when"),
         0,
         &mut budget,
-        &ip_sets,
+        &sets,
         &geoip,
       )?;
       rules.push(CompiledRule {
@@ -231,7 +242,7 @@ impl PolicyEngine {
         condition,
       });
     }
-    let counters = crate::counters::compile(definition, &ip_sets, &geoip, &mut budget)?;
+    let counters = crate::counters::compile(definition, &sets, &geoip, &mut budget)?;
     let lookup_plan = LookupPlan {
       dnsbl_zones: budget.dnsbl_zones.into_iter().collect(),
       reverse_dns: budget.reverse_dns,
@@ -246,7 +257,7 @@ impl PolicyEngine {
       }
       .into(),
       default_action: default,
-      ip_sets,
+      sets,
       geoip,
       lookup_plan,
       host_load: &HOST_LOAD,
@@ -290,8 +301,8 @@ impl PolicyEngine {
       })
       .collect()
   }
-  pub fn ip_sets(&self) -> &IpSets {
-    &self.ip_sets
+  pub fn sets(&self) -> &PolicySets {
+    &self.sets
   }
   pub fn geoip(&self) -> &GeoDatabases {
     &self.geoip

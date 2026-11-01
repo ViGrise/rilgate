@@ -370,6 +370,7 @@ warning-free configuration, run it in CI or before deployment.
 | `trusted-proxy-broad` | production | error | A public `server.trusted_proxies` network is broader than `/8` (IPv4) or `/16` (IPv6) |
 | `debug-score-header` | production | error | `policy.score.debug_header.enabled` is `true` |
 | `ip-set-plain-http` | production | error | A remote IP set `url` does not use `https` |
+| `asn-set-plain-http` | production | error | A remote ASN set `url` does not use `https` |
 | `trusted-proxy-public` | production | warning | A `server.trusted_proxies` network contains public addresses, such as CDN ranges |
 | `operations-listen-public` | production | warning | A `server.operations.listen` address is outside loopback and private networks, including `0.0.0.0` |
 | `proof-rate-limit-disabled` | production | warning | `pow.rate_limit.enabled` is `false` |
@@ -491,6 +492,7 @@ or overflow.
 | `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
 | `policy.mode` | `balanced` |
 | `policy.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
+| `policy.asn_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
 
 When `pow.stratum_pool` is enabled, its defaults are:
 

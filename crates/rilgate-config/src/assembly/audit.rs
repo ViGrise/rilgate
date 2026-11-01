@@ -110,6 +110,19 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
         );
       }
     }
+    for (name, set) in &config.pow.policy.asn_sets {
+      if let Some(url) = &set.url
+        && !url
+          .get(..8)
+          .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
+      {
+        report(
+          "asn-set-plain-http",
+          Severity::Error,
+          format!("policy.asn_sets.{name}.url: production requires https"),
+        );
+      }
+    }
     for address in public(&config.operations_listen_addresses) {
       report(
         "operations-listen-public",

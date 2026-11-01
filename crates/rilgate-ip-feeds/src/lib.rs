@@ -4,7 +4,7 @@ mod parse;
 mod refresh;
 pub use fetch::{FeedClient, FetchOptions, Fetched};
 pub use geoip::{GeoRefresher, MAXMIND_DOWNLOAD_BASE, spawn_geoip};
-pub use parse::parse;
+pub use parse::{FeedParse, parse_asn, parse_ip};
 pub use refresh::{Outcome, next_delay, refresh_once, resume_delay, spawn};
 pub use rilgate_policy::{GeoState, Validators};
 use std::time::Duration;

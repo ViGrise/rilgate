@@ -42,7 +42,12 @@ host loopback.
 
 Production cookies need HTTPS.
 
-Remote IP set feeds are fetched in the background, never on the request path.
+Remote IP and ASN set feeds are fetched in the background, never on the request path.
+Allow outbound HTTPS to each configured feed host, including `check.torproject.org` for Tor exits
+and `raw.githubusercontent.com` for the X4BNet ASN example.
+Readiness reports `asn_sets` alongside `ip_sets` and requires each remote set to load once.
+ASN metrics are `rilgate_asn_set_entries`, `rilgate_asn_set_stale`,
+`rilgate_asn_set_age_seconds` and `rilgate_asn_set_refresh_failures_total`, with the `set` label.
 `config check` never contacts publishers, and startup does not wait for them. Allow
 outbound HTTPS to the configured feed hosts. Keep DNS available. Until every remote set
 loads successfully once, an instance reports not ready. A feed outage after a successful
@@ -190,7 +195,7 @@ The following routes are relative to `site.base_path`:
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/api/live`    | The process can serve HTTP requests                                                                                                                                                                                                                                      |
 | `/api/health`  | Existing web diagnostics and cumulative pool failures                                                                                                                                                                                                                    |
-| `/api/ready`   | Checks upstream TCP connectivity and an initial successful load of every configured remote IP set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS, unless a RandomX fallback is configured. Returns 503 when unavailable or during drain |
+| `/api/ready`   | Checks upstream TCP connectivity and an initial successful load of every configured remote IP and ASN set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS, unless a RandomX fallback is configured. Returns 503 when unavailable or during drain |
 | `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true`                                                                                                                                                                                                  |
 
 With a configured RandomX fallback, pool readiness does not affect `/api/ready`.
@@ -223,12 +228,12 @@ change `site.base_path`, adjust those rules. These endpoints have no authenticat
 
 Metrics cover HTTP status classes and duration histograms, active connections and
 requests, overload rejections, pool sessions and failures, and web reloads. They also
-cover IP set prefix counts, age, staleness and refresh failures, and unresolved policy
+cover IP set prefix counts, ASN set entry counts, age, staleness and refresh failures, and unresolved policy
 decisions. For RandomX, metrics cover queue depth, active hashing, completions and
 rejected work.
 
 HTTP duration includes streaming and WebSocket lifetimes. Labels exclude paths, hosts
-and client IPs to keep cardinality bounded, except a bounded configured IP set name.
+and client IPs to keep cardinality bounded, except a bounded configured IP or ASN set name.
 Concurrent gauges and histograms are snapshots. Use `RILGATE_LOG_FORMAT=json` for JSON logs and
 `RUST_LOG` for verbosity.
 

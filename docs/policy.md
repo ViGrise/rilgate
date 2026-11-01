@@ -81,6 +81,7 @@ policy:
 | --- | --- |
 | `public-endpoints.yml` | Allows `/.well-known/`, favicon image variants, `/robots.txt` and `/sitemap.xml`. Broader than preset exceptions. |
 | `challenge-bots.yml` | Challenges empty or bot/tool-like User-Agents with Fast difficulty 1. |
+| `tor-exit.yml` | Adds 20 for membership in the operator-defined `tor-exits` IP set. |
 | `challenge-all.yml` | Terminal catchall challenge with Fast difficulty 2. Place it last. |
 | `deny-ai-crawlers.yml` | Denies recognized AI-affiliated agents, training and search crawlers, and user-triggered AI clients. |
 | `deny-headless-browsers.yml` | Denies recognized headless User-Agents and Lightpanda client hints. |
@@ -91,6 +92,23 @@ groups can also match authorized automation. The default balanced policy keeps
 challenging application traffic regardless of User-Agent. Built-in references
 always select embedded content. Use an explicit local include path for an
 operator-maintained copy.
+
+The Tor exit rule requires this set:
+
+```yaml
+policy:
+  mode: custom
+  ip_sets:
+    tor-exits:
+      url: https://check.torproject.org/torbulkexitlist
+      format: list_text
+      refresh: 1h
+      max_stale: 1d
+  rules:
+    - !include builtin:rules/tor-exit.yml
+```
+
+Its score of 20 combines with 10 from `client-score.yml` to reach the 30 tier.
 
 Each verified search crawler rule allows a request only when its User-Agent
 matches the crawler and the client address is in the named IP set. Define the
@@ -183,11 +201,11 @@ matcher that includes its port. Host conditions are available in policy rules
 and in `site.open_graph.when`.
 
 The public `rilgate_policy::conditions::CompiledCondition` API compiles request
-conditions against `IpSets` and `GeoDatabases` registries and matches them against a `Request`.
+conditions against `PolicySets` and `GeoDatabases` registries and matches them against a `Request`.
 It shares the policy matcher and resource limits. Score matchers are rejected
 outside policy rules, with the supplied configuration path. An unknown result
 selects no request. `site.open_graph.when` uses this API with the live
-`policy.ip_sets` and `policy.geoip` registries.
+`policy.ip_sets`, `policy.asn_sets` and `policy.geoip` registries.
 
 Multiple fields in a condition are combined with AND. `all`, `any`, and
 `not` compose conditions recursively. `all` and `any` cannot be
@@ -200,7 +218,7 @@ empty.
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 | `load` | `window` (`1m`, `5m` default, `15m`), `gt`, `gte`, `lt`, `lte` |
 | `country` | a list of 1 to 256 uppercase ISO 3166-1 alpha-2 codes |
-| `asn` | a list of 1 to 256 autonomous system numbers |
+| `asn` | a list of 1 to 256 autonomous system numbers or `{in_sets: [name]}` |
 | `dnsbl` | one DNSBL zone name |
 | `rate` (named `counter`) | `eq`, `gt`, `gte`, `lt`, `lte` on non-negative integers |
 | `honeypot` | `true` or `false` |
@@ -452,7 +470,42 @@ policy:
       action: allow
 ```
 
-`format` is required with `url`. `ip_prefixes_json` is the only format.
+`format` is required with `url`.
+
+| Name | Form | Behavior |
+| --- | --- | --- |
+| IP prefix JSON | `ip_prefixes_json` | Reads `prefixes` objects with `ipv4Prefix` or `ipv6Prefix`. IP sets only. |
+| Text list | `list_text` | Reads one address, network or ASN per line. |
+| Regex | `{regex: '(?P<value>...)'}` | Reads the named `value` capture from each match. |
+| JSONPath | `{json_path: ['$.prefixes[*].ip_prefix']}` | Reads strings or non-negative integers from RFC 9535 queries. |
+
+Text lists require UTF-8. Rilgate removes one trailing carriage return and cuts each line at the first `#` or `;`.
+It trims ASCII whitespace and skips empty lines. Each remaining line must contain one token.
+Regex feeds also require UTF-8. Matches without a participating `value` capture contribute no value.
+Patterns permit at most 1024 bytes and a compiled size of 1 MiB. A named `value` capture is required.
+JSONPath accepts 1 to 16 valid paths. Rilgate queries paths in order and reads each result in query order.
+Other JSON node types reject the feed. Every extractor requires 1 to 65536 values.
+An invalid value rejects the feed. Error messages identify the line, match or JSONPath result.
+Quoted values in errors contain at most 64 bytes, ending at a character boundary.
+IP values accept IPv4 or IPv6 addresses and networks. Single addresses become `/32` or `/128` host networks.
+
+```yaml
+policy:
+  mode: custom
+  ip_sets:
+    tor-exits:
+      url: https://check.torproject.org/torbulkexitlist
+      format: list_text
+      refresh: 1h
+      max_stale: 1d
+    proxy-addresses:
+      url: https://example.com/proxies.txt
+      format: {regex: '(?m)^(?P<value>[0-9.]+):\d+$'}
+    aws-ec2:
+      url: https://ip-ranges.amazonaws.com/ip-ranges.json
+      format: {json_path: ["$.prefixes[?@.service == 'EC2'].ip_prefix"]}
+```
+
 `refresh` defaults to `24h` and is bounded to `1h..=7d`.
 
 `max_stale` defaults to `7d`, is at least `refresh` and at most
@@ -521,7 +574,46 @@ comes from the publisher's network. It also confirms that the request claims the
 matching identity. It is not cryptographic proof of identity. Publishers split crawler
 groups, so each set names one group.
 
+## ASN sets
+
+`policy.asn_sets` requires `mode: custom`. Each registry permits at most 64 sets, each with 1 to 65536 entries.
+Set names follow the IP set rules. Choose exactly one source: static `asns` or a remote `url` with `format`.
+ASN values range from 1 to 4294967295. Remote values accept decimal numbers with an optional case-insensitive `AS` prefix.
+ASN feeds accept `list_text`, `regex` and `json_path`. They reject `ip_prefixes_json`.
+`refresh` defaults to `24h`, with a range of `1h` to `7d`.
+`max_stale` defaults to `7d`, with a range from `refresh` to `30d`.
+Static sets reject `format`, `refresh` and `max_stale`. Production feed URLs require HTTPS; development also accepts HTTP.
+Feed loading, body limits, retries and snapshot retention follow the IP set rules.
+
+`asn: {in_sets: [datacenter]}` resolves the client ASN through `policy.geoip.asn` and matches any listed set.
+The list accepts 1 to 16 defined names. An unknown name causes a configuration error.
+This condition works in rules, `count_when` and `site.open_graph.when`.
+A missing client IP or an address absent from the database does not match.
+An unavailable or stale database makes the condition unknown.
+A matching set makes the condition true, even when another set is unknown.
+Otherwise, an unloaded or stale remote set makes it unknown.
+Readiness requires every remote ASN set to load once. Metrics use the `rilgate_asn_set_*` families.
+
+```yaml
+policy:
+  mode: custom
+  asn_sets:
+    datacenter:
+      url: https://raw.githubusercontent.com/X4BNet/lists_vpn/main/input/datacenter/ASN.txt
+      format: list_text
+  geoip:
+    asn:
+      path: /var/lib/rilgate/GeoLite2-ASN.mmdb
+  rules:
+    - name: datacenter-score
+      when: {asn: {in_sets: [datacenter]}}
+      action: score
+      score: 5
+```
+
 ## GeoIP databases
+
+`asn` also accepts `{in_sets: [datacenter]}`. See [ASN sets](#asn-sets) for configuration and unknown results.
 
 `policy.geoip` configures one database for `country` and one for `asn`. It requires
 `mode: custom`. A database defines exactly one source: `path`, a local MaxMind `.mmdb`

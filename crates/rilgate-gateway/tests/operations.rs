@@ -458,7 +458,8 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
   );
 
   challenge
-    .ip_sets()
+    .sets()
+    .ip
     .get("feed")
     .unwrap()
     .publish(rilgate_policy::IpRanges::from_networks(["192.0.2.0/24"
@@ -686,4 +687,57 @@ async fn socket_remote_readiness_probes_only_required_hashers() {
     }
   }
   server.abort();
+}
+
+#[tokio::test]
+async fn unloaded_remote_asn_sets_fail_readiness_and_report_metrics() {
+  use rilgate_config::schema::policy::{AsnSetDefinition, FeedFormat};
+  let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config();
+  {
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
+    config.server.metrics_enabled = true;
+    config.pow.policy.asn_sets.insert(
+      "feed".into(),
+      AsnSetDefinition {
+        url: Some("http://127.0.0.1:9/".into()),
+        format: Some(FeedFormat::ListText),
+        ..Default::default()
+      },
+    );
+  }
+  let (challenge, pool) = app::services(&cfg).unwrap();
+  let gateway = app::TestGateway::start(
+    rilgate_gateway::app::build(cfg.clone(), challenge, pool)
+      .await
+      .unwrap(),
+  )
+  .await
+  .unwrap();
+  let client = reqwest::Client::new();
+  let base = format!(
+    "http://{}/.well-known/test-pow/api",
+    gateway.operations_address()
+  );
+  let ready = client.get(format!("{base}/ready")).send().await.unwrap();
+  assert_eq!(ready.status(), 503);
+  let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
+  assert_eq!(body["asn_sets"], false);
+  let metrics = client
+    .get(format!("{base}/metrics"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert!(
+    metrics.contains(r#"rilgate_asn_set_stale{set="feed"} 1"#),
+    "{metrics}"
+  );
+  assert!(
+    metrics.contains(r#"rilgate_asn_set_entries{set="feed"} 0"#),
+    "{metrics}"
+  );
 }
