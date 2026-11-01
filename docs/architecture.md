@@ -146,7 +146,9 @@ digest supplies peer addresses for rate limiting. Forwarded chains influence cli
 only when the socket peer belongs to an explicit trusted proxy network. Policies and
 quotas share that resolved IP.
 
-## Remote RandomX verifier
+## Proof of work services
+
+### Remote RandomX verifier
 
 `RandomXAlgorithm` keeps the seed check, target comparison and challenge expiry.
 It receives an `OrderedHasher`. The ordered hasher calls `LocalHasher` or
@@ -171,7 +173,7 @@ worker, with no gateway upstream or Stratum pool dependency. Its metrics use bou
 outcome labels. Combined gateway and verifier operation, shared caches and
 several workers are reserved for phase 2.
 
-## Pool connection ownership
+### Pool connection ownership
 
 The pool provider owns ordered pool and proxy failover and their cooldowns.
 Each connection attempt includes TCP, proxy negotiation, optional TLS and

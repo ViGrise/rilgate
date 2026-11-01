@@ -230,7 +230,36 @@ so missing optional entries do not fail load-time translation validation.
 Its ES5 inline script opens dialogs on challenge, refresh, denied and error pages.
 Reload resources and run `rilgate web validate ./custom-web` after editing.
 
-## HashWX browser requirements
+## Browser support
+
+Every challenge page needs JavaScript, except the Refresh algorithm. The support for each
+algorithm follows.
+
+### Fast
+
+The embedded fast challenge targets IE11, Safari and iOS 9+, and Chrome 49 (including
+Windows XP). It also targets Firefox 52 ESR, Android 4.4 WebView, Samsung Internet 4,
+and KaiOS 2.5. Its classic ES5 startup bundle includes a small Promise fallback.
+
+Requests use XMLHttpRequest when fetch or AbortController is unavailable, and SHA-256
+work yields in short chunks on the main thread when workers are absent. This compatibility target is established by syntax checks and API fallback
+tests. The Playwright suite exercises current Chromium, Firefox and WebKit, not those
+historical browser releases.
+
+`rilgate web init` and automatic seeding retain readable source files. The server assembles
+`static/js/challenge.bundle.js` from generated ES5 outputs when each source matches the embedded source
+digest, including seeded, unedited files. An operator-edited startup member or fast
+worker is served as authored, without the legacy browser guarantee.
+
+Individual script routes remain available. A change to a source member updates the
+assembled bundle on resource reload. A custom template must load the classic bundle to
+use it. No JavaScript compiler runs in the server.
+
+Build the generated outputs with `cargo xtask build-web` before you build the server. The
+[development guide](development.md#browser-resource-generation) describes the regeneration
+workflow.
+
+### HashWX
 
 HashWX uses the classic adapter in `challenge.bundle.js` to load its modern
 solver. It requires WebAssembly 1.0, workers and a modern JavaScript module
@@ -276,6 +305,14 @@ sets before building or testing the gateway:
 export CARGO_BUILD_BUILD_DIR="$PWD/target" CARGO_TARGET_DIR="$PWD/target"
 cargo xtask build-wasm && cargo xtask build-web
 ```
+
+### RandomX
+
+RandomX requires a modern browser with ES modules, workers, BigInt and WebAssembly,
+plus about 256 MiB per worker for its cache. See [RandomX throughput](pow.md#randomx-throughput)
+for worker selection and the scalar module. An incapable browser displays the localized
+failure and retry controls after consent. It never switches a RandomX challenge to the
+fast algorithm on the client.
 
 ## Open Graph template context
 

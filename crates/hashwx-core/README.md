@@ -12,7 +12,7 @@ revision `fde6d2ae34dce266497aed5c093ff7b40a933c3a`.
 The implementation was written from that specification without copying,
 translating, or adapting the upstream LGPL code. Opcode templates and source
 permutation tables come from specification Appendices B and D.
-The [license review](../../docs/hashwx-license-review.md) records the earlier
+The [license review](../../docs/proposals/hashwx-license-review.md) records the earlier
 fetch and the implementation inputs.
 
 ## API

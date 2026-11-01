@@ -63,13 +63,10 @@ server:
 For containers, use the actual proxy source address or a dedicated, access-controlled
 proxy subnet. The default trusts no proxies. Never trust an entire public network.
 
-`X-Forwarded-For` is read only from trusted TCP peers, from right to left until an untrusted
-hop is found. Malformed trusted chains are rejected. `Forwarded` is not used. The edge
-must overwrite incoming client headers as the examples do. An upstream that
+The edge must overwrite incoming client headers as the examples do. An upstream that
 independently trusts forwarded headers must also configure its own trust boundary.
-Rilgate writes the resolved client address to the upstream in the headers listed in
-`server.upstream.client_ip_headers` and replaces any value that the client or edge sent.
-An upstream that trusts these headers sees the same client that the policy used.
+[Client address and forwarding](configuration.md#client-address-and-forwarding) describes
+how Rilgate resolves the client address and what the upstream receives.
 
 ## Web frontends and caches
 
@@ -165,6 +162,92 @@ mismatch counters by configured name:
 
 Logs, metrics and readiness responses exclude pool logins, passwords, proxy URLs
 and proxy credentials. Keep names free of private information.
+
+## Proof of work deployment
+
+### HashWX
+
+Use [the HashWX example](../config/examples/hashwx.yml) with a custom
+policy and local verification. Deploy HashWX support on all gateway instances
+before changing the policy. Older builds reject the `hashwx` token variant.
+Keep shared signing keys and compatible lifetimes across instances.
+
+The gateway creates each HashWX challenge locally. It verifies one interpreted
+hash on a blocking task after signature, version, lifetime, enforcement and
+host checks. The normal proof API quotas and request limits stay in front of
+this work. It needs no pool or dedicated verifier queue. The measured 25.9
+microsecond kernel cost excludes the HTTP handler, signature checks, seed
+hash and blocking-task scheduling. It is not a production latency guarantee.
+
+Choose the production cost as described in
+[HashWX configuration](configuration.md#hashwx). Three fixed solve trials have wide
+variation; use hash rates and more trials to assess the expected cost. Keep explicit
+policy difficulties within the intended budget.
+
+Review edge CSP headers on worker responses. Allow worker creation and WASM
+compilation as described in [browser support](web.md#hashwx). A worker policy
+that blocks all WASM makes HashWX unavailable.
+
+The [license review](proposals/hashwx-license-review.md) records the specification input,
+earlier fetch and independent implementation. The dependency checks retain the
+repository's LGPL exclusion.
+
+### Remote RandomX verifier
+
+Run `rilgate verifier serve` on a private network. Allow only gateway hosts to
+reach its TLS listener. Keep the operations listener on the monitoring network.
+A verifier needs no signing keys, tokens, cookies or pool connection.
+
+Use a private CA for this channel. Configure the gateway with a CA file, client
+certificate and client key. Configure the verifier with its server certificate,
+server key and a client CA. The gateway checks the certificate name in
+`verify.remote.server_name`, which defaults to the endpoint host. Production
+requires HTTPS and all client credentials.
+
+Trust only verifiers that you operate. A trusted verifier controls the hash
+result and can cause a gateway to accept an invalid proof. TLS protects the
+channel; it does not protect against a compromised verifier.
+
+For certificate rotation, add the new CA to each trust file first. Deploy the
+new certificates next. Remove the old CA after all peers use the new
+certificates. Restart the processes to load changed files. Keep gateway and
+verifier clocks synchronized. The protocol rejects deadlines in the past or
+more than 60 seconds in the future with `503` and `{"reason":"deadline"}`.
+`pow.algorithms.randomx.verify.remote.on_deadline_rejected` defaults to `fallback`.
+This policy tries the next hasher. Set `reject` to return `401` without fallback.
+With `[remote]` and `fallback`, a rejected deadline returns `503`.
+
+Each verifier has one worker and at most one resident 256 MiB cache. A client
+certificate can hold at most half its admission limit, with a minimum of one.
+Give each gateway its own client certificate.
+A closed connection or expired request drops queued work. Before it rejects a new
+request, a full worker queue removes this work to free capacity. This also applies
+to the local hasher of a gateway. A hash that already started finishes, but its
+result is discarded. A remote timeout followed by local fallback can therefore
+compute the same proof twice.
+
+`[remote, local]` can make all gateways allocate a cache during one verifier
+outage. Reserve memory for that condition. `[remote]` keeps gateway cache use at
+zero and fails with `503` during an outage. A failed hash never grants access.
+A cold verifier remains ready. A hash initialization failure makes it not ready
+for one second, then permits another attempt. During shutdown it stays not ready,
+stops new hash connections and allows up to 30 seconds for active requests to
+finish. Operations have a separate connection limit. Test the first hash with a timeout long enough
+for cache construction on the deployment host.
+
+Monitor these counters without endpoint or certificate labels:
+
+| Metric                                    | Labels                                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `rilgate_randomx_hash_total`              | `hasher`: local or remote; `outcome`: hashed, unavailable or invalid                     |
+| `rilgate_randomx_hash_fallback_total`     | `from`: local or remote; `reason`: timeout, connection, overloaded, protocol or deadline |
+| `rilgate_verifier_service_requests_total` | `outcome`: hashed, invalid, overloaded, expired or cancelled                             |
+
+The gateway also exposes `rilgate_randomx_remote_duration_seconds`. The verifier
+exposes its request counter only on its operations listener when
+`server.metrics_enabled` is true. Readiness of a remote-only gateway probes the
+verifier only when a rule selects RandomX and `pow.verification` is
+`local_verify`. The probe uses `server.readiness_timeout`.
 
 ## Capacity and quotas
 
@@ -433,92 +516,3 @@ scripts/perf-gate.sh
 6. If budgets are exceeded, restore the artifact and configuration together.
 7. Preserve compatible verification keyrings across both versions so rollback does not
    reject valid cookies or outstanding work.
-
-## Remote RandomX verification
-
-Run `rilgate verifier serve` on a private network. Allow only gateway hosts to
-reach its TLS listener. Keep the operations listener on the monitoring network.
-A verifier needs no signing keys, tokens, cookies or pool connection.
-
-Use a private CA for this channel. Configure the gateway with a CA file, client
-certificate and client key. Configure the verifier with its server certificate,
-server key and a client CA. The gateway checks the certificate name in
-`verify.remote.server_name`, which defaults to the endpoint host. Production
-requires HTTPS and all client credentials.
-
-Trust only verifiers that you operate. A trusted verifier controls the hash
-result and can cause a gateway to accept an invalid proof. TLS protects the
-channel; it does not protect against a compromised verifier.
-
-For certificate rotation, add the new CA to each trust file first. Deploy the
-new certificates next. Remove the old CA after all peers use the new
-certificates. Restart the processes to load changed files. Keep gateway and
-verifier clocks synchronized. The protocol rejects deadlines in the past or
-more than 60 seconds in the future with `503` and `{"reason":"deadline"}`.
-`pow.algorithms.randomx.verify.remote.on_deadline_rejected` defaults to `fallback`.
-This policy tries the next hasher. Set `reject` to return `401` without fallback.
-With `[remote]` and `fallback`, a rejected deadline returns `503`.
-
-Each verifier has one worker and at most one resident 256 MiB cache. A client
-certificate can hold at most half its admission limit, with a minimum of one.
-Give each gateway its own client certificate.
-A closed connection or expired request drops queued work. Before it rejects a new
-request, a full worker queue removes this work to free capacity. This also applies
-to the local hasher of a gateway. A hash that already started finishes, but its
-result is discarded. A remote timeout followed by local fallback can therefore
-compute the same proof twice.
-
-`[remote, local]` can make all gateways allocate a cache during one verifier
-outage. Reserve memory for that condition. `[remote]` keeps gateway cache use at
-zero and fails with `503` during an outage. A failed hash never grants access.
-A cold verifier remains ready. A hash initialization failure makes it not ready
-for one second, then permits another attempt. During shutdown it stays not ready,
-stops new hash connections and allows up to 30 seconds for active requests to
-finish. Operations have a separate connection limit. Test the first hash with a timeout long enough
-for cache construction on the deployment host.
-
-Monitor these counters without endpoint or certificate labels:
-
-| Metric                                    | Labels                                                                                   |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `rilgate_randomx_hash_total`              | `hasher`: local or remote; `outcome`: hashed, unavailable or invalid                     |
-| `rilgate_randomx_hash_fallback_total`     | `from`: local or remote; `reason`: timeout, connection, overloaded, protocol or deadline |
-| `rilgate_verifier_service_requests_total` | `outcome`: hashed, invalid, overloaded, expired or cancelled                             |
-
-The gateway also exposes `rilgate_randomx_remote_duration_seconds`. The verifier
-exposes its request counter only on its operations listener when
-`server.metrics_enabled` is true. Readiness of a remote-only gateway probes the
-verifier only when a rule selects RandomX and `pow.verification` is
-`local_verify`. The probe uses `server.readiness_timeout`.
-
-## HashWX deployment
-
-Use [the HashWX example](../config/examples/hashwx.yml) with a custom
-policy and local verification. Deploy HashWX support on all gateway instances
-before changing the policy. Older builds reject the `hashwx` token variant.
-Keep shared signing keys and compatible lifetimes across instances.
-
-The gateway creates each HashWX challenge locally. It verifies one interpreted
-hash on a blocking task after signature, version, lifetime, enforcement and
-host checks. The normal proof API quotas and request limits stay in front of
-this work. It needs no pool or dedicated verifier queue. The measured 25.9
-microsecond kernel cost excludes the HTTP handler, signature checks, seed
-hash and blocking-task scheduling. It is not a production latency guarantee.
-
-The base and max defaults are placeholders. The measured iPhone 15 Pro Max is
-a high-end phone. Measure a mid-range device and representative traffic before
-choosing production costs. Three fixed solve trials have wide variation;
-use hash rates and more trials to assess the expected cost. Set challenge TTL
-for the chosen cost and keep explicit policy difficulties within the intended
-budget. An explicit difficulty overrides the mapped max.
-
-HashWX requires WASM, workers and a modern JavaScript module runtime. Review
-edge CSP headers on worker responses. Allow worker creation and WASM
-compilation as described in [web resources](web.md#hashwx-browser-requirements).
-Generated-module failure can retain the loaded interpreter. A worker policy
-that blocks all WASM makes HashWX unavailable. The client reports failure and
-retry controls; it does not downgrade the algorithm.
-
-The [license review](hashwx-license-review.md) records the specification input,
-earlier fetch and independent implementation. The dependency checks retain the
-repository's LGPL exclusion.
