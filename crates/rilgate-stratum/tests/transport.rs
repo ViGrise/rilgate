@@ -268,3 +268,90 @@ async fn socks_dns_modes_and_credentials_reach_the_proxy_with_the_correct_addres
     task.await.unwrap();
   }
 }
+
+#[tokio::test]
+async fn shares_for_recent_jobs_reach_the_pool_and_older_jobs_are_rejected() {
+  use rilgate_stratum::{StratumEvent, StratumSession};
+  use serde_json::json;
+  use tokio::io::{AsyncBufReadExt, BufReader};
+  async fn write_json(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    value: &serde_json::Value,
+  ) -> std::io::Result<()> {
+    writer.write_all(format!("{value}\n").as_bytes()).await
+  }
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let cfg = config(listener.local_addr().unwrap().port());
+  let job = |id| {
+    json!({
+      "blob": "00".repeat(64), "job_id": id, "seed_hash": "ab".repeat(32),
+      "target": "ffffffff", "algo": "rx/0"
+    })
+  };
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let (read, mut write) = socket.into_split();
+    let mut reader = BufReader::new(read).lines();
+    reader.next_line().await.unwrap().unwrap();
+    write_json(
+      &mut write,
+      &json!({
+        "id": 1, "result": {"id": "miner", "job": job("first")}
+      }),
+    )
+    .await
+    .unwrap();
+    write_json(
+      &mut write,
+      &json!({
+        "method": "job", "params": job("second")
+      }),
+    )
+    .await
+    .unwrap();
+    let submit: serde_json::Value =
+      serde_json::from_str(&reader.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(submit["params"]["job_id"], "first");
+    for id in ["third", "fourth"] {
+      write_json(
+        &mut write,
+        &json!({
+          "method": "job", "params": job(id)
+        }),
+      )
+      .await
+      .unwrap();
+    }
+    let submit: serde_json::Value =
+      serde_json::from_str(&reader.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(submit["params"]["job_id"], "second");
+  });
+  let mut session = StratumSession::connect(&cfg, 1000).await.unwrap();
+  assert!(matches!(
+    session.read_event().await.unwrap(),
+    StratumEvent::Job(_)
+  ));
+  session
+    .submit_share("first", "01020304", &"00".repeat(32))
+    .await
+    .unwrap();
+  for _ in 0..2 {
+    assert!(matches!(
+      session.read_event().await.unwrap(),
+      StratumEvent::Job(_)
+    ));
+  }
+  let error = session
+    .submit_share("first", "01020304", &"00".repeat(32))
+    .await
+    .unwrap_err();
+  assert_eq!(
+    error.to_string(),
+    "Share refers to a stale Stratum pool job"
+  );
+  session
+    .submit_share("second", "01020304", &"00".repeat(32))
+    .await
+    .unwrap();
+  server.await.unwrap();
+}

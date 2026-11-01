@@ -1,6 +1,7 @@
 (() => {
   const reloadKey = "rilgate-work-unavailable-reload";
-  const { t, state, stats, verify, requestChallenge, progressEl, once } = window.PowClient;
+  const { t, state, stats, verify, requestChallenge, progressEl, once, reloadAllowed } =
+    window.PowClient;
   function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
     if (
@@ -54,17 +55,6 @@
     }
   }
 
-  // Records the one-time reload for this URL; false when it already happened or storage fails.
-  function reloadAllowed(key) {
-    try {
-      if (sessionStorage.getItem(key) === window.location.href) return false;
-      sessionStorage.setItem(key, window.location.href);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
   async function randomxLocalVerify(solver) {
     state("preparing");
 
@@ -78,8 +68,7 @@
       }
     } catch (error) {
       if (error.status === 503 && error.code === "work_unavailable" && reloadAllowed(reloadKey)) {
-        window.location.reload();
-        return;
+        throw window.PowClient.reloadPage();
       }
       throw error;
     }
@@ -118,8 +107,8 @@
       cancel: () => module.cancel?.(),
     };
     const removePagehide = once(window, "pagehide", () => solver.cancel?.());
+    const verification = config.algorithms.find((entry) => entry.id === "randomx")?.verification;
     try {
-      const verification = config.algorithms.find((entry) => entry.id === "randomx")?.verification;
       if (verification === "gateway") {
         await randomxLocalVerify(solver);
       } else if (verification === "pool_share") {
@@ -131,22 +120,16 @@
             error.code === "work_unavailable" &&
             reloadAllowed(reloadKey)
           ) {
-            window.location.reload();
-            return;
+            throw window.PowClient.reloadPage();
           }
           throw error;
-        }
-        try {
-          sessionStorage.removeItem(reloadKey);
-        } catch (_) {
-          // Storage can be unavailable; the one-time reload is skipped then.
         }
       } else {
         throw new Error(`Unsupported verification mode: ${verification}`);
       }
     } finally {
       removePagehide();
-      solver.cancel?.();
+      if (verification !== "pool_share") solver.cancel?.();
     }
   }
   window.PowClient.randomxJob = randomxJob;

@@ -155,10 +155,18 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     message(&mut ws).await,
     ServerWsMessage::Rejected { .. }
   ));
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Job { .. }
+  ));
   share(&mut ws, "stale", &"00".repeat(32)).await;
   assert!(matches!(
     message(&mut ws).await,
     ServerWsMessage::Rejected { .. }
+  ));
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Job { .. }
   ));
   share(&mut ws, "first", &"00".repeat(32)).await;
   assert!(
@@ -191,6 +199,48 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     PowVerification::PoolShare
   );
   ws.close(None).await.unwrap();
+  p2pool.await.unwrap();
+  server.abort();
+}
+
+#[tokio::test]
+async fn a_previous_job_share_reaches_the_pool_and_returns_a_receipt() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let p2pool = tokio::spawn(async move {
+    let (mut reader, mut writer) = login(listener).await;
+    write_json(
+      &mut writer,
+      json!({"method": "job", "params": job("second")}),
+    )
+    .await;
+    let submit = read_json(&mut reader).await;
+    assert_eq!(submit["method"], "submit");
+    assert_eq!(submit["params"]["job_id"], "first");
+    write_json(
+      &mut writer,
+      json!({"id": submit["id"], "result": {"status": "OK"}}),
+    )
+    .await;
+  });
+  let (mut ws, cfg, server) = browser(port).await;
+  assert!(
+    matches!(message(&mut ws).await, ServerWsMessage::Job { job, .. } if job.job_id == "first")
+  );
+  assert!(
+    matches!(message(&mut ws).await, ServerWsMessage::Job { job, .. } if job.job_id == "second")
+  );
+  share(&mut ws, "first", &"00".repeat(32)).await;
+  let ServerWsMessage::Accepted { receipt } = message(&mut ws).await else {
+    panic!("expected accepted share")
+  };
+  let claims: rilgate_protocol::claims::ReceiptClaims = rilgate_crypto::token::verify_json(
+    &receipt,
+    cfg.pow.signing_key.expose().as_bytes(),
+    rilgate_crypto::token::TokenPurpose::Receipt,
+  )
+  .unwrap();
+  assert_eq!(claims.difficulty, 1000);
   p2pool.await.unwrap();
   server.abort();
 }

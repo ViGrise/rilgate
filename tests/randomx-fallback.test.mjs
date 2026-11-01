@@ -4,6 +4,24 @@ import test from "node:test";
 import vm from "node:vm";
 import { challengeSource } from "./support/challenge-source.mjs";
 
+const runtime = await readFile(
+  new URL("../web/static/js/challenge/runtime.js", import.meta.url),
+  "utf8",
+);
+
+function loadReloadAllowed(context) {
+  const client = context.window.PowClient;
+  const document = context.document;
+  context.document = {
+    querySelector: (selector) => (selector === "#pow-bootstrap" ? { textContent: "{}" } : null),
+  };
+  vm.runInContext(runtime, context);
+  client.reloadAllowed = context.window.PowClient.reloadAllowed;
+  client.reloadPage = context.window.PowClient.reloadPage;
+  context.window.PowClient = client;
+  context.document = document;
+}
+
 for (const verification of ["gateway", "pool_share"]) {
   test(`RandomX ${verification} selects its proof path and reloads once per URL`, async () => {
     const source = await readFile(
@@ -42,6 +60,7 @@ for (const verification of ["gateway", "pool_share"]) {
         stratumPoolAccepted: async () => {
           paths.push("pool_share");
           if (failure) throw unavailable;
+          values.delete("rilgate-work-unavailable-reload");
         },
         requestChallenge: async () => {
           paths.push("gateway");
@@ -54,7 +73,7 @@ for (const verification of ["gateway", "pool_share"]) {
         },
       },
     };
-    vm.runInNewContext(source, {
+    const context = vm.createContext({
       window,
       Worker() {},
       WebAssembly: { validate: () => true },
@@ -66,7 +85,10 @@ for (const verification of ["gateway", "pool_share"]) {
         removeItem: (key) => values.delete(key),
       },
     });
-    await adapter.run({ algorithms: [{ id: "randomx", verification }] });
+    loadReloadAllowed(context);
+    vm.runInContext(source, context);
+    const reload = { name: "PageReload" };
+    await assert.rejects(adapter.run({ algorithms: [{ id: "randomx", verification }] }), reload);
     assert.equal(reloads, 1);
     await assert.rejects(
       adapter.run({ algorithms: [{ id: "randomx", verification }] }),
@@ -77,13 +99,13 @@ for (const verification of ["gateway", "pool_share"]) {
     await adapter.run({ algorithms: [{ id: "randomx", verification }] });
     assert.equal(values.has("rilgate-work-unavailable-reload"), false);
     failure = true;
-    await adapter.run({ algorithms: [{ id: "randomx", verification }] });
+    await assert.rejects(adapter.run({ algorithms: [{ id: "randomx", verification }] }), reload);
     assert.equal(reloads, 2);
     assert.deepEqual(paths, Array(4).fill(verification));
   });
 }
 
-test("pool_share shows preparing until a job arrives and pool only after a share", async () => {
+test("pool_share shows connecting until a job arrives and pool only after a share", async () => {
   const source = await readFile(
     new URL("../web/static/js/challenge/stratum-pool.js", import.meta.url),
     "utf8",
@@ -140,7 +162,7 @@ test("pool_share shows preparing until a job arrives and pool only after a share
   await window.PowClient.stratumPoolAccepted({
     solve: async () => ({ nonce: "00000000", result: "00".repeat(32) }),
   });
-  assert.deepEqual(states.slice(0, 2), ["preparing", "initializing"]);
+  assert.deepEqual(states.slice(0, 2), ["connecting", "initializing"]);
   assert.ok(events.includes("share"));
   assert.ok(events.indexOf("pool") > events.indexOf("share"));
 });
@@ -258,4 +280,136 @@ test("a pool work_unavailable message reloads once and then shows unavailable", 
   assert.equal(second.PowClient.currentState(), "unavailable");
   assert.equal(reloads, 1);
   assert.equal(poolConnections, 2);
+});
+
+async function resumePage({ closeBeforeJob = false, reloadUsed = false } = {}) {
+  const source = await readFile(
+    new URL("../web/static/js/challenge/stratum-pool.js", import.meta.url),
+    "utf8",
+  );
+  const sockets = [];
+  const states = [];
+  const delays = [];
+  const values = new Map(
+    reloadUsed ? [["rilgate-pool-resume-reload", "https://example.test/"]] : [],
+  );
+  let reloads = 0;
+  let cancels = 0;
+  const jobs = [];
+  class WebSocket {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      sockets.push(this);
+      queueMicrotask(() => this.emit("open"));
+    }
+    emit(type, event) {
+      for (const listener of [...(this.listeners.get(type) || [])]) listener(event);
+    }
+    addEventListener(type, listener) {
+      if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+      this.listeners.get(type).add(listener);
+      if (type === "message")
+        queueMicrotask(() => {
+          if (closeBeforeJob) this.close();
+          else
+            this.emit("message", { data: JSON.stringify({ type: "job", job: { job_id: "job" } }) });
+        });
+    }
+    removeEventListener(type, listener) {
+      this.listeners.get(type)?.delete(listener);
+    }
+    send() {
+      if (sockets.length === 1) this.close();
+      else
+        queueMicrotask(() =>
+          this.emit("message", {
+            data: JSON.stringify({ type: "accepted", receipt: "receipt" }),
+          }),
+        );
+    }
+    close() {
+      this.emit("close");
+    }
+  }
+  const window = {
+    location: { href: "https://example.test/", reload: () => reloads++ },
+    POW_PRESENTATION_TOKEN: "presentation",
+    PowClient: {
+      state: (name) => states.push(name),
+      endpoint: (path) => path,
+      exchange: async (receipt) => assert.equal(receipt, "receipt"),
+      once(target, type, listener) {
+        const handle = (event) => {
+          target.removeEventListener(type, handle);
+          listener(event);
+        };
+        target.addEventListener(type, handle);
+      },
+      randomxJob: (job) => job,
+      solveRandomX: (solver, job) => solver.solve(job),
+    },
+  };
+  const context = vm.createContext({
+    window,
+    location: { protocol: "https:", host: "example.test" },
+    WebSocket,
+    sessionStorage: {
+      getItem: (key) => values.get(key),
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+    setTimeout: (callback, delay) => {
+      delays.push(delay);
+      queueMicrotask(callback);
+    },
+  });
+  loadReloadAllowed(context);
+  vm.runInContext(source, context);
+  const solver = {
+    async solve(job) {
+      jobs.push(job);
+      return { nonce: "00000000", result: "00".repeat(32) };
+    },
+    cancel() {
+      cancels++;
+    },
+  };
+  const promise = window.PowClient.stratumPoolAccepted(solver);
+  return {
+    promise,
+    sockets,
+    states,
+    delays,
+    jobs,
+    values,
+    reloads: () => reloads,
+    cancels: () => cancels,
+  };
+}
+
+test("a closed pool session resumes with the same solver and shows connecting again", async () => {
+  const page = await resumePage();
+  page.values.set("rilgate-work-unavailable-reload", "https://example.test/");
+  page.values.set("rilgate-pool-resume-reload", "https://example.test/");
+  await page.promise;
+  assert.equal(page.sockets.length, 2);
+  assert.equal(page.sockets[0].url, page.sockets[1].url);
+  assert.equal(page.jobs.length, 2);
+  assert.equal(page.states.filter((state) => state === "connecting").length, 2);
+  assert.deepEqual(page.delays, [1000]);
+  assert.equal(page.cancels(), 1);
+  assert.equal(page.values.size, 0);
+});
+
+test("five sessions without a job reload once and then report a resume failure", async () => {
+  for (const reloadUsed of [false, true]) {
+    const page = await resumePage({ closeBeforeJob: true, reloadUsed });
+    if (reloadUsed) await assert.rejects(page.promise, /RandomX pool session could not resume/);
+    else await assert.rejects(page.promise, { name: "PageReload" });
+    assert.equal(page.sockets.length, 5);
+    assert.equal(page.reloads(), reloadUsed ? 0 : 1);
+    assert.deepEqual(page.delays, [1000, 2000, 4000, 8000]);
+    assert.equal(page.cancels(), 1);
+  }
 });

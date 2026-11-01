@@ -1,99 +1,133 @@
 (() => {
-  const { state, endpoint, exchange, progressEl, once } = window.PowClient;
+  const { state, endpoint, exchange, progressEl, once, reloadAllowed } = window.PowClient;
   async function stratumPoolAccepted(solver) {
-    state("preparing");
-
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const presentation = encodeURIComponent(window.POW_PRESENTATION_TOKEN);
-
-    const ws = new WebSocket(
-      `${protocol}//${location.host}` +
-        `${endpoint("/api/ws")}` +
-        `?presentation_token=${presentation}`,
-    );
-
-    await new Promise((resolve, reject) => {
-      once(ws, "open", resolve);
-      once(ws, "error", () => reject(new Error("WebSocket connection failed")));
-      once(ws, "close", () => reject(new Error("WebSocket connection closed")));
-    }).catch((error) => {
-      ws.close();
-      throw error;
-    });
-
-    let generation = 0;
+    const delays = [1, 2, 4, 8, 15];
+    let attempt = 0;
+    let failuresWithoutJob = 0;
 
     try {
-      await new Promise((resolve, reject) => {
-        let completed = false;
+      for (;;) {
+        state("connecting");
+        let ws;
+        let generation = 0;
+        let receivedJob = false;
+        let accepted = false;
+        try {
+          ws = new WebSocket(
+            `${protocol}//${location.host}` +
+              `${endpoint("/api/ws")}` +
+              `?presentation_token=${presentation}`,
+          );
+          await new Promise((resolve, reject) => {
+            once(ws, "open", resolve);
+            once(ws, "error", () => reject(new Error("WebSocket connection failed")));
+            once(ws, "close", () => reject(new Error("WebSocket connection closed")));
+          });
 
-        ws.addEventListener("message", async (event) => {
-          try {
-            const message = JSON.parse(event.data);
-
-            if (message.type === "job") {
-              const myGeneration = ++generation;
-
-              state("initializing");
-              if (progressEl) progressEl.removeAttribute("value");
-
-              const solution = await window.PowClient.solveRandomX(
-                solver,
-                window.PowClient.randomxJob(message.job, message.difficulty, message.nonce_offset),
-              );
-
-              if (!solution || myGeneration !== generation) {
-                return;
+          await new Promise((resolve, reject) => {
+            let completed = false;
+            ws.addEventListener("message", async (event) => {
+              if (completed) return;
+              try {
+                const message = JSON.parse(event.data);
+                if (message.type === "job") {
+                  receivedJob = true;
+                  failuresWithoutJob = 0;
+                  const myGeneration = ++generation;
+                  state("initializing");
+                  if (progressEl) progressEl.removeAttribute("value");
+                  const solution = await window.PowClient.solveRandomX(
+                    solver,
+                    window.PowClient.randomxJob(
+                      message.job,
+                      message.difficulty,
+                      message.nonce_offset,
+                    ),
+                  );
+                  if (!solution || myGeneration !== generation || completed) return;
+                  ws.send(
+                    JSON.stringify({
+                      type: "share",
+                      job_id: message.job.job_id,
+                      nonce: solution.nonce,
+                      result: solution.result,
+                    }),
+                  );
+                  state("pool");
+                  return;
+                }
+                if (message.type === "accepted") {
+                  accepted = true;
+                  completed = true;
+                  await exchange(message.receipt);
+                  try {
+                    sessionStorage.removeItem("rilgate-work-unavailable-reload");
+                    sessionStorage.removeItem("rilgate-pool-resume-reload");
+                  } catch (_) {
+                    // Storage can be unavailable; the one-time reload is skipped then.
+                  }
+                  ws.close();
+                  resolve();
+                  return;
+                }
+                if (message.type === "rejected") {
+                  state("pool");
+                  return;
+                }
+                if (message.type === "error") {
+                  const error = new Error(message.message);
+                  if (message.code === "work_unavailable") {
+                    error.status = 503;
+                    error.code = "work_unavailable";
+                  }
+                  completed = true;
+                  reject(error);
+                }
+              } catch (error) {
+                completed = true;
+                reject(error);
               }
-
-              ws.send(
-                JSON.stringify({
-                  type: "share",
-                  job_id: message.job.job_id,
-                  nonce: solution.nonce,
-                  result: solution.result,
-                }),
-              );
-
-              state("pool");
-              return;
-            }
-
-            if (message.type === "accepted") {
-              completed = true;
-              await exchange(message.receipt);
-              ws.close();
-              resolve();
-              return;
-            }
-
-            if (message.type === "rejected") {
-              state("pool");
-              return;
-            }
-
-            if (message.type === "error") {
-              const error = new Error(message.message);
-              if (message.code === "work_unavailable") {
-                error.status = 503;
-                error.code = "work_unavailable";
+            });
+            once(ws, "close", () => {
+              if (!completed) {
+                completed = true;
+                reject(new Error("Challenge connection closed before acceptance"));
               }
-              reject(error);
-            }
-          } catch (error) {
-            reject(error);
+            });
+            once(ws, "error", () => {
+              if (!completed) {
+                completed = true;
+                reject(new Error("WebSocket connection failed"));
+              }
+            });
+          });
+          return;
+        } catch (error) {
+          if (
+            accepted ||
+            error.code === "work_unavailable" ||
+            error.code === "unsupported_browser" ||
+            error.code === "asset_blocked"
+          )
+            throw error;
+        } finally {
+          generation += 1;
+          ws?.close();
+        }
+        if (!receivedJob) failuresWithoutJob += 1;
+        if (failuresWithoutJob >= 5) {
+          if (reloadAllowed("rilgate-pool-resume-reload")) {
+            throw window.PowClient.reloadPage();
           }
-        });
-
-        once(ws, "close", () => {
-          if (!completed) {
-            reject(new Error("Challenge connection closed before acceptance"));
-          }
-        });
-      });
+          throw new Error("RandomX pool session could not resume");
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, delays[Math.min(attempt++, delays.length - 1)] * 1000),
+        );
+      }
     } finally {
-      generation += 1;
-      ws.close();
       solver.cancel?.();
     }
   }

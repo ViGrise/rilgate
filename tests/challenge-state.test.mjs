@@ -318,3 +318,42 @@ test("a timed-out safe request retries", async () => {
   await client.jsonFetch("/gateway/api/client-config", { retries: 1 });
   assert.equal(calls, 2);
 });
+
+test("a page reload ends the check without another request or state", async () => {
+  const calls = [];
+  const { client, context, elements } = page(
+    ["status", "retry"],
+    {},
+    {
+      AbortController,
+      setTimeout,
+      clearTimeout,
+      fetch: async (url) => {
+        calls.push(url);
+        return {
+          status: 200,
+          headers: { get: () => null },
+          text: async () => JSON.stringify({ algorithms: [{ id: "fast" }] }),
+        };
+      },
+    },
+  );
+  let reloads = 0;
+  context.window.location = { href: "https://example.test/", reload: () => reloads++ };
+  client.algorithm = () => ({
+    run: async () => {
+      throw client.reloadPage();
+    },
+  });
+  context.location = { reload() {} };
+  vm.runInContext(startup, context);
+  for (let attempt = 0; attempt < 100 && reloads === 0; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(reloads, 1);
+  assert.equal(
+    calls.some((call) => call.endsWith("session")),
+    false,
+  );
+  assert.equal(elements.get("#status").textContent, english["challenge.state.preparing.status"]);
+});
