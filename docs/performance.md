@@ -393,6 +393,14 @@ comparison, because both musl runs in this session failed with `wrk` timeouts.
   less per request than proxying.
 - On Linux, mimalloc increases RSS by about 20 to 24 MiB at these connection
   counts.
+- mimalloc returns freed pages to the OS only after a delay, and only when the
+  thread that owns them allocates again. Workers that become idle after a
+  traffic burst keep that memory. The container images and systemd units set
+  `MIMALLOC_PURGE_DELAY=0` to return it at once. Set the same variable for
+  other deployments. In a Linux container with 12 workers and 1,000
+  connections, this setting reduced idle RSS after the load from 72 MiB to
+  52 MiB. With 2 workers, challenge page throughput changed by 2%, which is
+  within run-to-run variation.
 
 On macOS with the system allocator as baseline, in the order A, B, B, A:
 

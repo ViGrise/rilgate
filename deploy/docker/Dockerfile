@@ -94,6 +94,10 @@ COPY --from=builder /app/rilgate-release /app/rilgate
 COPY --from=builder /app/LICENSE /app/LICENSE
 COPY config/rilgate.yml /app/config/rilgate.yml
 
+# mimalloc returns freed pages to the OS at once. Its default delay leaves memory
+# freed by a traffic burst resident on worker threads that then stay idle.
+ENV MIMALLOC_PURGE_DELAY=0
+
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl --fail --silent --max-time 4 http://127.0.0.1:9090/.well-known/rilgate/api/ready || exit 1
@@ -116,6 +120,10 @@ WORKDIR /app
 COPY --from=musl-builder /app/rilgate-release /app/rilgate
 COPY --from=musl-builder /app/LICENSE /app/LICENSE
 COPY config/rilgate.yml /app/config/rilgate.yml
+
+# mimalloc returns freed pages to the OS at once. Its default delay leaves memory
+# freed by a traffic burst resident on worker threads that then stay idle.
+ENV MIMALLOC_PURGE_DELAY=0
 
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
