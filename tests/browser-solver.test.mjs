@@ -307,7 +307,7 @@ test("RandomX asks for consent before loading the solver", async () => {
     clearTimeout,
     navigator: {},
     document: { querySelector: element },
-    window: {},
+    window: { addEventListener() {} },
     fetch: async (url) => {
       calls.push(url);
       return {

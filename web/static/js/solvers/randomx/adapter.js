@@ -4,8 +4,7 @@
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
     if (
       typeof Worker !== "function" ||
-      typeof WebAssembly !== "object" ||
-      typeof WebAssembly.validate !== "function" ||
+      !window.PowClient.supportsWasm() ||
       typeof BigInt !== "function"
     ) {
       const error = new Error(
@@ -54,6 +53,17 @@
     }
   }
 
+  // Records the one-time reload for this URL; false when it already happened or storage fails.
+  function reloadAllowed(key) {
+    try {
+      if (sessionStorage.getItem(key) === window.location.href) return false;
+      sessionStorage.setItem(key, window.location.href);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function randomxLocalVerify(solver) {
     state("preparing");
 
@@ -61,14 +71,13 @@
     let challenge;
     try {
       challenge = await requestChallenge();
-      sessionStorage.removeItem(reloadKey);
+      try {
+        sessionStorage.removeItem(reloadKey);
+      } catch (_) {
+        // Storage can be unavailable; the one-time reload is skipped then.
+      }
     } catch (error) {
-      if (
-        error.status === 503 &&
-        error.code === "work_unavailable" &&
-        sessionStorage.getItem(reloadKey) !== window.location.href
-      ) {
-        sessionStorage.setItem(reloadKey, window.location.href);
+      if (error.status === 503 && error.code === "work_unavailable" && reloadAllowed(reloadKey)) {
         window.location.reload();
         return;
       }

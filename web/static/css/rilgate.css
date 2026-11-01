@@ -25,10 +25,16 @@ footer{flex-shrink:0;width:100%;padding-top:10px;font-size:.77rem;color:var(--mu
 footer button{padding:0;border:0;background:none;color:inherit;text-decoration:underline;text-underline-offset:2px}
 a{color:inherit}
 dialog{width:calc(100% - 36px);max-width:430px;max-height:85vh;overflow:auto;padding:25px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);box-shadow:0 12px 40px #0002;font:inherit}
+dialog:not([open]){display:none}
 dialog::backdrop{background:#0006}
 dialog h2{margin:0 0 12px;font-size:1.2rem}
 dialog p{color:var(--muted);font-size:.93rem}
 dialog form{text-align:right;margin-top:20px}
 dialog form button{padding:6px 16px;background:transparent;border:1px solid var(--line);border-radius:5px;color:inherit}
+.load-error{display:none}
+html:not(.pow-script) .load-error{display:block;visibility:hidden;animation:load-error-show 0s linear 30s forwards}
+html.pow-load-failed .load-error{display:block;visibility:visible;animation:none}
+.pow-load-failed .bar,.pow-load-failed #progress,.pow-load-failed #status,.pow-load-failed #stats{display:none}
+@keyframes load-error-show{to{visibility:visible}}
 @media(prefers-reduced-motion:reduce){.bar-shimmer{animation:none;transform:translateX(150%)}.bar-complete{transition:none!important}}
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

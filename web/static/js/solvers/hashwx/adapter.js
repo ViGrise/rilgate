@@ -1,11 +1,7 @@
 (() => {
   const { t, state, stats, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadSolver() {
-    if (
-      typeof Worker !== "function" ||
-      typeof WebAssembly !== "object" ||
-      typeof WebAssembly.instantiate !== "function"
-    ) {
+    if (typeof Worker !== "function" || !window.PowClient.supportsWasm()) {
       const error = new Error(
         t(
           "challenge.hashwx_unsupported",

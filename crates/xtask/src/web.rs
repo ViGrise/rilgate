@@ -14,6 +14,7 @@ use swc_core::{
 
 const COMPILER: &str = "swc_core 82.1.1; es5; inline helpers; strict IIFE; recipe 1";
 const STARTUP: &[&str] = &[
+  "challenge/boot.js",
   "challenge/promise.js",
   "challenge/runtime.js",
   "challenge/registry.js",

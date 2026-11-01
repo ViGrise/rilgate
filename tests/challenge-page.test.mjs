@@ -172,12 +172,12 @@ test("rate-limit failures display the server's retry delay", async () => {
   const state = page(async () => ({
     ok: false,
     status: 429,
-    headers: { get: () => "10" },
+    headers: { get: () => "30" },
     text: async () => JSON.stringify({ message: "Too many proof-of-work requests" }),
   }));
-  await until(() => state.element("#status").textContent.includes("Try again in 10 seconds"));
+  await until(() => state.element("#status").textContent.includes("Try again in 30 seconds"));
   assert.equal(state.element("#retry").hidden, true);
-  assert.match(state.element("#status").textContent, /Try again in 10 seconds/);
+  assert.match(state.element("#status").textContent, /Try again in 30 seconds/);
   assert.equal(state.reloads(), 0);
 });
 

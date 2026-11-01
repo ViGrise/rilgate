@@ -7,7 +7,20 @@
   for (i = 0; i < buttons.length; i++) {
     buttons[i].addEventListener("click", function () {
       var dialog = document.getElementById(this.getAttribute("data-dialog"));
-      if (dialog) dialog.showModal();
+      if (!dialog) return;
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+        return;
+      }
+      dialog.setAttribute("open", "");
+      var form = dialog.querySelector("form");
+      if (form && !form.rilgateClosesDialog) {
+        form.rilgateClosesDialog = true;
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          dialog.removeAttribute("open");
+        });
+      }
     });
   }
   var reloads = document.querySelectorAll('[data-action="reload"]');

@@ -45,6 +45,7 @@
     failed: "retry",
     network: "retry",
     unsupported: "none",
+    blocked: "retry",
     limited: "none",
     unavailable: "retry",
   };
@@ -122,6 +123,9 @@
     }
     showStats();
   }
+  function currentStateName() {
+    return currentState;
+  }
   function stats(attempts, rate) {
     attemptsCount = Math.max(0, Number(attempts) || 0);
     const locale = (document.documentElement && document.documentElement.lang) || "en";
@@ -168,6 +172,10 @@
       error.status = code;
       error.code = body?.code;
       error.retryAfter = retry;
+      error.retryAfterSeconds =
+        retryHeader !== null && retryHeader !== undefined && retryHeader !== ""
+          ? retryAfter
+          : undefined;
       throw error;
     }
     return body;
@@ -228,14 +236,18 @@
     });
   }
 
-  async function jsonFetch(url, options = {}) {
+  async function fetchOnce(url, options) {
     if (typeof fetch !== "function" || typeof AbortController !== "function") {
       return xhrFetch(url, options);
     }
     const controller = new AbortController();
     const signal = options.signal;
     const abort = () => controller.abort();
-    const timer = setTimeout(abort, 30000);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      abort();
+    }, 30000);
     if (signal) {
       if (signal.aborted) abort();
       else signal.addEventListener("abort", abort);
@@ -258,9 +270,58 @@
         response.status,
         response.headers.get("retry-after"),
       );
+    } catch (error) {
+      // A timeout reports as a network failure, the same as the XHR path.
+      if (timedOut) throw new TypeError("Request timed out");
+      throw error;
     } finally {
       clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", abort);
+    }
+  }
+
+  const MAX_RETRY_AFTER_SECONDS = 10;
+
+  // Milliseconds to wait before another attempt, or -1 when the failure is final.
+  function retryDelay(error, attempt) {
+    if (
+      error instanceof TypeError ||
+      error.status === 502 ||
+      error.status === 504 ||
+      (error.status === 503 && !error.code)
+    ) {
+      return Math.random() * Math.min(10000, 750 * attempt * attempt);
+    }
+    const seconds = error.retryAfterSeconds;
+    if (
+      error.status === 429 &&
+      typeof seconds === "number" &&
+      seconds >= 0 &&
+      seconds <= MAX_RETRY_AFTER_SECONDS
+    ) {
+      return seconds * 1000;
+    }
+    return -1;
+  }
+
+  function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
+  // options.retries is the number of extra attempts for requests that are safe to repeat.
+  async function jsonFetch(url, options = {}) {
+    const retries = options.retries || 0;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await fetchOnce(url, options);
+      } catch (error) {
+        const delay =
+          attempt <= retries && !(options.signal && options.signal.aborted)
+            ? retryDelay(error, attempt)
+            : -1;
+        if (delay < 0) throw error;
+        await sleep(delay);
+      }
     }
   }
 
@@ -281,11 +342,41 @@
 
   async function requestChallenge() {
     const challenge = await jsonFetch(endpoint("/api/challenge"), {
+      retries: 2,
       method: "POST",
       body: JSON.stringify({ presentation_token: window.POW_PRESENTATION_TOKEN }),
     });
     challenge.received_at = Date.now();
     return challenge;
+  }
+
+  function supportsModules() {
+    return typeof HTMLScriptElement === "function" && "noModule" in HTMLScriptElement.prototype;
+  }
+
+  // The 8-byte empty module checks that this browser can compile and instantiate WebAssembly.
+  function supportsWasm() {
+    if (typeof WebAssembly !== "object") return false;
+    try {
+      const bytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+      return (
+        new WebAssembly.Instance(new WebAssembly.Module(bytes)) instanceof WebAssembly.Instance
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function absoluteUrl(value) {
+    const anchor = document.createElement("a");
+    anchor.href = value;
+    return anchor.href;
+  }
+
+  function codedError(message, code) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
   }
 
   let nextSolverRequest = 0;
@@ -295,8 +386,25 @@
   }
   function loadSolver(moduleUrl) {
     if (!moduleUrl) return Promise.reject(new Error("Solver module URL is empty"));
+    if (!supportsModules()) {
+      return Promise.reject(
+        codedError("This browser cannot load module scripts", "unsupported_browser"),
+      );
+    }
     return new Promise((resolve, reject) => {
       const request = String(++nextSolverRequest);
+      const solverBase = absoluteUrl(asset("/js/solvers/"));
+      // A module that fails to parse reports the SyntaxError through the window error event.
+      function onWindowError(event) {
+        if (String(event.filename || "").indexOf(solverBase) !== 0) return;
+        if (
+          (event.error && event.error instanceof SyntaxError) ||
+          /SyntaxError/.test(event.message || "")
+        ) {
+          finish(null, codedError("Solver module uses unsupported syntax", "unsupported_browser"));
+        }
+      }
+      window.addEventListener("error", onWindowError);
       const script = document.createElement("script");
       const timer = setTimeout(
         () => finish(null, new Error("Solver module load timed out")),
@@ -305,6 +413,7 @@
       function finish(module, error) {
         clearTimeout(timer);
         delete solverRequests[request];
+        window.removeEventListener("error", onWindowError);
         script.onerror = null;
         if (script.parentNode) script.parentNode.removeChild(script);
         if (error) reject(error);
@@ -320,7 +429,8 @@
         request +
         "&module=" +
         encodeURIComponent(moduleUrl);
-      script.onerror = () => finish(null, new Error("Solver module failed to load"));
+      script.onerror = () =>
+        finish(null, codedError("Solver module failed to load", "asset_blocked"));
       try {
         document.head.appendChild(script);
       } catch (error) {
@@ -331,10 +441,13 @@
 
   window.PowClient = {
     loadSolver,
+    supportsModules,
+    supportsWasm,
     solverLoaded,
     t,
     status,
     state,
+    currentState: currentStateName,
     stats,
     endpoint,
     asset,

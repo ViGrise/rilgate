@@ -26,6 +26,7 @@ test("RandomX reloads once per URL and clears the guard after challenge success"
     POW_SOLVER_MODULE_URL: "/solver.js",
     PowClient: {
       t: (_key, text) => text,
+      supportsWasm: () => true,
       status() {},
       state() {},
       stats() {},

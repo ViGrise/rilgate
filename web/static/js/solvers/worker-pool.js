@@ -61,10 +61,12 @@ export function runWorkers({
 
   for (let index = 0; index < count && !settled; index += 1) {
     let worker;
+    let messaged = false;
     try {
       worker = options ? new Worker(url, options) : new Worker(url);
       workers.add(worker);
       worker.onmessage = ({ data }) => {
+        messaged = true;
         if (settled) return;
         try {
           onMessage(data, {
@@ -78,8 +80,12 @@ export function runWorkers({
           reject(error);
         }
       };
-      worker.onerror = (event) =>
-        fail(worker, new Error(event.message || `${label} worker failed`));
+      worker.onerror = (event) => {
+        const error = new Error(event.message || `${label} worker failed`);
+        // A script that fails before its first message was blocked or could not load.
+        if (!event.message && !messaged) error.code = "asset_blocked";
+        fail(worker, error);
+      };
       start(worker, index);
     } catch (error) {
       fail(worker, error);

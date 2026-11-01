@@ -169,7 +169,7 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? "
       this.headers[name] = value;
     }
     getResponseHeader(name) {
-      return name === "retry-after" ? "7" : null;
+      return name === "retry-after" ? "30" : null;
     }
     send(body) {
       requests.push({
@@ -240,6 +240,7 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? "
       assert.fail("incapable RandomX must not create a worker");
     };
     context.WebAssembly = randomx === "unsupported" ? undefined : WebAssembly;
+    context.HTMLScriptElement = Object.assign(function () {}, { prototype: { noModule: false } });
     element("#pow-i18n").textContent = JSON.stringify({
       ...english,
       "challenge.randomx_unsupported": "Localized RandomX requirements",
@@ -276,7 +277,7 @@ test("fast page completes over XHR with Promise, workers, TextEncoder and modern
 
 test("XHR errors retain Retry-After handling and expose retry controls", async () => {
   const state = legacyPage(429);
-  await until(() => state.elements.get("#status")?.textContent.includes("Try again in 7 seconds"));
+  await until(() => state.elements.get("#status")?.textContent.includes("Try again in 30 seconds"));
   assert.equal(state.elements.get("#retry").hidden, true);
   assert.equal(state.reloads(), 0);
 });
@@ -300,7 +301,10 @@ test("RandomX module load failures reach retry controls without requesting fast 
   await until(() => state.elements.get("#randomx-start")?.hidden === false);
   state.elements.get("#randomx-start").click();
   await until(() => state.elements.get("#retry")?.hidden === false);
-  assert.equal(state.elements.get("#status").textContent, english["challenge.state.failed.status"]);
+  assert.equal(
+    state.elements.get("#status").textContent,
+    english["challenge.state.blocked.status"],
+  );
   assert.equal(state.requests.length, 1);
   assert.equal(state.reloads(), 0);
 });

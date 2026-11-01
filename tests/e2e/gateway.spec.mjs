@@ -314,3 +314,25 @@ test("RandomX without WebAssembly reaches the localized unsupported state before
   expect((await context.cookies()).some((cookie) => cookie.name === "rilgate_auth")).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test("the page recovers when the challenge script fails to load", async ({ page, context }) => {
+  let requests = 0;
+  await page.route("**/challenge.bundle.js*", (route) => {
+    requests += 1;
+    if (requests <= 2) return route.fulfill({ status: 503, body: "" });
+    return route.continue();
+  });
+  await page.goto(`${base}/protected?script-retry`);
+  await expect(page.getByRole("heading", { name: "Protected origin" })).toBeVisible({
+    timeout: 45_000,
+  });
+  expect(requests).toBeGreaterThanOrEqual(3);
+  expect((await context.cookies()).some((cookie) => cookie.name === "rilgate_auth")).toBe(true);
+});
+
+test("the page shows the load error when the challenge script never loads", async ({ page }) => {
+  await page.route("**/challenge.bundle.js*", (route) => route.fulfill({ status: 503, body: "" }));
+  await page.goto(`${base}/protected?script-blocked`);
+  await expect(page.locator("#load-error")).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator("#status")).toBeHidden();
+});
