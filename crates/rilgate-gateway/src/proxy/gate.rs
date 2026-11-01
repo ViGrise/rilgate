@@ -2,11 +2,11 @@ use crate::transport::response::{Response, response};
 use crate::{
   auth::cookies::cookie_value,
   runtime::state::AppState,
-  transport::{context::request_host, errors::ApiError, path::policy_path},
+  transport::{context::request_host, errors::ApiError, headers::NO_STORE, path::policy_path},
   web::pages::{render_challenge_page, render_page, render_refresh_page},
 };
 use http::{
-  HeaderMap, Method, StatusCode, Uri,
+  HeaderMap, HeaderValue, Method, StatusCode, Uri,
   header::{CACHE_CONTROL, CONTENT_TYPE},
 };
 use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
@@ -64,20 +64,45 @@ pub async fn gate(
   method: &Method,
 ) -> Result<Option<Response>, ApiError> {
   let canonical = policy_path(uri.path()).unwrap_or_else(|_| uri.path().to_string());
-  gate_with_client(state, headers, uri, &canonical, method, None, false, "").await
+  gate_with_client(
+    state,
+    GateRequest {
+      headers,
+      uri,
+      policy_path: &canonical,
+      method,
+      client_ip: None,
+      trusted_peer: false,
+      request_id: "",
+    },
+  )
+  .await
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The request facts that the policy gate evaluates.
+pub struct GateRequest<'a> {
+  pub headers: &'a HeaderMap,
+  pub uri: &'a Uri,
+  pub policy_path: &'a str,
+  pub method: &'a Method,
+  pub client_ip: Option<std::net::IpAddr>,
+  pub trusted_peer: bool,
+  pub request_id: &'a str,
+}
+
 pub async fn gate_with_client(
   state: &AppState,
-  headers: &HeaderMap,
-  uri: &Uri,
-  policy_path: &str,
-  method: &Method,
-  client_ip: Option<std::net::IpAddr>,
-  trusted_peer: bool,
-  request_id: &str,
+  request: GateRequest<'_>,
 ) -> Result<Option<Response>, ApiError> {
+  let GateRequest {
+    headers,
+    uri,
+    policy_path,
+    method,
+    client_ip,
+    trusted_peer,
+    request_id,
+  } = request;
   let json = crate::web::negotiation::wants_json(&state.cfg.web.responses, headers, uri.path());
   let host = request_host(headers, uri);
   let services = state.policy_services.load_full();
@@ -288,7 +313,7 @@ pub async fn gate_with_client(
     if json {
       out
         .headers_mut()
-        .insert("rilgate-challenge", "required".parse().unwrap());
+        .insert("rilgate-challenge", HeaderValue::from_static("required"));
       out.headers_mut().insert(
         "rilgate-challenge-url",
         challenge_url
@@ -343,13 +368,11 @@ fn formatted_response(
   let headers = out.headers_mut();
   headers.insert(
     CONTENT_TYPE,
-    if json {
+    HeaderValue::from_static(if json {
       "application/json"
     } else {
       "text/html; charset=utf-8"
-    }
-    .parse()
-    .unwrap(),
+    }),
   );
   if !json && let Some(policy) = policy {
     headers.insert(
@@ -357,12 +380,10 @@ fn formatted_response(
       policy.parse().expect("Validated page policy"),
     );
   }
-  headers.insert(CACHE_CONTROL, "no-store".parse().unwrap());
+  headers.insert(CACHE_CONTROL, NO_STORE);
   headers.insert(
     http::header::VARY,
-    "Accept, Content-Type, X-Requested-With, Accept-Language, Cookie"
-      .parse()
-      .unwrap(),
+    HeaderValue::from_static("Accept, Content-Type, X-Requested-With, Accept-Language, Cookie"),
   );
   headers.insert(
     http::header::CONTENT_LANGUAGE,

@@ -46,6 +46,24 @@ fn durations_sizes_ipv6_and_resource_settings_resolve_without_rounding() {
 }
 
 #[test]
+fn request_timeout_is_validated() {
+  let with = |value: &str| {
+    resolve(&BASE.replace(
+      "  upstream:",
+      &format!("  request_timeout: {value}\n  upstream:"),
+    ))
+  };
+  for value in ["500ms", "11m"] {
+    let error = with(value).unwrap_err();
+    assert!(
+      format!("{error:#}").contains("server.request_timeout must be between 1s and 10m"),
+      "{value}: {error:#}"
+    );
+  }
+  assert_eq!(with("10m").unwrap().server.request_timeout.as_secs(), 600);
+}
+
+#[test]
 fn randomx_cache_idle_timeout_resolves_without_rounding() {
   let mut document = parse(BASE).unwrap();
   document.pow.algorithms.randomx.cache.idle_timeout.0 = std::time::Duration::from_secs(8 * 86400);

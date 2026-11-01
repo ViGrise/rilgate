@@ -113,8 +113,8 @@ server:
     # client_ip_headers: [x-forwarded-for, x-real-ip, forwarded]
 
     # timeout:
-      # Per-attempt upstream connection timeout, within the overall connection
-      # budget of 30s. DNS resolution and connection setup consume that budget.
+      # Per-attempt upstream connection timeout, within server.request_timeout.
+      # DNS resolution and connection setup consume that budget.
       #
       # connect: 5s
 
@@ -176,6 +176,12 @@ server:
   # <site.base_path>/api/live only reports process liveness.
   #
   # readiness_timeout: 2s
+
+  # Time limit to receive a request, including its body, and to connect to the
+  # upstream. It also limits gateway endpoints below site.base_path. A request
+  # that passes the limit receives 408. Range: 1s to 10m.
+  #
+  # request_timeout: 30s
 
 ################################### SECURITY ##################################
 

@@ -409,6 +409,54 @@ async fn upstream_header_timeout_returns_gateway_timeout() {
   upstream.abort();
 }
 
+#[tokio::test]
+async fn upload_budget_follows_request_timeout() {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config();
+  let config = Arc::get_mut(&mut cfg).unwrap();
+  config.upstream.url = format!("http://{}", upstream.local_addr().unwrap());
+  config.server.request_timeout = std::time::Duration::from_secs(1);
+  let origin = tokio::spawn(async move {
+    let mut received = Vec::new();
+    if let Ok(Ok((mut socket, _))) =
+      tokio::time::timeout(std::time::Duration::from_secs(4), upstream.accept()).await
+    {
+      let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        socket.read_to_end(&mut received),
+      )
+      .await;
+    }
+    received
+  });
+  let gateway = app::router(cfg).await.unwrap();
+  let mut socket = tokio::net::TcpStream::connect(gateway.address())
+    .await
+    .unwrap();
+  socket
+    .write_all(b"POST /upload HTTP/1.1\r\nHost: example.test\r\nContent-Length: 10\r\n\r\nabc")
+    .await
+    .unwrap();
+  tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+  let mut response = Vec::new();
+  tokio::time::timeout(
+    std::time::Duration::from_secs(3),
+    socket.read_to_end(&mut response),
+  )
+  .await
+  .expect("the gateway closes the connection after the request timeout")
+  .ok();
+  assert!(
+    response.is_empty() || response.starts_with(b"HTTP/1.1 408"),
+    "{}",
+    String::from_utf8_lossy(&response)
+  );
+  let received = origin.await.unwrap();
+  assert!(!String::from_utf8_lossy(&received).contains("abcdefghij"));
+  assert!(!received.ends_with(b"\r\n\r\nabcdefghij"));
+}
+
 #[test]
 fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
   let mut cfg = common::config();

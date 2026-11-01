@@ -1,4 +1,7 @@
-use crate::{ChallengeService, authorization::binding::BindingInput};
+use crate::{
+  ChallengeService,
+  authorization::{AuthGrant, binding::BindingInput},
+};
 use anyhow::{Result, ensure};
 use rilgate_protocol::PowAlgorithm;
 
@@ -38,11 +41,13 @@ impl ChallengeService {
       });
     }
     let issued = self.issue_auth_token(
-      claims.host,
-      claims.algorithm,
-      claims.difficulty,
-      claims.enforce,
-      now,
+      AuthGrant {
+        host: claims.host,
+        algorithm: claims.algorithm,
+        difficulty: claims.difficulty,
+        enforce: claims.enforce,
+        issued_at: now,
+      },
       binding,
       previous,
     )?;

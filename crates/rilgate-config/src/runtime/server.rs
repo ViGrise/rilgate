@@ -23,6 +23,7 @@ pub struct ServerConfig {
   pub decision_log: DecisionLog,
   pub metrics_enabled: bool,
   pub readiness_timeout: std::time::Duration,
+  pub request_timeout: std::time::Duration,
 }
 
 impl Default for ServerConfig {
@@ -39,6 +40,7 @@ impl Default for ServerConfig {
       decision_log: defaults.decision_log,
       metrics_enabled: defaults.metrics_enabled,
       readiness_timeout: defaults.readiness_timeout.0,
+      request_timeout: defaults.request_timeout.0,
     }
   }
 }
@@ -61,6 +63,11 @@ impl ServerConfig {
       (!self.readiness_timeout.is_zero()
         && self.readiness_timeout <= std::time::Duration::from_secs(30)),
       "server.readiness_timeout must be positive and at most 30s"
+    );
+    anyhow::ensure!(
+      (std::time::Duration::from_secs(1)..=std::time::Duration::from_secs(600))
+        .contains(&self.request_timeout),
+      "server.request_timeout must be between 1s and 10m"
     );
     anyhow::ensure!(
       self.trusted_proxies.len() <= 64,

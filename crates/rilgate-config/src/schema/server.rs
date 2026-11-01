@@ -21,6 +21,7 @@ pub struct Server {
   pub decision_log: crate::runtime::DecisionLog,
   pub metrics_enabled: bool,
   pub readiness_timeout: Time,
+  pub request_timeout: Time,
 }
 impl Default for Server {
   fn default() -> Self {
@@ -37,6 +38,7 @@ impl Default for Server {
       decision_log: Default::default(),
       metrics_enabled: false,
       readiness_timeout: Time::seconds(2),
+      request_timeout: Time::seconds(30),
     }
   }
 }

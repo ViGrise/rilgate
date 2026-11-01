@@ -1,5 +1,5 @@
 use crate::{runtime::state::AppState, transport::context::request_host};
-use http::{HeaderMap, Uri};
+use http::{HeaderMap, HeaderValue, Uri};
 pub fn render_challenge_page(
   state: &AppState,
   issued: rilgate_challenge::IssuedToken<rilgate_protocol::claims::PresentationClaims>,
@@ -96,15 +96,15 @@ pub(crate) fn challenge_page(
   if !out.headers().contains_key("content-security-policy") {
     out.headers_mut().insert(
       "content-security-policy",
-      "frame-ancestors 'self'".parse().unwrap(),
+      HeaderValue::from_static("frame-ancestors 'self'"),
     );
   }
   out
     .headers_mut()
-    .insert("x-frame-options", "SAMEORIGIN".parse().unwrap());
+    .insert("x-frame-options", HeaderValue::from_static("SAMEORIGIN"));
   out
     .headers_mut()
-    .insert("referrer-policy", "no-referrer".parse().unwrap());
+    .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
   Ok(out)
 }
 
