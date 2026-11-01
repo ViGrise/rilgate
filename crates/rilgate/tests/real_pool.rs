@@ -76,7 +76,14 @@ async fn real_pool_challenge_and_upstream() -> Result<()> {
       .bytes()
       .await?,
   )?;
-  let receipt = if config["enforce"] == "stratum_pool_accepted" {
+  let receipt = if config["algorithms"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .find(|entry| entry["id"] == "randomx")
+    .unwrap()["verification"]
+    == "pool_share"
+  {
     let url = format!(
       "{}{prefix}/api/ws?presentation_token={token}",
       base.replacen("http", "ws", 1)

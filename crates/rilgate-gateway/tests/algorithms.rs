@@ -241,7 +241,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
     transport::{errors::ApiError, rate_limit::RateLimiter},
   };
   use rilgate_pow_randomx::{OrderedHasher, RandomXAlgorithm, RandomXConfig};
-  use rilgate_protocol::PowEnforcement;
+  use rilgate_protocol::PowVerification;
 
   for (outcome, expected) in [
     (
@@ -319,7 +319,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
     let claims = ChallengeClaims::Randomx {
       v: 1,
       challenge_id: "work".into(),
-      enforce: PowEnforcement::LocalVerify,
+      verification: PowVerification::Gateway,
       host: "example.test".into(),
       blob: "00".repeat(64),
       seed_hash: "ab".repeat(32),

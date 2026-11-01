@@ -72,12 +72,12 @@ export async function solve(job) {
 }
 ```
 
-`stratum_pool_accepted` needs both `nonce` and `result` because the gateway forwards the
+RandomX with `verify.mode: pool_share` needs both `nonce` and `result` because the gateway forwards the
 share through the active Stratum pool session.
 
-`local_verify` only requires the nonce for trust purposes: the Rust gateway reconstructs
-the blob and recomputes RandomX natively with the same `randomx-core` code the browser
-runs.
+RandomX with `verify.mode: gateway` requires the nonce. The gateway reconstructs
+the blob and checks its hash with the configured hashers. See
+[verification modes](../../docs/pow.md#verification-modes).
 
 If a new `solve()` starts while one is active, it cancels the previous operation. It
 rejects that operation with an error named `SupersededError`. The RandomX adapter treats this

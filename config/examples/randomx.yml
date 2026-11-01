@@ -4,8 +4,6 @@ server:
 security:
   secret: "${RILGATE_SECURITY_SECRET}"
 pow:
-  # stratum_pool_accepted requires actual share acceptance over the owning WebSocket.
-  verification: local_verify
   default_algorithm: randomx
   stratum_pool:
     pools:

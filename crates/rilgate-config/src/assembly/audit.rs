@@ -163,7 +163,7 @@ fn audit_production(config: &Configuration, findings: &mut Vec<Finding>) {
       findings,
       "proof-rate-limit-disabled",
       Severity::Warning,
-      "pow.rate_limit.enabled: proof API quotas are disabled; enforce client quotas at the edge"
+      "pow.rate_limit.enabled: proof API quotas are disabled; verification client quotas at the edge"
         .into(),
     );
   }
@@ -321,11 +321,9 @@ fn audit_verifier(config: &Configuration, production: bool, findings: &mut Vec<F
       report(findings, "verifier-local-fallback", Severity::Warning,
         "pow.algorithms.randomx.verify.order: remote outages can build a 256 MiB cache on every gateway".into());
     }
-    if !config.pow.selects_randomx()
-      || config.pow.enforce == crate::PowEnforcement::StratumPoolAccepted
-    {
+    if !config.pow.selects_randomx() {
       report(findings, "verifier-remote-unused", Severity::Warning,
-        "pow.algorithms.randomx.verify.order: remote hashing is unused by the configured challenges and verification mode".into());
+        "pow.algorithms.randomx.verify.order: remote hashing is unused by the configured challenges".into());
     }
   }
 }

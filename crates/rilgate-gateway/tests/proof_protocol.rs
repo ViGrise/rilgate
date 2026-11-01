@@ -6,7 +6,7 @@ mod common;
 
 use axum::http::{HeaderMap, Uri};
 use rilgate_crypto::token::{self as crypto, TokenPurpose};
-use rilgate_gateway::config::{PowAlgorithm, PowEnforcement};
+use rilgate_gateway::config::{PowAlgorithm, PowVerification};
 use rilgate_gateway::transport::context::request_host;
 use rilgate_protocol::{
   ChallengeResponse, StratumJob,
@@ -39,7 +39,7 @@ fn receipt(issued_at: i64) -> ReceiptClaims {
     challenge_id: "proof".into(),
     algorithm: PowAlgorithm::Fast,
     difficulty: 1,
-    enforce: PowEnforcement::LocalVerify,
+    verification: PowVerification::Gateway,
     issued_at,
     expires_at: issued_at + 30,
   }
@@ -345,7 +345,7 @@ fn websocket_difficulty_round_trips_without_javascript_precision_loss() {
 }
 
 #[tokio::test]
-async fn a_fast_challenge_cannot_cross_enforcement_modes() {
+async fn a_fast_challenge_keeps_gateway_verification_with_pool_share_randomx() {
   let cfg = common::config();
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
@@ -376,7 +376,7 @@ async fn a_fast_challenge_cannot_cross_enforcement_modes() {
   drop(service);
   let mut changed = cfg;
   let pow = &mut Arc::get_mut(&mut changed).unwrap().pow;
-  pow.enforce = PowEnforcement::StratumPoolAccepted;
+  pow.verification.randomx = PowVerification::PoolShare;
   let selection = pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -388,7 +388,7 @@ async fn a_fast_challenge_cannot_cross_enforcement_modes() {
     service
       .verify_challenge(&challenge_token, &nonce, "example.test")
       .await
-      .is_err()
+      .is_ok()
   );
 }
 
@@ -502,7 +502,7 @@ async fn malformed_signed_randomx_work_is_rejected_before_native_hashing() {
     let claims = ChallengeClaims::Randomx {
       v: 1,
       challenge_id: "work".into(),
-      enforce: PowEnforcement::LocalVerify,
+      verification: PowVerification::Gateway,
       host: "example.test".into(),
       blob,
       seed_hash: seed,
@@ -527,10 +527,10 @@ async fn malformed_signed_randomx_work_is_rejected_before_native_hashing() {
 }
 
 #[tokio::test]
-async fn randomx_http_proofs_require_local_verification_even_with_signed_matching_enforcement() {
+async fn randomx_http_proofs_require_local_verification_even_with_signed_matching_verification() {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.enforce = PowEnforcement::StratumPoolAccepted;
+  pow.verification.randomx = PowVerification::PoolShare;
   let selection = pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
@@ -541,7 +541,7 @@ async fn randomx_http_proofs_require_local_verification_even_with_signed_matchin
   let claims = ChallengeClaims::Randomx {
     v: 1,
     challenge_id: "work".into(),
-    enforce: PowEnforcement::StratumPoolAccepted,
+    verification: PowVerification::PoolShare,
     host: "example.test".into(),
     blob: "00".repeat(64),
     seed_hash: "ab".repeat(32),
@@ -564,7 +564,7 @@ async fn randomx_http_proofs_require_local_verification_even_with_signed_matchin
   assert!(
     error
       .to_string()
-      .contains("disabled in stratum_pool_accepted mode"),
+      .contains("RandomX HTTP challenge requires pow.algorithms.randomx.verify.mode: gateway"),
     "{error}"
   );
 }

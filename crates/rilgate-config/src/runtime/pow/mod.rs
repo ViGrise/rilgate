@@ -6,7 +6,7 @@ use rilgate_crypto::Secret;
 use rilgate_policy::policy::schema::PolicyDocument;
 use rilgate_pool::StratumPoolConfig;
 use rilgate_pow::difficulty::DifficultyConfig;
-use rilgate_protocol::{PowAlgorithm, PowEnforcement};
+use rilgate_protocol::{PowAlgorithm, PowVerification, VerificationModes};
 #[derive(Debug, Clone)]
 pub struct BrowserConfig {
   // Relative paths are resolved below the configured web namespace.
@@ -26,7 +26,7 @@ pub struct PowConfig {
   pub randomx_fallback: Option<RandomXFallback>,
   pub hashwx_enabled: bool,
   pub hashwx: rilgate_pow_hashwx::HashWxConfig,
-  pub enforce: PowEnforcement,
+  pub verification: VerificationModes,
   pub randomx_enabled: bool,
   pub default_algorithm: PowAlgorithm,
   pub signing_key: Secret,
@@ -53,7 +53,7 @@ pub struct PowConfig {
 impl PowConfig {
   pub fn challenge(&self) -> rilgate_challenge::ChallengeConfig {
     rilgate_challenge::ChallengeConfig {
-      enforce: self.enforce,
+      verification: self.verification,
       default_algorithm: self.default_algorithm,
       signing_key: self.signing_key.clone(),
       auth_signing_key: self.auth_signing_key.clone(),
@@ -81,7 +81,7 @@ impl PowConfig {
   }
 
   pub fn needs_remote_verifier(&self) -> bool {
-    self.enforce == PowEnforcement::LocalVerify
+    self.verification.randomx == PowVerification::Gateway
       && self.selects_randomx()
       && !self
         .randomx_verify

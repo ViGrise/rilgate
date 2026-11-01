@@ -53,7 +53,7 @@ impl ChallengeService {
       weight: decision.weight,
       algorithm,
       difficulty,
-      enforce: self.cfg.enforce,
+      verification: self.cfg.verification.of(algorithm),
       issued_at: now,
       expires_at: now + self.cfg.challenge_ttl_seconds as i64,
     };
@@ -76,9 +76,9 @@ impl ChallengeService {
       self.cfg.challenge_ttl_seconds,
     )?;
 
-    if claims.enforce != self.cfg.enforce {
+    if claims.verification != self.cfg.verification.of(claims.algorithm) {
       return Err(anyhow!(
-        "Presentation token uses a different enforcement mode"
+        "Presentation token uses a different verification mode"
       ));
     }
 

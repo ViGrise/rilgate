@@ -1,4 +1,5 @@
 (() => {
+  const reloadKey = "rilgate-work-unavailable-reload";
   const { t, state, stats, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
@@ -67,7 +68,6 @@
   async function randomxLocalVerify(solver) {
     state("preparing");
 
-    const reloadKey = "rilgate-work-unavailable-reload";
     let challenge;
     try {
       challenge = await requestChallenge();
@@ -119,12 +119,30 @@
     };
     const removePagehide = once(window, "pagehide", () => solver.cancel?.());
     try {
-      if (config.enforce === "local_verify") {
+      const verification = config.algorithms.find((entry) => entry.id === "randomx")?.verification;
+      if (verification === "gateway") {
         await randomxLocalVerify(solver);
-      } else if (config.enforce === "stratum_pool_accepted") {
-        await window.PowClient.stratumPoolAccepted(solver);
+      } else if (verification === "pool_share") {
+        try {
+          await window.PowClient.stratumPoolAccepted(solver);
+        } catch (error) {
+          if (
+            error.status === 503 &&
+            error.code === "work_unavailable" &&
+            reloadAllowed(reloadKey)
+          ) {
+            window.location.reload();
+            return;
+          }
+          throw error;
+        }
+        try {
+          sessionStorage.removeItem(reloadKey);
+        } catch (_) {
+          // Storage can be unavailable; the one-time reload is skipped then.
+        }
       } else {
-        throw new Error(`Unsupported enforcement mode: ${config.enforce}`);
+        throw new Error(`Unsupported verification mode: ${verification}`);
       }
     } finally {
       removePagehide();

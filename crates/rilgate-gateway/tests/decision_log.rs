@@ -5,7 +5,7 @@ use rilgate_config::{
   schema::policy::{Action, Condition, Rule, StringMatch},
 };
 use rilgate_crypto::token::{self, TokenPurpose};
-use rilgate_protocol::{PowAlgorithm, PowEnforcement, claims::ReceiptClaims};
+use rilgate_protocol::{PowAlgorithm, PowVerification, claims::ReceiptClaims};
 use rilgate_test_utils::gateway;
 use std::{
   io::Write,
@@ -90,7 +90,7 @@ async fn challenge_and_deny_decisions_are_logged_with_the_client_ip() {
         challenge_id: "proof".into(),
         algorithm: PowAlgorithm::Fast,
         difficulty: 1,
-        enforce: PowEnforcement::LocalVerify,
+        verification: PowVerification::Gateway,
         issued_at: now,
         expires_at: now + 30,
       },

@@ -1,8 +1,8 @@
-use rilgate_protocol::{PowAlgorithm, PowEnforcement, StratumJob};
+use rilgate_protocol::{PowAlgorithm, PowVerification, StratumJob};
 #[derive(Debug, Clone)]
 pub struct WorkRequest {
   pub difficulty: u64,
-  pub enforce: PowEnforcement,
+  pub verification: PowVerification,
 }
 #[derive(Debug, Clone)]
 pub enum Work {

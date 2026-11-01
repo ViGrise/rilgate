@@ -1,4 +1,4 @@
-mod enforcement;
 mod id;
-pub use enforcement::PowEnforcement;
+pub mod verification;
 pub use id::PowAlgorithm;
+pub use verification::{PowVerification, VerificationModes};

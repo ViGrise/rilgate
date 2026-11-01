@@ -36,7 +36,7 @@ pub trait Algorithm: Send + Sync {
   fn descriptor(&self) -> AlgorithmDescriptor;
   fn difficulty_for_weight(&self, weight: i32) -> u64;
   fn validate_difficulty(&self, difficulty: u64) -> Result<()>;
-  fn validate_enforcement(&self, _enforce: rilgate_protocol::PowEnforcement) -> Result<()> {
+  fn validate_verification(&self, _verification: rilgate_protocol::PowVerification) -> Result<()> {
     Ok(())
   }
   fn challenge_ttl(&self) -> u64;

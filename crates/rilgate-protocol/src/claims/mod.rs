@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{PowAlgorithm, PowEnforcement};
+use crate::{PowAlgorithm, PowVerification};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresentationClaims {
@@ -11,7 +11,11 @@ pub struct PresentationClaims {
   pub weight: i32,
   pub algorithm: PowAlgorithm,
   pub difficulty: u64,
-  pub enforce: PowEnforcement,
+  #[serde(
+    rename = "enforce",
+    with = "crate::algorithm::verification::token_format"
+  )]
+  pub verification: PowVerification,
   pub issued_at: i64,
   pub expires_at: i64,
 }
@@ -21,7 +25,11 @@ pub struct PresentationClaims {
 pub enum ChallengeClaims {
   Fast {
     v: u8,
-    enforce: PowEnforcement,
+    #[serde(
+      rename = "enforce",
+      with = "crate::algorithm::verification::token_format"
+    )]
+    verification: PowVerification,
     challenge_id: String,
     host: String,
     challenge: String,
@@ -32,7 +40,11 @@ pub enum ChallengeClaims {
 
   Hashwx {
     v: u8,
-    enforce: PowEnforcement,
+    #[serde(
+      rename = "enforce",
+      with = "crate::algorithm::verification::token_format"
+    )]
+    verification: PowVerification,
     challenge_id: String,
     host: String,
     challenge: String,
@@ -45,7 +57,11 @@ pub enum ChallengeClaims {
   Randomx {
     v: u8,
     challenge_id: String,
-    enforce: PowEnforcement,
+    #[serde(
+      rename = "enforce",
+      with = "crate::algorithm::verification::token_format"
+    )]
+    verification: PowVerification,
     host: String,
     blob: String,
     seed_hash: String,
@@ -64,7 +80,11 @@ pub struct ReceiptClaims {
   pub challenge_id: String,
   pub algorithm: PowAlgorithm,
   pub difficulty: u64,
-  pub enforce: PowEnforcement,
+  #[serde(
+    rename = "enforce",
+    with = "crate::algorithm::verification::token_format"
+  )]
+  pub verification: PowVerification,
   pub issued_at: i64,
   pub expires_at: i64,
 }
@@ -75,7 +95,11 @@ pub struct AuthClaims {
   pub v: u8,
   pub algorithm: PowAlgorithm,
   pub difficulty: u64,
-  pub enforce: PowEnforcement,
+  #[serde(
+    rename = "enforce",
+    with = "crate::algorithm::verification::token_format"
+  )]
+  pub verification: PowVerification,
   pub issued_at: i64,
   pub expires_at: i64,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,7 +121,7 @@ impl ChallengeClaims {
     match self {
       Self::Fast {
         v,
-        enforce,
+        verification,
         challenge_id,
         host,
         difficulty,
@@ -107,7 +131,7 @@ impl ChallengeClaims {
       } => ChallengeMetadata {
         algorithm: PowAlgorithm::Fast,
         version: *v,
-        enforce: *enforce,
+        verification: *verification,
         challenge_id,
         host,
         difficulty: *difficulty,
@@ -116,7 +140,7 @@ impl ChallengeClaims {
       },
       Self::Hashwx {
         v,
-        enforce,
+        verification,
         challenge_id,
         host,
         difficulty,
@@ -126,7 +150,7 @@ impl ChallengeClaims {
       } => ChallengeMetadata {
         algorithm: PowAlgorithm::Hashwx,
         version: *v,
-        enforce: *enforce,
+        verification: *verification,
         challenge_id,
         host,
         difficulty: *difficulty,
@@ -135,7 +159,7 @@ impl ChallengeClaims {
       },
       Self::Randomx {
         v,
-        enforce,
+        verification,
         challenge_id,
         host,
         difficulty,
@@ -145,7 +169,7 @@ impl ChallengeClaims {
       } => ChallengeMetadata {
         algorithm: PowAlgorithm::RandomX,
         version: *v,
-        enforce: *enforce,
+        verification: *verification,
         challenge_id,
         host,
         difficulty: *difficulty,
@@ -158,7 +182,7 @@ impl ChallengeClaims {
 pub struct ChallengeMetadata<'a> {
   pub algorithm: PowAlgorithm,
   pub version: u8,
-  pub enforce: PowEnforcement,
+  pub verification: PowVerification,
   pub challenge_id: &'a str,
   pub host: &'a str,
   pub difficulty: u64,

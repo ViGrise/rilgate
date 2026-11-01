@@ -33,8 +33,10 @@ With the default prefix:
 ```
 
 The challenge page loads the assembled classic `challenge.bundle.js`. Individual script routes
-remain available. `/api/health`, `/api/live`, `/api/ready` and `/api/metrics` are served
-only on operations listeners.
+remain available. `/api/client-config` lists each algorithm with its `verification`
+value, `gateway` or `pool_share`. See [verification modes](pow.md#verification-modes).
+`/api/health`, `/api/live`, `/api/ready` and `/api/metrics` are served only on
+operations listeners.
 
 Public listeners return 404 for them. Operations listeners return 404 for every other
 route. With the default empty `server.operations.listen` list, operational routes are disabled and are

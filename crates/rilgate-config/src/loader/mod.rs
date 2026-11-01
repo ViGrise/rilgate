@@ -23,16 +23,16 @@ const RENAMED_SECTIONS: &[(&str, &str)] = &[
   ("policy.honeypot", "signals.honeypot"),
   ("policy.counters", "signals.counters"),
 ];
-const REMOVED_SETTINGS: &[(&str, &str)] = &[(
-  "policy.mode",
-  "select a preset with policy: !include builtin:policies/<name>.yml or write policy.rules",
-)];
-/// Setting values with a new name, as (setting path, old value, new value).
-const RENAMED_VALUES: &[(&str, &str, &str)] = &[(
-  "pow.verification",
-  "p2pool_accepted",
-  "stratum_pool_accepted",
-)];
+const REMOVED_SETTINGS: &[(&str, &str)] = &[
+  (
+    "pow.verification",
+    "set pow.algorithms.randomx.verify.mode to gateway (was local_verify) or pool_share (was stratum_pool_accepted)",
+  ),
+  (
+    "policy.mode",
+    "select a preset with policy: !include builtin:policies/<name>.yml or write policy.rules",
+  ),
+];
 
 /// A loaded document with warnings for the caller to report once logging is
 /// available.
@@ -230,16 +230,6 @@ fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
       "{path}: removed; {hint}"
     );
   }
-  for (path, old, new) in RENAMED_VALUES {
-    let in_document = lookup(path).and_then(Value::as_str) == Some(*old);
-    let in_settings = settings.iter().any(|setting| {
-      setting.path == *path && matches!(&setting.value, SettingValue::Scalar(text) if text == old)
-    });
-    ensure!(
-      !in_document && !in_settings,
-      "{path}: {old} is renamed to {new}"
-    );
-  }
   Ok(())
 }
 
@@ -417,6 +407,22 @@ fn interpolate(text: &str, path: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
   #[test]
+  fn removed_verification_setting_names_its_replacement() {
+    let hint = "set pow.algorithms.randomx.verify.mode to gateway (was local_verify) or pool_share (was stratum_pool_accepted)";
+    let error = super::parse("pow: {verification: local_verify}").unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      format!("pow.verification: removed; {hint}")
+    );
+    let error = super::reject_renamed_environment(["RILGATE_POW_VERIFICATION".into()].into_iter())
+      .unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      format!("RILGATE_POW_VERIFICATION: removed; {hint}")
+    );
+  }
+
+  #[test]
   fn environment_variables_of_renamed_sections_fail_with_the_new_name() {
     let error =
       super::reject_renamed_environment(["RILGATE_POW_P2POOL_ADDRESS".to_string()].into_iter())
@@ -425,7 +431,7 @@ mod tests {
       error.to_string(),
       "RILGATE_POW_P2POOL_ADDRESS: renamed to RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS"
     );
-    let hint = super::REMOVED_SETTINGS[0].1;
+    let hint = super::REMOVED_SETTINGS[1].1;
     let error = super::reject_renamed_environment(["RILGATE_POLICY_MODE".to_string()].into_iter())
       .unwrap_err();
     assert_eq!(

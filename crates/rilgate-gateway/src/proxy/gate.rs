@@ -247,14 +247,14 @@ pub async fn gate_with_client(
     )
     .is_some_and(|claims| {
       if fallback
-        && claims.enforce == state.pow.enforcement()
+        && claims.verification == state.pow.verification(claims.algorithm)
         && Some(claims.algorithm) == effective.algorithm
         && claims.difficulty >= effective.difficulty.expect("challenge difficulty resolved")
       {
         return true;
       }
       let required = decision.algorithm.expect("challenge algorithm resolved");
-      claims.enforce == state.pow.enforcement()
+      claims.verification == state.pow.verification(claims.algorithm)
         && match (required, claims.algorithm) {
           // Any proof of work outranks a wait, so only a refresh cookie needs the difficulty check.
           (PowAlgorithm::Refresh, algorithm) if algorithm != PowAlgorithm::Refresh => true,

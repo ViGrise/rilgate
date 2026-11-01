@@ -313,7 +313,7 @@ A challenge without an algorithm uses `pow.default_algorithm`. An explicit diffi
 rule takes precedence over the score mapping of the algorithm. Each algorithm below
 states its difficulty unit and range.
 
-A challenge action accepts an existing cookie only when algorithm and enforcement match
+A challenge action accepts an existing cookie only when algorithm and verification mode match
 and cookie difficulty meets the current requirement. A Fast cookie therefore cannot
 satisfy a HashWX rule. Host and optional client bindings still apply. A DENY rule still
 rejects a valid cookie.
@@ -339,8 +339,8 @@ policy:
       challenge: {algorithm: hashwx, difficulty: 50000}
 ```
 
-HashWX difficulty is an expected hash count, from 1 to 2^40, and needs
-`pow.verification: local_verify`. When difficulty is omitted,
+HashWX difficulty is an expected hash count, from 1 to 2^40. HashWX always uses
+gateway verification. When difficulty is omitted,
 `pow.algorithms.hashwx.difficulty` maps the score to work. An explicit rule difficulty
 overrides that mapping, including its `max` cap. See
 [HashWX configuration](configuration.md#hashwx) for the cost settings and
@@ -374,10 +374,9 @@ difficulty = base * 2^(score / score_step)
 ```
 
 The exponent uses integer division and is clamped to 0..63. Multiplication saturates and
-the result is bounded by `pow.algorithms.randomx.difficulty.max`. The
-`stratum_pool_accepted` verification mode permits only RandomX challenges, needs
-`pow.stratum_pool` infrastructure, and grants access only after an actual accepted Stratum
-response on the owning session.
+the result is bounded by `pow.algorithms.randomx.difficulty.max`. See
+[verification modes](pow.md#verification-modes) for RandomX proof acceptance and
+policies that also select Fast, HashWX and refresh.
 
 ### Score debugging
 

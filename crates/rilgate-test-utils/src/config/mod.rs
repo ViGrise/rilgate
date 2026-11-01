@@ -5,7 +5,7 @@ use rilgate_config::schema::policy::{
 };
 use rilgate_config::{
   BrowserConfig, ChallengePolicy, Config, Configuration, DifficultyConfig, Environment,
-  PowAlgorithm, PowConfig, PowEnforcement, Secret, StratumPoolConfig, UpstreamConfig, WebConfig,
+  PowAlgorithm, PowConfig, Secret, StratumPoolConfig, UpstreamConfig, VerificationModes, WebConfig,
 };
 
 pub fn config() -> Config {
@@ -45,7 +45,7 @@ pub fn config() -> Config {
         },
         ttl: 60,
       },
-      enforce: PowEnforcement::LocalVerify,
+      verification: VerificationModes::default(),
       randomx_enabled: true,
       default_algorithm: PowAlgorithm::Fast,
       signing_key: Secret("test-shared-signing-key-with-32-bytes".into()),

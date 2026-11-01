@@ -11,18 +11,18 @@ impl ChallengeService {
   ) -> Result<ChallengeResponse> {
     let presentation = self.verify_presentation(presentation_token, request_host)?;
     let backend = self.algorithms.get(presentation.algorithm)?;
-    backend.validate_enforcement(presentation.enforce)?;
+    backend.validate_verification(presentation.verification)?;
     let prepared = backend
       .issue(WorkRequest {
         difficulty: presentation.difficulty,
-        enforce: presentation.enforce,
+        verification: presentation.verification,
       })
       .await?;
     ensure!(
       prepared.algorithm() == presentation.algorithm,
       "Work algorithm does not match presentation"
     );
-    let claims = work::claims(&prepared, presentation.host, presentation.enforce);
+    let claims = work::claims(&prepared, presentation.host, presentation.verification);
     let token = self.tokens.challenge.sign_json(&claims)?;
     work::response(prepared, token)
   }
@@ -46,14 +46,14 @@ impl ChallengeService {
       backend.challenge_ttl(),
     )?;
     ensure!(
-      metadata.enforce == self.cfg.enforce,
-      "Challenge uses a different enforcement mode"
+      metadata.verification == self.cfg.verification.of(metadata.algorithm),
+      "Challenge uses a different verification mode"
     );
     ensure!(
       metadata.host == request_host,
       "Challenge host does not match request host"
     );
-    backend.validate_enforcement(metadata.enforce)?;
+    backend.validate_verification(metadata.verification)?;
     backend.validate_difficulty(metadata.difficulty)?;
     backend
       .verify(&work::prepared(&claims), Proof { nonce })
@@ -69,7 +69,7 @@ impl ChallengeService {
       metadata.challenge_id.to_owned(),
       metadata.algorithm,
       metadata.difficulty,
-      metadata.enforce,
+      metadata.verification,
     )
   }
 }

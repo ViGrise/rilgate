@@ -64,7 +64,7 @@ from Fast's leading-zero hexadecimal digit count. Without an explicit policy dif
 `base * 2^(max(score, 0) / score_step)` is capped at `max`, with integer
 division and saturation. An explicit policy difficulty bypasses this mapping.
 
-HashWX supports `local_verify`. Its challenge lifetime is `pow.challenge.ttl`.
+HashWX always uses gateway verification. Its challenge lifetime is `pow.challenge.ttl`.
 The browser starts automatically, uses at most two workers by default, and
 checks expiry during range searches. It terminates all workers on completion,
 error, cancellation or page exit. It keeps 64-bit values as u32 halves and
@@ -80,7 +80,7 @@ required before the defaults can target 1 to 3 seconds. See
 
 HashWX tokens use version 1 with an explicit `hashwx` algorithm tag. Older
 builds reject that tag. Deploy HashWX support to every gateway instance before
-selecting it in policy. Shared signing keys, token lifetimes and enforcement
+selecting it in policy. Shared signing keys, token lifetimes and verification mode
 must also match. Receipts and access cookies retain the algorithm and difficulty.
 
 ### `refresh` - delay without JavaScript
@@ -98,8 +98,8 @@ original request path on the same host. If the browser opens the URL early, it g
 page again with the remaining delay.
 
 The delay proves no work, so use it only as a speed bump for clients that do not
-run JavaScript. A refresh rule cannot be `pow.default_algorithm`, and it cannot
-use `stratum_pool_accepted`. A cookie from any other algorithm satisfies a refresh
+run JavaScript. A refresh rule cannot be `pow.default_algorithm`, and it always
+uses gateway verification. A cookie from any other algorithm satisfies a refresh
 rule. A refresh cookie satisfies a rule when its difficulty meets the requirement.
 
 ### `randomx` - expensive challenge
@@ -114,32 +114,13 @@ Both RandomX modes get work from a configured Stratum endpoint. Difficulty is a
 positive integer of at least 1000. A result must be no greater than `floor((2^256 - 1) / difficulty)` when
 interpreted as a little-endian integer.
 
-With:
-
-```yaml
-pow:
-  verification: local_verify
-```
-
-the gateway verifies the RandomX hash with its configured hashers.
-
-With:
-
-```yaml
-pow:
-  verification: stratum_pool_accepted
-```
-
-RandomX uses the WebSocket + retained Stratum session and succeeds only after Stratum pool
-accepts the share.
-
-`fast` and `hashwx` support local verification. Policies that select either with `stratum_pool_accepted`
-are rejected. Pool-accepted deployments must select RandomX.
+Select how Rilgate accepts RandomX proofs with
+[`pow.algorithms.randomx.verify.mode`](#verification-modes).
 
 ### When every pool is unavailable
 
-`pow.algorithms.randomx.fallback` is optional and absent by default. With
-`pow.verification: local_verify`, configure both fields to serve another challenge
+`pow.algorithms.randomx.fallback` is optional and absent by default. It works in
+both verification modes. Configure both fields to serve another challenge
 while every Stratum pool is in its failure cooldown:
 
 ```yaml
@@ -160,30 +141,31 @@ difficulty. Both flags or environment variables must be supplied together:
 
 The gate selects the solver before rendering the page or JSON challenge response.
 A cookie satisfying the RandomX policy still passes during an outage. A fallback
-cookie passes only while fallback is active, with the same enforcement, host and
+cookie passes only while fallback is active, with the same verification mode, host and
 binding checks and at least the configured fallback difficulty. When a pool becomes
 eligible again, that cookie receives a RandomX challenge.
 
 A RandomX page rendered just before failure can receive HTTP 503 with
 `{"code":"work_unavailable"}`, `Retry-After: 1` and `Cache-Control: no-store`
-from `/api/challenge`. The adapter reloads once per page URL to select the fallback.
-A second failure on that URL shows the existing error. A successful challenge clears
-the reload guard. Without the setting, pages remain RandomX and issuance returns
-that 503 while pools cannot supply work.
+from `/api/challenge`. A pool WebSocket connection failure returns an error message
+with `code: "work_unavailable"`. On either path, the adapter reloads once per page
+URL to select the fallback. A second failure shows the `unavailable` state. A
+successful challenge clears the reload guard. Without `fallback`, RandomX work
+fails with `work_unavailable` on both paths while every pool is unavailable.
 
 ### Pool selection
 
 Configure a pool list with ordered backups. A pooled job session stays on the
-pool that supplied its jobs. In `stratum_pool_accepted` mode, the browser
+pool that supplied its jobs. With `verify.mode: pool_share`, the browser
 WebSocket submits shares on that same pool connection. A new session can use a
-backup pool. With `local_verify`, verification does not contact the pool and
+backup pool. With `verify.mode: gateway`, verification does not contact the pool and
 submits no shares. This mode earns no mining reward.
 
 A pool can change the requested difficulty. Rilgate keeps the target from the
 pool job. It reports one warning and one mismatch count per connection. The
 warning contains the pool name and requested and received difficulty.
 
-Use pools that you trust for `stratum_pool_accepted`. A pool that accepts every
+Use pools that you trust with `verify.mode: pool_share`. A pool that accepts every
 share can grant access to every client. Each failover pool can pay a different
 wallet. See [pool configuration](configuration.md#stratum-pools-and-proxies).
 
@@ -193,7 +175,7 @@ wallet. Use `x+{difficulty}` with P2Pool. Other pools can require a wallet in
 
 ### Hybrid escalation
 
-With local verification, a custom policy can reserve RandomX for higher scores.
+A custom policy can reserve RandomX for higher scores in both verification modes.
 Configure `pow.stratum_pool` explicitly for RandomX work:
 
 ```yaml
@@ -223,15 +205,25 @@ pow:
   default_algorithm: randomx
 ```
 
-## Enforcement modes
+## Verification modes
 
-Configured through `pow.verification` in YAML, `--pow-verification` or `RILGATE_POW_VERIFICATION`.
+`pow.algorithms.randomx.verify.mode` selects `gateway` (default) or `pool_share`
+for RandomX. Use `--pow-algorithms-randomx-verify-mode` or
+`RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_MODE` for the same setting.
+Fast, HashWX and refresh always use `gateway`. They can work in the same policy
+as RandomX with `pool_share`.
 
-### Stateless local verification
+### Gateway verification
+
+With `gateway`, Rilgate checks the proof. For RandomX, it computes the hash
+with the hashers in `pow.algorithms.randomx.verify.order`.
 
 ```yaml
 pow:
-  verification: local_verify
+  algorithms:
+    randomx:
+      verify:
+        mode: gateway
 ```
 
 RandomX flow:
@@ -254,7 +246,7 @@ gateway
       POST nonce + set_cookie: true to /api/verify
           |
           v
-      gateway recomputes RandomX
+      gateway checks the RandomX hash
           |
           v
       signed short-lived receipt + cookie_set: true
@@ -270,20 +262,26 @@ gateway
 The challenge is self-contained and signed. Gateway B can validate a challenge created
 by gateway A if both instances share:
 
-- Signing keys and enforcement mode.
+- Signing keys and verification mode.
 - Compatible token lifetimes and algorithms.
 
 No Redis, coordinator, sticky session or special load-balancer configuration is
 required.
 
-A locally accepted result proves the requested RandomX difficulty. It is a different
+A result accepted by the gateway proves the requested RandomX difficulty. It is a different
 protocol event from a Stratum `accepted` response.
 
-### Pool-accepted enforcement
+### Pool share verification
+
+With `pool_share`, a RandomX proof is valid only when a Stratum pool accepts
+the share.
 
 ```yaml
 pow:
-  verification: stratum_pool_accepted
+  algorithms:
+    randomx:
+      verify:
+        mode: pool_share
 ```
 
 Flow:
@@ -399,20 +397,20 @@ retain that binding, including the port. HTTP/2 authority is supported when the 
 header is absent.
 
 Missing hosts cannot bypass a nonempty binding. Old receipts and access tokens without a
-host claim need a new proof. Fast challenges also retain their enforcement mode and
+host claim need a new proof. Fast challenges also retain their verification mode and
 cannot cross mode changes. Older fast challenge tokens without that claim need a new
 challenge. All token validators reject unsupported versions, future issue times, invalid
 lifetimes, and expiration at the current second.
 
 Access cookies apply across paths on their bound host. A `CHALLENGE` policy accepts a
-cookie only when its algorithm and enforcement mode match and its difficulty is at least
+cookie only when its algorithm and verification mode match and its difficulty is at least
 the policy's requirement. `DENY` rules still deny access with a valid cookie.
 
 Local RandomX work appends a domain marker and a random 16-byte challenge ID to the
 Pool-derived blob. Identical pool jobs therefore yield distinct proofs without a
 rebuild of the seed cache. Pool blobs must fit in 233 bytes before the 23-byte suffix.
 Larger jobs return 503. This local work cannot be submitted as a Stratum pool share. The
-`stratum_pool_accepted` mode uses the original pool blob unchanged.
+`pool_share` mode uses the original pool blob unchanged.
 
 `pow.challenge.ttl` controls presentations, Fast challenges and HashWX challenges. `pow.algorithms.randomx.challenge_ttl` controls local
 RandomX solving and defaults to 3600 seconds. Tune it for browser hash rates and policy
@@ -501,11 +499,11 @@ artifact without the validation export.
 
 ## RandomX hash location
 
-`pow.verification` sets the proof requirement. With `local_verify`, the gateway
-checks a hash against the difficulty target. The hash can come from a local
-worker or a remote verifier. With `stratum_pool_accepted`, the gateway waits for Stratum pool
-to accept the share. A remote verifier does not replace pool acceptance. Both
-modes still need `pow.stratum_pool.pools[].address` to get work.
+The [verification mode](#verification-modes) sets the proof requirement. With
+`gateway`, the hash can come from a local worker or a remote verifier. Both
+modes need `pow.stratum_pool.pools[].address` to get work. With `pool_share`,
+`verify.order` must be `[local]`. A `verify.remote.endpoint` or any
+`verify.remote.tls` file is a configuration error.
 
 Set `pow.algorithms.randomx.verify.order` to select the hash location:
 
@@ -538,7 +536,6 @@ Use a custom policy to select RandomX. Presets select Fast explicitly, so
 
 ```yaml
 pow:
-  verification: local_verify
   default_algorithm: randomx
   stratum_pool:
     pools:

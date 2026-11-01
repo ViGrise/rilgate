@@ -9,7 +9,7 @@ pub use rilgate_policy::{ChallengePolicy, PolicyAction};
 pub mod schema;
 pub use rilgate_pool::StratumPoolConfig;
 pub use rilgate_pow::difficulty::DifficultyConfig;
-pub use rilgate_protocol::{PowAlgorithm, PowEnforcement};
+pub use rilgate_protocol::{PowAlgorithm, PowVerification, VerificationModes};
 pub use runtime::{
   BrowserConfig, DecisionLog, Environment, OpenGraphConfig, PowConfig, RandomXFallback,
   RateLimitConfig, ServerConfig, UpstreamConfig,

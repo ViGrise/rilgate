@@ -172,7 +172,7 @@ fn remote_verifier_environment_errors_have_stable_identifiers() {
 }
 
 #[test]
-fn remote_verifier_warnings_follow_order_rules_and_enforcement() {
+fn remote_verifier_warnings_follow_order_rules_and_selected_algorithms() {
   let configured = "pow:\n  stratum_pool: {}\n  algorithms:\n    randomx:\n      verify:\n        order: [remote, local]\n        remote:\n          endpoint: https://verifier.test\n          tls: {ca: ca.pem, client_cert: cert.pem, client_key: key.pem}\n";
   for environment in ["", DEVELOPMENT] {
     let text = format!("{environment}{BASE}{configured}");
@@ -195,11 +195,6 @@ fn remote_verifier_warnings_follow_order_rules_and_enforcement() {
       )
     );
     assert!(!warnings(&randomx).contains(&"verifier-remote-unused"));
-    let pool_accepted = randomx.replace(
-      "  stratum_pool:",
-      "  verification: stratum_pool_accepted\n  stratum_pool:",
-    );
-    assert!(warnings(&pool_accepted).contains(&"verifier-remote-unused"));
   }
 }
 

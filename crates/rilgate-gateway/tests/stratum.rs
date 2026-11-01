@@ -10,7 +10,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use rilgate_gateway::{
-  config::{Config, PowAlgorithm, PowEnforcement},
+  config::{Config, PowAlgorithm, PowVerification},
   transport::errors::{ApiError, CapacityExceeded},
 };
 use serde_json::{Value, json};
@@ -62,7 +62,7 @@ async fn login(
 async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<()>) {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.enforce = PowEnforcement::StratumPoolAccepted;
+  pow.verification.randomx = PowVerification::PoolShare;
   pow.stratum_pool.pools[0].port = p2pool_port;
   let mut unavailable = pow.stratum_pool.pools[0].clone();
   unavailable.name = "unavailable".into();
@@ -187,8 +187,8 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     service
       .verify_auth_token(&token, &claims.host, &unbound())
       .unwrap()
-      .enforce,
-    PowEnforcement::StratumPoolAccepted
+      .verification,
+    PowVerification::PoolShare
   );
   ws.close(None).await.unwrap();
   p2pool.await.unwrap();
@@ -208,7 +208,7 @@ async fn a_silent_p2pool_submission_expires() {
   message(&mut ws).await;
   share(&mut ws, "first", &"00".repeat(32)).await;
   assert!(
-    matches!(message(&mut ws).await, ServerWsMessage::Error { message } if message.contains("acceptance timed out"))
+    matches!(message(&mut ws).await, ServerWsMessage::Error { message, .. } if message.contains("acceptance timed out"))
   );
   p2pool.abort();
   server.abort();
@@ -300,4 +300,173 @@ async fn failed_primary_uses_backup_and_cooldown_preserves_pool_affinity() {
   );
   assert!(metrics.contains("rilgate_stratum_pool_failover_total{from=\"primary\"} 1"));
   assert!(!metrics.contains("wallet"));
+}
+
+#[tokio::test]
+async fn fast_proofs_pass_the_gate_while_gateway_randomx_cookies_are_rejected() {
+  use rilgate_crypto::token::{TokenPurpose, sign_json};
+  use rilgate_protocol::{ChallengeResponse, claims::AuthClaims};
+  let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config();
+  let config = Arc::get_mut(&mut cfg).unwrap();
+  config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
+  config.pow.verification.randomx = PowVerification::PoolShare;
+  let mut randomx = config.pow.policy.policy.rules.as_ref().unwrap()[0].clone();
+  randomx.name = "randomx".into();
+  randomx.when = rilgate_config::schema::policy::Condition::default();
+  randomx.when.path = Some(rilgate_config::schema::policy::StringMatch {
+    prefix: Some("/randomx".into()),
+    ..Default::default()
+  });
+  randomx.challenge.as_mut().unwrap().algorithm = Some(PowAlgorithm::RandomX);
+  randomx.challenge.as_mut().unwrap().difficulty = Some(1000);
+  config
+    .pow
+    .policy
+    .policy
+    .rules
+    .as_mut()
+    .unwrap()
+    .push(randomx);
+  let upstream = tokio::spawn(async move {
+    axum::serve(
+      origin,
+      axum::Router::new().fallback(|| async { "upstream" }),
+    )
+    .await
+    .unwrap();
+  });
+  let service = make_service(&cfg).unwrap();
+  let decision = service.evaluate_request(&Default::default(), "/protected");
+  let presentation = service
+    .issue_presentation("example.test".into(), "/protected".into(), &decision)
+    .unwrap();
+  let ChallengeResponse::Fast {
+    challenge_token,
+    challenge,
+    difficulty,
+  } = service
+    .issue_challenge(&presentation, "example.test")
+    .await
+    .unwrap()
+  else {
+    panic!("expected fast");
+  };
+  let nonce = (0..100_000)
+    .map(|nonce| nonce.to_string())
+    .find(|nonce| {
+      rilgate_pow_hash::sha256::verifier::verify_fast(&challenge, nonce, difficulty).unwrap()
+    })
+    .unwrap();
+  let receipt = service
+    .verify_challenge(&challenge_token, &nonce, "example.test")
+    .await
+    .unwrap();
+  let auth = service
+    .exchange_receipt(&receipt, "example.test", &unbound())
+    .unwrap();
+  let claims = service
+    .verify_auth_token(&auth, "example.test", &unbound())
+    .unwrap();
+  assert_eq!(claims.verification, PowVerification::Gateway);
+  let router = app::router(cfg.clone()).await.unwrap();
+  let response = router
+    .clone()
+    .oneshot(
+      Request::builder()
+        .uri("/protected")
+        .header("host", "example.test")
+        .header("cookie", format!("{}={auth}", cfg.pow.auth_cookie_name))
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+  assert_eq!(
+    axum::body::to_bytes(response.into_body(), 1_048_576)
+      .await
+      .unwrap(),
+    "upstream"
+  );
+  let wrong_mode = sign_json(
+    &AuthClaims {
+      algorithm: PowAlgorithm::RandomX,
+      difficulty: 1000,
+      ..claims
+    },
+    cfg.pow.auth_signing_key.expose().as_bytes(),
+    TokenPurpose::Auth,
+  )
+  .unwrap();
+  assert!(
+    service
+      .verify_auth_token(&wrong_mode, "example.test", &unbound())
+      .is_err()
+  );
+  let response = router
+    .oneshot(
+      Request::builder()
+        .uri("/randomx")
+        .header("host", "example.test")
+        .header(
+          "cookie",
+          format!("{}={wrong_mode}", cfg.pow.auth_cookie_name),
+        )
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  let body = axum::body::to_bytes(response.into_body(), 1_048_576)
+    .await
+    .unwrap();
+  assert!(String::from_utf8_lossy(&body).contains("presentation_token"));
+  upstream.abort();
+}
+
+#[tokio::test]
+async fn client_config_reports_each_algorithm_verification_mode() {
+  let mut cfg = common::config();
+  Arc::get_mut(&mut cfg).unwrap().pow.verification.randomx = PowVerification::PoolShare;
+  let path = format!("{}/api/client-config", cfg.web.base_path);
+  let router = app::router(cfg).await.unwrap();
+  let response = router
+    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+  let value: Value = serde_json::from_slice(
+    &axum::body::to_bytes(response.into_body(), 1_048_576)
+      .await
+      .unwrap(),
+  )
+  .unwrap();
+  assert!(value.get("enforce").is_none());
+  let algorithms = value["algorithms"].as_array().unwrap();
+  for (id, mode) in [("fast", "gateway"), ("randomx", "pool_share")] {
+    assert_eq!(
+      algorithms.iter().find(|entry| entry["id"] == id).unwrap()["verification"],
+      mode
+    );
+  }
+}
+
+#[tokio::test]
+async fn unavailable_pools_send_a_work_unavailable_websocket_error() {
+  let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = closed.local_addr().unwrap().port();
+  drop(closed);
+  let (mut ws, _, server) = browser(port).await;
+  let frame = tokio::time::timeout(Duration::from_secs(3), ws.next())
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+  let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+  assert_eq!(
+    value,
+    json!({"type": "error", "message": "Stratum pool connection unavailable", "code": "work_unavailable"})
+  );
+  server.abort();
 }

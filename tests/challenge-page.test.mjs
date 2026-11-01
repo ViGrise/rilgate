@@ -104,7 +104,12 @@ function challengeFetch(url) {
   if (url.endsWith("session")) return response({ authenticated: true });
   return response(
     url.endsWith("client-config")
-      ? { enforce: "local_verify" }
+      ? {
+          algorithms: [
+            { id: "fast", verification: "gateway" },
+            { id: "randomx", verification: "gateway" },
+          ],
+        }
       : { algorithm: "fast", challenge: "data", difficulty: 1, challenge_token: "challenge" },
   );
 }

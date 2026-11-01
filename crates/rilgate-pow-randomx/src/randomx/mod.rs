@@ -7,7 +7,7 @@ use rilgate_pow::{
   Algorithm, AlgorithmDescriptor, AlgorithmFuture, PowAlgorithm, PreparedWork, Proof, Work,
   WorkRequest, difficulty::DifficultyConfig,
 };
-use rilgate_protocol::{PowEnforcement, StratumJob};
+use rilgate_protocol::{PowVerification, StratumJob};
 use std::{
   sync::Arc,
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -172,10 +172,10 @@ impl Algorithm for RandomXAlgorithm {
     );
     Ok(())
   }
-  fn validate_enforcement(&self, enforce: PowEnforcement) -> Result<()> {
+  fn validate_verification(&self, verification: PowVerification) -> Result<()> {
     anyhow::ensure!(
-      enforce == PowEnforcement::LocalVerify,
-      "RandomX HTTP challenge is disabled in stratum_pool_accepted mode"
+      verification == PowVerification::Gateway,
+      "RandomX HTTP challenge requires pow.algorithms.randomx.verify.mode: gateway"
     );
     Ok(())
   }
@@ -184,7 +184,7 @@ impl Algorithm for RandomXAlgorithm {
   }
   fn issue(&self, request: WorkRequest) -> AlgorithmFuture<'_, PreparedWork> {
     Box::pin(async move {
-      self.validate_enforcement(request.enforce)?;
+      self.validate_verification(request.verification)?;
       self.validate_difficulty(request.difficulty)?;
       let mut job = self
         .provider

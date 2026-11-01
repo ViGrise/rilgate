@@ -1,6 +1,6 @@
 mod common;
 use rilgate_crypto::token::{self, TokenPurpose};
-use rilgate_gateway::config::{PowAlgorithm, PowEnforcement};
+use rilgate_gateway::config::{PowAlgorithm, PowVerification};
 use rilgate_protocol::claims::ReceiptClaims;
 use rilgate_test_utils::{binding::unbound, gateway as app};
 use std::{
@@ -40,7 +40,7 @@ async fn cookies_follow_the_required_rate_difficulty_in_both_directions() {
         challenge_id: format!("proof-{difficulty}"),
         algorithm: PowAlgorithm::Fast,
         difficulty,
-        enforce: PowEnforcement::LocalVerify,
+        verification: PowVerification::Gateway,
         issued_at: now,
         expires_at: now + 30,
       },

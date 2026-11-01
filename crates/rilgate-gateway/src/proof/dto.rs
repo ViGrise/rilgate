@@ -1,9 +1,15 @@
-use rilgate_protocol::PowEnforcement;
+use rilgate_protocol::PowVerification;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize)]
+pub struct ClientAlgorithm {
+  #[serde(flatten)]
+  pub descriptor: rilgate_pow::algorithm::AlgorithmDescriptor,
+  pub verification: PowVerification,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ClientConfigResponse {
-  pub algorithms: Vec<rilgate_pow::algorithm::AlgorithmDescriptor>,
-  pub enforce: PowEnforcement,
+  pub algorithms: Vec<ClientAlgorithm>,
   pub internal_prefix: String,
   pub solver_module_url: String,
   pub websocket_url: String,

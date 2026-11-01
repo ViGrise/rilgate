@@ -543,11 +543,12 @@ fn invalid_override_values_name_their_flag_or_variable() {
   let result = show(
     directory.path(),
     &[upstream],
-    &["--pow-verification", "remote"],
+    &["--pow-algorithms-randomx-verify-mode", "remote"],
   );
   let error = String::from_utf8_lossy(&result.stderr);
   assert!(
-    error.contains("pow.verification (from --pow-verification)"),
+    error
+      .contains("pow.algorithms.randomx.verify.mode (from --pow-algorithms-randomx-verify-mode)"),
     "{error}"
   );
 }
@@ -765,4 +766,17 @@ fn embedded_policies_load_with_only_an_operator_configuration_file() {
     assert!(!output.contains("!include"), "{name}");
     assert!(!output.contains(SECRET), "{name}");
   }
+}
+
+#[test]
+fn pool_share_randomx_and_fast_thresholds_pass_config_check() {
+  let yaml = format!(
+    "server:\n  upstream: {{url: 'http://127.0.0.1:3000'}}\nsecurity:\n  secret: '{SECRET}'\npow:\n  stratum_pool: {{}}\n  algorithms:\n    randomx:\n      verify: {{mode: pool_share}}\npolicy:\n  rules:\n    - name: randomx\n      when: {{path: {{prefix: /randomx}}}}\n      action: challenge\n      challenge: {{algorithm: randomx, difficulty: 1000}}\n  score:\n    thresholds:\n      - min: 10\n        action: challenge\n        challenge: {{algorithm: fast, difficulty: 2}}\n"
+  );
+  let result = command(&yaml, &["config", "check"], &[]);
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
 }

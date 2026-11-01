@@ -4,7 +4,7 @@ use arc_swap::ArcSwap;
 use http::HeaderMap;
 use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine, policy::schema::PolicyDocument};
 use rilgate_pow::{AlgorithmDescriptor, AlgorithmRegistry};
-use rilgate_protocol::{PowAlgorithm, PowEnforcement};
+use rilgate_protocol::{PowAlgorithm, PowVerification};
 use std::sync::Arc;
 pub struct ChallengeService {
   pub(crate) cfg: Arc<ChallengeConfig>,
@@ -77,10 +77,6 @@ impl ChallengeService {
       let backend = algorithms
         .get(selection.algorithm.unwrap_or(cfg.default_algorithm))
         .with_context(|| format!("Invalid challenge policy in {name}"))?;
-      anyhow::ensure!(
-        cfg.enforce != PowEnforcement::StratumPoolAccepted || backend.id() == PowAlgorithm::RandomX,
-        "policy ({name}): stratum_pool_accepted requires RandomX challenges"
-      );
       if let Some(difficulty) = selection.difficulty {
         backend
           .validate_difficulty(difficulty)
@@ -135,8 +131,8 @@ impl ChallengeService {
     Ok(self.algorithms.get(id)?.descriptor())
   }
 
-  pub fn enforcement(&self) -> PowEnforcement {
-    self.cfg.enforce
+  pub fn verification(&self, algorithm: PowAlgorithm) -> PowVerification {
+    self.cfg.verification.of(algorithm)
   }
 
   pub fn sets(&self) -> rilgate_policy::PolicySets {

@@ -4,7 +4,6 @@ server:
 security:
   secret: "${RILGATE_SECURITY_SECRET}"
 pow:
-  verification: local_verify
   default_algorithm: hashwx
   algorithms:
     hashwx:

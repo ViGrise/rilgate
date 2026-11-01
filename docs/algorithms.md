@@ -4,13 +4,13 @@
 
 Implement `rilgate_pow::Algorithm` in a dedicated crate such as `crates/rilgate-pow-<name>`, with modules grouped
 by responsibility. The contract provides a stable descriptor, weight-to-difficulty
-mapping, difficulty and enforcement validation, TTL, work issuance and proof
+mapping, difficulty and verification mode validation, TTL, work issuance and proof
 verification.
 
-`issue(WorkRequest)` receives the difficulty and enforcement mode and returns `PreparedWork`.
+`issue(WorkRequest)` receives the difficulty and verification mode and returns `PreparedWork`.
 `verify(&PreparedWork, Proof)` validates unsigned work and a nonce. The adapter does not receive signed
 tokens or signing keys. `rilgate-challenge` checks signatures, versions, lifetime, host and
-enforcement before dispatching, then issues a receipt. It checks lifetime again after
+verification mode before dispatching, then issues a receipt. It checks lifetime again after
 verification.
 
 Adapters validate work dimensions and nonce encoding before expensive work, and bound
@@ -66,7 +66,8 @@ worker.js    performs expensive calculation off the page thread
 `cargo xtask build-web` lowers each member to ES5 and assembles `challenge.bundle.js`. Modern-only work such
 as WebAssembly loads as a separate module after the adapter checks browser capabilities,
 as RandomX does. The page entrypoint selects an adapter through the registry and checks
-the algorithm list returned by client-config. Shared fetch, translation, exchange, and
+the algorithm list returned by client-config. Each entry includes its `verification`
+mode, `gateway` or `pool_share`. Shared fetch, translation, exchange, and
 status helpers belong to the challenge runtime. HTTP proof adapters call
 `window.PowClient.verify(challenge_token, nonce)` to complete verification and access.
 The helper sends the optional boolean `set_cookie: true` to `/api/verify`. The field
