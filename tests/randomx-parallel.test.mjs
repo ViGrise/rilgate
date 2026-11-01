@@ -24,7 +24,8 @@ test("worker counts respect CPU availability and the cache memory budget", () =>
   for (const [cores, memory, expected] of [
     [12, 16, 8],
     [8, 8, 4],
-    [12, undefined, 2],
+    [12, undefined, 1],
+    [6, undefined, 1],
     [2, 2, 1],
     [4, 0.5, 1],
     [16, 32, 8],

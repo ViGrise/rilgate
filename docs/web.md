@@ -156,7 +156,7 @@ the `load-error` message that the page shows when its script could not start.
 | `consent` | `start` | Wait for RandomX consent. |
 | `initializing` | `run` | RandomX module and cache setup. |
 | `randomx` | `run` | RandomX hashing. |
-| `pool` | `run` | Pool connection and acceptance wait. |
+| `pool` | `run` | Pool acceptance wait after the browser sends a share. |
 | `verifying` | `run` | Proof verification. |
 | `cookies` | `retry` | Cookies disabled, or the access cookie did not reach the gateway after verification. |
 | `success` | `done` | Verification completed. |
