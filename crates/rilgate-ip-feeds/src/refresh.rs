@@ -1,8 +1,8 @@
 use crate::{
-  FIRST_LOAD_RETRY, FIRST_RETRY, FeedClient, Fetched, JITTER_FRACTION, Validators, parse,
+  FIRST_LOAD_RETRY, FIRST_RETRY, FeedClient, FeedParse, Fetched, JITTER_FRACTION, Validators,
 };
 use anyhow::Result;
-use rilgate_policy::{IpSet, IpSets, Progress};
+use rilgate_policy::{FeedSet, FeedSets, Progress};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,9 +15,9 @@ pub enum Outcome {
 }
 
 /// Fetches a remote set once, publishing a new snapshot on success.
-pub async fn refresh_once(
+pub async fn refresh_once<I: FeedParse>(
   client: &FeedClient,
-  set: &IpSet,
+  set: &FeedSet<I>,
   validators: &mut Validators,
 ) -> Outcome {
   let Some(remote) = set.remote().cloned() else {
@@ -31,28 +31,37 @@ pub async fn refresh_once(
     Ok(Fetched::Modified {
       body,
       validators: new,
-    }) => match parse(remote.format, &body) {
-      Ok(ranges) => {
-        *validators = new;
-        set.publish(ranges);
-        Outcome::Updated
+    }) => {
+      let body = body.clone();
+      let format = remote.format.clone();
+      match tokio::task::spawn_blocking(move || I::parse(&format, &body))
+        .await
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("parser stopped")))
+      {
+        Ok(ranges) => {
+          *validators = new;
+          set.publish(ranges);
+          Outcome::Updated
+        }
+        Err(error) => {
+          set.record_failure();
+          tracing::warn!(
+            set = set.name(),
+            error = format!("{error:#}"),
+            "{} refresh failed",
+            I::LABEL
+          );
+          Outcome::Failed
+        }
       }
-      Err(error) => {
-        set.record_failure();
-        tracing::warn!(
-          ip_set = set.name(),
-          error = format!("{error:#}"),
-          "IP set refresh failed"
-        );
-        Outcome::Failed
-      }
-    },
+    }
     Err(error) => {
       set.record_failure();
       tracing::warn!(
-        ip_set = set.name(),
+        set = set.name(),
         error = format!("{error:#}"),
-        "IP set refresh failed"
+        "{} refresh failed",
+        I::LABEL
       );
       Outcome::Failed
     }
@@ -108,7 +117,7 @@ pub fn resume_delay(
 /// Starts a background refresher for every remote set in the registry.
 ///
 /// Dropping the returned handle stops the refreshers.
-pub fn spawn(sets: &IpSets) -> Result<crate::Refreshers> {
+pub fn spawn<I: FeedParse>(sets: &FeedSets<I>) -> Result<crate::Refreshers> {
   let remotes: Vec<_> = sets
     .iter()
     .filter_map(|set| Some((Arc::downgrade(set), set.remote()?.clone())))

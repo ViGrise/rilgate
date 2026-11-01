@@ -639,7 +639,8 @@ async fn request_conditions_observe_published_policy_ip_sets() {
   );
   assert_eq!(upstream.count(), 0);
   challenge
-    .ip_sets()
+    .sets()
+    .ip
     .get("feed")
     .unwrap()
     .publish(rilgate_policy::IpRanges::from_networks(["192.0.2.0/24"

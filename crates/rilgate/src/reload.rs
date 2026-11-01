@@ -131,12 +131,19 @@ impl Reloader {
   /// refreshers stop once the new ones run.
   fn start_background_tasks(&mut self) -> Result<()> {
     let challenge = self.handle.challenge();
-    let mut refreshers = rilgate_ip_feeds::spawn(&challenge.ip_sets())?;
+    let sets = challenge.sets();
+    let mut refreshers = rilgate_ip_feeds::spawn(&sets.ip)?;
     let ip_sets = refreshers.len();
+    let asn_refreshers = rilgate_ip_feeds::spawn(&sets.asn)?;
+    let asn_sets = asn_refreshers.len();
+    refreshers.absorb(asn_refreshers);
     refreshers.absorb(rilgate_ip_feeds::spawn_geoip(&challenge.geoip())?);
-    let geoip_databases = refreshers.len() - ip_sets;
+    let geoip_databases = refreshers.len() - ip_sets - asn_sets;
     if ip_sets > 0 {
       tracing::info!(refreshers = ip_sets, "remote IP set refreshers started");
+    }
+    if asn_sets > 0 {
+      tracing::info!(refreshers = asn_sets, "remote ASN set refreshers started");
     }
     if geoip_databases > 0 {
       tracing::info!(geoip_databases, "GeoIP database refreshers started");

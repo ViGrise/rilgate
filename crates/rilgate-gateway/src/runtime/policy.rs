@@ -77,7 +77,7 @@ impl PolicyHandle {
       PolicyServices::with_previous(definition, engine.lookup_plan(), Some(&previous))?;
     let condition = self
       .open_graph
-      .compile_condition(engine.ip_sets(), engine.geoip())?;
+      .compile_condition(engine.sets(), engine.geoip())?;
     self.open_graph.set_condition(condition);
     self.pow.install(compiled);
     self.services.store(Arc::new(services));

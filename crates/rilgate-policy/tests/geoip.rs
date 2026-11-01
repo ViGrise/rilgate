@@ -133,3 +133,55 @@ fn invalid_database_keeps_the_previous_reader() {
   assert!(country.status().loaded);
   assert_eq!(weight(&engine, GB_ADDRESS), 3);
 }
+
+#[test]
+fn asn_sets_match_through_the_asn_database() {
+  let engine = engine("asn_sets: {dc: {asns: [15169]}}\nrules:\n  - {name: dc, when: {asn: {in_sets: [dc]}}, action: score, score: 5}\n").unwrap();
+  load(&engine);
+  assert_eq!(weight(&engine, GOOGLE_ASN_ADDRESS), 5);
+  assert_eq!(weight(&engine, TELSTRA_ASN_ADDRESS), 0);
+}
+#[test]
+fn remote_asn_set_is_unknown_until_loaded() {
+  let engine = engine("asn_sets: {dc: {url: 'https://example.test/asns', format: list_text}}\nrules:\n  - {name: dc, when: {asn: {in_sets: [dc]}}, action: deny}\n").unwrap();
+  load(&engine);
+  let (action, _, unresolved) = decide(&engine, GOOGLE_ASN_ADDRESS);
+  assert_eq!(action, PolicyAction::Challenge);
+  assert!(unresolved);
+  engine
+    .sets()
+    .asn
+    .get("dc")
+    .unwrap()
+    .publish(rilgate_policy::AsnList::from_numbers([15169]));
+  assert_eq!(decide(&engine, GOOGLE_ASN_ADDRESS).0, PolicyAction::Deny);
+}
+#[test]
+fn asn_set_errors() {
+  for (source, expected) in [
+    (
+      "asn_sets: {dc: {url: 'https://example.test/asns', format: ip_prefixes_json}}\nrules: []",
+      "policy.asn_sets.dc.format: ip_prefixes_json holds IP networks, use list_text, regex or json_path",
+    ),
+    (
+      "rules: [{name: dc, when: {asn: {in_sets: [missing]}}, action: deny}]",
+      "policy.rules[0].when.asn.in_sets: unknown asn set missing",
+    ),
+    (
+      "asn_sets: {dc: {asns: [0]}}\nrules: []",
+      "policy.asn_sets.dc.asns[0]: expected an autonomous system number from 1 to 4294967295",
+    ),
+  ] {
+    let error = engine(source).unwrap_err();
+    assert!(format!("{error:#}").contains(expected), "{error:#}");
+  }
+  let definition: Definition =
+    serde_yaml_ng::from_str("mode: balanced\nasn_sets: {dc: {asns: [15169]}}").unwrap();
+  assert!(
+    format!(
+      "{:#}",
+      PolicyEngine::from_definition(&definition).unwrap_err()
+    )
+    .contains("policy: asn_sets require mode: custom")
+  );
+}

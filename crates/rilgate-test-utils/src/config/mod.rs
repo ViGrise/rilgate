@@ -110,6 +110,7 @@ pub fn config() -> Config {
         }]),
         score: None,
         ip_sets: std::collections::BTreeMap::new(),
+        asn_sets: std::collections::BTreeMap::new(),
         geoip: None,
         dns: None,
         honeypot: None,

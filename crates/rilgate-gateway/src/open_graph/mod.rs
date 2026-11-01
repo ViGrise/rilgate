@@ -51,7 +51,7 @@ pub struct OpenGraphService {
 impl OpenGraphService {
   pub fn new(
     config: OpenGraphConfig,
-    sets: &rilgate_policy::IpSets,
+    sets: &rilgate_policy::PolicySets,
     geoip: &rilgate_policy::GeoDatabases,
   ) -> Result<Self> {
     config.validate()?;
@@ -88,7 +88,7 @@ impl OpenGraphService {
   /// Compiles `site.open_graph.when` against the given IP sets and GeoIP databases.
   pub fn compile_condition(
     &self,
-    sets: &rilgate_policy::IpSets,
+    sets: &rilgate_policy::PolicySets,
     geoip: &rilgate_policy::GeoDatabases,
   ) -> Result<Option<rilgate_policy::conditions::CompiledCondition>> {
     self.config.compile_condition(sets, geoip)

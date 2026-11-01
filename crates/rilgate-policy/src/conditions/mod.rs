@@ -1,8 +1,10 @@
+use crate::feed_sets::MAX_SETS_PER_MATCHER;
 use crate::geoip::{GeoDatabase, GeoDatabases, Lookup, MAX_LIST_ENTRIES};
 use crate::host_load::{HOST_LOAD, HostLoad};
-use crate::ip_sets::{IpRanges, IpSet, IpSets, MAX_SETS_PER_MATCHER, Membership};
+use crate::ip_sets::{IpRanges, IpSet, Membership};
 use crate::lookups::{Lookups, in_domains, normalize_name};
-use crate::policy::schema::{Condition, LoadMatch, NumberMatch, RateMatch, StringMatch};
+use crate::policy::schema::{AsnMatch, Condition, LoadMatch, NumberMatch, RateMatch, StringMatch};
+use crate::{AsnSet, PolicySets};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
 use regex::Regex;
@@ -54,6 +56,7 @@ pub(crate) enum Compiled {
   Load(LoadMatch),
   Country(Arc<GeoDatabase>, Vec<[u8; 2]>),
   Asn(Arc<GeoDatabase>, Vec<u32>),
+  AsnSets(Arc<GeoDatabase>, Vec<Arc<AsnSet>>),
   Dnsbl(String),
   Honeypot(bool),
   ReverseDns(Vec<String>),
@@ -107,7 +110,7 @@ impl Compiled {
     path: &str,
     depth: usize,
     budget: &mut Budget,
-    sets: &IpSets,
+    sets: &PolicySets,
     geoip: &GeoDatabases,
   ) -> Result<Self> {
     budget.consume(depth, path)?;
@@ -286,7 +289,7 @@ impl Compiled {
     }
     if let Some(numbers) = &condition.asn {
       budget.consume(depth, path)?;
-      nodes.push(Self::compile_asn(numbers, path, geoip)?);
+      nodes.push(Self::compile_asn(numbers, path, sets, geoip)?);
     }
     if let Some(zone) = &condition.dnsbl {
       ensure!(
@@ -344,15 +347,41 @@ impl Compiled {
     Ok(Self::Country(database.clone(), codes))
   }
 
-  fn compile_asn(numbers: &[u32], path: &str, geoip: &GeoDatabases) -> Result<Self> {
+  fn compile_asn(
+    value: &AsnMatch,
+    path: &str,
+    sets: &PolicySets,
+    geoip: &GeoDatabases,
+  ) -> Result<Self> {
     let database = geoip
       .asn()
       .with_context(|| format!("{path}.asn: requires policy.geoip.asn"))?;
-    ensure!(
-      (1..=MAX_LIST_ENTRIES).contains(&numbers.len()),
-      "{path}.asn: expected 1 to {MAX_LIST_ENTRIES} autonomous system numbers"
-    );
-    Ok(Self::Asn(database.clone(), numbers.to_vec()))
+    match value {
+      AsnMatch::Numbers(numbers) => {
+        ensure!(
+          (1..=MAX_LIST_ENTRIES).contains(&numbers.len()),
+          "{path}.asn: expected 1 to {MAX_LIST_ENTRIES} autonomous system numbers"
+        );
+        Ok(Self::Asn(database.clone(), numbers.clone()))
+      }
+      AsnMatch::Sets(names) => {
+        ensure!(
+          (1..=MAX_SETS_PER_MATCHER).contains(&names.len()),
+          "{path}.asn.in_sets: in_sets requires 1 to 16 set names"
+        );
+        let resolved = names
+          .iter()
+          .map(|name| {
+            sets
+              .asn
+              .get(name)
+              .cloned()
+              .with_context(|| format!("{path}.asn.in_sets: unknown asn set {name}"))
+          })
+          .collect::<Result<Vec<_>>>()?;
+        Ok(Self::AsnSets(database.clone(), resolved))
+      }
+    }
   }
 
   fn check_load(value: &LoadMatch, path: &str) -> Result<()> {
@@ -387,7 +416,7 @@ impl Compiled {
   fn compile_ip(
     value: &crate::policy::schema::IpMatch,
     path: &str,
-    sets: &IpSets,
+    sets: &PolicySets,
     budget: &mut Budget,
   ) -> Result<Self> {
     ensure!(
@@ -436,6 +465,7 @@ impl Compiled {
     let mut resolved = Vec::with_capacity(names.len());
     for name in names {
       let set = sets
+        .ip
         .get(name)
         .with_context(|| format!("{path}.client_ip.in_sets: unknown ip set {name}"))?;
       resolved.push(set.clone());
@@ -548,6 +578,30 @@ impl Compiled {
         match database.asn(ip) {
           Lookup::Unknown => Truth::Unknown,
           Lookup::Known(number) => truth(number.is_some_and(|number| numbers.contains(&number))),
+        }
+      }
+      Self::AsnSets(database, sets) => {
+        let Some(ip) = request.client_ip else {
+          return Truth::False;
+        };
+        match database.asn(ip) {
+          Lookup::Unknown => Truth::Unknown,
+          Lookup::Known(None) => Truth::False,
+          Lookup::Known(Some(number)) => {
+            let mut unknown = false;
+            for set in sets {
+              match set.membership(number) {
+                Membership::Member => return Truth::True,
+                Membership::Unknown => unknown = true,
+                Membership::NotMember => {}
+              }
+            }
+            if unknown {
+              Truth::Unknown
+            } else {
+              Truth::False
+            }
+          }
         }
       }
       Self::Dnsbl(zone) => {
@@ -689,7 +743,7 @@ impl CompiledCondition {
   pub fn compile(
     condition: &Condition,
     path: &str,
-    sets: &IpSets,
+    sets: &PolicySets,
     geoip: &GeoDatabases,
   ) -> Result<Self> {
     let mut budget = Budget {

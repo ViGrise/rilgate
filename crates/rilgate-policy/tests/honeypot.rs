@@ -58,7 +58,7 @@ fn honeypot_condition_is_rejected_outside_policy_rules() {
   let error = rilgate_policy::conditions::CompiledCondition::compile(
     &serde_yaml_ng::from_str("{honeypot: true}").unwrap(),
     "site.open_graph.when",
-    &rilgate_policy::IpSets::default(),
+    &rilgate_policy::PolicySets::default(),
     &rilgate_policy::GeoDatabases::default(),
   )
   .unwrap_err()

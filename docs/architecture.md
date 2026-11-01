@@ -43,9 +43,11 @@ crates/rilgate-policy/src/
   policy/presets.rs Built-in policy definitions
   policy/evaluator.rs Ordered rule and threshold execution
   conditions/       Shared bounded matcher compiler and evaluator
-  ip_sets/          Address range index, set state and the set registry
+  feed_sets/        Generic set state, registry and feed formats
+  ip_sets/          Address range index and IP set definitions
+  asn_sets/         Autonomous system index and ASN set definitions
 crates/rilgate-ip-feeds/src/
-  parse.rs          Published IP prefix document parsing
+  parse.rs          Feed value parsing for IP and ASN sets
   fetch.rs          Conditional, bounded and redirect-checked HTTP requests
   refresh.rs        Background refresh loop with backoff and jitter
 crates/rilgate-crypto/src/

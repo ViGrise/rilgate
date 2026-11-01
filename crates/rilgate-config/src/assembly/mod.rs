@@ -30,7 +30,14 @@ impl Configuration {
     self.pow.validate()?;
     self.open_graph.validate()?;
     self.open_graph.compile_condition(
-      &rilgate_policy::IpSets::compile(&self.pow.policy.ip_sets)?,
+      &rilgate_policy::PolicySets {
+        ip: rilgate_policy::IpSets::compile(&self.pow.policy.ip_sets)?,
+        asn: rilgate_policy::AsnSets::compile_with(
+          "policy.asn_sets",
+          &self.pow.policy.asn_sets,
+          None,
+        )?,
+      },
       &rilgate_policy::GeoDatabases::compile(self.pow.policy.geoip.as_ref())?,
     )?;
     self.web.validate().context("site")?;

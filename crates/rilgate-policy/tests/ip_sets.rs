@@ -122,7 +122,7 @@ fn ip_set_definitions_are_validated_with_their_path() {
 #[test]
 fn compiled_registry_exposes_static_sets_as_loaded() {
   let engine = engine2(STATIC).unwrap();
-  let office = engine.ip_sets().get("office").unwrap();
+  let office = engine.sets().ip.get("office").unwrap();
   assert_eq!(
     office.membership("203.0.113.1".parse().unwrap()),
     rilgate_policy::Membership::Member
@@ -143,7 +143,8 @@ fn remote(rules: &str) -> PolicyEngine {
 }
 fn publish(engine: &PolicyEngine, nets: &[&str]) {
   engine
-    .ip_sets()
+    .sets()
+    .ip
     .get("feed")
     .unwrap()
     .publish(rilgate_policy::IpRanges::from_networks(
@@ -215,7 +216,7 @@ fn published_snapshots_resolve_membership_until_stale() {
     decide(&engine, "198.51.100.1", 0).action,
     PolicyAction::Allow
   );
-  let feed = engine.ip_sets().get("feed").unwrap();
+  let feed = engine.sets().ip.get("feed").unwrap();
   let later = std::time::Instant::now() + std::time::Duration::from_secs(2 * 3600 + 1);
   assert_eq!(
     feed.membership_at("192.0.2.1".parse().unwrap(), later),
@@ -224,7 +225,7 @@ fn published_snapshots_resolve_membership_until_stale() {
   assert!(feed.status_at(later).stale);
   feed.record_failure();
   assert_eq!(feed.status().refresh_failures, 1);
-  assert_eq!(feed.status().prefixes, 1);
+  assert_eq!(feed.status().entries, 1);
 }
 
 #[test]
@@ -251,7 +252,7 @@ fn lookups_racing_publishes_see_complete_snapshots() {
       let reader = engine.clone();
       scope.spawn(move || {
         for _ in 0..20_000 {
-          let feed = reader.ip_sets().get("feed").unwrap();
+          let feed = reader.sets().ip.get("feed").unwrap();
           let a = feed.membership("192.0.2.1".parse().unwrap());
           assert_ne!(a, rilgate_policy::Membership::Unknown);
         }
@@ -332,4 +333,74 @@ fn decisions_record_any_rule_that_depended_on_unknown_data() {
   assert!(decision.unresolved);
   publish(&scored, &["198.51.100.0/24"]);
   assert!(!decide(&scored, "192.0.2.1", 0).unresolved);
+}
+
+#[test]
+fn feed_format_forms_parse_and_round_trip() {
+  use rilgate_policy::FeedFormat;
+  for yaml in [
+    "ip_prefixes_json",
+    "list_text",
+    "{regex: '(?P<value>.+)'}",
+    "{json_path: ['$.asns[*]']}",
+  ] {
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).unwrap();
+    let format: FeedFormat = serde_yaml_ng::from_value(value).unwrap();
+    let serialized = serde_yaml_ng::to_value(&format).unwrap();
+    assert_eq!(
+      format,
+      serde_yaml_ng::from_value::<FeedFormat>(serialized).unwrap()
+    );
+  }
+}
+#[test]
+fn invalid_feed_formats_are_rejected_at_load() {
+  let paths = format!("{{json_path: [{}]}}", ["'$.asns'"; 17].join(","));
+  let long_regex = format!("{{regex: '{}'}}", "a".repeat(1025));
+  for (format, expected) in [
+    (
+      "unknown",
+      "unknown format unknown, expected ip_prefixes_json, list_text, {regex: ...} or {json_path: [...]}",
+    ),
+    (
+      "{other: x}",
+      "unknown format key other, expected regex or json_path",
+    ),
+    ("{}", "expected one of regex, json_path"),
+    (
+      "{regex: x, json_path: ['$.x']}",
+      "expected one of regex, json_path",
+    ),
+    (
+      "42",
+      "expected a format name or a map with regex or json_path",
+    ),
+    (
+      "{regex: x}",
+      "policy.ip_sets.feed.format.regex: expected a capture group named value",
+    ),
+    (
+      "{regex: '['}",
+      "policy.ip_sets.feed.format.regex: regex parse error",
+    ),
+    (
+      &long_regex,
+      "policy.ip_sets.feed.format.regex: pattern exceeds 1024 bytes",
+    ),
+    (
+      "{json_path: []}",
+      "policy.ip_sets.feed.format.json_path: expected 1 to 16 paths",
+    ),
+    (
+      &paths,
+      "policy.ip_sets.feed.format.json_path: expected 1 to 16 paths",
+    ),
+    (
+      "{json_path: ['[']}",
+      "policy.ip_sets.feed.format.json_path[0]:",
+    ),
+  ] {
+    let error = engine2(&format!("mode: custom\nip_sets:\n  feed: {{url: 'https://example.test/feed', format: {format}}}\nrules: []\n")).unwrap_err();
+    assert!(format!("{error:#}").contains(expected), "{error:#}");
+  }
 }

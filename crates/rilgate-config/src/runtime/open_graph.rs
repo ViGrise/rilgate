@@ -24,7 +24,7 @@ impl Default for OpenGraphConfig {
 impl OpenGraphConfig {
   pub fn compile_condition(
     &self,
-    sets: &rilgate_policy::IpSets,
+    sets: &rilgate_policy::PolicySets,
     geoip: &rilgate_policy::GeoDatabases,
   ) -> Result<Option<rilgate_policy::conditions::CompiledCondition>> {
     self

@@ -1,0 +1,6 @@
+name: tor-exit
+when:
+  client_ip:
+    in_sets: [tor-exits]
+action: score
+score: 20

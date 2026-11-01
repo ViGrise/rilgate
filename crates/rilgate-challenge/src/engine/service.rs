@@ -44,7 +44,7 @@ impl ChallengeService {
   }
 
   /// Compiles a policy and checks its challenges against the registered algorithms.
-  /// Remote IP sets and GeoIP databases that the running policy also uses keep their loaded data.
+  /// Remote feed sets and GeoIP databases that the running policy also uses keep their loaded data.
   pub fn compile(&self, definition: &Definition) -> Result<CompiledPolicy> {
     let running = self.policy.load();
     Self::compile_policy(
@@ -139,8 +139,8 @@ impl ChallengeService {
     self.cfg.enforce
   }
 
-  pub fn ip_sets(&self) -> rilgate_policy::IpSets {
-    self.policy.load().engine.ip_sets().clone()
+  pub fn sets(&self) -> rilgate_policy::PolicySets {
+    self.policy.load().engine.sets().clone()
   }
 
   pub fn geoip(&self) -> rilgate_policy::GeoDatabases {

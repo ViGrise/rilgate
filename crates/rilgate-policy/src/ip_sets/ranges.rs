@@ -76,3 +76,13 @@ fn merge<T: Ord + Copy>(ranges: &mut Vec<(T, T)>, next: impl Fn(T) -> T) {
   }
   *ranges = merged;
 }
+
+impl crate::feed_sets::FeedIndex for IpRanges {
+  type Key = std::net::IpAddr;
+  fn contains(&self, key: Self::Key) -> bool {
+    self.contains(key)
+  }
+  fn entries(&self) -> usize {
+    self.prefix_count()
+  }
+}

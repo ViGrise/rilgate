@@ -208,7 +208,8 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
   .unwrap();
   let engine = PolicyEngine::from_definition(&document.policy).unwrap();
   engine
-    .ip_sets()
+    .sets()
+    .ip
     .get("google-common-crawlers")
     .unwrap()
     .publish(rilgate_policy::IpRanges::from_networks(vec![
@@ -216,7 +217,8 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
     ]));
   assert_eq!(
     engine
-      .ip_sets()
+      .sets()
+      .ip
       .get("internal")
       .unwrap()
       .membership("10.1.2.3".parse().unwrap()),
@@ -256,4 +258,22 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
       .action,
     PolicyAction::Allow
   );
+}
+
+#[test]
+fn tor_exit_rule_scores_members_of_the_tor_set() {
+  let document = rilgate_config::loader::parse("policy:\n  mode: custom\n  ip_sets:\n    tor-exits: {cidrs: [192.0.2.0/24]}\n  rules:\n    - !include builtin:rules/tor-exit.yml\n").unwrap();
+  let engine = PolicyEngine::from_definition(&document.policy).unwrap();
+  for (ip, expected) in [("192.0.2.10", 20), ("198.51.100.10", 0)] {
+    let headers = http::HeaderMap::new();
+    let request = Request {
+      host: "example.test",
+      headers: &headers,
+      path: "/",
+      method: &http::Method::GET,
+      client_ip: Some(ip.parse().unwrap()),
+      lookups: &rilgate_policy::Lookups::NONE,
+    };
+    assert_eq!(engine.evaluate_context(&request, 0).weight, expected);
+  }
 }

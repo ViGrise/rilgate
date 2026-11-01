@@ -847,6 +847,43 @@ server:
         # challenge: {algorithm: fast, difficulty: 1}
 
 
+  # Named IP and ASN sets require mode: custom. Each registry permits 64 sets.
+  # Each set takes exactly one source: cidrs/asns or url with format.
+  #
+  # ip_sets:
+    # office:
+      # cidrs: [203.0.113.0/24, 2001:db8::/32]
+    # crawler-networks:
+      # url: https://www.bing.com/toolbox/bingbot.json
+      # Choose one format. Regex requires a capture group named value.
+      # format: ip_prefixes_json
+      # format: list_text
+      # format: {regex: '(?m)^(?P<value>[0-9.]+):\d+$'}
+      # format: {json_path: ['$.prefixes[*].ipv4Prefix']}
+      # Refresh interval. Range: 1h..7d. Default: 24h.
+      # refresh: 24h
+      # Maximum snapshot age. Range: refresh..30d. Default: 7d.
+      # max_stale: 7d
+    # tor-exits:
+      # url: https://check.torproject.org/torbulkexitlist
+      # format: list_text
+      # refresh: 1h
+      # max_stale: 1d
+  # asn_sets match the client ASN from policy.geoip.asn, so they need that database.
+  # asn_sets:
+    # trusted-networks:
+      # asns: [15169, 13335]
+    # datacenter:
+      # url: https://raw.githubusercontent.com/X4BNet/lists_vpn/main/input/datacenter/ASN.txt
+      # Choose list_text, regex or json_path for ASN values.
+      # format: list_text
+      # format: {regex: '(?m)^(?P<value>AS[0-9]+)$'}
+      # format: {json_path: ['$.asns[*]']}
+      # Refresh interval. Range: 1h..7d. Default: 24h.
+      # refresh: 24h
+      # Maximum snapshot age. Range: refresh..30d. Default: 7d.
+      # max_stale: 7d
+
   # MaxMind databases behind the country and asn conditions. Requires
   # mode: custom. Each database takes exactly one source: path (a local .mmdb
   # file) or maxmind (a download of a GeoLite2 or GeoIP2 edition). A condition
@@ -893,6 +930,7 @@ server:
         # any:
           # - country: [CN, RU]
           # - asn: [16509, 14061]
+          # - asn: {in_sets: [datacenter]}
       # action: score
       # score: 5
 

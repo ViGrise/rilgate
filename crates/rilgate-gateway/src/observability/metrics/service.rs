@@ -65,39 +65,9 @@ pub fn exposition(state: &AppState) -> Response {
       "# TYPE rilgate_{name}_total counter\nrilgate_{name}_total {value}"
     );
   }
-  let ip_sets = state.pow.ip_sets();
-  let sets: Vec<_> = ip_sets
-    .iter()
-    .filter(|set| set.remote().is_some())
-    .collect();
-  if !sets.is_empty() {
-    for (name, kind) in [
-      ("prefixes", "gauge"),
-      ("stale", "gauge"),
-      ("age_seconds", "gauge"),
-      ("refresh_failures_total", "counter"),
-    ] {
-      let _ = writeln!(text, "# TYPE rilgate_ip_set_{name} {kind}");
-      for set in &sets {
-        let status = set.status();
-        let value = match name {
-          "prefixes" => status.prefixes as u64,
-          "stale" => u64::from(status.stale),
-          "age_seconds" => status.age.map_or(0, |age| age.as_secs()),
-          _ => status.refresh_failures,
-        };
-        // The age gauge is meaningful only while a snapshot is loaded.
-        if name == "age_seconds" && !status.loaded {
-          continue;
-        }
-        let _ = writeln!(
-          text,
-          "rilgate_ip_set_{name}{{set=\"{}\"}} {value}",
-          set.name()
-        );
-      }
-    }
-  }
+  let sets = state.pow.sets();
+  write_set_metrics(&mut text, "ip_set", "prefixes", &sets.ip);
+  write_set_metrics(&mut text, "asn_set", "entries", &sets.asn);
   let geoip = state.pow.geoip();
   let databases: Vec<_> = geoip.iter().collect();
   if !databases.is_empty() {
@@ -201,6 +171,43 @@ fn render_hash_metrics(text: &mut String, stats: rilgate_pow::algorithm::HashDia
     "rilgate_randomx_remote_duration_seconds_count {count}\nrilgate_randomx_remote_duration_seconds_sum {}",
     stats.remote_micros as f64 / 1_000_000.0
   );
+}
+
+fn write_set_metrics<I: rilgate_policy::FeedIndex>(
+  text: &mut String,
+  family: &str,
+  entries_name: &str,
+  sets: &rilgate_policy::FeedSets<I>,
+) {
+  let sets: Vec<_> = sets.iter().filter(|set| set.remote().is_some()).collect();
+  if !sets.is_empty() {
+    for (name, kind) in [
+      (entries_name, "gauge"),
+      ("stale", "gauge"),
+      ("age_seconds", "gauge"),
+      ("refresh_failures_total", "counter"),
+    ] {
+      let _ = writeln!(text, "# TYPE rilgate_{family}_{name} {kind}");
+      for set in &sets {
+        let status = set.status();
+        let value = match name {
+          name if name == entries_name => status.entries as u64,
+          "stale" => u64::from(status.stale),
+          "age_seconds" => status.age.map_or(0, |age| age.as_secs()),
+          _ => status.refresh_failures,
+        };
+        // The age gauge is meaningful only while a snapshot is loaded.
+        if name == "age_seconds" && !status.loaded {
+          continue;
+        }
+        let _ = writeln!(
+          text,
+          "rilgate_{family}_{name}{{set=\"{}\"}} {value}",
+          set.name()
+        );
+      }
+    }
+  }
 }
 
 #[cfg(test)]
