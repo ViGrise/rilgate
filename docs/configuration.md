@@ -463,6 +463,7 @@ or overflow.
 | `server.watch_config` | `false` |
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
+| `server.upstream.client_ip_headers` | `[x-forwarded-for, x-real-ip, forwarded]`, replaced with the resolved client address; `[]` forwards them unchanged |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |
 | `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
 | `server.trusted_proxies` | `[]`, trust no peers |

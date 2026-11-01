@@ -358,7 +358,7 @@ fn auth_binding_round_trips_through_serialization() {
   assert!(
     !serde_yaml_ng::to_string(&parse(BASE).unwrap())
       .unwrap()
-      .contains("client_ip")
+      .contains("client_ip:")
   );
 }
 
@@ -1129,4 +1129,66 @@ fn missing_policy_uses_the_balanced_preset_and_empty_policy_allows() {
   let (rules, action) = document.policy.resolved_rules().unwrap();
   assert!(rules.is_empty());
   assert_eq!(action, Action::Allow);
+}
+
+#[test]
+fn client_ip_headers_are_validated() {
+  let with_headers = |list: &str| {
+    resolve(&BASE.replace(
+      "    url: http://127.0.0.1:3000\n",
+      &format!("    url: http://127.0.0.1:3000\n    client_ip_headers: {list}\n"),
+    ))
+  };
+  let message = |list: &str| format!("{:#}", with_headers(list).unwrap_err());
+  assert!(
+    with_headers("[]")
+      .unwrap()
+      .upstream
+      .client_ip_headers
+      .is_empty()
+  );
+  let names: Vec<_> = resolve(BASE)
+    .unwrap()
+    .upstream
+    .client_ip_headers
+    .iter()
+    .map(|name| name.as_str().to_string())
+    .collect();
+  assert_eq!(names, ["x-forwarded-for", "x-real-ip", "forwarded"]);
+  let nine = (1..=9)
+    .map(|index| format!("x-h{index}"))
+    .collect::<Vec<_>>()
+    .join(",");
+  assert!(
+    message(&format!("[{nine}]"))
+      .contains("server.upstream.client_ip_headers: at most 8 headers are supported")
+  );
+  assert!(
+    message("[x-ok, 'bad name']")
+      .contains("server.upstream.client_ip_headers[1]: expected an HTTP header name")
+  );
+  assert!(
+    message("[x-a, X-A]").contains("server.upstream.client_ip_headers[1]: duplicate header x-a")
+  );
+  for name in [
+    "host",
+    "cookie",
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "upgrade",
+    "te",
+    "trailer",
+    "keep-alive",
+    "proxy-connection",
+    "proxy-authorization",
+    "x-request-id",
+  ] {
+    assert!(
+      message(&format!("[x-a, {name}]")).contains(&format!(
+        "server.upstream.client_ip_headers[1]: {name} cannot carry the client address"
+      )),
+      "{name}"
+    );
+  }
 }

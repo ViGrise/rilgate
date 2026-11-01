@@ -2,7 +2,7 @@ use crate::transport::response::{Response, response};
 use crate::{
   auth::cookies::cookie_value,
   runtime::state::AppState,
-  transport::{context::request_host, errors::ApiError},
+  transport::{context::request_host, errors::ApiError, path::policy_path},
   web::pages::{render_challenge_page, render_page, render_refresh_page},
 };
 use http::{
@@ -16,6 +16,7 @@ use rilgate_protocol::PowAlgorithm;
 
 struct DecisionContext<'a> {
   request_id: &'a str,
+  path: &'a str,
   request: &'a Request<'a>,
   action: PolicyAction,
   fallback: bool,
@@ -44,7 +45,7 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: Decision
     client_ip = %context.request.client_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "unknown".into()),
     method = %context.request.method,
     host = context.request.host,
-    path = context.request.path,
+    path = context.path,
     action,
     rule = &*decision.rule,
     weight = decision.weight,
@@ -62,13 +63,16 @@ pub async fn gate(
   uri: &Uri,
   method: &Method,
 ) -> Result<Option<Response>, ApiError> {
-  gate_with_client(state, headers, uri, method, None, false, "").await
+  let canonical = policy_path(uri.path()).unwrap_or_else(|_| uri.path().to_string());
+  gate_with_client(state, headers, uri, &canonical, method, None, false, "").await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn gate_with_client(
   state: &AppState,
   headers: &HeaderMap,
   uri: &Uri,
+  policy_path: &str,
   method: &Method,
   client_ip: Option<std::net::IpAddr>,
   trusted_peer: bool,
@@ -86,7 +90,7 @@ pub async fn gate_with_client(
       trusted_peer,
       headers,
       host: &host,
-      path: uri.path(),
+      path: policy_path,
       method,
       client_ip,
       lookups: &known,
@@ -105,7 +109,7 @@ pub async fn gate_with_client(
     trusted_peer,
     headers,
     host: &host,
-    path: uri.path(),
+    path: policy_path,
     method,
     client_ip,
     lookups: &known,
@@ -147,6 +151,7 @@ pub async fn gate_with_client(
       &decision,
       DecisionContext {
         request_id,
+        path: uri.path(),
         request: &request,
         action,
         fallback,

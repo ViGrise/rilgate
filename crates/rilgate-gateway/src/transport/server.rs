@@ -4,6 +4,7 @@ use crate::{
   runtime::state::AppState,
   transport::{
     errors::ApiError,
+    path::policy_path,
     response::{Response, json, response},
     stream::DownstreamStream,
   },
@@ -55,6 +56,7 @@ struct Handler {
 }
 pub struct RequestContext {
   id: http::HeaderValue,
+  policy_path: String,
   client_ip: Option<std::net::IpAddr>,
   started: Instant,
   uploaded: usize,
@@ -211,6 +213,47 @@ fn new_request_id() -> http::HeaderValue {
   let mut buffer = [0; 36];
   http::HeaderValue::from_bytes(id.hyphenated().encode_lower(&mut buffer).as_bytes())
     .expect("valid UUID")
+}
+fn is_safe_request_id(value: &[u8]) -> bool {
+  (1..=128).contains(&value.len())
+    && value
+      .iter()
+      .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+/// Rebuilds each `Cookie` header without the named cookie and drops headers left empty.
+fn remove_cookie(request: &mut pingora::http::RequestHeader, name: &str) -> pingora::Result<()> {
+  let kept: Vec<http::HeaderValue> = request
+    .headers
+    .get_all(http::header::COOKIE)
+    .iter()
+    .filter_map(|header| {
+      let pairs: Vec<&[u8]> = header
+        .as_bytes()
+        .split(|byte| *byte == b';')
+        .map(<[u8]>::trim_ascii)
+        .filter(|pair| !pair.is_empty())
+        .filter(|pair| {
+          let cookie = pair.split(|byte| *byte == b'=').next().unwrap_or_default();
+          cookie.trim_ascii() != name.as_bytes()
+        })
+        .collect();
+      (!pairs.is_empty())
+        .then(|| http::HeaderValue::from_bytes(&pairs.join(&b"; "[..])).ok())
+        .flatten()
+    })
+    .collect();
+  request.remove_header(&http::header::COOKIE);
+  for value in kept {
+    request.append_header(http::header::COOKIE, value)?;
+  }
+  Ok(())
+}
+fn client_address_value(name: &http::HeaderName, ip: std::net::IpAddr) -> String {
+  match (name.as_str(), ip) {
+    ("forwarded", std::net::IpAddr::V6(ip)) => format!("for=\"[{ip}]\""),
+    ("forwarded", ip) => format!("for={ip}"),
+    (_, ip) => ip.to_string(),
+  }
 }
 async fn send(session: &mut Session, out: Response, ctx: &RequestContext) -> pingora::Result<()> {
   DownstreamStream::set_coalescing(session.stream(), true);
@@ -614,6 +657,7 @@ impl ProxyHttp for Handler {
   fn new_ctx(&self) -> RequestContext {
     RequestContext {
       id: http::HeaderValue::from_static(""),
+      policy_path: String::new(),
       client_ip: None,
       started: Instant::now(),
       uploaded: 0,
@@ -629,20 +673,21 @@ impl ProxyHttp for Handler {
     session: &mut Session,
     ctx: &mut RequestContext,
   ) -> pingora::Result<bool> {
+    let peer = session
+      .client_addr()
+      .and_then(|address| address.as_inet())
+      .map(|address| address.ip());
+    let trusted_peer = crate::transport::client_ip::trusted_peer(peer, &self.state.cfg.server);
     ctx.id = session
       .req_header()
       .headers
       .get("x-request-id")
-      .filter(|value| value.to_str().is_ok())
+      .filter(|value| trusted_peer && is_safe_request_id(value.as_bytes()))
       .cloned()
       .unwrap_or_else(new_request_id);
     session
       .req_header_mut()
       .insert_header("x-request-id", ctx.id.clone())?;
-    let peer = session
-      .client_addr()
-      .and_then(|address| address.as_inet())
-      .map(|address| address.ip());
     let resolved_client_ip = crate::transport::client_ip::client_ip(
       peer,
       &session.req_header().headers,
@@ -729,6 +774,18 @@ impl ProxyHttp for Handler {
       send(session, response(StatusCode::NOT_FOUND, ""), ctx).await?;
       return Ok(true);
     }
+    ctx.policy_path = match policy_path(session.req_header().uri.path()) {
+      Ok(path) => path,
+      Err(message) => {
+        send(
+          session,
+          ApiError::InvalidRequest(message.into()).into_response(),
+          ctx,
+        )
+        .await?;
+        return Ok(true);
+      }
+    };
     ctx.upstream = match self.state.proxy.request_target(&session.req_header().uri) {
       Ok(url) => Some(url),
       Err(error) => {
@@ -753,9 +810,10 @@ impl ProxyHttp for Handler {
       &self.state,
       &header.headers,
       &header.uri,
+      &ctx.policy_path,
       &header.method,
       client_ip,
-      crate::transport::client_ip::trusted_peer(peer, &self.state.cfg.server),
+      trusted_peer,
       ctx.id.to_str().unwrap_or_default(),
     )
     .await
@@ -841,6 +899,13 @@ impl ProxyHttp for Handler {
     if !self.state.cfg.upstream.preserve_host || !request.headers.contains_key(HOST) {
       request.insert_header(HOST, self.state.proxy.host())?;
     }
+    for name in &self.state.cfg.upstream.client_ip_headers {
+      request.remove_header(name);
+      if let Some(ip) = ctx.client_ip {
+        request.insert_header(name.clone(), client_address_value(name, ip))?;
+      }
+    }
+    remove_cookie(request, &self.state.cfg.pow.auth_cookie_name)?;
     Ok(())
   }
   async fn request_body_filter(

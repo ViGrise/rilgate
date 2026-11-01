@@ -59,6 +59,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SERVER, Text, "server.upstream.url", "server-upstream-url", "RILGATE_SERVER_UPSTREAM_URL", Some('u'), "Application upstream URL"),
   spec!(SERVER, Switch, "server.upstream.preserve_host", "server-upstream-preserve-host", "RILGATE_SERVER_UPSTREAM_PRESERVE_HOST", None, "Forward the client Host header upstream"),
   spec!(SERVER, Text, "server.upstream.max_body_size", "server-upstream-max-body-size", "RILGATE_SERVER_UPSTREAM_MAX_BODY_SIZE", None, "Largest forwarded request body, such as 16MiB"),
+  spec!(SERVER, List, "server.upstream.client_ip_headers", "server-upstream-client-ip-headers", "RILGATE_SERVER_UPSTREAM_CLIENT_IP_HEADERS", None, "Headers that carry the resolved client address to the upstream"),
   spec!(SERVER, Text, "server.upstream.timeout.connect", "server-upstream-timeout-connect", "RILGATE_SERVER_UPSTREAM_TIMEOUT_CONNECT", None, "Upstream connect timeout"),
   spec!(SERVER, Text, "server.upstream.timeout.read", "server-upstream-timeout-read", "RILGATE_SERVER_UPSTREAM_TIMEOUT_READ", None, "Upstream read timeout"),
   spec!(SERVER, Text, "server.max_connections", "server-max-connections", "RILGATE_SERVER_MAX_CONNECTIONS", None, "Maximum concurrent client connections"),

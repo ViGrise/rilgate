@@ -76,9 +76,10 @@ server:
 
 Normal application URLs stay unchanged.
 
-Paths that need URL normalization, including `.` or `..` segments and
-their percent-encoded forms, return `400`. Policy matching and upstream
-forwarding use the same path representation. Query strings do not affect this check.
+Paths that need URL normalization, including `.` or `..` segments, their
+percent-encoded forms and `..;` forms, return `400`. The upstream receives the
+path byte for byte. Policy conditions match its canonical form, with decoded
+unreserved characters and `%2F` and collapsed `/`. Query strings do not affect this check.
 
 For example:
 
@@ -137,6 +138,14 @@ requests. The dedicated proof WebSocket is handled locally.
 The proxy streams request and response bodies. Requests are limited by `server.upstream.max_body_size`. It
 removes standard hop-by-hop headers and headers named by `Connection` on both sides, and
 retains the protocol fields required for accepted WebSocket upgrades.
+
+Before a request reaches the upstream, Rilgate removes every value of the headers in
+`server.upstream.client_ip_headers` (default `x-forwarded-for`, `x-real-ip` and
+`forwarded`) and writes the resolved client address in each one. `Forwarded` receives
+`for=<address>`, with an IPv6 address as `for="[<address>]"`. The other headers receive the
+bare address. An empty list leaves these headers as the client or edge sent them. The
+access cookie named by `pow.auth_cookie_name` is removed from the `Cookie` header, and
+other cookies stay unchanged. The same rules apply to WebSocket upgrades.
 
 Redirects are returned to the client. Upstream HTTP requests are never replayed. On
 connection failure, another resolved address can be tried before the request is sent.
@@ -287,8 +296,9 @@ external store is required. Set `enabled: false` to disable this limiter explici
 
 `RUST_LOG` accepts a `tracing` filter and defaults to `rilgate=info,pingora=error`.
 
-Generated request IDs are UUIDv7 with ordering within each worker. A valid
-client-provided `x-request-id` is propagated through the gateway.
+Generated request IDs are UUIDv7 with ordering within each worker. The gateway keeps an
+incoming `x-request-id` only from a peer in `server.trusted_proxies` when the value is 1 to
+128 ASCII letters, digits, `.`, `_` or `-`. Other requests receive a generated ID.
 
 Per-request diagnostics (the HTTP completion event, per-request policy decisions,
 presented challenges and missing translations) are `DEBUG`, so the default does not
