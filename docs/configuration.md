@@ -2,7 +2,7 @@
 
 The YAML contract has seven groups: `environment`, `server`, `site`,
 `security`, `pow`, `signals`, and `policy`. The `signals` group holds data sources
-and the `policy` group holds rules; see [signals](policy.md#signals).
+and the `policy` group holds rules; see [signals](signals.md).
 Configuration has no schema version.
 Unknown fields, unsupported values and conflicting settings are errors in every
 environment. A renamed or removed key is also an error, and the error names the
@@ -887,6 +887,6 @@ verifier process; combined mode is reserved for phase 2.
 
 The `signals` group defines IP sets, ASN sets, GeoIP databases, DNS checks, the honeypot
 and counters. The `policy` group defines the rules, thresholds and score that use them.
-See [signals](policy.md#signals) and [custom evaluation](policy.md#custom-evaluation) for
+See [signals](signals.md) and [custom evaluation](policy.md#custom-evaluation) for
 the settings, and [conditions](policy.md#conditions) for the rule grammar. Reload both
 groups with the [policy reload](#reloading-the-policy).
