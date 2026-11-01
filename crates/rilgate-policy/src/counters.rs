@@ -3,7 +3,7 @@ use crate::{
   conditions::{Budget, Compiled, Request, Truth},
   geoip::{GeoDatabases, Lookup},
   host_load::HostLoad,
-  policy::schema::{CounterDefinition, CounterField, CounterIp, CounterKeyPart, Definition},
+  policy::schema::{CounterDefinition, CounterField, CounterIp, CounterKeyPart, PolicyDocument},
 };
 use anyhow::{Context, Result, ensure};
 use http::HeaderName;
@@ -94,21 +94,21 @@ fn text(value: &[u8]) -> KeyPart {
 }
 
 pub(crate) fn compile(
-  definition: &Definition,
+  document: &PolicyDocument,
   sets: &PolicySets,
   geoip: &GeoDatabases,
   budget: &mut Budget,
 ) -> Result<Vec<CompiledCounter>> {
-  let Some(counters) = &definition.counters else {
+  let Some(counters) = &document.signals.counters else {
     return Ok(Vec::new());
   };
   ensure!(
     counters.len() <= 32,
-    "policy.counters: at most 32 counters are supported"
+    "signals.counters: at most 32 counters are supported"
   );
   let mut compiled = Vec::new();
   for (name, counter) in counters {
-    let path = format!("policy.counters.{name}");
+    let path = format!("signals.counters.{name}");
     ensure!(
       (1..=64).contains(&name.len())
         && name
@@ -156,13 +156,13 @@ pub(crate) fn compile(
           if *field == CounterField::Country {
             ensure!(
               geoip.country().is_some(),
-              "{path}.key.country: requires policy.geoip.country"
+              "{path}.key.country: requires signals.geoip.country"
             );
           }
           if *field == CounterField::Asn {
             ensure!(
               geoip.asn().is_some(),
-              "{path}.key.asn: requires policy.geoip.asn"
+              "{path}.key.asn: requires signals.geoip.asn"
             );
           }
           format!("{field:?}")
@@ -188,7 +188,8 @@ pub(crate) fn compile(
       })
       .transpose()?;
     budget.counter_selection = false;
-    let used = definition
+    let used = document
+      .policy
       .rules
       .iter()
       .flatten()

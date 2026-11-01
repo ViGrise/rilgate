@@ -106,12 +106,12 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
     }
   });
   config.pow.stratum_pool.pools.insert(0, primary);
-  config.pow.policy.rules.as_mut().unwrap()[0]
+  config.pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
     .algorithm = Some(rilgate_config::PowAlgorithm::RandomX);
-  config.pow.policy.rules.as_mut().unwrap()[0]
+  config.pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
@@ -304,7 +304,7 @@ async fn unloaded_geoip_databases_fail_readiness_and_report_metrics() {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
     config.server.metrics_enabled = true;
-    config.pow.policy.geoip = Some(GeoIpDefinition {
+    config.pow.policy.signals.geoip = Some(GeoIpDefinition {
       country: Some(GeoDatabaseDefinition {
         path: Some(database.into()),
         ..Default::default()
@@ -378,7 +378,7 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
     config.server.metrics_enabled = true;
-    config.pow.policy.ip_sets.insert(
+    config.pow.policy.signals.ip_sets.insert(
       "feed".into(),
       IpSetDefinition {
         url: Some("http://127.0.0.1:9/".into()),
@@ -386,7 +386,7 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
         ..Default::default()
       },
     );
-    config.pow.policy.rules = Some(vec![Rule {
+    config.pow.policy.policy.rules = Some(vec![Rule {
       name: "blocked".into(),
       when: Condition {
         client_ip: Some(IpMatch {
@@ -646,7 +646,7 @@ async fn socket_remote_readiness_probes_only_required_hashers() {
     config.pow.enforce = enforce;
     config.pow.randomx_verify.order = order;
     config.pow.randomx_verify.remote.endpoint = Some(endpoint.clone());
-    let challenge = config.pow.policy.rules.as_mut().unwrap()[0]
+    let challenge = config.pow.policy.policy.rules.as_mut().unwrap()[0]
       .challenge
       .as_mut()
       .unwrap();
@@ -698,7 +698,7 @@ async fn unloaded_remote_asn_sets_fail_readiness_and_report_metrics() {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
     config.server.metrics_enabled = true;
-    config.pow.policy.asn_sets.insert(
+    config.pow.policy.signals.asn_sets.insert(
       "feed".into(),
       AsnSetDefinition {
         url: Some("http://127.0.0.1:9/".into()),

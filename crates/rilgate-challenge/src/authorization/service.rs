@@ -275,10 +275,12 @@ mod tests {
         user_agent: Some(UserAgentBinding::Family),
         ..Default::default()
       },
-      policy: rilgate_policy::policy::schema::Definition {
-        mode: rilgate_policy::policy::schema::Mode::Custom,
-        default_action: Some(rilgate_policy::policy::schema::Action::Allow),
-        rules: Some(vec![]),
+      policy: rilgate_policy::PolicyDocument {
+        policy: rilgate_policy::policy::schema::Definition {
+          default_action: Some(rilgate_policy::policy::schema::Action::Allow),
+          rules: Some(vec![]),
+          ..Default::default()
+        },
         ..Default::default()
       },
     };

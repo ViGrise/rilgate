@@ -132,6 +132,7 @@ async fn denied_and_upstream_error_pages_preserve_http_status_and_hide_internal_
     .unwrap()
     .pow
     .policy
+    .policy
     .rules
     .as_mut()
     .unwrap()[0]
@@ -139,6 +140,7 @@ async fn denied_and_upstream_error_pages_preserve_http_status_and_hide_internal_
   Arc::get_mut(&mut cfg)
     .unwrap()
     .pow
+    .policy
     .policy
     .rules
     .as_mut()

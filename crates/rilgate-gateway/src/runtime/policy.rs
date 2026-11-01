@@ -3,7 +3,7 @@ use crate::open_graph::OpenGraphService;
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use rilgate_challenge::ChallengeService;
-use rilgate_policy::{LookupPlan, policy::schema::Definition};
+use rilgate_policy::{LookupPlan, policy::schema::PolicyDocument};
 use std::sync::Arc;
 
 /// Request-path services that depend on the policy definition.
@@ -14,26 +14,28 @@ pub struct PolicyServices {
 }
 
 impl PolicyServices {
-  pub fn new(definition: &Definition, plan: &LookupPlan) -> Result<Self> {
+  pub fn new(definition: &PolicyDocument, plan: &LookupPlan) -> Result<Self> {
     Self::with_previous(definition, plan, None)
   }
 
   fn with_previous(
-    definition: &Definition,
+    definition: &PolicyDocument,
     plan: &LookupPlan,
     previous: Option<&Self>,
   ) -> Result<Self> {
     let dns = if plan.is_empty() {
       None
     } else {
-      let settings = definition.dns.clone().unwrap_or_default();
+      let settings = definition.signals.dns.clone().unwrap_or_default();
       Some(rilgate_dns::DnsLookups::system(&settings)?)
     };
     let honeypot = definition
+      .signals
       .honeypot
       .as_ref()
       .map(|settings| Arc::new(Honeypot::new(settings)));
     let counters = definition
+      .signals
       .counters
       .iter()
       .flat_map(|counters| counters.iter())
@@ -69,7 +71,7 @@ pub struct PolicyHandle {
 
 impl PolicyHandle {
   /// Installs the definition. Every check runs first, so a failure leaves the running policy in place.
-  pub fn replace(&self, definition: &Definition) -> Result<()> {
+  pub fn replace(&self, definition: &PolicyDocument) -> Result<()> {
     let compiled = self.pow.compile(definition)?;
     let engine = compiled.engine();
     let previous = self.services.load_full();
@@ -101,8 +103,8 @@ mod tests {
 
   #[test]
   fn reload_preserves_equal_definitions_and_resets_changed_counters() {
-    let mut definition: Definition =
-      serde_json::from_value(serde_json::json!({"mode": "custom", "counters": {"pages": {"key": ["client_ip"], "window": "1m"}}}))
+    let mut definition: PolicyDocument =
+      serde_json::from_value(serde_json::json!({"signals": {"counters": {"pages": {"key": ["client_ip"], "window": "1m"}}}}))
         .unwrap();
     let plan = LookupPlan::default();
     let key = || -> CounterKey { vec![KeyPart::Number(1)].into_boxed_slice() };
@@ -111,6 +113,7 @@ mod tests {
     let reloaded = PolicyServices::with_previous(&definition, &plan, Some(&original)).unwrap();
     assert_eq!(reloaded.counters["pages"].record(key()), 2);
     definition
+      .signals
       .counters
       .as_mut()
       .unwrap()
@@ -121,6 +124,7 @@ mod tests {
     assert_eq!(changed.counters["pages"].peek(key()), 0);
     assert_eq!(changed.counters["pages"].record(key()), 1);
     definition
+      .signals
       .counters
       .as_mut()
       .unwrap()

@@ -188,7 +188,7 @@ fn remote_verifier_warnings_follow_order_rules_and_enforcement() {
       );
     }
     let randomx = format!(
-      "{}policy:\n  mode: custom\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n",
+      "{}\npolicy:\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n",
       text.replace(
         "  stratum_pool:",
         "  default_algorithm: randomx\n  stratum_pool:"

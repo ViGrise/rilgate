@@ -14,7 +14,19 @@ const DEFAULT_PATHS: &[&str] = &["rilgate.yml", "config/rilgate.yml"];
 
 /// Configuration sections with a new name. An old name fails with the new one,
 /// so an operator does not lose a setting without notice.
-const RENAMED_SECTIONS: &[(&str, &str)] = &[("pow.p2pool", "pow.stratum_pool")];
+const RENAMED_SECTIONS: &[(&str, &str)] = &[
+  ("pow.p2pool", "pow.stratum_pool"),
+  ("policy.ip_sets", "signals.ip_sets"),
+  ("policy.asn_sets", "signals.asn_sets"),
+  ("policy.geoip", "signals.geoip"),
+  ("policy.dns", "signals.dns"),
+  ("policy.honeypot", "signals.honeypot"),
+  ("policy.counters", "signals.counters"),
+];
+const REMOVED_SETTINGS: &[(&str, &str)] = &[(
+  "policy.mode",
+  "select a preset with policy: !include builtin:policies/<name>.yml or write policy.rules",
+)];
 /// Setting values with a new name, as (setting path, old value, new value).
 const RENAMED_VALUES: &[(&str, &str, &str)] = &[(
   "pow.verification",
@@ -139,7 +151,7 @@ pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
 }
 
 fn document_from_value(
-  value: Value,
+  mut value: Value,
   settings: &[Setting],
   config_sources: sources::ConfigurationSources,
 ) -> Result<Document> {
@@ -149,6 +161,14 @@ fn document_from_value(
     .collect();
   let finish = || -> Result<Document> {
     reject_renamed(&value, settings)?;
+    if let Value::Mapping(root) = &mut value
+      && !root.contains_key(Value::String("policy".into()))
+    {
+      root.insert(
+        Value::String("policy".into()),
+        serde_yaml_ng::from_str(builtin::get("policies/balanced.yml")?)?,
+      );
+    }
     let mut value = expand(value, "", 0)?;
     for setting in settings {
       assign(&mut value, setting)
@@ -196,7 +216,19 @@ fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
       .try_fold(document, |node, key| node.get(key))
   };
   for (old, new) in RENAMED_SECTIONS {
-    ensure!(lookup(old).is_none(), "{old}: renamed to {new}");
+    ensure!(
+      lookup(old).is_none()
+        && !settings
+          .iter()
+          .any(|setting| setting.path == *old || setting.path.starts_with(&format!("{old}."))),
+      "{old}: renamed to {new}"
+    );
+  }
+  for (path, hint) in REMOVED_SETTINGS {
+    ensure!(
+      lookup(path).is_none() && !settings.iter().any(|setting| setting.path == *path),
+      "{path}: removed; {hint}"
+    );
   }
   for (path, old, new) in RENAMED_VALUES {
     let in_document = lookup(path).and_then(Value::as_str) == Some(*old);
@@ -216,6 +248,11 @@ fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
 fn reject_renamed_environment(names: impl Iterator<Item = String>) -> Result<()> {
   let variable = |path: &str| format!("RILGATE_{}_", path.replace('.', "_").to_uppercase());
   for name in names {
+    for (path, hint) in REMOVED_SETTINGS {
+      if name == format!("RILGATE_{}", path.replace('.', "_").to_uppercase()) {
+        anyhow::bail!("{name}: removed; {hint}");
+      }
+    }
     let indexed = match name.as_str() {
       "RILGATE_POW_P2POOL_ADDRESS" | "RILGATE_POW_STRATUM_POOL_ADDRESS" => {
         Some("RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS")
@@ -387,6 +424,13 @@ mod tests {
     assert_eq!(
       error.to_string(),
       "RILGATE_POW_P2POOL_ADDRESS: renamed to RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS"
+    );
+    let hint = super::REMOVED_SETTINGS[0].1;
+    let error = super::reject_renamed_environment(["RILGATE_POLICY_MODE".to_string()].into_iter())
+      .unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      format!("RILGATE_POLICY_MODE: removed; {hint}")
     );
     assert!(
       super::reject_renamed_environment(

@@ -40,7 +40,7 @@ fn configuration(listen: u16, upstream: u16, rules: &str) -> String {
   format!(
     "server:\n  listen: \"127.0.0.1:{listen}\"\n  upstream:\n    url: http://127.0.0.1:{upstream}\n\
      security:\n  secret: \"{SECRET}\"\n\
-     policy:\n  mode: custom\n  default_action: allow\n  rules:\n{rules}"
+     policy:\n  default_action: allow\n  rules:\n{rules}"
   )
 }
 
@@ -390,4 +390,35 @@ fn watch_follows_configmap_symlink_replacement() {
   symlink(&second, &replacement).unwrap();
   std::fs::rename(&replacement, &data).unwrap();
   fixture.wait_status(200);
+}
+
+#[cfg(unix)]
+#[test]
+fn signals_change_reloads_without_restart() {
+  let directory = tempfile::tempdir().unwrap();
+  let file = directory.path().join("rilgate.yml");
+  let (port, upstream) = (free_port(), upstream());
+  let rules =
+    "    - name: local-network\n      when: {client_ip: {in_sets: [local]}}\n      action: deny\n";
+  let source = |cidr: &str| {
+    format!(
+      "{}\nsignals:\n  ip_sets:\n    local: {{cidrs: ['{cidr}']}}\n",
+      configuration(port, upstream, rules)
+    )
+  };
+  std::fs::write(&file, source("192.0.2.0/24")).unwrap();
+  let gateway = Gateway::start(&file, port);
+  assert_eq!(gateway.status("Mozilla"), 200);
+  std::fs::write(&file, source("127.0.0.0/8")).unwrap();
+  gateway.hup();
+  gateway.wait_for("Policy reloaded", 1);
+  assert_eq!(gateway.status("Mozilla"), 403);
+  assert!(
+    !gateway
+      .logs
+      .lock()
+      .unwrap()
+      .iter()
+      .any(|line| line.contains("Configuration change needs a restart"))
+  );
 }

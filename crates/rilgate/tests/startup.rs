@@ -261,9 +261,9 @@ fn invalid_configuration_fails_without_revealing_keys() {
   let template = include_str!("../../../config/rilgate.production.yml");
   for (contents, expected) in [
     (template.to_string(), "RILGATE_SECURITY_SECRET"),
-    (template.replace("policy: !include builtin:policies/balanced.yml", "policy:\n  mode: balanced\n  rules: []"), "policy"),
+    (template.replace("policy: !include builtin:policies/balanced.yml", "policy: {mode: balanced}"), "policy"),
     (template.replace("upstream:", "upsteam:"), "server"),
-    (template.replace("policy: !include builtin:policies/balanced.yml", "policy:\n  mode: custom\n  rules:\n    - name: bad-regex\n      when: {path: {regex: '['}}\n      action: deny"), "regex"),
+    (template.replace("policy: !include builtin:policies/balanced.yml", "policy:\n  rules:\n    - name: bad-regex\n      when: {path: {regex: '['}}\n      action: deny"), "regex"),
   ] {
     let variables = if expected == "RILGATE_SECURITY_SECRET" { vec![] } else { vec![("RILGATE_SECURITY_SECRET", SECRET)] };
     let result = command(&contents, &["config", "check"], &variables);
@@ -278,7 +278,7 @@ fn invalid_configuration_fails_without_revealing_keys() {
 #[test]
 fn environment_expansion_cannot_inject_yaml_structure() {
   let template = include_str!("../../../config/rilgate.production.yml");
-  let secret = "secure-value-with-32-bytes\npolicy: {mode: off}";
+  let secret = "secure-value-with-32-bytes\npolicy: !include builtin:policies/off.yml";
   let result = command(
     template,
     &["config", "show", "--defaults"],
@@ -290,7 +290,8 @@ fn environment_expansion_cannot_inject_yaml_structure() {
     String::from_utf8_lossy(&result.stderr)
   );
   let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
-  assert_eq!(value["policy"]["mode"], "balanced");
+  assert_eq!(value["policy"]["rules"][1]["name"], "protected-traffic");
+  assert_eq!(value["policy"]["rules"][1]["challenge"]["difficulty"], 2);
 }
 
 #[test]
@@ -589,7 +590,6 @@ pow:
     client:
       refill_per_second: "${REFILL}"
 policy:
-  mode: custom
   score:
     initial: "${SCORE}"
     thresholds:
@@ -699,11 +699,7 @@ fn split_configuration_uses_default_file_paths_and_override_precedence() {
     "secret: '${RILGATE_SECURITY_SECRET}'\n",
   )
   .unwrap();
-  std::fs::write(
-    config.join("policy.yml"),
-    "mode: custom\nrules: !include rules.yml\n",
-  )
-  .unwrap();
+  std::fs::write(config.join("policy.yml"), "rules: !include rules.yml\n").unwrap();
   std::fs::write(
     config.join("rules.yml"),
     "- name: health\n  when: {path: {exact: /health}}\n  action: allow\n",
@@ -749,9 +745,12 @@ fn split_configuration_uses_default_file_paths_and_override_precedence() {
 #[test]
 fn embedded_policies_load_with_only_an_operator_configuration_file() {
   for name in ["balanced", "light", "strict", "off", "crawler-protection"] {
-    let source = format!(
+    let mut source = format!(
       "server:\n  upstream: {{url: http://127.0.0.1:3000}}\nsecurity:\n  secret: '${{RILGATE_SECURITY_SECRET}}'\npolicy: !include builtin:policies/{name}.yml\n"
     );
+    if name == "crawler-protection" {
+      source.push_str("signals:\n  ip_sets: !include builtin:signals/crawler-ip-sets.yml\n");
+    }
     let result = command(
       &source,
       &["config", "show", "--defaults"],

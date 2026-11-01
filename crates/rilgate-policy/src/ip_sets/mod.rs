@@ -17,7 +17,7 @@ impl IpSets {
     definitions: &BTreeMap<String, IpSetDefinition>,
     previous: Option<&Self>,
   ) -> Result<Self> {
-    Self::compile_registry("policy.ip_sets", definitions, previous)
+    Self::compile_registry("signals.ip_sets", definitions, previous)
   }
 }
 impl SetDefinition for IpSetDefinition {

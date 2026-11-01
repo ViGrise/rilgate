@@ -3,4 +3,6 @@ server:
     url: "http://127.0.0.1:3000"
 security:
   secret: "${RILGATE_SECURITY_SECRET}"
+signals:
+  ip_sets: !include builtin:signals/crawler-ip-sets.yml
 policy: !include builtin:policies/crawler-protection.yml

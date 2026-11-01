@@ -33,8 +33,8 @@ async fn fixture(trust_proxy: bool, refresh: bool) -> Fixture {
     config.server.trusted_proxies =
       vec!["::1/128".parse().unwrap(), "127.0.0.1/32".parse().unwrap()];
   }
-  config.pow.policy.honeypot = Some(HoneypotDefinition::default());
-  let rules = config.pow.policy.rules.as_mut().unwrap();
+  config.pow.policy.signals.honeypot = Some(HoneypotDefinition::default());
+  let rules = config.pow.policy.policy.rules.as_mut().unwrap();
   if refresh {
     rules[0].challenge = Some(ChallengePolicy {
       algorithm: Some(PowAlgorithm::Refresh),
@@ -149,7 +149,7 @@ async fn ipv6_trap_hit_flags_the_slash_64() {
 #[tokio::test]
 async fn trap_route_without_a_honeypot_is_unknown() {
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().pow.policy.rules = None;
+  Arc::get_mut(&mut cfg).unwrap().pow.policy.policy.rules = None;
   let gateway = app::router(cfg).await.unwrap();
   let response = reqwest::get(format!("http://{}{BASE}/trap/abc", gateway.address()))
     .await

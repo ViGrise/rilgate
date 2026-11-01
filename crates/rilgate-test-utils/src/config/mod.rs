@@ -1,6 +1,8 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use rilgate_config::schema::policy::{Action, Condition, Definition, Mode, Rule, StringMatch};
+use rilgate_config::schema::policy::{
+  Action, Condition, Definition, PolicyDocument, Rule, StringMatch,
+};
 use rilgate_config::{
   BrowserConfig, ChallengePolicy, Config, Configuration, DifficultyConfig, Environment,
   PowAlgorithm, PowConfig, PowEnforcement, Secret, StratumPoolConfig, UpstreamConfig, WebConfig,
@@ -89,32 +91,28 @@ pub fn config() -> Config {
         weight_step: 10,
         max: 32_000,
       },
-      policy: Definition {
-        mode: Mode::Custom,
-        default_action: Some(Action::Allow),
-        rules: Some(vec![Rule {
-          name: "protected".into(),
-          when: Condition {
-            path: Some(StringMatch {
-              prefix: Some("/protected".into()),
+      policy: PolicyDocument {
+        policy: Definition {
+          default_action: Some(Action::Allow),
+          rules: Some(vec![Rule {
+            name: "protected".into(),
+            when: Condition {
+              path: Some(StringMatch {
+                prefix: Some("/protected".into()),
+                ..Default::default()
+              }),
               ..Default::default()
+            },
+            action: Action::Challenge,
+            score: None,
+            challenge: Some(ChallengePolicy {
+              algorithm: Some(PowAlgorithm::Fast),
+              difficulty: Some(1),
             }),
-            ..Default::default()
-          },
-          action: Action::Challenge,
+          }]),
           score: None,
-          challenge: Some(ChallengePolicy {
-            algorithm: Some(PowAlgorithm::Fast),
-            difficulty: Some(1),
-          }),
-        }]),
-        score: None,
-        ip_sets: std::collections::BTreeMap::new(),
-        asn_sets: std::collections::BTreeMap::new(),
-        geoip: None,
-        dns: None,
-        honeypot: None,
-        counters: None,
+        },
+        ..Default::default()
       },
       browser: BrowserConfig {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),

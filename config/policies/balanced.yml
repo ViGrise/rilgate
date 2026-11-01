@@ -1,1 +1,15 @@
-mode: balanced
+default_action: allow
+rules:
+  - name: public-endpoints
+    when:
+      any:
+        - path: {in: [/robots.txt, /favicon.ico]}
+        - path: {prefix: /.well-known/acme-challenge/}
+    action: allow
+  - name: protected-traffic
+    when:
+      path: {prefix: ""}
+    action: challenge
+    challenge:
+      algorithm: fast
+      difficulty: 2

@@ -33,12 +33,14 @@ fn nested_includes_mix_rules_and_cidrs_and_preserve_policy_order() {
   write(
     directory,
     "rilgate.yml",
-    &format!("{BASE}policy: !include policy/main.yml\n"),
+    &format!(
+      "{BASE}\nsignals:\n  ip_sets:\n    bots:\n      cidrs: !include policy/cidrs.yml\npolicy: !include policy/main.yml\n"
+    ),
   );
   write(
     directory,
     "policy/main.yml",
-    "mode: custom\ndefault_action: deny\nip_sets:\n  bots:\n    cidrs: !include cidrs.yml\nrules:\n  - name: health\n    when: {path: {exact: /health}}\n    action: allow\n  - !include rules/bots.yml\n  - !include rules/catchall.yml\n",
+    "default_action: deny\nrules:\n  - name: health\n    when: {path: {exact: /health}}\n    action: allow\n  - !include rules/bots.yml\n  - !include rules/catchall.yml\n",
   );
   write(
     directory,
@@ -62,7 +64,11 @@ fn nested_includes_mix_rules_and_cidrs_and_preserve_policy_order() {
   );
   let document = read(directory, vec![]).unwrap();
   document.resolve().unwrap();
-  let engine = rilgate_policy::PolicyEngine::from_definition(&document.policy).unwrap();
+  let engine = rilgate_policy::PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals.clone(),
+    policy: document.policy.clone(),
+  })
+  .unwrap();
   let headers = http::HeaderMap::new();
   assert_eq!(&*engine.evaluate(&headers, "/health", 0).rule, "health");
   let decision = engine.evaluate_context(
@@ -132,12 +138,12 @@ fn schema_and_semantic_errors_identify_spliced_rule_sources() {
   write(
     directory,
     "rilgate.yml",
-    &format!("{BASE}policy: !include policy.yml\n"),
+    &format!("{BASE}\npolicy: !include policy.yml\n"),
   );
   write(
     directory,
     "policy.yml",
-    "mode: custom\nrules:\n  - name: first\n    when: {path: {exact: /health}}\n    action: allow\n  - !include rules.yml\n",
+    "rules:\n  - name: first\n    when: {path: {exact: /health}}\n    action: allow\n  - !include rules.yml\n",
   );
   write(
     directory,

@@ -4,6 +4,8 @@ use include_dir::{Dir, include_dir};
 static RULES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../config/rules");
 static POLICIES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../config/policies");
 
+static SIGNALS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../config/signals");
+
 pub(super) fn normalize(path: &str) -> Result<String> {
   ensure!(
     !path.starts_with('/') && !path.contains(['\\', ':']),
@@ -24,8 +26,8 @@ pub(super) fn normalize(path: &str) -> Result<String> {
   }
   let path = components.join("/");
   ensure!(
-    path.starts_with("rules/") || path.starts_with("policies/"),
-    "builtin include must select rules/ or policies/"
+    path.starts_with("rules/") || path.starts_with("policies/") || path.starts_with("signals/"),
+    "builtin include must select rules/, policies/ or signals/"
   );
   Ok(path)
 }
@@ -35,6 +37,8 @@ pub(super) fn get(path: &str) -> Result<&'static str> {
     RULES.get_file(path)
   } else if let Some(path) = path.strip_prefix("policies/") {
     POLICIES.get_file(path)
+  } else if let Some(path) = path.strip_prefix("signals/") {
+    SIGNALS.get_file(path)
   } else {
     None
   };

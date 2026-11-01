@@ -633,7 +633,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
     config.server.metrics_enabled = true;
     config.pow.stratum_pool.pools[0].port = address.port();
     config.pow.stratum_pool.cooldown = Duration::from_secs(1);
-    let choice = config.pow.policy.rules.as_mut().unwrap()[0]
+    let choice = config.pow.policy.policy.rules.as_mut().unwrap()[0]
       .challenge
       .as_mut()
       .unwrap();

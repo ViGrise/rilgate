@@ -19,6 +19,6 @@ pub use ip_sets::{IpRanges, IpSet, IpSets, MAX_PREFIXES_PER_SET, Membership};
 pub use lookups::{LookupPlan, Lookups};
 pub use policy::config::ChallengePolicy;
 pub use policy::schema::Action as PolicyAction;
-pub use policy::schema::LoadWindow;
+pub use policy::schema::{LoadWindow, PolicyDocument, Signals};
 pub use policy::{PolicyDecision, PolicyEngine};
 use rilgate_protocol::PowAlgorithm;

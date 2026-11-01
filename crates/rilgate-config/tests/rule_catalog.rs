@@ -27,7 +27,7 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
   ] {
     let directory = tempfile::tempdir().unwrap();
     let source = format!(
-      "policy:\n  mode: custom\n  default_action: challenge\n  ip_sets:\n    {set}:\n      cidrs: [192.0.2.0/24]\n  rules:\n    - !include builtin:rules/{rule}\n"
+      "signals:\n  ip_sets:\n    {set}:\n      cidrs: [192.0.2.0/24]\npolicy:\n  default_action: challenge\n  rules:\n    - !include builtin:rules/{rule}\n"
     );
     let path = directory.path().join("rilgate.yml");
     std::fs::write(&path, source).unwrap();
@@ -37,7 +37,11 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
     })
     .unwrap()
     .document;
-    let engine = PolicyEngine::from_definition(&document.policy).unwrap();
+    let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+      signals: document.signals.clone(),
+      policy: document.policy.clone(),
+    })
+    .unwrap();
     for (address, user_agent, expected) in [
       ("192.0.2.10", agent, PolicyAction::Allow),
       ("198.51.100.10", agent, PolicyAction::Challenge),
@@ -65,9 +69,13 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
 #[test]
 fn embedded_policy_resolves_relative_rules_from_string_configuration() {
   let document =
-    rilgate_config::loader::parse("policy: !include builtin:policies/crawler-protection.yml\n")
+    rilgate_config::loader::parse("signals:\n  ip_sets: !include builtin:signals/crawler-ip-sets.yml\npolicy: !include builtin:policies/crawler-protection.yml\n")
       .unwrap();
-  let engine = PolicyEngine::from_definition(&document.policy).unwrap();
+  let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals.clone(),
+    policy: document.policy.clone(),
+  })
+  .unwrap();
   let mut headers = http::HeaderMap::new();
   headers.insert("user-agent", "GPTBot".parse().unwrap());
   assert_eq!(
@@ -99,14 +107,18 @@ fn embedded_and_local_rules_keep_order_without_catalog_shadowing() {
     "name: health\nwhen: {path: {exact: /health}}\naction: allow\n",
   )
   .unwrap();
-  std::fs::write(&path, "policy:\n  mode: custom\n  rules:\n    - !include builtin:rules/deny-headless-browsers.yml\n    - !include local.yml\n    - !include builtin:rules/challenge-all.yml\n").unwrap();
+  std::fs::write(&path, "policy:\n  rules:\n    - !include builtin:rules/deny-headless-browsers.yml\n    - !include local.yml\n    - !include builtin:rules/challenge-all.yml\n").unwrap();
   let document = load(&Overrides {
     config: Some(path),
     ..Default::default()
   })
   .unwrap()
   .document;
-  let engine = PolicyEngine::from_definition(&document.policy).unwrap();
+  let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals.clone(),
+    policy: document.policy.clone(),
+  })
+  .unwrap();
   let mut headers = http::HeaderMap::new();
   headers.insert("user-agent", "HeadlessChrome".parse().unwrap());
   assert_eq!(
@@ -130,7 +142,7 @@ fn embedded_and_local_rules_keep_order_without_catalog_shadowing() {
   let path = directory.path().join("rilgate.yml");
   std::fs::write(
     &path,
-    "policy:\n  mode: custom\n  rules: [!include builtin:rules/missing.yml]\n",
+    "policy:\n  rules: [!include builtin:rules/missing.yml]\n",
   )
   .unwrap();
   let error = format!(
@@ -154,7 +166,7 @@ fn embedded_lookup_errors_preserve_resource_identity_and_include_context() {
     ("builtin:rules/missing.yml", "resource does not exist"),
     (
       "builtin:examples/custom.yml",
-      "must select rules/ or policies/",
+      "must select rules/, policies/ or signals/",
     ),
     ("builtin:../rules/googlebot.yml", "escapes the catalog root"),
   ] {
@@ -167,7 +179,7 @@ fn embedded_lookup_errors_preserve_resource_identity_and_include_context() {
   }
   let directory = tempfile::tempdir().unwrap();
   let path = directory.path().join("rilgate.yml");
-  std::fs::write(&path, "server:\n  upstream: {url: http://127.0.0.1:3000}\nsecurity:\n  secret: rule-catalog-test-secret-with-at-least-32-bytes\npolicy:\n  mode: custom\n  rules: [!include builtin:rules/googlebot.yml]\n").unwrap();
+  std::fs::write(&path, "server:\n  upstream: {url: http://127.0.0.1:3000}\nsecurity:\n  secret: rule-catalog-test-secret-with-at-least-32-bytes\npolicy:\n  rules: [!include builtin:rules/googlebot.yml]\n").unwrap();
   let document = load(&Overrides {
     config: Some(path),
     ..Default::default()
@@ -186,13 +198,13 @@ fn embedded_lookup_errors_preserve_resource_identity_and_include_context() {
 #[test]
 fn embedded_sources_share_read_and_byte_budgets_with_configuration_input() {
   let source = format!(
-    "policy:\n  mode: custom\n  rules:\n{}",
+    "policy:\n  rules:\n{}",
     "    - !include builtin:rules/challenge-all.yml\n".repeat(256)
   );
   let error = format!("{:#}", rilgate_config::loader::parse(&source).unwrap_err());
   assert!(error.contains("source reads"), "{error}");
   let source = format!(
-    "#{}\npolicy:\n  mode: custom\n  rules:\n{}",
+    "#{}\npolicy:\n  rules:\n{}",
     "x".repeat(950_000),
     "    - !include builtin:rules/deny-ai-crawlers.yml\n".repeat(100)
   );
@@ -203,10 +215,14 @@ fn embedded_sources_share_read_and_byte_budgets_with_configuration_input() {
 #[test]
 fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
   let document = rilgate_config::loader::parse(
-    "policy:\n  <<: !include builtin:policies/crawler-protection.yml\n  default_action: challenge\n  ip_sets:\n    internal: {cidrs: [10.0.0.0/8]}\n",
+    "signals:\n  ip_sets:\n    <<: !include builtin:signals/crawler-ip-sets.yml\n    internal: {cidrs: [10.0.0.0/8]}\npolicy:\n  <<: !include builtin:policies/crawler-protection.yml\n  default_action: challenge\n",
   )
   .unwrap();
-  let engine = PolicyEngine::from_definition(&document.policy).unwrap();
+  let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals.clone(),
+    policy: document.policy.clone(),
+  })
+  .unwrap();
   engine
     .sets()
     .ip
@@ -249,21 +265,28 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
     PolicyAction::Challenge
   );
   let base =
-    rilgate_config::loader::parse("policy: !include builtin:policies/crawler-protection.yml\n")
+    rilgate_config::loader::parse("signals:\n  ip_sets: !include builtin:signals/crawler-ip-sets.yml\npolicy: !include builtin:policies/crawler-protection.yml\n")
       .unwrap();
   assert_eq!(
-    PolicyEngine::from_definition(&base.policy)
-      .unwrap()
-      .evaluate(&headers, "/content", 0)
-      .action,
+    PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+      signals: base.signals.clone(),
+      policy: base.policy.clone()
+    })
+    .unwrap()
+    .evaluate(&headers, "/content", 0)
+    .action,
     PolicyAction::Allow
   );
 }
 
 #[test]
 fn tor_exit_rule_scores_members_of_the_tor_set() {
-  let document = rilgate_config::loader::parse("policy:\n  mode: custom\n  ip_sets:\n    tor-exits: {cidrs: [192.0.2.0/24]}\n  rules:\n    - !include builtin:rules/tor-exit.yml\n").unwrap();
-  let engine = PolicyEngine::from_definition(&document.policy).unwrap();
+  let document = rilgate_config::loader::parse("signals:\n  ip_sets:\n    tor-exits: {cidrs: [192.0.2.0/24]}\npolicy:\n  rules:\n    - !include builtin:rules/tor-exit.yml\n").unwrap();
+  let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals.clone(),
+    policy: document.policy.clone(),
+  })
+  .unwrap();
   for (ip, expected) in [("192.0.2.10", 20), ("198.51.100.10", 0)] {
     let headers = http::HeaderMap::new();
     let request = Request {
@@ -275,5 +298,60 @@ fn tor_exit_rule_scores_members_of_the_tor_set() {
       lookups: &rilgate_policy::Lookups::NONE,
     };
     assert_eq!(engine.evaluate_context(&request, 0).weight, expected);
+  }
+}
+
+#[test]
+fn preset_files_match_the_previous_presets() {
+  for (preset, names, difficulty) in [
+    ("off", vec![], None),
+    (
+      "light",
+      vec!["public-endpoints", "suspicious-client"],
+      Some(1),
+    ),
+    (
+      "balanced",
+      vec!["public-endpoints", "protected-traffic"],
+      Some(2),
+    ),
+    (
+      "strict",
+      vec!["public-endpoints", "protected-traffic"],
+      Some(4),
+    ),
+  ] {
+    let document =
+      rilgate_config::loader::parse(&format!("policy: !include builtin:policies/{preset}.yml"))
+        .unwrap();
+    let (rules, default) = document.policy.resolved_rules().unwrap();
+    assert_eq!(default, PolicyAction::Allow);
+    assert_eq!(
+      rules
+        .iter()
+        .map(|rule| rule.name.as_str())
+        .collect::<Vec<_>>(),
+      names
+    );
+    for (index, rule) in rules.iter().enumerate() {
+      assert_eq!(
+        rule.action,
+        if index == 0 {
+          PolicyAction::Allow
+        } else {
+          PolicyAction::Challenge
+        }
+      );
+      if index == 0 {
+        assert!(rule.challenge.is_none());
+      } else {
+        let challenge = rule.challenge.as_ref().unwrap();
+        assert_eq!(
+          challenge.algorithm,
+          Some(rilgate_config::PowAlgorithm::Fast)
+        );
+        assert_eq!(challenge.difficulty, difficulty);
+      }
+    }
   }
 }

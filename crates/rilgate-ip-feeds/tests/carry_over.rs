@@ -1,6 +1,6 @@
 use axum::{Router, extract::State, routing::get};
 use rilgate_ip_feeds::{spawn, spawn_geoip};
-use rilgate_policy::{Membership, PolicyEngine, policy::schema::Definition};
+use rilgate_policy::{Membership, PolicyEngine, policy::schema::PolicyDocument};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -40,13 +40,13 @@ async fn feed_server() -> Feed {
   Feed { base, hits }
 }
 
-fn definition(text: &str) -> Definition {
+fn definition(text: &str) -> PolicyDocument {
   serde_yaml_ng::from_str(text).unwrap()
 }
 
-fn feed_policy(url: &str, rule_action: &str) -> Definition {
+fn feed_policy(url: &str, rule_action: &str) -> PolicyDocument {
   definition(&format!(
-    "mode: custom\nip_sets:\n  feed: {{url: '{url}', format: ip_prefixes_json, refresh: 1h, max_stale: 2h}}\nrules:\n  - {{name: listed, when: {{client_ip: {{in_sets: [feed]}}}}, action: {rule_action}}}\n"
+    "signals:\n  ip_sets:\n    feed: {{url: '{url}', format: ip_prefixes_json, refresh: 1h, max_stale: 2h}}\npolicy:\n  rules:\n    - {{name: listed, when: {{client_ip: {{in_sets: [feed]}}}}, action: {rule_action}}}\n"
   ))
 }
 
@@ -107,9 +107,9 @@ async fn reload_reloads_a_set_whose_source_changed() {
   );
 }
 
-fn geoip_policy(path: &Path, score: i32) -> Definition {
+fn geoip_policy(path: &Path, score: i32) -> PolicyDocument {
   definition(&format!(
-    "mode: custom\ngeoip:\n  asn: {{path: '{}'}}\nrules:\n  - {{name: google, when: {{asn: [15169]}}, action: score, score: {score}}}\n",
+    "signals:\n  geoip:\n    asn: {{path: '{}'}}\npolicy:\n  rules:\n    - {{name: google, when: {{asn: [15169]}}, action: score, score: {score}}}\n",
     path.display()
   ))
 }

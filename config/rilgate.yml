@@ -30,7 +30,7 @@
 # A working-directory .env, or --env-file, supplies variables without replacing
 # existing ones.
 # Configuration is loaded at startup. SIGHUP on Unix, the reload command and
-# server.watch_config reload the policy section
+# server.watch_config reload the signals and policy sections
 # without a restart. A change to any other section needs a restart; Rilgate then
 # logs the section names and keeps the running configuration.
 
@@ -65,7 +65,7 @@ server:
   #
   # listen: ":8080"
 
-  # Watch the main configuration and included files for policy changes.
+  # Watch configuration files for signals and policy changes
   # Changes are applied after a 500 ms quiet period.
   #
   # watch_config: false
@@ -75,6 +75,8 @@ server:
     # An empty list disables them. Use loopback or a private monitoring network.
     # Accepts one address or up to 16 unique addresses, distinct from server.listen.
     # Example: "127.0.0.1:9090". --port preserves these addresses.
+    #
+    # Example, not a default.
     #
     listen: "127.0.0.1:9090"
 
@@ -86,6 +88,8 @@ server:
   upstream:
     # REQUIRED. HTTP or HTTPS application URL, optionally including a base path.
     # Credentials, query strings and fragments are forbidden. No default URL.
+    #
+    # Example, not a default.
     #
     url: "http://127.0.0.1:3000"
 
@@ -141,6 +145,8 @@ server:
   # The edge must overwrite this header with a single IP address. Duplicate values
   # and address lists are rejected. X-Forwarded-For applies when the header is absent.
   #
+  # Example, not a default.
+  #
   # client_ip_header: cf-connecting-ip
 
   # Policy decisions logged at info level: off, deny, challenge or all.
@@ -189,35 +195,42 @@ server:
     #
     # auth: "${RILGATE_SECURITY_KEYS_AUTH}"
 
-
     # Rotation is optional and available independently for each explicit key.
     # Defaults: no active_id and no previous keys, issuing unversioned tokens.
     #
     # challenge_rotation:
-      # Example ID, not a default. Setting it issues tokens with a signed key ID.
-      # Use 1..32 ASCII letters, digits, '_' or '-'. 'legacy' is reserved.
+      # Setting it issues tokens with a signed key ID.
+      # Use ASCII letters, digits, '_' or '-'. Length: Range: 1..32. 'legacy' is reserved.
       # Assign a new ID whenever changing the active signing secret.
+      #
+      # Example, not a default.
       #
       # active_id: primary-1
 
       # At most 8 ID-to-secret entries, each at least 32 bytes, for verification
       # only. An ID cannot also be active_id. Example instead of '{}':
+      #
+      # Example, not a default.
+      #
       # previous:
-      # primary-0: "${RILGATE_SECURITY_KEYS_CHALLENGE_PREVIOUS}"
+      #   primary-0: "${RILGATE_SECURITY_KEYS_CHALLENGE_PREVIOUS}"
       # Use the reserved ID 'legacy' to accept old unversioned tokens explicitly.
       #
       # previous: {}
     # auth_rotation:
-      # Example ID for the current auth secret; same syntax as challenge IDs.
+      # Current auth secret ID; same syntax as challenge IDs.
+      # Example, not a default.
       #
       # active_id: primary-1
 
       # Verification-only auth keys. Example instead of '{}':
+      #
+      # Example, not a default.
+      #
       # previous:
-      # primary-0: "${RILGATE_SECURITY_KEYS_AUTH_PREVIOUS}"
+      #   primary-0: "${RILGATE_SECURITY_KEYS_AUTH_PREVIOUS}"
       #
       # previous: {}
-
 
   # For rolling rotation, first distribute verification keys to every instance,
   # then switch issuance to the new ID. Retire old verification keys only after
@@ -247,17 +260,17 @@ server:
       # Mobile and VPN users solve again when their network changes.
       #
       # client_ip:
-        # Leading IPv4 bits that must match. 0 to 32; 24 binds the /24 network.
+        # Leading IPv4 bits that must match. Range: 0..32. A value of 24 binds the /24 network.
         # Setting this or ipv6_prefix enables IP binding.
         #
         # ipv4_prefix: 24
 
-        # Leading IPv6 bits that must match. 0 to 128; 64 binds the /64 network.
+        # Leading IPv6 bits that must match. Range: 0..128. A value of 64 binds the /64 network.
         # Setting this or ipv4_prefix enables IP binding.
         #
         # ipv6_prefix: 64
 
-        # Maximum remembered client networks. 1 to 8; default 1 keeps one network.
+        # Maximum remembered client networks. Range: 1..8. Default 1 keeps one network.
         # Each new network needs a solved challenge; entries expire independently.
         # Merged cookies use the lower difficulty. A different bound User-Agent
         # family or algorithm starts a new cookie. Deploy the same version on every
@@ -310,6 +323,7 @@ server:
   #
   # content_security_policy:
     # enabled: true
+
     # Additional CSP source expressions, YAML only. Supported directives are listed
     # below. Each list allows up to 16 nonempty sources without whitespace, ; or ,.
     #
@@ -319,7 +333,6 @@ server:
       # img-src: []
       # font-src: []
       # connect-src: []
-
 
   # Challenge and denial response formats. auto honors explicit Accept preferences;
   # otherwise JSON Content-Type (including application/*+json) or X-Requested-With:
@@ -363,30 +376,67 @@ server:
   # the response wait deadline and share a bounded in-memory cache.
   #
   # open_graph:
+    # Enable anonymous preview metadata in HTML GET challenges.
+    #
     # enabled: false
+
+    # Cache lifetime for successful pages, including pages without tags. Range: 1m..7d.
+    #
     # ttl: 24h
+
+    # Cache lifetime for failed lookups. Range: 10s..ttl.
+    #
     # negative_ttl: 5m
+
+    # Maximum response wait; the fetch continues and fills the cache. Range: 100ms..10s.
+    #
     # timeout: 2s
+
+    # Maximum cached pages per process. Range: 1..1000000.
+    #
     # max_entries: 10000
+
+    # Include the query in the cache key and prefetch URL.
+    #
     # include_query: false
+
+    # Replace the prefetch header map. Client headers are never copied. At most 16 headers.
+    #
     # request_headers:
       # user-agent: Rilgate-OpenGraph/1.0
       # x-forwarded-host: "{host}"
       # x-forwarded-proto: https
+
+    # Select tag prefixes and whole names. Each list replaces its default independently.
+    #
     # tags:
+      # Tag-name prefixes in lowercase. At most 16 entries.
+      #
       # prefixes: ["og:", "twitter:", "fediverse:"]
+
+      # Whole tag names in lowercase. At most 32 entries.
+      #
       # names: [description, keywords, author]
-    # Optional request selection uses the policy condition grammar.
+
+    # Select requests with policy conditions. Unknown conditions skip the lookup.
+    #
+    # Example, not a default.
+    #
     # when:
       # not: {path: {prefix: /admin/}}
+
+    # Render configured tags without fetching. At most 32 entries.
+    #
     # override: {}
 
   # resources:
-    # Example override directory, not a default. Omitted means embedded-only.
+    # Omitted means embedded-only.
     # External templates/, static/ and i18n/ overlay embedded resources.
     # Relative directories resolve from the process working directory.
     # Symlinks are rejected. Startup can fall back to embedded resources when
     # overrides are invalid; use 'rilgate ... web validate' to check them.
+    #
+    # Example, not a default.
     #
     # directory: /etc/rilgate/web
 
@@ -406,7 +456,6 @@ server:
       #
       # debounce: 300ms
 
-
   # templates:
     # In-memory compiled template cache. Currently must be true; false is
     # unsupported. This does not enable browser caching of challenge responses.
@@ -425,7 +474,6 @@ server:
     # work such as loops. Increase only for trusted, more complex templates.
     #
     # fuel: 50000
-
 
   # i18n:
     # Default/fallback BCP 47 locale tag. Must be included in supported when an
@@ -467,7 +515,6 @@ server:
   #
   # default_algorithm: fast
 
-
   # challenge:
     # Challenge presentation token and Fast work lifetime. Whole seconds only.
     #
@@ -476,7 +523,6 @@ server:
     # Window for exchanging a verified receipt for authentication. Whole seconds.
     #
     # receipt_ttl: 30s
-
 
   # rate_limit:
     # Apply per-client and global token buckets to proof HTTP APIs and WebSocket
@@ -495,7 +541,7 @@ server:
       # burst: 10
 
       # Tokens restored per second; 0.1 means one token every 10 seconds.
-      # Must be finite and within 0.001..1000000.
+      # Must be finite. Range: 0.001..1000000.
       #
       # refill_per_second: 0.1
     # global:
@@ -503,10 +549,9 @@ server:
       #
       # burst: 64
 
-      # Process-wide replenishment rate. Finite, within 0.001..1000000.
+      # Process-wide replenishment rate. Must be finite. Range: 0.001..1000000.
       #
       # refill_per_second: 16
-
 
   # algorithms:
     # Fast has no algorithm-specific configuration. RandomX is opt-in and uses
@@ -514,14 +559,22 @@ server:
     #
     # hashwx:
       # Signed batch size. Range: 463..1048576.
+      #
       # nonces_per_seed: 65536
+
       # Difficulty defaults stay provisional until a mid-range phone is measured.
+      #
       # difficulty:
         # Positive base difficulty, at most 2^40.
+        #
         # base: 50000
+
         # Positive score interval that doubles difficulty.
+        #
         # score_step: 10
+
         # At least base and at most 2^40.
+        #
         # max: 5000000
 
     # randomx:
@@ -530,7 +583,7 @@ server:
       #
       # challenge_ttl: 1h
 
-      # Byte offset of the 4-byte nonce in the mining blob. Range: 0..252;
+      # Byte offset of the 4-byte nonce in the mining blob. Range: 0..252.
       # it must also fit the actual Stratum pool job blob. 39 is the Monero layout.
       #
       # nonce_offset: 39
@@ -539,20 +592,45 @@ server:
       # Range: 1..1024. A full queue returns 503 rather than growing unbounded.
       #
       # verifier_queue: 8
+
       # Dedicated verifier settings. Use `rilgate verifier serve` and keep this
       # section absent when this process runs the gateway. Worker count must be 1.
       #
+      # Example, not a default.
+      #
       # serve:
-      #   listen: 127.0.0.1:9443
-      #   workers: 1
-      #   queue: 64
-      #   max_connections: 256
-      #   tls:
-      #     cert: /etc/rilgate/verifier.pem
-      #     key: /etc/rilgate/verifier.key
-      #     client_ca: /etc/rilgate/gateway-ca.pem
+        # Verifier bind address.
+        #
+        # listen: 127.0.0.1:9443
+
+        # Verifier worker count.
+        #
+        # workers: 1
+
+        # Pending verifier job capacity.
+        #
+        # queue: 64
+
+        # Maximum concurrent verifier connections.
+        #
+        # max_connections: 256
+
+        # Mutual TLS credentials.
+        #
+        # tls:
+          # Verifier certificate file.
+          #
+          # cert: /etc/rilgate/verifier.pem
+
+          # Verifier private key file.
+          #
+          # key: /etc/rilgate/verifier.key
+
+          # Trusted gateway certificate authority file.
+          #
+          # client_ca: /etc/rilgate/gateway-ca.pem
       # cache:
-        # Idle time before releasing the native cache. Range: 0s..7d;
+        # Idle time before releasing the native cache. Range: 0s..7d.
         # 0s keeps the cache resident. The next request rebuilds it.
         #
         # idle_timeout: 30m
@@ -567,25 +645,33 @@ server:
           # query or credentials. Development also accepts HTTP.
           #
           # endpoint: https://verifier.internal:9443
+
           # Certificate name to verify; defaults to the endpoint host.
           #
           # server_name: verifier.internal
+
           # Total request budget, including response reads. Range: 100ms..30s.
           # The challenge expiry also limits the request.
           #
           # timeout: 2s
+
           # Action when the verifier rejects the request deadline: fallback or reject.
           # fallback tries the next hasher; reject returns 401.
           #
           # on_deadline_rejected: fallback
+
+          # Mutual TLS credentials.
+          #
           # tls:
             # Private trust roots in PEM format. Required in production.
             #
             # ca: /etc/rilgate/verifier-ca.pem
+
             # Gateway identity PEM files. Set both or neither;
             # production requires both.
             #
             # client_cert: /etc/rilgate/gateway.pem
+
             # Private key for the gateway identity, in PEM format.
             #
             # client_key: /etc/rilgate/gateway.key
@@ -597,7 +683,7 @@ server:
 
         # Positive integer score interval per doubling. Automatic difficulty is
         # base * 2^(score / score_step), with integer division and exponent
-        # clamped to 0..63, then capped at max. Negative scores do not reduce base.
+        # clamped before the max cap. Range: 0..63. Negative scores keep base.
         #
         # score_step: 10
 
@@ -605,58 +691,83 @@ server:
         # difficulty bypasses this calculation/cap, but must still be >= 1000.
         #
         # max: 32000
+
+      # Browser RandomX solver settings.
+      #
       # browser:
         # Solver module under site.base_path, even with the leading '/'.
         # Must be a local safe resource path, not an arbitrary external URL.
         #
         # module: /static/js/solvers/randomx/solver.js
-        # Maximum browser workers, from 1 to 8. CPU and memory can reduce this count.
+
+        # Maximum browser workers. Range: 1..8. CPU and memory can reduce this count.
+        #
         # max_workers: 8
+
         # Store the seed cache in IndexedDB for reuse across solves.
+        #
         # store_cache: true
 
       # Optional fallback while every pool is in its failure cooldown.
       # Both fields are required. Requires local_verify and an enabled algorithm.
+      #
       # fallback:
         # algorithm: fast
+
+        # Difficulty scaling settings.
+        #
         # difficulty: 4
 
   # Omitted by default. Required whenever RandomX jobs or pool acceptance are
   # selected. Merely adding this section does not switch the policy to RandomX.
   #
   # stratum_pool:
-    # Pools are tried in this order. Set 1 to 8 entries. Each name must be
-    # unique, with 1 to 64 lowercase letters, digits, hyphens or underscores.
+    # Pools are tried in this order. Range: 1..8. Each name must be
+    # unique. Length: Range: 1..64. Use lowercase letters, digits, hyphens or underscores.
     # Each address is HOST:PORT or [IPv6]:PORT, with no scheme or credentials.
+    #
+    # Example, not a default.
     #
     # pools:
       # - name: local
+        #
         # address: 127.0.0.1:3333
         # login:
           # Exactly one {difficulty} is required. No other placeholders are
           # allowed. The substituted login must fit in 256 bytes.
           # P2Pool sets its wallet on the node. Other pools can need a wallet
           # in this template. Use an environment reference for private data.
+          #
           # user: "x+{difficulty}"
           # password: x
+
+        # Mutual TLS credentials.
+        #
         # tls:
           # Production requires TLS for hosts outside private networks.
           # Certificate verification is always on. The address host is the
           # default server_name. Without ca, Rilgate uses webpki roots.
+          #
           # enabled: false
           # server_name: pool.example
           # ca: /etc/rilgate/pool-ca.pem
+
         # An empty list connects directly. An omitted list uses the shared
         # proxies below. A nonempty list replaces the shared list.
+        # Example, not a default.
+        #
         # proxies: []
 
-    # Shared proxies, tried in order. Set 0 to 8 entries. Each name follows
+    # Shared proxies, tried in order. Range: 0..8. Each name follows
     # the pool name rules. Credentials must be in both fields, or neither.
     # URL schemes: socks5 (local DNS), socks5h (proxy DNS), http (CONNECT).
     # TLS to the pool stays end to end through the proxy.
     #
+    # Example, not a default.
+    #
     # proxies:
       # - name: tunnel
+        #
         # url: socks5h://127.0.0.1:1080
         # username: "${RILGATE_STRATUM_PROXY_USERNAME}"
         # password: "${RILGATE_STRATUM_PROXY_PASSWORD}"
@@ -664,11 +775,14 @@ server:
     # Limits for ordered pool and proxy connection attempts.
     #
     # failover:
-      # Total time across all pools and proxies, including login (1s to 5m).
+      # Total time across all pools and proxies, including login. Range: 1s..5m.
       # Must be at least timeout.connect. A request stopped by this limit starts no cooldown.
+      #
       # timeout: 15s
-      # Skip a failed pool or proxy for this duration, from 1s to 10m.
+
+      # Skip a failed pool or proxy for this duration. Range: 1s..10m.
       # If every entry is in cooldown, try the list in order again.
+      #
       # cooldown: 30s
 
     # Client agent identifier sent in the Stratum login.
@@ -685,7 +799,7 @@ server:
       # submit: 20s
     # sessions:
       # Shared capacity for job connections and WebSocket verification sessions.
-      # Range: 1..4096; process-local. Capacity exhaustion returns 503.
+      # Range: 1..4096. Process-local. Capacity exhaustion returns 503.
       #
       # max: 64
 
@@ -698,7 +812,7 @@ server:
       #
       # mode: pooled
 
-      # Maximum pooled job sessions, 1..4096 and <= sessions.max in pooled mode.
+      # Maximum pooled job sessions. Range: 1..4096. At most sessions.max in pooled mode.
       # Not used as a pool size in per_challenge mode; zero is never a mode switch.
       #
       # max: 16
@@ -708,184 +822,74 @@ server:
       #
       # idle: 1m
 
-#################################### POLICY ###################################
+################################### SIGNALS ###################################
 
-# Alternatively, select a built-in policy with:
-# policy: !include builtin:policies/<name>.yml
-# Customize a built-in custom policy with a map merge:
-# policy:
-#   <<: !include builtin:policies/crawler-protection.yml
-#   default_action: challenge
-#   ip_sets:
-#     internal: {cidrs: [10.0.0.0/8]}
-
-# policy:
-  # off: allow application traffic without proof enforcement.
-  # light: challenge empty or bot-like user agents with Fast difficulty 1.
-  # balanced: challenge application traffic with Fast difficulty 2.
-  # strict: challenge application traffic with Fast difficulty 4.
-  # custom: use only the rules, score and default_action configured below.
-  # light/balanced/strict allow /robots.txt, /favicon.ico and ACME challenge paths.
-  # All presets use Fast and need no mining pool. Internal APIs/assets are
-  # dispatched before policies, including broad public /.well-known/ exceptions.
-  #
-  # mode: balanced
-
-
-  # Everything below requires mode: custom. Other modes reject these settings
-  # rather than ignoring them. Rules and thresholds default to empty lists.
-  # See examples/custom.yml for an enabled custom-policy configuration.
-
-  # Final fallback when no terminal rule or score threshold matches.
-  # Options: allow, deny, challenge. A fallback challenge uses default_algorithm
-  # and automatic difficulty derived from the final score.
-  #
-  # default_action: allow
-
-
-  # EXAMPLE rules, not preset defaults. Evaluated in declaration order.
-  # allow, deny and challenge are terminal; score adjusts risk and continues.
-  # Names must be unique, nonempty and at most 128 bytes. Rules plus thresholds
-  # are limited to 128 entries. Score adjustments are signed 32-bit integers;
-  # accumulated scores saturate instead of wrapping at integer limits.
-
-  # Conditions use one engine. Fields in the same condition are ANDed.
-  # all/any contain nonempty condition lists; not contains one condition.
-  # Text fields path, method, user_agent and each headers entry accept exactly
-  # one of: exact, prefix, contains, in, regex. Matches are case-sensitive unless
-  # the regex enables (?i). 'in' accepts 1..64 strings. Header names ignore case;
-  # a missing header never matches, and any repeated header value may match.
-  # A missing User-Agent is evaluated as an empty string.
-  # client_ip accepts cidr for IPv4/IPv6. score accepts integer comparisons
-  # eq, gt, gte, lt, lte; multiple comparisons are ANDed. Impossible ranges fail.
-  # Example score condition: score: {gte: 10, lt: 30}.
-
-  # Expression depth is limited to 16 and compiled condition nodes to 512.
-  # Each text/pattern value is at most 2048 bytes, with a 64KiB total budget.
-  # Regexes use Rust regex syntax with bounded compilation, no backreferences
-  # or look-around. Invalid expressions fail startup validation.
-  #
-  # rules:
-    # - name: public-endpoints
-
-      # Any matching alternative allows these public machine-readable paths.
-      #
-      # when:
-        # any:
-          # - path: {prefix: "/.well-known/"}
-          # - path: {in: ["/favicon.ico", "/robots.txt"]}
-          # - path: {regex: '(?i)\.(rss|xml|atom)$'}
-      # action: allow
-    # - name: browser-score
-      # when:
-        # user_agent: {regex: "Mozilla|Opera"}
-      # action: score
-
-      # Required only for action: score. Negative adjustments are also allowed.
-      #
-      # score: 10
-    # - name: suspicious-header
-      # when:
-        # all:
-          # - method: {exact: POST}
-          # - headers: {X-Suspicious: {regex: ".+"}}
-          # - not:
-              # client_ip: {cidr: 192.0.2.0/24}
-      # action: score
-      # score: 10
-    # - name: protected-endpoint
-      # when:
-        # path: {prefix: /protected/}
-      # action: challenge
-
-      # Allowed only with action: challenge. Omit this mapping or either field
-      # to use the default algorithm or score-derived difficulty, respectively.
-      #
-      # challenge:
-        # fast, hashwx, randomx or refresh. RandomX also requires pow.stratum_pool.
-        #
-        # algorithm: fast
-
-        # Fast: 1..64 leading zero hexadecimal digits, not bits; each added digit
-        # multiplies expected work by 16. RandomX: an integer of at least 1000.
-        # Refresh: a delay of 1..10 seconds.
-        #
-        # difficulty: 2
-
-
-  # score:
-    # Starting signed 32-bit risk score, before ordered rules run.
-    #
-    # initial: 0
-    # debug_header:
-      # Development only; true is rejected in production. Allows clients to
-      # replace the starting score through the named request header.
-      #
-      # enabled: false
-
-      # Valid HTTP header name read only when debug_header.enabled is true.
-      #
-      # name: x-pow-weight
-
-    # EXAMPLE thresholds, not defaults. Evaluated after rules only if no terminal
-    # action matched. First score >= min wins; min values must be strictly
-    # descending and unique. Actions: allow, deny, challenge, never score.
-    # The last threshold can omit min to match every score.
-    # If none match, default_action applies. Challenge fields follow rule syntax.
-    #
-    # thresholds:
-      # - min: 20
-        # action: challenge
-        # challenge: {algorithm: fast, difficulty: 4}
-      # - min: 10
-        # action: challenge
-        # challenge: {algorithm: fast, difficulty: 2}
-      # - min: 1
-        # action: challenge
-        # challenge: {algorithm: fast, difficulty: 1}
-      # - action: challenge
-        # challenge: {algorithm: fast, difficulty: 1}
-
-
-  # Named IP and ASN sets require mode: custom. Each registry permits 64 sets.
+# signals:
+  # Named IP and ASN sets. Each registry permits 64 sets.
   # Each set takes exactly one source: cidrs/asns or url with format.
   #
   # ip_sets:
+    # Example, not a default.
+    #
     # office:
       # cidrs: [203.0.113.0/24, 2001:db8::/32]
+
+    # Example, not a default.
+    #
     # crawler-networks:
       # url: https://www.bing.com/toolbox/bingbot.json
+
       # Choose one format. Regex requires a capture group named value.
+      #
       # format: ip_prefixes_json
       # format: list_text
       # format: {regex: '(?m)^(?P<value>[0-9.]+):\d+$'}
       # format: {json_path: ['$.prefixes[*].ipv4Prefix']}
+
       # Refresh interval. Range: 1h..7d. Default: 24h.
+      #
       # refresh: 24h
+
       # Maximum snapshot age. Range: refresh..30d. Default: 7d.
+      #
       # max_stale: 7d
+
+    # Example, not a default.
+    #
     # tor-exits:
       # url: https://check.torproject.org/torbulkexitlist
       # format: list_text
       # refresh: 1h
       # max_stale: 1d
-  # asn_sets match the client ASN from policy.geoip.asn, so they need that database.
+
+  # asn_sets match the client ASN from signals.geoip.asn, so they need that database.
+  #
   # asn_sets:
+    # Example, not a default.
+    #
     # trusted-networks:
       # asns: [15169, 13335]
+
+    # Example, not a default.
+    #
     # datacenter:
       # url: https://raw.githubusercontent.com/X4BNet/lists_vpn/main/input/datacenter/ASN.txt
+
       # Choose list_text, regex or json_path for ASN values.
+      #
       # format: list_text
       # format: {regex: '(?m)^(?P<value>AS[0-9]+)$'}
       # format: {json_path: ['$.asns[*]']}
+
       # Refresh interval. Range: 1h..7d. Default: 24h.
+      #
       # refresh: 24h
+
       # Maximum snapshot age. Range: refresh..30d. Default: 7d.
+      #
       # max_stale: 7d
 
-  # MaxMind databases behind the country and asn conditions. Requires
-  # mode: custom. Each database takes exactly one source: path (a local .mmdb
+  # MaxMind databases behind the country and asn conditions. Each database takes exactly one source: path (a local .mmdb
   # file) or maxmind (a download of a GeoLite2 or GeoIP2 edition). A condition
   # that uses country or asn needs its database configured. Readiness fails
   # until each configured database has loaded once. Before then, and after
@@ -893,17 +897,30 @@ server:
   # on them never allows and a deny rule challenges.
   #
   # geoip:
+    # Country database source.
+    #
     # country:
+      # Example, not a default.
+      #
       # path: /var/lib/rilgate/GeoLite2-Country.mmdb
+
       # Re-reads the file when its modification time changes.
       # Range: 1m..7d.
       #
       # refresh: 1h
+
+    # ASN database source.
+    #
     # asn:
+      # MaxMind download source.
+      #
       # maxmind:
-        # Edition ID: 1 to 64 characters of letters, digits and hyphens.
+        # Edition ID uses letters, digits and hyphens. Length: Range: 1..64.
         #
         # edition: GeoLite2-ASN
+
+        # Example, not a default.
+        #
         # account_id: "123456"
 
         # Redacted by `rilgate config show`. Read it from the environment so
@@ -911,7 +928,7 @@ server:
         #
         # license_key: "${MAXMIND_LICENSE_KEY}"
 
-      # Downloads stay under 128 MiB. Range: 1h..7d for maxmind sources.
+      # Downloads stay under 128 MiB. Range: 1h..7d. Applies to maxmind sources.
       #
       # refresh: 24h
 
@@ -920,22 +937,7 @@ server:
       #
       # max_stale: 30d
 
-  # EXAMPLE rule using the databases above. country takes ISO 3166-1 alpha-2
-  # codes in upper case, asn takes autonomous system numbers, each list holds
-  # 1..256 entries, and a match on any entry is a match.
-  #
-  # rules:
-    # - name: heavy-scraper-sources
-      # when:
-        # any:
-          # - country: [CN, RU]
-          # - asn: [16509, 14061]
-          # - asn: {in_sets: [datacenter]}
-      # action: score
-      # score: 5
-
-  # DNS lookups behind the dnsbl and client_ip.reverse_dns conditions. Requires
-  # mode: custom. The first request from a new client can wait up to timeout
+  # DNS lookups behind the dnsbl and client_ip.reverse_dns conditions. The first request from a new client can wait up to timeout
   # for its lookups. Later requests use the cache. A lookup that fails or times
   # out leaves the condition unknown, so an allow rule on it never allows and a
   # deny rule challenges. The servers come from the system configuration.
@@ -957,7 +959,7 @@ server:
     #
     # max_entries: 65536
 
-  # Hidden link in the challenge and refresh pages. Requires mode: custom. A
+  # Hidden link in the challenge and refresh pages. A
   # client that requests the link is flagged, and the condition honeypot: true
   # matches flagged clients. A flag covers one IPv4 address or one IPv6 /64, and
   # a request without a resolved client IP flags nobody. The link points to
@@ -973,40 +975,208 @@ server:
     # max_entries: 65536
 
   # Named request counters for custom policy rules. At most 32 counters; names
-  # contain 1 to 64 ASCII letters, digits, - or _. Rules read with rate.
+  # use ASCII letters, digits, - or _. Length: Range: 1..64. Rules read with rate.
+  #
   # counters:
+    # Named request counter example.
+    #
     # pages:
-      # Required key: 1 to 4 unique parts. Also supports method, path, user_agent,
+      # Required key of unique parts. Range: 1..4. Also supports method, path, user_agent,
       # country, asn and {header: X-Name}. GeoIP parts require their databases.
+      #
       # key: [client_ip, host]
+
       # Optional client_ip prefixes default to IPv4 /32 and IPv6 /64.
+      #
       # key: [{client_ip: {ipv4_prefix: 24, ipv6_prefix: 48}}, host]
-      # Required sliding window, from 1s to 1h.
+
+      # Required sliding window. Range: 1s..1h.
+      #
       # window: 30s
-      # Maximum keys in memory, from 1 to 1048576; defaults to 65536.
+
+      # Maximum keys in memory. Range: 1..1048576. Default: 65536.
+      #
       # max_entries: 65536
+
       # Optional condition; absent selects every request that reaches the gate.
       # Only true counts. Excludes score, rate, dnsbl and client_ip.reverse_dns.
+      #
       # count_when: {path: {prefix: /login}}
 
-  # EXAMPLE rules using the lookups. dnsbl takes one zone, with at most 8 zones
-  # in a policy. reverse_dns takes 1..16 domains and is true when a PTR name of
-  # the client ends with a listed domain and resolves back to the client IP.
+#################################### POLICY ###################################
+
+# Select a preset:
+#
+# off: allow application traffic without proof enforcement.
+# light: challenge empty or bot-like User-Agents with Fast difficulty 1.
+# balanced: challenge application traffic with Fast difficulty 2.
+# strict: challenge application traffic with Fast difficulty 4.
+# crawler-protection: deny AI/headless crawlers, verify search crawlers and score clients.
+
+# light, balanced and strict allow /robots.txt, /favicon.ico and ACME challenge paths.
+# Without a policy section, Rilgate uses builtin:policies/balanced.yml.
+#
+# policy: !include builtin:policies/<name>.yml
+
+# Customize a built-in policy with a map merge:
+#
+# signals:
+#   ip_sets: !include builtin:signals/crawler-ip-sets.yml
+#
+# policy:
+#   <<: !include builtin:policies/crawler-protection.yml
+#   default_action: challenge
+
+# policy:
+  # Evaluated in declaration order.
+  # allow, deny and challenge are terminal; score adjusts risk and continues.
+  # Names must be unique, nonempty and at most 128 bytes. Rules plus thresholds
+  # are limited to 128 entries. Score adjustments are signed 32-bit integers;
+  # accumulated scores saturate instead of wrapping at integer limits.
+
+  # Expression depth is limited to 16 and compiled condition nodes to 512.
+  # Each text/pattern value is at most 2048 bytes, with a 64KiB total budget.
+  # Regexes use Rust regex syntax with bounded compilation, no backreferences
+  # or look-around. Invalid expressions fail startup validation.
+  # Condition reference: docs/policy.md, section Conditions.
+  #
+  # Example, not a default.
   #
   # rules:
+    # - name: public-endpoints
+
+      # Any matching alternative allows these public machine-readable paths.
+      #
+      # Example, not a default.
+      #
+      # when:
+        # any:
+          # - path: {prefix: "/.well-known/"}
+          # - path: {in: ["/favicon.ico", "/robots.txt"]}
+          # - path: {regex: '(?i)\.(rss|xml|atom)$'}
+      #
+      # action: allow
+    # - name: browser-score
+      # Example, not a default.
+      #
+      # when:
+        # user_agent: {regex: "Mozilla|Opera"}
+      # action: score
+
+      # Required only for action: score. Negative adjustments are also allowed.
+      #
+        # - name: heavy-scraper-sources
+      # Example, not a default.
+      #
+      # when:
+        # any:
+          # - country: [CN, RU]
+          # - asn: [16509, 14061]
+          # - asn: {in_sets: [datacenter]}
+      #
+      # action: score
+      # score: 5
+
+    # - !include builtin:rules/tor-exit.yml
     # - name: verified-googlebot
+      # Example, not a default.
+      #
       # when:
         # client_ip: {reverse_dns: [googlebot.com, google.com]}
       # action: allow
     # - name: listed-source
+      # Example, not a default.
+      #
       # when: {dnsbl: dnsbl.dronebl.org}
       # action: score
       # score: 10
     # - name: link-followers
+      # Example, not a default.
+      #
       # when: {honeypot: true}
       # action: deny
     # - name: page-rate
       # Counter name plus eq, gt, gte, lt or lte on non-negative integers.
+      # Example, not a default.
+      #
       # when: {rate: {counter: pages, gte: 60}}
       # action: score
       # score: 20
+  # score: 10
+    # - name: suspicious-header
+      # Example, not a default.
+      #
+      # when:
+        # all:
+          # - method: {exact: POST}
+          # - headers: {X-Suspicious: {regex: ".+"}}
+          # - not:
+              #
+              # client_ip: {cidr: 192.0.2.0/24}
+      # action: score
+      # score: 10
+    # - name: protected-endpoint
+      # Example, not a default.
+      #
+      # when:
+        # path: {prefix: /protected/}
+      # action: challenge
+
+      # Allowed only with action: challenge. Omit this mapping or either field
+      # to use the default algorithm or score-derived difficulty, respectively.
+      #
+      # challenge:
+        # fast, hashwx, randomx or refresh. RandomX also requires pow.stratum_pool.
+        #
+        # algorithm: fast
+
+        # Fast counts leading zero hexadecimal digits. Range: 1..64.
+        # Each added digit multiplies expected work by 16.
+        # RandomX: an integer of at least 1000. Refresh delay. Range: 1s..10s.
+        #
+        # difficulty: 2
+
+  # score:
+    # Starting signed 32-bit risk score, before ordered rules run.
+    #
+    # initial: 0
+    # debug_header:
+      # Development only; true is rejected in production. Allows clients to
+      # replace the starting score through the named request header.
+      #
+      # enabled: false
+
+      # Valid HTTP header name read only when debug_header.enabled is true.
+      #
+      # name: x-pow-weight
+
+    # Evaluated after rules only if no terminal
+    # action matched. First score >= min wins; min values must be strictly
+    # descending and unique. Actions: allow, deny, challenge, never score.
+    # The last threshold can omit min to match every score.
+    # If none match, default_action applies. Challenge fields follow rule syntax.
+    #
+    # Example, not a default.
+    #
+    # thresholds:
+      # - min: 20
+        #
+        # action: challenge
+        # challenge: {algorithm: fast, difficulty: 4}
+      # - min: 10
+        #
+        # action: challenge
+        # challenge: {algorithm: fast, difficulty: 2}
+      # - min: 1
+        #
+        # action: challenge
+        # challenge: {algorithm: fast, difficulty: 1}
+      # - action: challenge
+        #
+        # challenge: {algorithm: fast, difficulty: 1}
+
+  # Final fallback when no terminal rule or score threshold matches.
+  # Options: allow, deny, challenge. Default: allow.
+  # A challenge uses default_algorithm and score-derived difficulty.
+  #
+  # default_action: allow

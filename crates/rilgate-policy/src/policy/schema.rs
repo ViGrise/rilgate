@@ -3,17 +3,6 @@ use rilgate_crypto::Secret;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Mode {
-  Off,
-  Light,
-  #[default]
-  Balanced,
-  Strict,
-  Custom,
-}
-
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -25,7 +14,6 @@ pub enum Action {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Definition {
-  pub mode: Mode,
   #[serde(
     default,
     deserialize_with = "present",
@@ -44,6 +32,12 @@ pub struct Definition {
     skip_serializing_if = "Option::is_none"
   )]
   pub score: Option<Scoring>,
+}
+
+/// What Rilgate knows about a request beyond the request itself.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Signals {
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub ip_sets: BTreeMap<String, IpSetDefinition>,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -72,6 +66,14 @@ pub struct Definition {
     skip_serializing_if = "Option::is_none"
   )]
   pub counters: Option<BTreeMap<String, CounterDefinition>>,
+}
+
+/// The policy section with the signals its conditions read.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PolicyDocument {
+  pub signals: Signals,
+  pub policy: Definition,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -556,11 +558,11 @@ impl HoneypotDefinition {
     use anyhow::ensure;
     ensure!(
       (std::time::Duration::from_secs(1)..=Self::MAX_TTL).contains(&self.ttl),
-      "policy.honeypot.ttl: expected 1s to 30d"
+      "signals.honeypot.ttl: expected 1s to 30d"
     );
     ensure!(
       (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
-      "policy.honeypot.max_entries: expected 1 to {}",
+      "signals.honeypot.max_entries: expected 1 to {}",
       Self::MAX_ENTRIES
     );
     Ok(())
@@ -692,19 +694,19 @@ impl DnsDefinition {
     use std::time::Duration;
     ensure!(
       (Duration::from_millis(1)..=Self::MAX_TIMEOUT).contains(&self.timeout),
-      "policy.dns.timeout: expected 1ms to 5s"
+      "signals.dns.timeout: expected 1ms to 5s"
     );
     ensure!(
       self.cache_ttl >= Duration::from_secs(1),
-      "policy.dns.cache_ttl: expected a duration of at least 1s"
+      "signals.dns.cache_ttl: expected a duration of at least 1s"
     );
     ensure!(
       self.negative_ttl >= Duration::from_secs(1),
-      "policy.dns.negative_ttl: expected a duration of at least 1s"
+      "signals.dns.negative_ttl: expected a duration of at least 1s"
     );
     ensure!(
       (1..=Self::MAX_ENTRIES).contains(&self.max_entries),
-      "policy.dns.max_entries: expected 1 to {}",
+      "signals.dns.max_entries: expected 1 to {}",
       Self::MAX_ENTRIES
     );
     Ok(())

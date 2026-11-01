@@ -48,7 +48,7 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
   let cfg = Arc::get_mut(&mut config).unwrap();
   cfg.pow.default_algorithm = PowAlgorithm::Hashwx;
   cfg.pow.hashwx.nonces_per_seed = 463;
-  let selection = cfg.pow.policy.rules.as_mut().unwrap()[0]
+  let selection = cfg.pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap();

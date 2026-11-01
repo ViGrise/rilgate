@@ -15,3 +15,5 @@
 !config/rules/**
 !config/policies/
 !config/policies/**
+!config/signals/
+!config/signals/**

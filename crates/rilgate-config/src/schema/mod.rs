@@ -20,5 +20,6 @@ pub struct Document {
   pub site: site::Site,
   pub security: security::Security,
   pub pow: pow::Pow,
+  pub signals: rilgate_policy::policy::schema::Signals,
   pub policy: rilgate_policy::policy::schema::Definition,
 }

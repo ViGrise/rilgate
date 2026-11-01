@@ -7,23 +7,14 @@ is never forwarded by an allow rule.
 
 ## Presets
 
-| Mode | Behavior |
-| --- | --- |
-| `off` | Allow application traffic without a PoW requirement |
-| `light` | Challenge missing or bot-like User-Agents at Fast difficulty 1 |
-| `balanced` | Challenge application traffic at Fast difficulty 2 |
-| `strict` | Challenge application traffic at Fast difficulty 4 |
-| `custom` | Use only the operator's rules, thresholds and default action |
-
-Light matches User-Agents containing bot, crawler, spider, curl, wget, python, or
-scrapy, case-insensitively, or an empty User-Agent. Light, balanced and strict allow
-exact `/robots.txt`, `/favicon.ico`, and the `/.well-known/acme-challenge/` prefix. Presets never need
-RandomX or Stratum pool. Any custom `rules`, `score`, or `default_action` in a preset is
-rejected. Such settings are not silently ignored.
+Select a preset with `policy: !include builtin:policies/<name>.yml`.
+Without a policy section, Rilgate uses `builtin:policies/balanced.yml`.
+An explicit `policy: {}` allows every request. Custom rules need no mode switch.
+Preset files can be merged with local settings.
 
 ## Built-in policies and rules
 
-`config/policies/` and `config/rules/` contain the source catalogs embedded into
+`config/policies/`, `config/signals/` and `config/rules/` contain the source catalogs embedded into
 the binary at build time. `config/examples/` contains example operator
 configurations. Installed binaries load built-in resources without a checkout or
 copied catalog directories.
@@ -36,14 +27,14 @@ policy: !include builtin:policies/balanced.yml
 
 | Built-in policy | Behavior |
 | --- | --- |
-| `builtin:policies/balanced.yml` | Balanced preset, the default policy. The production configuration selects it. |
-| `builtin:policies/light.yml` | Light preset. |
-| `builtin:policies/strict.yml` | Strict preset. |
-| `builtin:policies/off.yml` | Allows application traffic without a proof requirement. |
-| `builtin:policies/crawler-protection.yml` | Optional custom policy with AI/headless deny groups, verified Google, Bing, Apple and DuckDuckGo search crawlers, public paths and client scoring. |
+| `builtin:policies/balanced.yml` | `public-endpoints` allows public paths; `protected-traffic` challenges with Fast difficulty 2. Default when policy is absent. |
+| `builtin:policies/light.yml` | `public-endpoints` allows public paths; `suspicious-client` challenges empty or bot-like agents with Fast difficulty 1. |
+| `builtin:policies/strict.yml` | `public-endpoints` allows public paths; `protected-traffic` challenges with Fast difficulty 4. |
+| `builtin:policies/off.yml` | No rules; default action `allow`. |
+| `builtin:policies/crawler-protection.yml` | AI/headless deny rules, verified search crawlers, public paths and client scoring. Needs `builtin:signals/crawler-ip-sets.yml`. |
 
-The crawler-protection policy includes the Google, Bing, Apple and DuckDuckGo
-search crawler feeds and the score thresholds it needs. Remote feed loading
+The crawler-protection policy needs `signals.ip_sets: !include builtin:signals/crawler-ip-sets.yml`
+for Google, Bing, Apple and DuckDuckGo search crawler feeds. It includes score thresholds. Remote feed loading
 requires outbound HTTPS for runtime readiness. Configuration checks validate the
 policy without fetching the feeds.
 The [custom example](../config/examples/custom.yml) demonstrates selecting it.
@@ -51,23 +42,23 @@ The [custom example](../config/examples/custom.yml) demonstrates selecting it.
 Customize a built-in custom policy with a map merge:
 
 ```yaml
+signals:
+  ip_sets:
+    <<: !include builtin:signals/crawler-ip-sets.yml
+    internal: {cidrs: [10.0.0.0/8]}
 policy:
   <<: !include builtin:policies/crawler-protection.yml
   default_action: challenge
-  ip_sets:
-    internal: {cidrs: [10.0.0.0/8]}
 ```
 
-The added IP set keeps the built-in crawler set and rules. Maps merge recursively;
-lists and scalars replace previous values. The `balanced`, `light`, `strict` and
-`off` presets still reject custom `rules`, `score` and `default_action`.
+Maps merge recursively; lists and scalars replace previous values.
+Signals are shared by conditions independently of the selected policy.
 
 For an operator-defined policy, mix built-in rules, inline rules and local files
 in evaluation order:
 
 ```yaml
 policy:
-  mode: custom
   default_action: allow
   rules:
     - !include builtin:rules/public-endpoints.yml
@@ -96,14 +87,14 @@ operator-maintained copy.
 The Tor exit rule requires this set:
 
 ```yaml
-policy:
-  mode: custom
+signals:
   ip_sets:
     tor-exits:
       url: https://check.torproject.org/torbulkexitlist
       format: list_text
       refresh: 1h
       max_stale: 1d
+policy:
   rules:
     - !include builtin:rules/tor-exit.yml
 ```
@@ -115,12 +106,12 @@ matches the crawler and the client address is in the named IP set. Define the
 set with the publisher feed before you include the rule:
 
 ```yaml
-policy:
-  mode: custom
+signals:
   ip_sets:
     bing-crawlers:
       url: https://www.bing.com/toolbox/bingbot.json
       format: ip_prefixes_json
+policy:
   rules:
     - !include builtin:rules/bingbot.yml
 ```
@@ -136,6 +127,12 @@ The crawler-protection policy evaluates deny rules before crawler and public
 allows, then applies client scores. It uses Fast difficulties 1, 2, 4 and 6 at
 scores 1, 10, 20 and 30. Its fallback allows requests without a positive score.
 CEL expressions are outside the current policy schema.
+
+## Signals
+
+`signals` defines `ip_sets`, `asn_sets`, `geoip`, `dns`, `honeypot` and `counters`.
+Policy rules, counters and `site.open_graph.when` read these signal blocks.
+The `signals` section reloads with `policy`.
 
 ## Custom evaluation
 
@@ -158,7 +155,6 @@ or `challenge`, but never `score`.
 
 ```yaml
 policy:
-  mode: custom
   default_action: deny
   rules:
     - name: browser-score
@@ -205,7 +201,7 @@ conditions against `PolicySets` and `GeoDatabases` registries and matches them a
 It shares the policy matcher and resource limits. Score matchers are rejected
 outside policy rules, with the supplied configuration path. An unknown result
 selects no request. `site.open_graph.when` uses this API with the live
-`policy.ip_sets`, `policy.asn_sets` and `policy.geoip` registries.
+`signals.ip_sets`, `signals.asn_sets` and `signals.geoip` registries.
 
 Multiple fields in a condition are combined with AND. `all`, `any`, and
 `not` compose conditions recursively. `all` and `any` cannot be
@@ -247,10 +243,10 @@ without a load average, so an `allow` rule on it never allows.
 ```
 
 `country` and `asn` match the client address against the MaxMind databases in
-`policy.geoip`. A list matches when the database holds any listed value for the address.
+`signals.geoip`. A list matches when the database holds any listed value for the address.
 An address that is missing from the database, or a missing client IP, does not match.
 An IPv4-mapped IPv6 client matches as IPv4. Each condition needs its database in
-`policy.geoip` and works in policy rules and in `site.open_graph.when`.
+`signals.geoip` and works in policy rules and in `site.open_graph.when`.
 
 ```yaml
 - name: scraper-sources
@@ -291,9 +287,9 @@ client as IPv4.
 A lookup that fails or times out leaves the condition unknown. An `allow` rule on an unknown
 condition never allows, and a `deny` rule challenges. Rilgate evaluates the policy once
 without lookups, and looks up the client only when the evaluation reaches a DNS condition.
-The first request from a new client can wait up to `policy.dns.timeout`.
+The first request from a new client can wait up to `signals.dns.timeout`.
 
-`policy.dns` tunes the lookups and requires `mode: custom`. The settings apply only when a
+`signals.dns` tunes the lookups. The settings apply only when a
 rule uses `dnsbl` or `client_ip.reverse_dns`. Rilgate reads the DNS servers from the system
 configuration. Results are cached per client, and a failed lookup is never cached.
 
@@ -309,8 +305,8 @@ unlisted address or a client without a verified name.
 
 ## Counters and difficulty escalation
 
-`policy.counters` defines up to 32 named request counters. Names contain 1 to
-64 ASCII letters, digits, `-` or `_`. Counters require `mode: custom`.
+`signals.counters` defines up to 32 named request counters. Names contain 1 to
+64 ASCII letters, digits, `-` or `_`. Counters.
 
 Each counter has these settings:
 
@@ -327,7 +323,7 @@ Host is the lowercase host used for challenge binding, including any port.
 `client_ip` defaults to IPv4 /32 and IPv6 /64. Use
 `{client_ip: {ipv4_prefix: 24, ipv6_prefix: 48}}` to change the prefixes within
 `1..32` and `1..128`. IPv4-mapped IPv6 addresses use IPv4 prefixes.
-`country` and `asn` need their corresponding `policy.geoip` databases; omitting
+`country` and `asn` need their corresponding `signals.geoip` databases; omitting
 the required database is a compile error. Configure an ASN database before using
 the `cloud-asn` counter in the example below.
 
@@ -357,8 +353,7 @@ the least recent key is evicted. Counts live in process memory. Reload preserves
 a counter only when its name, key, window, capacity and `count_when` are equal.
 
 ```yaml
-policy:
-  mode: custom
+signals:
   counters:
     pages:
       key: [client_ip, host]
@@ -374,6 +369,7 @@ policy:
       key: [asn, host]
       window: 1m
       count_when: {asn: [13335, 136907, 45102]}
+policy:
   rules:
     - {name: login-burst, when: {rate: {counter: login, gte: 10}}, action: deny}
     - {name: page-rate, when: {rate: {counter: pages, gte: 60}}, action: score, score: 20}
@@ -390,21 +386,21 @@ passes requests in that tier.
 
 ## Honeypot
 
-`policy.honeypot` turns on a hidden link in the challenge and refresh pages. A person does not
+`signals.honeypot` turns on a hidden link in the challenge and refresh pages. A person does not
 see the link. A crawler that follows every link requests it. The link points to
 `{site.base_path}/trap/<random>`, where `<random>` is 16 random bytes in hex that change on
 every page. The request flags the client, and the trap URL answers like an unknown internal
 route (the 404 page).
 
 The condition `honeypot: true` matches flagged clients, and `honeypot: false` matches the
-others. The condition needs `policy.honeypot` and works only in policy rules.
+others. The condition needs `signals.honeypot` and works only in policy rules.
 
 ```yaml
-policy:
-  mode: custom
+signals:
   honeypot:
     ttl: 24h
     max_entries: 65536
+policy:
   rules:
     - name: link-followers
       when: {honeypot: true}
@@ -431,15 +427,15 @@ Policies permit at most 128 rules plus thresholds and 512 compiled condition nod
 permit at most 16 nested condition levels and 64 entries per membership list. Matcher
 strings have limits of 2048 bytes each and 64 KiB in total.
 
-A custom policy defines at most 64 IP sets. An `in_sets` list names at most 16 sets.
+The signals section defines at most 64 IP sets. An `in_sets` list names at most 16 sets.
 A set holds at most 65 536 prefixes. Regex compilation has bounded program and DFA
 sizes. The request path and method come from the actual HTTP request, and policy and
 forwarding use the same validated path.
 
 ## IP sets
 
-A named IP set groups addresses that conditions match with `client_ip.in_sets`. `ip_sets`
-requires `mode: custom`. A set name has 1 to 64 bytes from `a-z`, `0-9`,
+A named IP set groups addresses that conditions match with `client_ip.in_sets`.
+Define these sets in `signals.ip_sets`. A set name has 1 to 64 bytes from `a-z`, `0-9`,
 `-` and `_`.
 
 It starts with a letter or digit. At most 64 sets are defined. A set defines exactly one
@@ -451,8 +447,7 @@ a configuration error. To combine `cidr` and `in_sets`, use an explicit
 `all` or `any`.
 
 ```yaml
-policy:
-  mode: custom
+signals:
   ip_sets:
     office:
       cidrs: [203.0.113.0/24, 2001:db8::/32]
@@ -461,6 +456,7 @@ policy:
       format: ip_prefixes_json
       refresh: 24h
       max_stale: 7d
+policy:
   rules:
     - name: verified-google-crawler
       when:
@@ -490,8 +486,7 @@ Quoted values in errors contain at most 64 bytes, ending at a character boundary
 IP values accept IPv4 or IPv6 addresses and networks. Single addresses become `/32` or `/128` host networks.
 
 ```yaml
-policy:
-  mode: custom
+signals:
   ip_sets:
     tor-exits:
       url: https://check.torproject.org/torbulkexitlist
@@ -504,6 +499,7 @@ policy:
     aws-ec2:
       url: https://ip-ranges.amazonaws.com/ip-ranges.json
       format: {json_path: ["$.prefixes[?@.service == 'EC2'].ip_prefix"]}
+policy:
 ```
 
 `refresh` defaults to `24h` and is bounded to `1h..=7d`.
@@ -576,7 +572,7 @@ groups, so each set names one group.
 
 ## ASN sets
 
-`policy.asn_sets` requires `mode: custom`. Each registry permits at most 64 sets, each with 1 to 65536 entries.
+`signals.asn_sets` defines named ASN sets. Each registry permits at most 64 sets, each with 1 to 65536 entries.
 Set names follow the IP set rules. Choose exactly one source: static `asns` or a remote `url` with `format`.
 ASN values range from 1 to 4294967295. Remote values accept decimal numbers with an optional case-insensitive `AS` prefix.
 ASN feeds accept `list_text`, `regex` and `json_path`. They reject `ip_prefixes_json`.
@@ -585,7 +581,7 @@ ASN feeds accept `list_text`, `regex` and `json_path`. They reject `ip_prefixes_
 Static sets reject `format`, `refresh` and `max_stale`. Production feed URLs require HTTPS; development also accepts HTTP.
 Feed loading, body limits, retries and snapshot retention follow the IP set rules.
 
-`asn: {in_sets: [datacenter]}` resolves the client ASN through `policy.geoip.asn` and matches any listed set.
+`asn: {in_sets: [datacenter]}` resolves the client ASN through `signals.geoip.asn` and matches any listed set.
 The list accepts 1 to 16 defined names. An unknown name causes a configuration error.
 This condition works in rules, `count_when` and `site.open_graph.when`.
 A missing client IP or an address absent from the database does not match.
@@ -595,8 +591,7 @@ Otherwise, an unloaded or stale remote set makes it unknown.
 Readiness requires every remote ASN set to load once. Metrics use the `rilgate_asn_set_*` families.
 
 ```yaml
-policy:
-  mode: custom
+signals:
   asn_sets:
     datacenter:
       url: https://raw.githubusercontent.com/X4BNet/lists_vpn/main/input/datacenter/ASN.txt
@@ -604,6 +599,7 @@ policy:
   geoip:
     asn:
       path: /var/lib/rilgate/GeoLite2-ASN.mmdb
+policy:
   rules:
     - name: datacenter-score
       when: {asn: {in_sets: [datacenter]}}
@@ -615,14 +611,12 @@ policy:
 
 `asn` also accepts `{in_sets: [datacenter]}`. See [ASN sets](#asn-sets) for configuration and unknown results.
 
-`policy.geoip` configures one database for `country` and one for `asn`. It requires
-`mode: custom`. A database defines exactly one source: `path`, a local MaxMind `.mmdb`
+`signals.geoip` configures one database for `country` and one for `asn`. A database defines exactly one source: `path`, a local MaxMind `.mmdb`
 file, or `maxmind`, a download. A `country` database accepts a country or city edition
 and an `asn` database accepts an ASN edition. The software refuses a database of another type.
 
 ```yaml
-policy:
-  mode: custom
+signals:
   geoip:
     country:
       path: /var/lib/rilgate/GeoLite2-Country.mmdb
@@ -632,6 +626,7 @@ policy:
         account_id: "123456"
         license_key: "${MAXMIND_LICENSE_KEY}"
       refresh: 24h
+policy:
 ```
 
 A `maxmind` source downloads `https://download.maxmind.com/geoip/databases/{edition}/download?suffix=tar.gz`
@@ -682,7 +677,6 @@ Select the script-free refresh challenge in a custom rule:
 
 ```yaml
 policy:
-  mode: custom
   default_action: allow
   rules:
     - name: refresh-protected
@@ -700,7 +694,6 @@ Select HashWX in a custom rule or score threshold:
 
 ```yaml
 policy:
-  mode: custom
   default_action: allow
   rules:
     - name: hashwx-protected

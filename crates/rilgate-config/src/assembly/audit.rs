@@ -87,6 +87,7 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
     if config
       .pow
       .policy
+      .policy
       .score
       .as_ref()
       .is_some_and(|score| score.debug_header.enabled)
@@ -97,7 +98,7 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
         "policy.score.debug_header.enabled: debug score headers are disabled in production".into(),
       );
     }
-    for (name, set) in &config.pow.policy.ip_sets {
+    for (name, set) in &config.pow.policy.signals.ip_sets {
       if let Some(url) = &set.url
         && !url
           .get(..8)
@@ -106,11 +107,11 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
         report(
           "ip-set-plain-http",
           Severity::Error,
-          format!("policy.ip_sets.{name}.url: production requires https"),
+          format!("signals.ip_sets.{name}.url: production requires https"),
         );
       }
     }
-    for (name, set) in &config.pow.policy.asn_sets {
+    for (name, set) in &config.pow.policy.signals.asn_sets {
       if let Some(url) = &set.url
         && !url
           .get(..8)
@@ -119,7 +120,7 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
         report(
           "asn-set-plain-http",
           Severity::Error,
-          format!("policy.asn_sets.{name}.url: production requires https"),
+          format!("signals.asn_sets.{name}.url: production requires https"),
         );
       }
     }

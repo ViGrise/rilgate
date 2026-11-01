@@ -68,12 +68,12 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
   unavailable.name = "unavailable".into();
   unavailable.port = 9;
   pow.stratum_pool.pools.insert(0, unavailable);
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
     .algorithm = Some(PowAlgorithm::RandomX);
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()

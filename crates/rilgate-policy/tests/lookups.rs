@@ -1,11 +1,10 @@
 use http::{HeaderMap, Method};
 use rilgate_policy::{
-  Lookups, PolicyAction, PolicyEngine, conditions::Request, policy::schema::Definition,
+  Lookups, PolicyAction, PolicyEngine, conditions::Request, policy::schema::PolicyDocument,
 };
 
 fn engine(rules: &str) -> PolicyEngine {
-  let text = format!("mode: custom\n{rules}");
-  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(&text).unwrap()).unwrap()
+  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<PolicyDocument>(rules).unwrap()).unwrap()
 }
 
 fn decide(engine: &PolicyEngine, lookups: &Lookups) -> rilgate_policy::PolicyDecision {
@@ -23,12 +22,7 @@ fn decide(engine: &PolicyEngine, lookups: &Lookups) -> rilgate_policy::PolicyDec
   )
 }
 
-const CRAWLER_RULES: &str = "default_action: deny
-rules:
-  - name: crawler
-    when: {client_ip: {reverse_dns: [googlebot.com]}}
-    action: allow
-";
+const CRAWLER_RULES: &str = "policy:\n  default_action: deny\n  rules:\n    - name: crawler\n      when: {client_ip: {reverse_dns: [googlebot.com]}}\n      action: allow\n";
 
 #[test]
 fn unresolved_reverse_dns_never_allows() {
@@ -72,9 +66,7 @@ fn verified_reverse_dns_matches_on_a_label_boundary() {
 #[test]
 fn dnsbl_listing_scores() {
   let engine = engine(
-    "rules:
-  - {name: listed, when: {dnsbl: dnsbl.example}, action: score, score: 10}
-",
+    "policy:\n  rules:\n    - {name: listed, when: {dnsbl: dnsbl.example}, action: score, score: 10}\n",
   );
   let answer = |listed| Lookups {
     dnsbl: [("dnsbl.example".to_string(), listed)].into(),
@@ -89,10 +81,7 @@ fn dnsbl_listing_scores() {
 #[test]
 fn lookup_plan_lists_the_zones_and_reverse_dns_use() {
   let engine = engine(
-    "rules:
-  - {name: a, when: {dnsbl: DNSBL.example.}, action: score, score: 1}
-  - {name: b, when: {any: [{dnsbl: other.example}, {client_ip: {reverse_dns: [example.org]}}]}, action: score, score: 1}
-",
+    "policy:\n  rules:\n    - {name: a, when: {dnsbl: DNSBL.example.}, action: score, score: 1}\n    - {name: b, when: {any: [{dnsbl: other.example}, {client_ip: {reverse_dns: [example.org]}}]}, action: score, score: 1}\n",
   );
   let plan = engine.lookup_plan();
   assert_eq!(plan.dnsbl_zones, ["dnsbl.example", "other.example"]);
@@ -124,21 +113,21 @@ fn lookup_conditions_are_rejected_outside_policy_rules() {
 #[test]
 fn invalid_lookup_settings_are_rejected() {
   let error = |text: &str| {
-    let definition: Definition = serde_yaml_ng::from_str(&format!("mode: custom\n{text}")).unwrap();
+    let definition: PolicyDocument = serde_yaml_ng::from_str(text).unwrap();
     PolicyEngine::from_definition(&definition)
       .unwrap_err()
       .to_string()
   };
   assert_eq!(
-    error("rules: [{name: a, when: {dnsbl: 'bad zone'}, action: deny}]"),
+    error("policy:\n  rules: [{name: a, when: {dnsbl: 'bad zone'}, action: deny}]"),
     "policy.rules[0].when.dnsbl: expected a DNS zone name"
   );
   assert_eq!(
-    error("rules: [{name: a, when: {client_ip: {reverse_dns: []}}, action: deny}]"),
+    error("policy:\n  rules: [{name: a, when: {client_ip: {reverse_dns: []}}, action: deny}]"),
     "policy.rules[0].when.client_ip.reverse_dns: expected 1 to 16 domain names"
   );
   assert_eq!(
-    error("dns: {timeout: 30s}"),
-    "policy.dns.timeout: expected 1ms to 5s"
+    error("signals:\n  dns: {timeout: 30s}\npolicy: {}\n"),
+    "signals.dns.timeout: expected 1ms to 5s"
   );
 }

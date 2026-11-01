@@ -1,10 +1,10 @@
 use http::{HeaderMap, Method};
 use rilgate_policy::{
-  HostLoad, PolicyAction, PolicyEngine, conditions::Request, policy::schema::Definition,
+  HostLoad, PolicyAction, PolicyEngine, conditions::Request, policy::schema::PolicyDocument,
 };
 
 fn engine(text: &str, load: &'static HostLoad) -> anyhow::Result<PolicyEngine> {
-  let definition: Definition = serde_yaml_ng::from_str(text)?;
+  let definition: PolicyDocument = serde_yaml_ng::from_str(text)?;
   Ok(PolicyEngine::from_definition(&definition)?.with_host_load(load))
 }
 fn fresh_load() -> &'static HostLoad {
@@ -27,7 +27,7 @@ fn decide(engine: &PolicyEngine) -> (PolicyAction, i32, bool) {
 }
 fn rule_with(load: &str) -> String {
   format!(
-    "mode: custom\ndefault_action: allow\nrules:\n  - name: busy\n    when:\n      load: {load}\n    action: score\n    score: 5\n"
+    "policy:\n  default_action: allow\n  rules:\n    - name: busy\n      when:\n        load: {load}\n      action: score\n      score: 5\n"
   )
 }
 
@@ -46,7 +46,7 @@ fn load_condition_matches_the_selected_window() {
 #[test]
 fn load_condition_is_unknown_before_a_sample() {
   let engine = engine(
-    "mode: custom\ndefault_action: deny\nrules:\n  - name: calm\n    when:\n      load: {lt: 100.0}\n    action: allow\n",
+    "policy:\n  default_action: deny\n  rules:\n    - name: calm\n      when:\n        load: {lt: 100.0}\n      action: allow\n",
     fresh_load(),
   )
   .unwrap();

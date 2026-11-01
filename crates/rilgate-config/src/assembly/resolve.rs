@@ -60,10 +60,13 @@ impl Document {
         ),
         (Some(_), Some(_)) => anyhow::bail!("security: secret and keys are mutually exclusive"),
       };
+    let policy_document = rilgate_policy::PolicyDocument {
+      signals: self.signals.clone(),
+      policy: self.policy.clone(),
+    };
     let needs_pool = self.pow.default_algorithm == PowAlgorithm::RandomX
       || self.pow.verification == PowEnforcement::StratumPoolAccepted
-      || self
-        .policy
+      || policy_document
         .challenges()?
         .iter()
         .any(|(_, c)| c.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::RandomX);
@@ -74,8 +77,7 @@ impl Document {
     let fallback = StratumPool::default();
     let pool = self.pow.stratum_pool.as_ref().unwrap_or(&fallback);
     validate_proxies(&pool.proxies, "pow.stratum_pool.proxies")?;
-    let largest_difficulty = self
-      .policy
+    let largest_difficulty = policy_document
       .challenges()?
       .iter()
       .filter(|(_, challenge)| {
@@ -196,7 +198,7 @@ impl Document {
           })
           .transpose()?,
         hashwx_enabled: self.pow.verification == PowEnforcement::LocalVerify
-          && self.policy.challenges()?.iter().any(|(_, choice)| {
+          && policy_document.challenges()?.iter().any(|(_, choice)| {
             choice.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::Hashwx
           }),
         hashwx: rilgate_pow_hashwx::HashWxConfig {
@@ -258,7 +260,7 @@ impl Document {
           weight_step: randomx.difficulty.score_step,
           max: randomx.difficulty.max,
         },
-        policy: self.policy.clone(),
+        policy: policy_document,
         browser: BrowserConfig {
           solver_module_path: randomx.browser.module.clone(),
           max_workers: randomx.browser.max_workers,

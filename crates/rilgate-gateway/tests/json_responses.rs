@@ -148,9 +148,9 @@ async fn json_head_deny_and_forced_path_selection_preserve_policy_semantics() {
   );
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
-  config.pow.policy.rules.as_mut().unwrap()[0].action =
+  config.pow.policy.policy.rules.as_mut().unwrap()[0].action =
     rilgate_config::schema::policy::Action::Deny;
-  config.pow.policy.rules.as_mut().unwrap()[0].challenge = None;
+  config.pow.policy.policy.rules.as_mut().unwrap()[0].challenge = None;
   let router = app::router(cfg).await.unwrap();
   let response = router
     .oneshot(
@@ -225,9 +225,9 @@ async fn denial_uses_the_configured_status() {
     let mut cfg = common::config();
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.web.responses = document.site.responses;
-    config.pow.policy.rules.as_mut().unwrap()[0].action =
+    config.pow.policy.policy.rules.as_mut().unwrap()[0].action =
       rilgate_config::schema::policy::Action::Deny;
-    config.pow.policy.rules.as_mut().unwrap()[0].challenge = None;
+    config.pow.policy.policy.rules.as_mut().unwrap()[0].challenge = None;
     let router = app::router(cfg).await.unwrap();
     for accept in ["text/html", "application/json"] {
       let response = router

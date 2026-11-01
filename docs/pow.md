@@ -203,7 +203,6 @@ pow:
       - name: local
         address: 127.0.0.1:3333
 policy:
-  mode: custom
   score:
     thresholds:
       - min: 30
@@ -547,7 +546,6 @@ pow:
         address: pool.internal:3333
         tls: {enabled: true}
 policy:
-  mode: custom
   default_action: challenge
 ```
 

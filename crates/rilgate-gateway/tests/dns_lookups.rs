@@ -44,8 +44,8 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
   let mut cfg = common::config();
   {
     let config = Arc::get_mut(&mut cfg).unwrap();
-    config.pow.policy.default_action = Some(Action::Deny);
-    config.pow.policy.rules = Some(vec![Rule {
+    config.pow.policy.policy.default_action = Some(Action::Deny);
+    config.pow.policy.policy.rules = Some(vec![Rule {
       name: "crawler".into(),
       when: Condition {
         client_ip: Some(IpMatch {

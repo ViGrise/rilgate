@@ -3,8 +3,7 @@ server:
     url: "http://127.0.0.1:3000"
 security:
   secret: "${RILGATE_SECURITY_SECRET}"
-policy:
-  mode: custom
+signals:
   counters:
     pages:
       key: [client_ip, host]
@@ -16,6 +15,7 @@ policy:
       window: 1m
       max_entries: 16384
       count_when: {path: {prefix: /login}}
+policy:
   rules:
     - {name: login-burst, when: {rate: {counter: login, gte: 10}}, action: deny}
     - {name: page-rate, when: {rate: {counter: pages, gte: 60}}, action: score, score: 20}

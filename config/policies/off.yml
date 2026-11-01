@@ -1,1 +1,2 @@
-mode: off
+default_action: allow
+rules: []

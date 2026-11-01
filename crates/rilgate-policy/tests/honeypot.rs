@@ -1,10 +1,10 @@
 use http::{HeaderMap, Method};
 use rilgate_policy::{
-  Lookups, PolicyAction, PolicyEngine, conditions::Request, policy::schema::Definition,
+  Lookups, PolicyAction, PolicyEngine, conditions::Request, policy::schema::PolicyDocument,
 };
 
 fn compile(text: &str) -> anyhow::Result<PolicyEngine> {
-  let definition: Definition = serde_yaml_ng::from_str(&format!("mode: custom\n{text}")).unwrap();
+  let definition: PolicyDocument = serde_yaml_ng::from_str(text).unwrap();
   PolicyEngine::from_definition(&definition)
 }
 
@@ -29,10 +29,7 @@ fn decide(engine: &PolicyEngine, honeypot: Option<bool>) -> PolicyAction {
     .action
 }
 
-const RULES: &str = "honeypot: {}
-rules:
-  - {name: trapped, when: {honeypot: true}, action: deny}
-";
+const RULES: &str = "signals:\n  honeypot: {}\npolicy:\n  rules:\n    - {name: trapped, when: {honeypot: true}, action: deny}\n";
 
 #[test]
 fn flagged_clients_match_the_honeypot_condition() {
@@ -44,12 +41,12 @@ fn flagged_clients_match_the_honeypot_condition() {
 
 #[test]
 fn honeypot_condition_requires_the_honeypot() {
-  let error = compile("rules: [{name: a, when: {honeypot: true}, action: deny}]")
+  let error = compile("policy:\n  rules: [{name: a, when: {honeypot: true}, action: deny}]")
     .unwrap_err()
     .to_string();
   assert_eq!(
     error,
-    "policy.rules[0].when.honeypot: requires policy.honeypot"
+    "policy.rules[0].when.honeypot: requires signals.honeypot"
   );
 }
 
@@ -72,20 +69,17 @@ fn honeypot_condition_is_rejected_outside_policy_rules() {
 #[test]
 fn honeypot_settings_are_validated() {
   assert_eq!(
-    compile("honeypot: {ttl: 31d}").unwrap_err().to_string(),
-    "policy.honeypot.ttl: expected 1s to 30d"
-  );
-  assert_eq!(
-    compile("honeypot: {max_entries: 0}")
+    compile("signals:\n  honeypot: {ttl: 31d}\npolicy: {}\n")
       .unwrap_err()
       .to_string(),
-    "policy.honeypot.max_entries: expected 1 to 1048576"
+    "signals.honeypot.ttl: expected 1s to 30d"
   );
-  let definition: Definition = serde_yaml_ng::from_str("honeypot: {}").unwrap();
   assert_eq!(
-    PolicyEngine::from_definition(&definition)
+    compile("signals:\n  honeypot: {max_entries: 0}\npolicy: {}\n")
       .unwrap_err()
       .to_string(),
-    "policy: honeypot requires mode: custom"
+    "signals.honeypot.max_entries: expected 1 to 1048576"
   );
+  let definition: PolicyDocument = serde_yaml_ng::from_str("signals: {honeypot: {}}").unwrap();
+  assert!(PolicyEngine::from_definition(&definition).is_ok());
 }

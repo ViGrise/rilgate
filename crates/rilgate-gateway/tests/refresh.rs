@@ -34,7 +34,7 @@ async fn fixture(challenge_status: u16, delay: u64) -> Fixture {
   .unwrap()
   .site
   .responses;
-  let rule = &mut config.pow.policy.rules.as_mut().unwrap()[0];
+  let rule = &mut config.pow.policy.policy.rules.as_mut().unwrap()[0];
   rule.when.path.as_mut().unwrap().prefix = Some("/".into());
   rule.challenge = Some(ChallengePolicy {
     algorithm: Some(PowAlgorithm::Refresh),

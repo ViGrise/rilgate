@@ -33,7 +33,6 @@ pow:
       nonces_per_seed: 463
       difficulty: {base: 1000, score_step: 10, max: 1000}
 policy:
-  mode: custom
   default_action: challenge
 `;
   const path = join(directory, 'rilgate.yml'); await writeFile(path, config);
