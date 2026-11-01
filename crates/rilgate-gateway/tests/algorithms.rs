@@ -55,6 +55,7 @@ async fn registered_backend_controls_policy_and_proof_while_common_checks_run_fi
     .unwrap()
     .pow
     .policy
+    .policy
     .rules
     .as_mut()
     .unwrap()[0]

@@ -135,7 +135,7 @@ export RILGATE_SECURITY_SECRET="$(openssl rand -hex 32)"
 ```
 
 The defaults are production, embedded resources, local Fast verification and
-`policy.mode: balanced`. HKDF derives independent purpose-specific signing keys. Unknown fields and
+`policy: !include builtin:policies/balanced.yml`. HKDF derives independent purpose-specific signing keys. Unknown fields and
 conflicting settings fail validation in every environment.
 
 Use `rilgate config check` to validate and `rilgate config show --defaults` to inspect all defaults with secrets

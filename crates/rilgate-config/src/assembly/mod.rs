@@ -31,14 +31,14 @@ impl Configuration {
     self.open_graph.validate()?;
     self.open_graph.compile_condition(
       &rilgate_policy::PolicySets {
-        ip: rilgate_policy::IpSets::compile(&self.pow.policy.ip_sets)?,
+        ip: rilgate_policy::IpSets::compile(&self.pow.policy.signals.ip_sets)?,
         asn: rilgate_policy::AsnSets::compile_with(
-          "policy.asn_sets",
-          &self.pow.policy.asn_sets,
+          "signals.asn_sets",
+          &self.pow.policy.signals.asn_sets,
           None,
         )?,
       },
-      &rilgate_policy::GeoDatabases::compile(self.pow.policy.geoip.as_ref())?,
+      &rilgate_policy::GeoDatabases::compile(self.pow.policy.signals.geoip.as_ref())?,
     )?;
     self.web.validate().context("site")?;
     self.upstream.validate().context("server.upstream")?;

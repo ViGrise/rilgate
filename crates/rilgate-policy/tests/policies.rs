@@ -1,14 +1,16 @@
 use http::{HeaderMap, Method};
-use rilgate_policy::{PolicyAction, PolicyEngine, conditions::Request, policy::schema::Definition};
+use rilgate_policy::{
+  PolicyAction, PolicyEngine, conditions::Request, policy::schema::PolicyDocument,
+};
 
 fn engine(text: &str) -> anyhow::Result<PolicyEngine> {
   let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(text)?;
-  let definition: Definition = serde_yaml_ng::from_value(value)?;
+  let definition: PolicyDocument = serde_yaml_ng::from_value(value)?;
   PolicyEngine::from_definition(&definition)
 }
 fn matched(when: &str, request: &Request<'_>, score: i32) -> bool {
   let engine = engine(&format!(
-    "mode: custom\nrules:\n  - name: test\n    when: {when}\n    action: deny\n"
+    "policy:\n  rules:\n    - name: test\n      when: {when}\n      action: deny\n"
   ))
   .unwrap();
   engine.evaluate_context(request, score).action == PolicyAction::Deny
@@ -18,33 +20,33 @@ fn matched(when: &str, request: &Request<'_>, score: i32) -> bool {
 fn rules_accumulate_scores_then_stop_on_terminal_actions_before_thresholds() {
   let engine = engine(
     r#"
-mode: custom
-default_action: deny
-rules:
-  - name: browser
-    when: {user_agent: {contains: Mozilla}}
-    action: score
-    score: 10
-  - name: trusted-api
-    when:
-      all:
-        - path: {prefix: /api/}
-        - any:
-            - method: {exact: POST}
-            - headers: {X-Allowed: {exact: 'yes'}}
-        - not: {path: {contains: /private/}}
-    action: allow
-  - name: adjustment
-    when: {path: {prefix: /}}
-    action: score
-    score: -3
-score:
-  thresholds:
-    - min: 10
-      action: deny
-    - min: 5
-      action: challenge
-      challenge: {algorithm: fast, difficulty: 2}
+policy:
+  default_action: deny
+  rules:
+    - name: browser
+      when: {user_agent: {contains: Mozilla}}
+      action: score
+      score: 10
+    - name: trusted-api
+      when:
+        all:
+          - path: {prefix: /api/}
+          - any:
+              - method: {exact: POST}
+              - headers: {X-Allowed: {exact: 'yes'}}
+          - not: {path: {contains: /private/}}
+      action: allow
+    - name: adjustment
+      when: {path: {prefix: /}}
+      action: score
+      score: -3
+  score:
+    thresholds:
+      - min: 10
+        action: deny
+      - min: 5
+        action: challenge
+        challenge: {algorithm: fast, difficulty: 2}
 "#,
   )
   .unwrap();
@@ -141,7 +143,7 @@ fn scores_saturate_and_negative_adjustments_are_supported() {
     (i32::MIN, -10, i32::MIN),
     (10, -20, -10),
   ] {
-    let engine = engine(&format!("mode: custom\nrules:\n  - name: adjustment\n    when: {{path: {{prefix: /}}}}\n    action: score\n    score: {adjustment}\n")).unwrap();
+    let engine = engine(&format!("policy:\n  rules:\n    - name: adjustment\n      when: {{path: {{prefix: /}}}}\n      action: score\n      score: {adjustment}\n")).unwrap();
     let decision = engine.evaluate(&HeaderMap::new(), "/", initial);
     assert_eq!(decision.weight, expected);
     assert_eq!(decision.action, PolicyAction::Allow);
@@ -171,7 +173,15 @@ fn preset_profiles_are_pool_independent_and_custom_is_not_merged() {
       Some(4),
     ),
   ] {
-    let definition: Definition = serde_yaml_ng::from_str(&format!("mode: {mode}")).unwrap();
+    let definition: PolicyDocument = serde_yaml_ng::from_str(&format!(
+      "policy:\n{}",
+      std::fs::read_to_string(format!("../../config/policies/{mode}.yml"))
+        .unwrap()
+        .lines()
+        .map(|line| format!("  {line}\n"))
+        .collect::<String>()
+    ))
+    .unwrap();
     assert!(
       definition
         .challenges()
@@ -192,7 +202,7 @@ fn preset_profiles_are_pool_independent_and_custom_is_not_merged() {
       PolicyAction::Allow
     );
   }
-  let custom = engine("mode: custom\ndefault_action: deny").unwrap();
+  let custom = engine("policy:\n  default_action: deny").unwrap();
   assert_eq!(
     custom.evaluate(&HeaderMap::new(), "/robots.txt", 0).action,
     PolicyAction::Deny
@@ -202,16 +212,16 @@ fn preset_profiles_are_pool_independent_and_custom_is_not_merged() {
 #[test]
 fn validation_rejects_ignored_options_ambiguous_thresholds_and_invalid_actions() {
   for text in [
-    "mode: balanced\nrules: []",
-    "mode: balanced\nrules: null",
-    "mode: strict\nscore: null",
-    "mode: light\nscore: {}",
-    "mode: off\ndefault_action: deny",
-    "mode: custom\ndefault_action: score",
-    "mode: custom\nscore:\n  thresholds: [{min: 1, action: deny}, {min: 2, action: allow}]",
-    "mode: custom\nscore:\n  thresholds: [{min: 1, action: deny}, {min: 1, action: allow}]",
-    "mode: custom\nscore:\n  thresholds: [{min: 1, action: score}]",
-    "mode: custom\nscore:\n  thresholds: [{min: 1, action: allow, challenge: {difficulty: 1}}]",
+    "policy: !include builtin:policies/balanced.yml\n  rules: []",
+    "policy: !include builtin:policies/balanced.yml\n  rules: null",
+    "policy: !include builtin:policies/strict.yml\n  score: null",
+    "policy: !include builtin:policies/light.yml\n  score: {}",
+    "policy: !include builtin:policies/off.yml\n  default_action: deny",
+    "policy:\n  default_action: score",
+    "policy:\n  score:\n    thresholds: [{min: 1, action: deny}, {min: 2, action: allow}]",
+    "policy:\n  score:\n    thresholds: [{min: 1, action: deny}, {min: 1, action: allow}]",
+    "policy:\n  score:\n    thresholds: [{min: 1, action: score}]",
+    "policy:\n  score:\n    thresholds: [{min: 1, action: allow, challenge: {difficulty: 1}}]",
   ] {
     assert!(engine(text).is_err(), "{text}");
   }
@@ -220,7 +230,7 @@ fn validation_rejects_ignored_options_ambiguous_thresholds_and_invalid_actions()
     "action: allow\n    score: 1",
     "action: deny\n    challenge: {difficulty: 1}",
   ] {
-    assert!(engine(&format!("mode: custom\nrules:\n  - name: invalid\n    when: {{path: {{prefix: /}}}}\n    {options}\n")).is_err(), "{options}");
+    assert!(engine(&format!("policy:\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      {options}\n")).is_err(), "{options}");
   }
 }
 
@@ -244,7 +254,7 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
   ] {
     assert!(
       engine(&format!(
-        "mode: custom\nrules:\n  - name: invalid\n    when: {condition}\n    action: allow\n"
+        "policy:\n  rules:\n    - name: invalid\n      when: {condition}\n      action: allow\n"
       ))
       .is_err(),
       "{condition}"
@@ -256,7 +266,7 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
   }
   assert!(
     engine(&format!(
-      "mode: custom\nrules:\n  - name: deep\n    when: {condition}\n    action: allow\n"
+      "policy:\n  rules:\n    - name: deep\n      when: {condition}\n      action: allow\n"
     ))
     .is_err()
   );
@@ -266,7 +276,7 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
     .join(",");
   assert!(
     engine(&format!(
-      "mode: custom\nrules:\n  - name: costly\n    when: {{any: [{children}]}}\n    action: allow\n"
+      "policy:\n  rules:\n    - name: costly\n      when: {{any: [{children}]}}\n      action: allow\n"
     ))
     .is_err()
   );
@@ -305,7 +315,7 @@ fn condition_budget_errors_report_the_rule_path() {
   let error = format!(
     "{:#}",
     engine(&format!(
-      "mode: custom\nrules:\n  - name: deep\n    when: {when}\n    action: deny\n"
+      "policy:\n  rules:\n    - name: deep\n      when: {when}\n      action: deny\n"
     ))
     .unwrap_err()
   );

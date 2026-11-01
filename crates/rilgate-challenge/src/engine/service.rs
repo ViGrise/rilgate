@@ -2,7 +2,7 @@ use crate::{ChallengeConfig, authorization::binding::AuthBinding};
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use http::HeaderMap;
-use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine, policy::schema::Definition};
+use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine, policy::schema::PolicyDocument};
 use rilgate_pow::{AlgorithmDescriptor, AlgorithmRegistry};
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 use std::sync::Arc;
@@ -45,7 +45,7 @@ impl ChallengeService {
 
   /// Compiles a policy and checks its challenges against the registered algorithms.
   /// Remote feed sets and GeoIP databases that the running policy also uses keep their loaded data.
-  pub fn compile(&self, definition: &Definition) -> Result<CompiledPolicy> {
+  pub fn compile(&self, definition: &PolicyDocument) -> Result<CompiledPolicy> {
     let running = self.policy.load();
     Self::compile_policy(
       &self.cfg,
@@ -61,7 +61,7 @@ impl ChallengeService {
   }
 
   /// Compiles the definition and installs it. The running policy stays when a check fails.
-  pub fn replace_policy(&self, definition: &Definition) -> Result<()> {
+  pub fn replace_policy(&self, definition: &PolicyDocument) -> Result<()> {
     self.install(self.compile(definition)?);
     Ok(())
   }
@@ -69,7 +69,7 @@ impl ChallengeService {
   fn compile_policy(
     cfg: &ChallengeConfig,
     algorithms: &AlgorithmRegistry,
-    definition: &Definition,
+    definition: &PolicyDocument,
     previous: Option<&PolicyEngine>,
   ) -> Result<CompiledPolicy> {
     let engine = PolicyEngine::from_definition_with(definition, previous)?;
@@ -87,7 +87,7 @@ impl ChallengeService {
           .with_context(|| format!("Invalid challenge policy in {name}"))?;
       }
     }
-    let (initial_weight, debug_header) = match &definition.score {
+    let (initial_weight, debug_header) = match &definition.policy.score {
       Some(score) => (
         score.initial,
         score

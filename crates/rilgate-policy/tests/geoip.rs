@@ -1,5 +1,7 @@
 use http::{HeaderMap, Method};
-use rilgate_policy::{PolicyAction, PolicyEngine, conditions::Request, policy::schema::Definition};
+use rilgate_policy::{
+  PolicyAction, PolicyEngine, conditions::Request, policy::schema::PolicyDocument,
+};
 use std::net::IpAddr;
 
 const COUNTRY_DB: &str = concat!(
@@ -17,10 +19,11 @@ const GOOGLE_ASN_ADDRESS: &str = "1.0.0.1";
 const TELSTRA_ASN_ADDRESS: &str = "1.128.0.1";
 
 fn engine(rules: &str) -> anyhow::Result<PolicyEngine> {
-  let text = format!(
-    "mode: custom\ngeoip:\n  country: {{path: '{COUNTRY_DB}'}}\n  asn: {{path: '{ASN_DB}'}}\n{rules}"
-  );
-  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(&text)?)
+  let mut document: PolicyDocument = serde_yaml_ng::from_str(rules)?;
+  document.signals.geoip = Some(serde_yaml_ng::from_str(&format!(
+    "country: {{path: '{COUNTRY_DB}'}}\nasn: {{path: '{ASN_DB}'}}"
+  ))?);
+  PolicyEngine::from_definition(&document)
 }
 
 fn load(engine: &PolicyEngine) {
@@ -57,10 +60,7 @@ fn decide(engine: &PolicyEngine, ip: &str) -> (PolicyAction, i32, bool) {
   (decision.action, decision.weight, decision.unresolved)
 }
 
-const SCORE_RULES: &str = "rules:
-  - {name: gb, when: {country: [GB, US]}, action: score, score: 3}
-  - {name: google, when: {asn: [15169]}, action: score, score: 5}
-";
+const SCORE_RULES: &str = "policy:\n  rules:\n    - {name: gb, when: {country: [GB, US]}, action: score, score: 3}\n    - {name: google, when: {asn: [15169]}, action: score, score: 5}\n";
 
 #[test]
 fn country_condition_matches_listed_codes() {
@@ -82,10 +82,7 @@ fn asn_condition_matches_listed_numbers() {
 #[test]
 fn geoip_condition_is_unknown_until_the_database_loads() {
   let engine = engine(
-    "default_action: deny
-rules:
-  - {name: allow-gb, when: {country: [GB]}, action: allow}
-",
+    "policy:\n  default_action: deny\n  rules:\n    - {name: allow-gb, when: {country: [GB]}, action: allow}\n",
   )
   .unwrap();
   let (action, _, unresolved) = decide(&engine, GB_ADDRESS);
@@ -106,17 +103,18 @@ fn geoip_treats_ipv4_mapped_ipv6_as_ipv4() {
 #[test]
 fn geoip_condition_requires_its_database() {
   let error = PolicyEngine::from_definition(
-    &serde_yaml_ng::from_str::<Definition>(
-      "mode: custom\nrules:\n  - {name: r, when: {country: [GB]}, action: deny}\n",
+    &serde_yaml_ng::from_str::<PolicyDocument>(
+      "policy:\n  rules:\n    - {name: r, when: {country: [GB]}, action: deny}\n",
     )
     .unwrap(),
   )
   .unwrap_err();
   assert!(
-    format!("{error:#}").contains("policy.rules[0].when.country: requires policy.geoip.country")
+    format!("{error:#}").contains("policy.rules[0].when.country: requires signals.geoip.country")
   );
   let error =
-    engine("rules:\n  - {name: r, when: {country: [GB, cn]}, action: deny}\n").unwrap_err();
+    engine("policy:\n  rules:\n    - {name: r, when: {country: [GB, cn]}, action: deny}\n")
+      .unwrap_err();
   assert!(
     format!("{error:#}")
       .contains("policy.rules[0].when.country[1]: expected an ISO 3166-1 alpha-2 code")
@@ -136,14 +134,14 @@ fn invalid_database_keeps_the_previous_reader() {
 
 #[test]
 fn asn_sets_match_through_the_asn_database() {
-  let engine = engine("asn_sets: {dc: {asns: [15169]}}\nrules:\n  - {name: dc, when: {asn: {in_sets: [dc]}}, action: score, score: 5}\n").unwrap();
+  let engine = engine("signals:\n  asn_sets: {dc: {asns: [15169]}}\npolicy:\n  rules:\n    - {name: dc, when: {asn: {in_sets: [dc]}}, action: score, score: 5}\n").unwrap();
   load(&engine);
   assert_eq!(weight(&engine, GOOGLE_ASN_ADDRESS), 5);
   assert_eq!(weight(&engine, TELSTRA_ASN_ADDRESS), 0);
 }
 #[test]
 fn remote_asn_set_is_unknown_until_loaded() {
-  let engine = engine("asn_sets: {dc: {url: 'https://example.test/asns', format: list_text}}\nrules:\n  - {name: dc, when: {asn: {in_sets: [dc]}}, action: deny}\n").unwrap();
+  let engine = engine("signals:\n  asn_sets: {dc: {url: 'https://example.test/asns', format: list_text}}\npolicy:\n  rules:\n    - {name: dc, when: {asn: {in_sets: [dc]}}, action: deny}\n").unwrap();
   load(&engine);
   let (action, _, unresolved) = decide(&engine, GOOGLE_ASN_ADDRESS);
   assert_eq!(action, PolicyAction::Challenge);
@@ -160,28 +158,22 @@ fn remote_asn_set_is_unknown_until_loaded() {
 fn asn_set_errors() {
   for (source, expected) in [
     (
-      "asn_sets: {dc: {url: 'https://example.test/asns', format: ip_prefixes_json}}\nrules: []",
-      "policy.asn_sets.dc.format: ip_prefixes_json holds IP networks, use list_text, regex or json_path",
+      "signals:\n  asn_sets: {dc: {url: 'https://example.test/asns', format: ip_prefixes_json}}\npolicy:\n  rules: []",
+      "signals.asn_sets.dc.format: ip_prefixes_json holds IP networks, use list_text, regex or json_path",
     ),
     (
-      "rules: [{name: dc, when: {asn: {in_sets: [missing]}}, action: deny}]",
+      "policy:\n  rules: [{name: dc, when: {asn: {in_sets: [missing]}}, action: deny}]",
       "policy.rules[0].when.asn.in_sets: unknown asn set missing",
     ),
     (
-      "asn_sets: {dc: {asns: [0]}}\nrules: []",
-      "policy.asn_sets.dc.asns[0]: expected an autonomous system number from 1 to 4294967295",
+      "signals:\n  asn_sets: {dc: {asns: [0]}}\npolicy:\n  rules: []",
+      "signals.asn_sets.dc.asns[0]: expected an autonomous system number from 1 to 4294967295",
     ),
   ] {
     let error = engine(source).unwrap_err();
     assert!(format!("{error:#}").contains(expected), "{error:#}");
   }
-  let definition: Definition =
-    serde_yaml_ng::from_str("mode: balanced\nasn_sets: {dc: {asns: [15169]}}").unwrap();
-  assert!(
-    format!(
-      "{:#}",
-      PolicyEngine::from_definition(&definition).unwrap_err()
-    )
-    .contains("policy: asn_sets require mode: custom")
-  );
+  let definition: PolicyDocument =
+    serde_yaml_ng::from_str("signals: {asn_sets: {dc: {asns: [15169]}}}").unwrap();
+  assert!(PolicyEngine::from_definition(&definition).is_ok());
 }

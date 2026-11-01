@@ -2,4 +2,4 @@ server: !include ./includes/server.yml
 security: !include ./includes/security.yml
 site: !include ./includes/site.yml
 pow: !include ./includes/pow.yml
-policy: !include ./includes/policy.yml
+<<: !include ./includes/policy.yml

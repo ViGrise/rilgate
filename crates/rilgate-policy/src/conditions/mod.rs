@@ -315,7 +315,10 @@ impl Compiled {
         !budget.request_only,
         "{path}.honeypot: honeypot is only available in policy rules"
       );
-      ensure!(budget.honeypot, "{path}.honeypot: requires policy.honeypot");
+      ensure!(
+        budget.honeypot,
+        "{path}.honeypot: requires signals.honeypot"
+      );
       budget.consume(depth, path)?;
       nodes.push(Self::Honeypot(flagged));
     }
@@ -329,7 +332,7 @@ impl Compiled {
   fn compile_country(codes: &[String], path: &str, geoip: &GeoDatabases) -> Result<Self> {
     let database = geoip
       .country()
-      .with_context(|| format!("{path}.country: requires policy.geoip.country"))?;
+      .with_context(|| format!("{path}.country: requires signals.geoip.country"))?;
     ensure!(
       (1..=MAX_LIST_ENTRIES).contains(&codes.len()),
       "{path}.country: expected 1 to {MAX_LIST_ENTRIES} country codes"
@@ -355,7 +358,7 @@ impl Compiled {
   ) -> Result<Self> {
     let database = geoip
       .asn()
-      .with_context(|| format!("{path}.asn: requires policy.geoip.asn"))?;
+      .with_context(|| format!("{path}.asn: requires signals.geoip.asn"))?;
     match value {
       AsnMatch::Numbers(numbers) => {
         ensure!(

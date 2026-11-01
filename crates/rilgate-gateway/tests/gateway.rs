@@ -421,7 +421,7 @@ fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
   config.pow.signing_key.0 = "a".repeat(32);
   config.pow.auth_signing_key.0 = "b".repeat(32);
   assert!(config.validate().is_ok());
-  config.pow.policy.score = Some(rilgate_config::schema::policy::Scoring {
+  config.pow.policy.policy.score = Some(rilgate_config::schema::policy::Scoring {
     debug_header: rilgate_config::schema::policy::DebugHeader {
       enabled: true,
       ..Default::default()
@@ -431,6 +431,7 @@ fn invalid_or_unsafe_configuration_is_rejected_before_startup() {
   assert!(config.validate().is_err());
   config
     .pow
+    .policy
     .policy
     .score
     .as_mut()
@@ -453,6 +454,7 @@ async fn invalid_policy_difficulty_is_rejected_at_startup() {
   Arc::get_mut(&mut cfg)
     .unwrap()
     .pow
+    .policy
     .policy
     .rules
     .as_mut()
@@ -508,12 +510,12 @@ async fn unavailable_p2pool_returns_service_unavailable_after_valid_presentation
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.stratum_pool.pools[0].port = port;
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
     .algorithm = Some(PowAlgorithm::RandomX);
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()

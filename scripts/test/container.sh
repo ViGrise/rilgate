@@ -21,8 +21,7 @@ site:
   base_path: /origin-internal
 security:
   secret: ${RILGATE_SECURITY_SECRET}
-policy:
-  mode: off
+policy: !include builtin:policies/off.yml
 YAML
 chmod 755 "$workdir"
 chmod 644 "$workdir/origin.yml"

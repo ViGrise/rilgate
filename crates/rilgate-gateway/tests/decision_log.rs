@@ -63,7 +63,7 @@ async fn challenge_and_deny_decisions_are_logged_with_the_client_ip() {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.server.decision_log = level;
     config.upstream.url = format!("http://{upstream_address}");
-    config.pow.policy.rules.as_mut().unwrap().insert(
+    config.pow.policy.policy.rules.as_mut().unwrap().insert(
       0,
       Rule {
         name: "bad-bot".into(),

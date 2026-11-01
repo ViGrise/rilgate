@@ -26,7 +26,6 @@ server:
 security:
   secret: trusted-policy-flow-secret-with-at-least-32-bytes
 policy:
-  mode: custom
   rules:
     - name: well-known
       when: {{path: {{prefix: '/.well-known/'}}}}
@@ -192,12 +191,12 @@ server:
   trusted_proxies: ['127.0.0.1/32', '::1/128']
 security:
   secret: remote-ip-set-flow-secret-with-at-least-32-bytes
-policy:
-  mode: custom
+signals:
   ip_sets:
     feed:
       url: http://{feed_address}/ips.json
       format: ip_prefixes_json
+policy:
   rules:
     - name: blocked
       when: {{client_ip: {{in_sets: [feed]}}}}

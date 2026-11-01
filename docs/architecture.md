@@ -38,9 +38,10 @@ crates/rilgate-config/src/
   assembly/         Validation and immutable runtime resolution
   model/            Domain PoW and quota settings
   runtime/          Listener and upstream settings
+config/policies/   Built-in YAML policy presets
+config/signals/    Built-in YAML signal definitions
 crates/rilgate-policy/src/
-  policy/schema.rs  Rules, actions, thresholds and condition representation
-  policy/presets.rs Built-in policy definitions
+  policy/schema.rs  Signals, rules, actions, thresholds and conditions
   policy/evaluator.rs Ordered rule and threshold execution
   conditions/       Shared bounded matcher compiler and evaluator
   feed_sets/        Generic set state, registry and feed formats

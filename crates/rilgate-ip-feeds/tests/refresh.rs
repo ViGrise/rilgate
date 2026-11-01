@@ -6,7 +6,7 @@ use axum::{
   routing::get,
 };
 use rilgate_ip_feeds::{FeedClient, Outcome, Validators, next_delay, refresh_once};
-use rilgate_policy::policy::schema::Definition;
+use rilgate_policy::policy::schema::PolicyDocument;
 use rilgate_policy::{Membership, PolicyEngine};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -75,8 +75,8 @@ async fn failures_keep_the_previous_snapshot() {
     axum::serve(listener, app).await.unwrap();
   });
 
-  let definition: Definition = serde_yaml_ng::from_str(&format!(
-    "mode: custom\nip_sets:\n  feed: {{url: 'http://{address}/feed', format: ip_prefixes_json, refresh: 1h, max_stale: 2h}}\nrules: []\n"
+  let definition: PolicyDocument = serde_yaml_ng::from_str(&format!(
+    "signals:\n  ip_sets:\n    feed: {{url: 'http://{address}/feed', format: ip_prefixes_json, refresh: 1h, max_stale: 2h}}\npolicy:\n  rules: []\n"
   ))
   .unwrap();
   let engine = PolicyEngine::from_definition(&definition).unwrap();

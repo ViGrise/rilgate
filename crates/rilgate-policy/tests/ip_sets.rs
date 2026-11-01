@@ -44,10 +44,12 @@ fn empty_ranges_match_nothing() {
 }
 
 use http::{HeaderMap, Method};
-use rilgate_policy::{PolicyAction, PolicyEngine, conditions::Request, policy::schema::Definition};
+use rilgate_policy::{
+  PolicyAction, PolicyEngine, conditions::Request, policy::schema::PolicyDocument,
+};
 
 fn engine2(text: &str) -> anyhow::Result<PolicyEngine> {
-  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(text)?)
+  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<PolicyDocument>(text)?)
 }
 fn action(engine: &PolicyEngine, ip: &str) -> PolicyAction {
   let headers = HeaderMap::new();
@@ -65,7 +67,7 @@ fn action(engine: &PolicyEngine, ip: &str) -> PolicyAction {
     )
     .action
 }
-const STATIC: &str = "mode: custom\nip_sets:\n  office: {cidrs: [203.0.113.0/24]}\n  lab: {cidrs: ['2001:db8::/32']}\nrules:\n  - name: inside\n    when: {client_ip: {in_sets: [office, lab]}}\n    action: deny\n";
+const STATIC: &str = "signals:\n  ip_sets:\n    office: {cidrs: [203.0.113.0/24]}\n    lab: {cidrs: ['2001:db8::/32']}\npolicy:\n  rules:\n    - name: inside\n      when: {client_ip: {in_sets: [office, lab]}}\n      action: deny\n";
 
 #[test]
 fn in_sets_matches_any_listed_set() {
@@ -95,23 +97,19 @@ fn ip_set_definitions_are_validated_with_their_path() {
     ),
     (
       STATIC.replace("  office:", "  Office:"),
-      "policy.ip_sets.Office: name must contain 1 to 64 bytes of a-z, 0-9, - and _",
+      "signals.ip_sets.Office: name must contain 1 to 64 bytes of a-z, 0-9, - and _",
     ),
     (
       STATIC.replace("[203.0.113.0/24]", "[203.0.113.0/24, nope]"),
-      "policy.ip_sets.office.cidrs[1]: expected an IPv4 or IPv6 network",
+      "signals.ip_sets.office.cidrs[1]: expected an IPv4 or IPv6 network",
     ),
     (
       STATIC.replace("[203.0.113.0/24]", "[]"),
-      "policy.ip_sets.office.cidrs: expected 1 to 65536 networks",
+      "signals.ip_sets.office.cidrs: expected 1 to 65536 networks",
     ),
     (
       STATIC.replace("{cidrs: [203.0.113.0/24]}", "{}"),
-      "policy.ip_sets.office: expected exactly one of cidrs, url",
-    ),
-    (
-      "mode: balanced\nip_sets:\n  office: {cidrs: [203.0.113.0/24]}\n".into(),
-      "policy: ip_sets require mode: custom",
+      "signals.ip_sets.office: expected exactly one of cidrs, url",
     ),
   ] {
     let error = format!("{:#}", engine2(&text).unwrap_err());
@@ -133,10 +131,10 @@ fn compiled_registry_exposes_static_sets_as_loaded() {
   );
 }
 
-const REMOTE: &str = "mode: custom\nip_sets:\n  feed: {url: 'https://feeds.example/ips.json', format: ip_prefixes_json, refresh: 1h, max_stale: 2h}\nrules:\n";
+const REMOTE: &str = "signals:\n  ip_sets:\n    feed: {url: 'https://feeds.example/ips.json', format: ip_prefixes_json, refresh: 1h, max_stale: 2h}\npolicy:\n  rules:\n";
 
 fn engine3(text: &str) -> anyhow::Result<PolicyEngine> {
-  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(text)?)
+  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<PolicyDocument>(text)?)
 }
 fn remote(rules: &str) -> PolicyEngine {
   engine3(&format!("{REMOTE}{rules}")).unwrap()
@@ -169,14 +167,14 @@ fn decide(engine: &PolicyEngine, ip: &str, score: i32) -> rilgate_policy::Policy
 #[test]
 fn unknown_sets_never_produce_a_more_permissive_outcome() {
   let allow = remote(
-    "  - {name: a, when: {client_ip: {in_sets: [feed]}}, action: allow}\ndefault_action: deny\n",
+    "    - {name: a, when: {client_ip: {in_sets: [feed]}}, action: allow}\n  default_action: deny\n",
   );
   assert_eq!(decide(&allow, "192.0.2.1", 0).action, PolicyAction::Deny);
   let negated = remote(
-    "  - {name: a, when: {not: {client_ip: {in_sets: [feed]}}}, action: allow}\ndefault_action: deny\n",
+    "    - {name: a, when: {not: {client_ip: {in_sets: [feed]}}}, action: allow}\n  default_action: deny\n",
   );
   assert_eq!(decide(&negated, "192.0.2.1", 0).action, PolicyAction::Deny);
-  let deny = remote("  - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n");
+  let deny = remote("    - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n");
   let decision = decide(&deny, "192.0.2.1", 0);
   assert_eq!(
     (decision.action, &*decision.rule, decision.unresolved),
@@ -184,7 +182,7 @@ fn unknown_sets_never_produce_a_more_permissive_outcome() {
   );
   assert_eq!((decision.algorithm, decision.difficulty), (None, None));
   let scores = remote(
-    "  - {name: up, when: {client_ip: {in_sets: [feed]}}, action: score, score: 5}\n  - {name: down, when: {client_ip: {in_sets: [feed]}}, action: score, score: -7}\n",
+    "    - {name: up, when: {client_ip: {in_sets: [feed]}}, action: score, score: 5}\n    - {name: down, when: {client_ip: {in_sets: [feed]}}, action: score, score: -7}\n",
   );
   assert_eq!(decide(&scores, "192.0.2.1", 0).weight, 5);
 }
@@ -192,7 +190,7 @@ fn unknown_sets_never_produce_a_more_permissive_outcome() {
 #[test]
 fn kleene_logic_resolves_known_branches() {
   let any = remote(
-    "  - {name: a, when: {any: [{client_ip: {in_sets: [feed]}}, {path: {prefix: /}}]}, action: deny}\n",
+    "    - {name: a, when: {any: [{client_ip: {in_sets: [feed]}}, {path: {prefix: /}}]}, action: deny}\n",
   );
   let decision = decide(&any, "192.0.2.1", 0);
   assert_eq!(
@@ -200,7 +198,7 @@ fn kleene_logic_resolves_known_branches() {
     (PolicyAction::Deny, false)
   );
   let all = remote(
-    "  - {name: a, when: {all: [{client_ip: {in_sets: [feed]}}, {path: {prefix: /never}}]}, action: allow}\ndefault_action: deny\n",
+    "    - {name: a, when: {all: [{client_ip: {in_sets: [feed]}}, {path: {prefix: /never}}]}, action: allow}\n  default_action: deny\n",
   );
   let decision = decide(&all, "192.0.2.1", 0);
   assert_eq!(decision.action, PolicyAction::Deny);
@@ -209,7 +207,7 @@ fn kleene_logic_resolves_known_branches() {
 
 #[test]
 fn published_snapshots_resolve_membership_until_stale() {
-  let engine = remote("  - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n");
+  let engine = remote("    - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n");
   publish(&engine, &["192.0.2.0/24"]);
   assert_eq!(decide(&engine, "192.0.2.1", 0).action, PolicyAction::Deny);
   assert_eq!(
@@ -231,7 +229,7 @@ fn published_snapshots_resolve_membership_until_stale() {
 #[test]
 fn lookups_racing_publishes_see_complete_snapshots() {
   let engine = std::sync::Arc::new(remote(
-    "  - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n",
+    "    - {name: d, when: {client_ip: {in_sets: [feed]}}, action: deny}\n",
   ));
   publish(&engine, &["192.0.2.0/24"]);
   std::thread::scope(|scope| {
@@ -266,26 +264,27 @@ fn remote_definitions_are_validated_and_deny_rules_register_fallback_challenges(
   for (text, message) in [
     (
       REMOTE.replace("refresh: 1h", "refresh: 59m"),
-      "policy.ip_sets.feed.refresh: expected 1h to 7d",
+      "signals.ip_sets.feed.refresh: expected 1h to 7d",
     ),
     (
       REMOTE.replace("max_stale: 2h", "max_stale: 30m"),
-      "policy.ip_sets.feed.max_stale: expected refresh to 30d",
+      "signals.ip_sets.feed.max_stale: expected refresh to 30d",
     ),
     (
       REMOTE.replace("format: ip_prefixes_json, ", ""),
-      "policy.ip_sets.feed.format: required with url",
+      "signals.ip_sets.feed.format: required with url",
     ),
     (
       REMOTE.replace(
         "url: 'https://feeds.example/ips.json'",
         "url: 'ftp://feeds.example/x'",
       ),
-      "policy.ip_sets.feed.url: expected an absolute http or https URL",
+      "signals.ip_sets.feed.url: expected an absolute http or https URL",
     ),
     (
-      "mode: custom\nip_sets:\n  s: {cidrs: [192.0.2.0/24], refresh: 1h}\nrules:\n".into(),
-      "policy.ip_sets.s.refresh: only valid with url",
+      "signals:\n  ip_sets:\n    s: {cidrs: [192.0.2.0/24], refresh: 1h}\npolicy:\n  rules:\n"
+        .into(),
+      "signals.ip_sets.s.refresh: only valid with url",
     ),
   ] {
     let error = format!(
@@ -297,7 +296,7 @@ fn remote_definitions_are_validated_and_deny_rules_register_fallback_challenges(
     );
     assert!(error.contains(message), "{error}");
   }
-  let definition: Definition = serde_yaml_ng::from_str(&format!(
+  let definition: PolicyDocument = serde_yaml_ng::from_str(&format!(
     "{REMOTE}  - {{name: d, when: {{not: {{client_ip: {{in_sets: [feed]}}}}}}, action: deny}}\n"
   ))
   .unwrap();
@@ -313,12 +312,12 @@ fn remote_definitions_are_validated_and_deny_rules_register_fallback_challenges(
 #[test]
 fn decisions_record_any_rule_that_depended_on_unknown_data() {
   let challenge =
-    remote("  - {name: c, when: {client_ip: {in_sets: [feed]}}, action: challenge}\n");
+    remote("    - {name: c, when: {client_ip: {in_sets: [feed]}}, action: challenge}\n");
   let decision = decide(&challenge, "192.0.2.1", 0);
   assert_eq!(decision.action, PolicyAction::Challenge);
   assert!(decision.unresolved);
   let skipped = remote(
-    "  - {name: a, when: {client_ip: {in_sets: [feed]}}, action: allow}\n  - {name: d, when: {path: {prefix: /}}, action: deny}\n",
+    "    - {name: a, when: {client_ip: {in_sets: [feed]}}, action: allow}\n    - {name: d, when: {path: {prefix: /}}, action: deny}\n",
   );
   let decision = decide(&skipped, "192.0.2.1", 0);
   assert_eq!(
@@ -327,7 +326,7 @@ fn decisions_record_any_rule_that_depended_on_unknown_data() {
   );
   assert!(decision.unresolved);
   let scored =
-    remote("  - {name: up, when: {client_ip: {in_sets: [feed]}}, action: score, score: 5}\n");
+    remote("    - {name: up, when: {client_ip: {in_sets: [feed]}}, action: score, score: 5}\n");
   let decision = decide(&scored, "192.0.2.1", 0);
   assert_eq!((decision.action, decision.weight), (PolicyAction::Allow, 5));
   assert!(decision.unresolved);
@@ -377,30 +376,30 @@ fn invalid_feed_formats_are_rejected_at_load() {
     ),
     (
       "{regex: x}",
-      "policy.ip_sets.feed.format.regex: expected a capture group named value",
+      "signals.ip_sets.feed.format.regex: expected a capture group named value",
     ),
     (
       "{regex: '['}",
-      "policy.ip_sets.feed.format.regex: regex parse error",
+      "signals.ip_sets.feed.format.regex: regex parse error",
     ),
     (
       &long_regex,
-      "policy.ip_sets.feed.format.regex: pattern exceeds 1024 bytes",
+      "signals.ip_sets.feed.format.regex: pattern exceeds 1024 bytes",
     ),
     (
       "{json_path: []}",
-      "policy.ip_sets.feed.format.json_path: expected 1 to 16 paths",
+      "signals.ip_sets.feed.format.json_path: expected 1 to 16 paths",
     ),
     (
       &paths,
-      "policy.ip_sets.feed.format.json_path: expected 1 to 16 paths",
+      "signals.ip_sets.feed.format.json_path: expected 1 to 16 paths",
     ),
     (
       "{json_path: ['[']}",
-      "policy.ip_sets.feed.format.json_path[0]:",
+      "signals.ip_sets.feed.format.json_path[0]:",
     ),
   ] {
-    let error = engine2(&format!("mode: custom\nip_sets:\n  feed: {{url: 'https://example.test/feed', format: {format}}}\nrules: []\n")).unwrap_err();
+    let error = engine2(&format!("signals:\n  ip_sets:\n    feed: {{url: 'https://example.test/feed', format: {format}}}\npolicy:\n  rules: []\n")).unwrap_err();
     assert!(format!("{error:#}").contains(expected), "{error:#}");
   }
 }

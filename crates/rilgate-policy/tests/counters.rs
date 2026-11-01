@@ -2,11 +2,11 @@ use http::{HeaderMap, Method};
 use rilgate_policy::{
   Lookups, PolicyAction, PolicyDecision, PolicyEngine,
   conditions::{CompiledCondition, Request},
-  policy::schema::Definition,
+  policy::schema::PolicyDocument,
 };
 
 fn compile(text: &str) -> anyhow::Result<PolicyEngine> {
-  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(text)?)
+  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<PolicyDocument>(text)?)
 }
 
 fn decide(engine: &PolicyEngine, rates: Vec<Option<u32>>, weight: i32) -> PolicyDecision {
@@ -30,7 +30,15 @@ fn decide(engine: &PolicyEngine, rates: Vec<Option<u32>>, weight: i32) -> Policy
 fn named_rates_and_fallback_select_the_required_decision() {
   let document: serde_yaml_ng::Value =
     serde_yaml_ng::from_str(include_str!("../../../config/examples/counters.yml")).unwrap();
-  let mut definition: Definition = serde_yaml_ng::from_value(document["policy"].clone()).unwrap();
+  let mut definition: PolicyDocument = serde_yaml_ng::from_value(serde_yaml_ng::Value::Mapping(
+    [
+      ("signals".into(), document["signals"].clone()),
+      ("policy".into(), document["policy"].clone()),
+    ]
+    .into_iter()
+    .collect(),
+  ))
+  .unwrap();
   let engine = PolicyEngine::from_definition(&definition).unwrap();
   for (login, pages, weight, action, difficulty) in [
     (0, 0, 0, PolicyAction::Challenge, Some(2)),
@@ -52,7 +60,7 @@ fn named_rates_and_fallback_select_the_required_decision() {
     decide(&engine, vec![Some(0), Some(0)], 30).difficulty,
     Some(5)
   );
-  definition.score = None;
+  definition.policy.score = None;
   let engine = PolicyEngine::from_definition(&definition).unwrap();
   assert_eq!(
     decide(&engine, vec![Some(0), Some(0)], 0).action,
@@ -62,7 +70,7 @@ fn named_rates_and_fallback_select_the_required_decision() {
 
 #[test]
 fn an_unknown_count_cannot_allow() {
-  let engine = compile("mode: custom\ncounters: {pages: {key: [client_ip], window: 1m}}\ndefault_action: deny\nrules: [{name: rate, when: {rate: {counter: pages, gte: 0}}, action: allow}]").unwrap();
+  let engine = compile("signals:\n  counters: {pages: {key: [client_ip], window: 1m}}\npolicy:\n  default_action: deny\n  rules: [{name: rate, when: {rate: {counter: pages, gte: 0}}, action: allow}]").unwrap();
   assert_eq!(decide(&engine, vec![None], 0).action, PolicyAction::Deny);
   assert_eq!(
     decide(&engine, vec![Some(1)], 0).action,
@@ -72,7 +80,7 @@ fn an_unknown_count_cannot_allow() {
 
 #[test]
 fn unavailable_conditions_and_invalid_fallbacks_report_their_paths() {
-  let error = compile("mode: custom\nrules: [{name: a, when: {any: [{rate: {counter: missing, gte: 1}}]}, action: deny}]").unwrap_err().to_string();
+  let error = compile("policy:\n  rules: [{name: a, when: {any: [{rate: {counter: missing, gte: 1}}]}, action: deny}]").unwrap_err().to_string();
   assert_eq!(
     error,
     "policy.rules[0].when.any[0].rate.counter: unknown counter missing"
@@ -86,28 +94,26 @@ fn unavailable_conditions_and_invalid_fallbacks_report_their_paths() {
       "client_ip.reverse_dns",
     ),
   ] {
-    let error = compile(&format!("mode: custom\ncounters: {{pages: {{key: [client_ip], window: 1m, count_when: {{not: {condition}}}}}}}")).unwrap_err().to_string();
+    let error = compile(&format!("signals:\n  counters: {{pages: {{key: [client_ip], window: 1m, count_when: {{not: {condition}}}}}}}\n")).unwrap_err().to_string();
     assert_eq!(
       error,
-      format!("policy.counters.pages.count_when.not.{field}: unavailable in count_when")
+      format!("signals.counters.pages.count_when.not.{field}: unavailable in count_when")
     );
   }
   assert_eq!(
-    compile("mode: custom\ncounters: {pages: {key: [asn], window: 1m}}")
+    compile("signals:\n  counters: {pages: {key: [asn], window: 1m}}\n")
       .unwrap_err()
       .to_string(),
-    "policy.counters.pages.key.asn: requires policy.geoip.asn"
+    "signals.counters.pages.key.asn: requires signals.geoip.asn"
   );
   for thresholds in [
     "[{action: allow}, {min: 1, action: deny}]",
     "[{action: allow}, {action: deny}]",
   ] {
     assert_eq!(
-      compile(&format!(
-        "mode: custom\nscore: {{thresholds: {thresholds}}}"
-      ))
-      .unwrap_err()
-      .to_string(),
+      compile(&format!("policy:\n  score: {{thresholds: {thresholds}}}"))
+        .unwrap_err()
+        .to_string(),
       "policy.score.thresholds: only the last threshold can omit min"
     );
   }
@@ -126,7 +132,7 @@ fn unavailable_conditions_and_invalid_fallbacks_report_their_paths() {
 
 #[test]
 fn key_parts_separate_hosts_join_networks_and_bound_header_values() {
-  let engine = compile("mode: custom\ncounters:\n  hosts: {key: [client_ip, host], window: 1m}\n  networks: {key: [{client_ip: {ipv4_prefix: 24}}], window: 1m}\n  headers: {key: [{header: X-Counter}], window: 1m}").unwrap();
+  let engine = compile("signals:\n  counters:\n    hosts: {key: [client_ip, host], window: 1m}\n    networks: {key: [{client_ip: {ipv4_prefix: 24}}], window: 1m}\n    headers: {key: [{header: X-Counter}], window: 1m}\n").unwrap();
   let headers = HeaderMap::new();
   let request = Request {
     headers: &headers,
@@ -212,18 +218,10 @@ fn invalid_limits_duplicate_parts_and_impossible_ranges_are_rejected() {
   ] {
     assert!(
       compile(&format!(
-        "mode: custom\ncounters: {{pages: {{{settings}}}}}"
+        "signals:\n  counters: {{pages: {{{settings}}}}}\n"
       ))
       .is_err(),
       "{settings}"
-    );
-  }
-  for mode in ["off", "light", "balanced", "strict"] {
-    assert_eq!(
-      compile(&format!("mode: {mode}\ncounters: {{}}"))
-        .unwrap_err()
-        .to_string(),
-      "policy: counters requires mode: custom"
     );
   }
   for bounds in [
@@ -233,14 +231,14 @@ fn invalid_limits_duplicate_parts_and_impossible_ranges_are_rejected() {
     "lt: 0",
     "gt: 4294967295",
   ] {
-    assert!(compile(&format!("mode: custom\ncounters: {{pages: {{key: [host], window: 1m}}}}\nrules: [{{name: rate, when: {{rate: {{counter: pages, {bounds}}}}}, action: deny}}]")).is_err(), "{bounds}");
+    assert!(compile(&format!("signals:\n  counters: {{pages: {{key: [host], window: 1m}}}}\npolicy:\n  rules: [{{name: rate, when: {{rate: {{counter: pages, {bounds}}}}}, action: deny}}]")).is_err(), "{bounds}");
   }
   for bounds in [
     "eq: 4294967295",
     "gt: 2147483647",
     "gte: 4294967295, lte: 4294967295",
   ] {
-    let engine = compile(&format!("mode: custom\ncounters: {{pages: {{key: [host], window: 1m}}}}\nrules: [{{name: rate, when: {{rate: {{counter: pages, {bounds}}}}}, action: deny}}]")).unwrap();
+    let engine = compile(&format!("signals:\n  counters: {{pages: {{key: [host], window: 1m}}}}\npolicy:\n  rules: [{{name: rate, when: {{rate: {{counter: pages, {bounds}}}}}, action: deny}}]")).unwrap();
     assert_eq!(
       decide(&engine, vec![Some(u32::MAX)], 0).action,
       PolicyAction::Deny
@@ -250,7 +248,7 @@ fn invalid_limits_duplicate_parts_and_impossible_ranges_are_rejected() {
 
 #[test]
 fn request_selection_controls_counting_and_unused_counters_are_skipped() {
-  let engine = compile("mode: custom\ncounters:\n  login: {key: [client_ip], window: 1m, count_when: {path: {prefix: /login}}}\n  unknown: {key: [client_ip], window: 1m, count_when: {client_ip: {in_sets: [remote]}}}\n  unused: {key: [host], window: 1m}\nip_sets:\n  remote: {url: 'https://example.com/prefixes.json', format: ip_prefixes_json}\nrules:\n  - {name: login, when: {rate: {counter: login, gte: 10}}, action: deny}\n  - {name: unknown, when: {rate: {counter: unknown, gte: 10}}, action: deny}").unwrap();
+  let engine = compile("signals:\n  counters:\n    login: {key: [client_ip], window: 1m, count_when: {path: {prefix: /login}}}\n    unknown: {key: [client_ip], window: 1m, count_when: {client_ip: {in_sets: [remote]}}}\n    unused: {key: [host], window: 1m}\n  ip_sets:\n    remote: {url: 'https://example.com/prefixes.json', format: ip_prefixes_json}\npolicy:\n  rules:\n    - {name: login, when: {rate: {counter: login, gte: 10}}, action: deny}\n    - {name: unknown, when: {rate: {counter: unknown, gte: 10}}, action: deny}").unwrap();
   let headers = HeaderMap::new();
   let request = Request {
     headers: &headers,

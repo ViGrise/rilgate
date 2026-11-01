@@ -73,7 +73,7 @@ impl GeoDatabases {
 }
 
 fn compile_database(kind: GeoKind, definition: &GeoDatabaseDefinition) -> Result<GeoDatabase> {
-  let path = format!("policy.geoip.{}", kind.label());
+  let path = format!("signals.geoip.{}", kind.label());
   ensure!(
     definition.path.is_some() ^ definition.maxmind.is_some(),
     "{path}: expected exactly one of path, maxmind"

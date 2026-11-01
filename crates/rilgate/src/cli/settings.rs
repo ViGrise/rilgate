@@ -34,7 +34,6 @@ const SITE: &str = "Site";
 const SECURITY: &str = "Security";
 const POW: &str = "Proof of work";
 const POOL: &str = "Stratum pool";
-const POLICY: &str = "Policy";
 
 macro_rules! spec {
   ($heading:expr, $kind:ident, $path:literal, $flag:literal, $env:literal, $short:expr, $help:literal) => {
@@ -55,7 +54,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(ENVIRONMENT, Text, "environment", "environment", "RILGATE_ENVIRONMENT", Some('E'), "Runtime environment: development or production"),
   spec!(SERVER, List, "server.listen", "server-listen", "RILGATE_SERVER_LISTEN", Some('l'), "Comma-separated listen addresses, such as :8080 or [::]:8080 (IPv4 and IPv6)"),
   spec!(SERVER, Switch, "server.operations.reload", "server-operations-reload", "RILGATE_SERVER_OPERATIONS_RELOAD", None, "Enable the operations reload route"),
-  spec!(SERVER, Switch, "server.watch_config", "server-watch-config", "RILGATE_SERVER_WATCH_CONFIG", None, "Watch configuration files for policy changes"),
+  spec!(SERVER, Switch, "server.watch_config", "server-watch-config", "RILGATE_SERVER_WATCH_CONFIG", None, "Watch configuration files for signals and policy changes"),
   spec!(SERVER, List, "server.operations.listen", "server-operations-listen", "RILGATE_SERVER_OPERATIONS_LISTEN", None, "Comma-separated addresses serving only operational routes, such as 127.0.0.1:9090; empty disables the routes"),
   spec!(SERVER, Text, "server.upstream.url", "server-upstream-url", "RILGATE_SERVER_UPSTREAM_URL", Some('u'), "Application upstream URL"),
   spec!(SERVER, Switch, "server.upstream.preserve_host", "server-upstream-preserve-host", "RILGATE_SERVER_UPSTREAM_PRESERVE_HOST", None, "Forward the client Host header upstream"),
@@ -151,7 +150,6 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.mode", "pow-stratum-pool-job-sessions-mode", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MODE", None, "Job connections: pooled or per_challenge"),
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.max", "pow-stratum-pool-job-sessions-max", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MAX", None, "Pooled job connections"),
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.idle", "pow-stratum-pool-job-sessions-idle", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
-  spec!(POLICY, Text, "policy.mode", "policy-mode", "RILGATE_POLICY_MODE", None, "Policy preset: off, light, balanced, strict or custom"),
 ];
 
 pub(crate) const POOL_FIELDS: &[(&str, &str)] = &[

@@ -485,6 +485,7 @@ async fn host_policy_matches_the_normalized_host_and_port() {
     .unwrap()
     .pow
     .policy
+    .policy
     .rules
     .as_mut()
     .unwrap()[0];
@@ -530,7 +531,7 @@ async fn request_selection_applies_to_fetches_overrides_and_lookup_metrics() {
     let mut cfg = upstream.config();
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.server.metrics_enabled = true;
-    config.pow.policy.rules.as_mut().unwrap()[0]
+    config.pow.policy.policy.rules.as_mut().unwrap()[0]
       .when
       .path
       .as_mut()
@@ -606,7 +607,7 @@ async fn request_conditions_observe_published_policy_ip_sets() {
   .await;
   let mut cfg = upstream.config();
   let config = Arc::get_mut(&mut cfg).unwrap();
-  config.pow.policy.ip_sets.insert(
+  config.pow.policy.signals.ip_sets.insert(
     "feed".into(),
     IpSetDefinition {
       url: Some("http://127.0.0.1:9/ips.json".into()),

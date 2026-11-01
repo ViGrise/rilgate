@@ -77,12 +77,11 @@ Module scripts then fail with a strict MIME type error, and the app loses client
 routing. The browser receives the cookie after a successful challenge.
 
 Allow public, immutable static asset paths before challenge rules. Presets reject
-custom rules, so use `policy.mode: custom`. Rules run in declaration order, and
+custom rules in `policy.rules`. Rules run in declaration order, and
 `allow` is terminal:
 
 ```yaml
 policy:
-  mode: custom
   default_action: allow
   rules:
     - !include builtin:rules/public-endpoints.yml

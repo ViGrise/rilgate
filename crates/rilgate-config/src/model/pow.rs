@@ -1,7 +1,7 @@
 use crate::model::gateway::RateLimitConfig;
 use rilgate_challenge::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
-use rilgate_policy::policy::schema::Definition;
+use rilgate_policy::policy::schema::PolicyDocument;
 use rilgate_pool::StratumPoolConfig;
 use rilgate_pow::difficulty::DifficultyConfig;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
@@ -44,7 +44,7 @@ pub struct PowConfig {
   pub rate_limit: RateLimitConfig,
   pub stratum_pool: StratumPoolConfig,
   pub difficulty: DifficultyConfig,
-  pub policy: Definition,
+  pub policy: PolicyDocument,
   pub browser: BrowserConfig,
 }
 

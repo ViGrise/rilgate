@@ -41,7 +41,7 @@ in comments. [Feature examples](../config/examples/) live under
 `config/examples/`: [custom policy](../config/examples/custom.yml),
 [HashWX](../config/examples/hashwx.yml), [RandomX](../config/examples/randomx.yml)
 and [multiple files](../config/examples/includes.yml). The source catalogs in
-`config/rules/` and `config/policies/` are embedded into the binary; see
+`config/rules/`, `config/policies/` and `config/signals/` are embedded into the binary; see
 [built-in policies and rules](policy.md#built-in-policies-and-rules).
 
 ## Loading and validation
@@ -154,7 +154,6 @@ nested includes, CIDR lists and policy rules.
 server: !include ./config/server.yml
 security: !include ./config/security.yml
 policy:
-  mode: custom
   default_action: challenge
   rules:
     - name: health
@@ -194,14 +193,13 @@ Or insert a built-in rule in a custom policy:
 
 ```yaml
 policy:
-  mode: custom
   rules:
     - !include builtin:rules/public-endpoints.yml
     - !include ./local-rules.yml
     - !include builtin:rules/challenge-all.yml
 ```
 
-Only `rules/` and `policies/` are built-in catalogs. Example configurations are
+The built-in catalogs are `rules/`, `policies/` and `signals/`. Example configurations are
 local files. A built-in reference always selects embedded content, with no
 filesystem fallback or shadowing. Relative includes inside a built-in document
 stay inside the catalogs; `../rules/...` resolves from a built-in policy to a
@@ -246,7 +244,7 @@ apply. Files must contain UTF-8 YAML. URL loading and glob patterns are unsuppor
 
 ### Reloading the policy
 
-Use one of these triggers to reload the policy:
+Use one of these triggers to reload the signals and policy sections:
 
 - On Unix, send `SIGHUP` to the gateway process.
 - Enable `server.operations.reload` and run `rilgate reload`, or send a request to the reload route.
@@ -332,11 +330,13 @@ Maps merge recursively; lists and scalars replace the previous value whole.
 Explicit `null` also replaces the previous value, subject to schema validation.
 
 ```yaml
+signals:
+  ip_sets:
+    <<: !include builtin:signals/crawler-ip-sets.yml
+    internal: {cidrs: [10.0.0.0/8]}
 policy:
   <<: !include builtin:policies/crawler-protection.yml
   default_action: challenge
-  ip_sets:
-    internal: {cidrs: [10.0.0.0/8]}
 ```
 
 For several bases, use `<<: [!include ./base-policy.yml, !include ./site-policy.yml]`.
@@ -490,9 +490,8 @@ or overflow.
 | `pow.algorithms.randomx.verify.remote.tls.ca`, `.client_cert`, `.client_key` | none (all required in production; client cert and key must be paired; absent CA uses webpki roots in development) |
 | `pow.algorithms.randomx.difficulty.base`, `.score_step`, `.max` | `1000`, `10`, `32000` |
 | `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
-| `policy.mode` | `balanced` |
-| `policy.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
-| `policy.asn_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
+| `signals.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
+| `signals.asn_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
 
 When `pow.stratum_pool` is enabled, its defaults are:
 
@@ -505,9 +504,9 @@ When `pow.stratum_pool` is enabled, its defaults are:
 Set mode `per_challenge` to create one connection per job. `max` and `idle`
 configure the pooled mode. Zero never selects a job acquisition strategy.
 
-Custom policies default to `default_action: allow`, no rules, no IP sets, score initial
+An explicit policy defaults to `default_action: allow`, no rules, score initial
 `0`, debug header disabled with name `x-pow-weight`, and no thresholds. Custom
-settings are rejected in preset modes. An IP set feed `url` must use `https`
+settings can be supplied directly or merged with preset files. Signals default to no IP sets. An IP set feed `url` must use `https`
 in production. Development also accepts `http`. Debug headers are forbidden in
 production.
 
@@ -767,7 +766,6 @@ pow:
         score_step: 10
         max: 5000000
 policy:
-  mode: custom
   default_action: challenge
 ```
 
@@ -850,7 +848,7 @@ bytes of `a-z`, `0-9`, `:`, `_`, `.` or `-`. Duplicate entries are errors. The
 limits are 16 prefixes and 32 names; both lists cannot be empty.
 
 `when` optionally selects requests with the shared [policy condition grammar](policy.md#conditions),
-including `host` and `policy.ip_sets`. Without `when`, all eligible requests
+including `host` and `signals.ip_sets`. Without `when`, all eligible requests
 look up tags. The selection also applies to overrides. A condition that evaluates
 to unknown, such as an unloaded IP set, skips the lookup. Unselected requests do
 not increment lookup metrics. `score` is rejected anywhere in `when` with its

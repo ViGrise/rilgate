@@ -199,12 +199,12 @@ async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty()
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.stratum_pool.pools[0].port = port;
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
     .algorithm = Some(PowAlgorithm::RandomX);
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
@@ -291,12 +291,12 @@ async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.stratum_pool.pools[0].port = port;
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
     .algorithm = Some(PowAlgorithm::RandomX);
-  pow.policy.rules.as_mut().unwrap()[0]
+  pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap()
@@ -377,7 +377,7 @@ async fn a_fast_challenge_cannot_cross_enforcement_modes() {
   let mut changed = cfg;
   let pow = &mut Arc::get_mut(&mut changed).unwrap().pow;
   pow.enforce = PowEnforcement::StratumPoolAccepted;
-  let selection = pow.policy.rules.as_mut().unwrap()[0]
+  let selection = pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap();
@@ -531,7 +531,7 @@ async fn randomx_http_proofs_require_local_verification_even_with_signed_matchin
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.enforce = PowEnforcement::StratumPoolAccepted;
-  let selection = pow.policy.rules.as_mut().unwrap()[0]
+  let selection = pow.policy.policy.rules.as_mut().unwrap()[0]
     .challenge
     .as_mut()
     .unwrap();

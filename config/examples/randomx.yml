@@ -16,5 +16,4 @@ pow:
       mode: pooled
       max: 16
 policy:
-  mode: custom
   default_action: challenge

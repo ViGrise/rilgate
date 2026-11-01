@@ -1,4 +1,4 @@
-use super::schema::{Action, Definition, Mode, Rule};
+use super::schema::{Action, Definition, PolicyDocument, Rule};
 use crate::conditions::{Budget, Compiled, Request, Truth};
 use crate::geoip::GeoDatabases;
 use crate::host_load::{HOST_LOAD, HostLoad};
@@ -43,31 +43,6 @@ pub struct PolicyEngine {
 
 impl Definition {
   pub fn resolved_rules(&self) -> Result<(Vec<Rule>, Action)> {
-    if self.mode != Mode::Custom {
-      ensure!(
-        self.ip_sets.is_empty(),
-        "policy: ip_sets require mode: custom"
-      );
-      ensure!(
-        self.asn_sets.is_empty(),
-        "policy: asn_sets require mode: custom"
-      );
-      ensure!(self.geoip.is_none(), "policy: geoip requires mode: custom");
-      ensure!(self.dns.is_none(), "policy: dns requires mode: custom");
-      ensure!(
-        self.counters.is_none(),
-        "policy: counters requires mode: custom"
-      );
-      ensure!(
-        self.honeypot.is_none(),
-        "policy: honeypot requires mode: custom"
-      );
-      ensure!(
-        self.rules.is_none() && self.score.is_none() && self.default_action.is_none(),
-        "policy: rules, score and default_action require mode: custom"
-      );
-      return Ok(super::presets::rules(self.mode));
-    }
     let default = self.default_action.unwrap_or(Action::Allow);
     ensure!(
       default != Action::Score,
@@ -118,21 +93,24 @@ impl Definition {
     }
     Ok((rules, default))
   }
+}
+impl PolicyDocument {
   pub fn challenges(&self) -> Result<Vec<(String, ChallengePolicy)>> {
-    let (rules, default) = self.resolved_rules()?;
+    let (rules, default) = self.policy.resolved_rules()?;
     let mut choices: Vec<_> = rules
       .into_iter()
       .filter(|r| r.action == Action::Challenge)
       .map(|r| (r.name, r.challenge.unwrap_or_default()))
       .collect();
     let remote: BTreeSet<&str> = self
+      .signals
       .ip_sets
       .iter()
       .filter(|(_, definition)| definition.url.is_some())
       .map(|(name, _)| name.as_str())
       .collect();
     if !remote.is_empty() {
-      for rule in self.rules.iter().flatten() {
+      for rule in self.policy.rules.iter().flatten() {
         if rule.action == Action::Deny && rule.when.references(&remote) {
           choices.push((
             format!("{} (unknown ip set)", rule.name),
@@ -141,8 +119,8 @@ impl Definition {
         }
       }
     }
-    if self.geoip.is_some() {
-      for rule in self.rules.iter().flatten() {
+    if self.signals.geoip.is_some() {
+      for rule in self.policy.rules.iter().flatten() {
         if rule.action == Action::Deny && rule.when.uses_geoip() {
           choices.push((
             format!("{} (unknown geoip)", rule.name),
@@ -151,7 +129,7 @@ impl Definition {
         }
       }
     }
-    for rule in self.rules.iter().flatten() {
+    for rule in self.policy.rules.iter().flatten() {
       if rule.action == Action::Deny && rule.when.uses_dns() {
         choices.push((
           format!("{} (unknown dns)", rule.name),
@@ -166,31 +144,33 @@ impl Definition {
   }
 }
 impl PolicyEngine {
-  pub fn from_definition(definition: &Definition) -> Result<Self> {
-    Self::from_definition_with(definition, None)
+  pub fn from_definition(document: &PolicyDocument) -> Result<Self> {
+    Self::from_definition_with(document, None)
   }
 
   /// Compiles the definition. Remote feed sets and GeoIP databases whose source
   /// matches one of `previous` keep the data that engine has loaded.
   pub fn from_definition_with(
-    definition: &Definition,
+    document: &PolicyDocument,
     previous: Option<&PolicyEngine>,
   ) -> Result<Self> {
+    let definition = &document.policy;
+    let signals = &document.signals;
     let (source, default) = definition.resolved_rules()?;
     let sets = PolicySets {
-      ip: IpSets::compile_with(&definition.ip_sets, previous.map(|e| &e.sets().ip))?,
+      ip: IpSets::compile_with(&signals.ip_sets, previous.map(|e| &e.sets().ip))?,
       asn: AsnSets::compile_with(
-        "policy.asn_sets",
-        &definition.asn_sets,
+        "signals.asn_sets",
+        &signals.asn_sets,
         previous.map(|e| &e.sets().asn),
       )?,
     };
     let geoip =
-      GeoDatabases::compile_with(definition.geoip.as_ref(), previous.map(PolicyEngine::geoip))?;
-    if let Some(dns) = &definition.dns {
+      GeoDatabases::compile_with(signals.geoip.as_ref(), previous.map(PolicyEngine::geoip))?;
+    if let Some(dns) = &signals.dns {
       dns.validate()?;
     }
-    if let Some(honeypot) = &definition.honeypot {
+    if let Some(honeypot) = &signals.honeypot {
       honeypot.validate()?;
     }
     ensure!(
@@ -199,8 +179,8 @@ impl PolicyEngine {
     );
     let mut names = std::collections::HashSet::new();
     let mut budget = Budget::for_policy(
-      definition.honeypot.is_some(),
-      definition
+      signals.honeypot.is_some(),
+      signals
         .counters
         .iter()
         .flat_map(|c| c.keys().cloned())
@@ -209,9 +189,7 @@ impl PolicyEngine {
     let mut rules = Vec::new();
     for (index, rule) in source.into_iter().enumerate() {
       let explicit = definition.rules.as_ref().map_or(0, Vec::len);
-      let path = if definition.mode != Mode::Custom {
-        "policy.mode".to_string()
-      } else if index < explicit {
+      let path = if index < explicit {
         format!("policy.rules[{index}]")
       } else {
         format!("policy.score.thresholds[{}]", index - explicit)
@@ -242,7 +220,7 @@ impl PolicyEngine {
         condition,
       });
     }
-    let counters = crate::counters::compile(definition, &sets, &geoip, &mut budget)?;
+    let counters = crate::counters::compile(document, &sets, &geoip, &mut budget)?;
     let lookup_plan = LookupPlan {
       dnsbl_zones: budget.dnsbl_zones.into_iter().collect(),
       reverse_dns: budget.reverse_dns,

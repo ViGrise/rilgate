@@ -15,5 +15,4 @@ pow:
         score_step: 10
         max: 5000000
 policy:
-  mode: custom
   default_action: challenge

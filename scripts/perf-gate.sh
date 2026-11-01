@@ -163,7 +163,6 @@ pow:
   rate_limit:
     enabled: false
 policy:
-  mode: custom
   rules:
     - name: protected
       when:

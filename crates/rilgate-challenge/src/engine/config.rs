@@ -1,6 +1,6 @@
 use crate::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
-use rilgate_policy::policy::schema::Definition;
+use rilgate_policy::policy::schema::PolicyDocument;
 use rilgate_protocol::{PowAlgorithm, PowEnforcement};
 #[derive(Debug, Clone)]
 pub struct ChallengeConfig {
@@ -14,7 +14,7 @@ pub struct ChallengeConfig {
   pub receipt_ttl_seconds: u64,
   pub auth_ttl_seconds: u64,
   pub auth_binding: AuthBinding,
-  pub policy: Definition,
+  pub policy: PolicyDocument,
 }
 impl ChallengeConfig {
   pub fn validate(&self) -> anyhow::Result<()> {

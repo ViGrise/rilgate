@@ -126,7 +126,7 @@ async fn operator_inline_script_and_external_stylesheet_sources_are_allowed() {
     "connect-src".into(),
     vec!["https://api.example.test".into()],
   );
-  config.pow.policy.default_action = Some(rilgate_gateway::config::PolicyAction::Deny);
+  config.pow.policy.policy.default_action = Some(rilgate_gateway::config::PolicyAction::Deny);
   let router = app::router(cfg).await.unwrap();
   let response = router
     .oneshot(

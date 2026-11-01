@@ -1,27 +1,5 @@
-mode: custom
+# Needs signals.ip_sets: !include builtin:signals/crawler-ip-sets.yml
 default_action: allow
-# Remote feeds need outbound HTTPS; readiness fails until each has loaded once.
-ip_sets:
-  google-common-crawlers:
-    url: "https://developers.google.com/static/crawling/ipranges/common-crawlers.json"
-    format: ip_prefixes_json
-    refresh: 24h
-    max_stale: 7d
-  bing-crawlers:
-    url: "https://www.bing.com/toolbox/bingbot.json"
-    format: ip_prefixes_json
-    refresh: 24h
-    max_stale: 7d
-  apple-crawlers:
-    url: "https://search.developer.apple.com/applebot.json"
-    format: ip_prefixes_json
-    refresh: 24h
-    max_stale: 7d
-  duckduckgo-crawlers:
-    url: "https://duckduckgo.com/duckduckbot.json"
-    format: ip_prefixes_json
-    refresh: 24h
-    max_stale: 7d
 rules:
   - !include ../rules/deny-headless-browsers.yml
   - !include ../rules/deny-ai-crawlers.yml

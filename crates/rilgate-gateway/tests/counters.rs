@@ -15,8 +15,8 @@ async fn cookies_follow_the_required_rate_difficulty_in_both_directions() {
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{}", listener.local_addr().unwrap());
   config.pow.policy = serde_json::from_value(serde_json::json!({
-    "mode": "custom",
-    "counters": {"login": {"key": ["client_ip"], "window": "1s", "count_when": {"path": {"prefix": "/login"}}}},
+    "signals": {"counters": {"login": {"key": ["client_ip"], "window": "1s", "count_when": {"path": {"prefix": "/login"}}}}},
+    "policy": {
     "rules": [
       {"name": "low", "when": {"rate": {"counter": "login", "gte": 1}}, "action": "score", "score": 10},
       {"name": "high", "when": {"rate": {"counter": "login", "gte": 4}}, "action": "score", "score": 20}
@@ -24,7 +24,7 @@ async fn cookies_follow_the_required_rate_difficulty_in_both_directions() {
     "score": {"thresholds": [
       {"min": 30, "action": "challenge", "challenge": {"algorithm": "fast", "difficulty": 6}},
       {"min": 10, "action": "challenge", "challenge": {"algorithm": "fast", "difficulty": 4}}
-    ]}
+    ]}}
   }))
   .unwrap();
   let service = app::service(&cfg).unwrap();

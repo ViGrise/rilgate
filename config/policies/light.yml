@@ -1,1 +1,15 @@
-mode: light
+default_action: allow
+rules:
+  - name: public-endpoints
+    when:
+      any:
+        - path: {in: [/robots.txt, /favicon.ico]}
+        - path: {prefix: /.well-known/acme-challenge/}
+    action: allow
+  - name: suspicious-client
+    when:
+      user_agent: {regex: "(?i)(^$|bot|crawler|spider|curl|wget|python|scrapy)"}
+    action: challenge
+    challenge:
+      algorithm: fast
+      difficulty: 1

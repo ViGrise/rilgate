@@ -153,7 +153,7 @@ fn conflicting_secrets_and_invalid_runtime_settings_are_rejected() {
       "    max_body_size: 99999999999999999999999999GiB\n    url:",
     ),
     BASE.replace("    url:", "    max_body_size: 16\n    url:"),
-    format!("{BASE}policy:\n  mode: custom\n  score:\n    debug_header:\n      enabled: true\n"),
+    format!("{BASE}\npolicy:\n  score:\n    debug_header:\n      enabled: true\n"),
   ] {
     assert!(resolve(&text).is_err(), "{text}");
   }
@@ -183,7 +183,7 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
       .contains("pow.stratum_pool.pools")
   );
   let config = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: '[::1]:3333'}}]\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: '[::1]:3333'}}]\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  default_action: challenge\n"
   );
   let cfg = resolve(&config).unwrap();
   assert!(cfg.pow.randomx_enabled);
@@ -196,13 +196,7 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
   assert!(resolve(&config.replace("per_challenge", "unknown")).is_err());
   assert!(resolve(&config.replace("mode: per_challenge", "mode: pooled\n      max: 0")).is_err());
   assert!(resolve(&config.replace("'[::1]:3333'", "'localhost'")).is_err());
-  assert!(
-    resolve(&config.replace(
-      "mode: custom\n  default_action: challenge",
-      "mode: balanced"
-    ))
-    .is_err()
-  );
+  assert!(resolve(&config.replace("  default_action: challenge", "mode: balanced")).is_err());
 }
 
 #[test]
@@ -237,7 +231,7 @@ fn resolved_output_redacts_every_key_and_password() {
 fn all_rule_challenges_are_validated_before_runtime_construction() {
   for (algorithm, difficulty) in [("fast", 0), ("fast", 65), ("randomx", 999)] {
     let config = format!(
-      "{BASE}pow:\n  stratum_pool: {{}}\npolicy:\n  mode: custom\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
+      "{BASE}pow:\n  stratum_pool: {{}}\npolicy:\n  rules:\n    - name: invalid\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n"
     );
     let error = format!("{:#}", resolve(&config).unwrap_err());
     assert!(error.contains("difficulty"), "{error}");
@@ -261,13 +255,13 @@ fn response_selection_validates_modes_and_path_prefixes() {
   }
 }
 
-const FEED: &str = "policy:\n  mode: custom\n  ip_sets:\n    feed: {url: 'http://127.0.0.1:9/ips.json', format: ip_prefixes_json}\n  rules:\n    - {name: f, when: {client_ip: {in_sets: [feed]}}, action: allow}\n";
+const FEED: &str = "signals:\n  ip_sets:\n    feed: {url: 'http://127.0.0.1:9/ips.json', format: ip_prefixes_json}\npolicy:\n  rules:\n    - {name: f, when: {client_ip: {in_sets: [feed]}}, action: allow}\n";
 
 #[test]
 fn remote_ip_sets_require_https_in_production() {
   let error = format!("{:#}", resolve(&format!("{BASE}{FEED}")).unwrap_err());
   assert!(
-    error.contains("policy.ip_sets.feed.url: production requires https"),
+    error.contains("signals.ip_sets.feed.url: production requires https"),
     "{error}"
   );
   assert!(resolve(&format!("environment: development\n{BASE}{FEED}")).is_ok());
@@ -284,9 +278,10 @@ fn resolved_ip_sets_round_trip_through_serialization() {
   let config = resolve(&format!("{BASE}{text}")).unwrap();
   let shown = serde_yaml_ng::to_string(&config.pow.policy).unwrap();
   assert!(shown.contains("ip_prefixes_json"), "{shown}");
-  let again: rilgate_config::schema::policy::Definition = serde_yaml_ng::from_str(&shown).unwrap();
+  let again: rilgate_config::schema::policy::PolicyDocument =
+    serde_yaml_ng::from_str(&shown).unwrap();
   assert_eq!(serde_yaml_ng::to_string(&again).unwrap(), shown);
-  let feed = &again.ip_sets["feed"];
+  let feed = &again.signals.ip_sets["feed"];
   assert_eq!(
     feed.refresh,
     Some(std::time::Duration::from_secs(36 * 3600))
@@ -582,7 +577,7 @@ fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_on
   document.pow.stratum_pool = Some(Default::default());
   let cfg = document.resolve().unwrap();
   let mut pow = cfg.pow.clone();
-  pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n")).unwrap().policy;
+  pow.policy = parse(&format!("{BASE}\npolicy:\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n")).unwrap().resolve().unwrap().pow.policy.clone();
   for enforce in [
     PowEnforcement::LocalVerify,
     PowEnforcement::StratumPoolAccepted,
@@ -609,12 +604,22 @@ fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_on
   pow.enforce = PowEnforcement::LocalVerify;
   pow.default_algorithm = PowAlgorithm::RandomX;
   pow.randomx_verify.order = vec![Hasher::Remote];
-  pow.policy = parse(&format!("{BASE}policy: {{mode: off}}\n"))
-    .unwrap()
-    .policy;
+  pow.policy = parse(&format!(
+    "{BASE}\npolicy: !include builtin:policies/off.yml\n"
+  ))
+  .unwrap()
+  .resolve()
+  .unwrap()
+  .pow
+  .policy
+  .clone();
   assert!(!pow.needs_remote_verifier());
   pow.default_algorithm = PowAlgorithm::Fast;
-  pow.policy = parse(&format!("{BASE}policy:\n  mode: custom\n  rules:\n    - name: randomx\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge: {{algorithm: randomx}}\n")).unwrap().policy;
+  let document = parse(&format!("{BASE}\npolicy:\n  rules:\n    - name: randomx\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge: {{algorithm: randomx}}\n")).unwrap();
+  pow.policy = rilgate_policy::PolicyDocument {
+    signals: document.signals,
+    policy: document.policy,
+  };
   assert!(pow.needs_remote_verifier());
 }
 
@@ -849,7 +854,7 @@ fn failover_budget_rejects_values_below_connect_timeout_or_outside_range() {
 fn hashwx_resolves_without_a_pool_and_rejects_invalid_cost_bounds() {
   let mut document = parse(BASE).unwrap();
   document.pow.default_algorithm = PowAlgorithm::Hashwx;
-  document.policy.mode = rilgate_config::schema::policy::Mode::Custom;
+  document.policy = Default::default();
   document.policy.default_action = Some(rilgate_config::schema::policy::Action::Challenge);
   document.pow.algorithms.hashwx.nonces_per_seed = 463;
   document.pow.algorithms.hashwx.difficulty.base = 123;
@@ -887,13 +892,13 @@ fn hashwx_resolves_without_a_pool_and_rejects_invalid_cost_bounds() {
 fn hashwx_partial_difficulty_settings_keep_algorithm_defaults() {
   use rilgate_pow::Algorithm;
   let text = format!(
-    "{BASE}pow:\n  default_algorithm: hashwx\n  algorithms:\n    hashwx:\n      difficulty:\n        base: 60000\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: hashwx\n  algorithms:\n    hashwx:\n      difficulty:\n        base: 60000\npolicy:\n  default_action: challenge\n"
   );
   let config = resolve(&text).unwrap();
   let algorithm = rilgate_pow_hashwx::HashWxAlgorithm::new(&config.pow.hashwx).unwrap();
   assert_eq!(algorithm.difficulty_for_weight(10), 120000);
   let invalid = format!(
-    "{BASE}pow:\n  default_algorithm: hashwx\n  algorithms:\n    hashwx:\n      difficulty:\n        max: 40000\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: hashwx\n  algorithms:\n    hashwx:\n      difficulty:\n        max: 40000\npolicy:\n  default_action: challenge\n"
   );
   assert!(resolve(&invalid).is_err());
 }
@@ -907,14 +912,14 @@ fn unused_hashwx_settings_do_not_reject_other_algorithms() {
   document
     .resolve()
     .expect("Fast preset rules do not select HashWX");
-  let selected = format!("{text}policy:\n  mode: custom\n  default_action: challenge\n");
+  let selected = format!("{text}\npolicy:\n  default_action: challenge\n");
   assert!(resolve(&selected).is_err());
 }
 
 #[test]
 fn shared_challenge_ttl_errors_identify_the_shared_setting() {
   let text = format!(
-    "{BASE}pow:\n  default_algorithm: hashwx\n  challenge:\n    ttl: 366d\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: hashwx\n  challenge:\n    ttl: 366d\npolicy:\n  default_action: challenge\n"
   );
   let error = format!("{:#}", resolve(&text).unwrap_err());
   assert!(error.contains("pow.challenge.ttl"), "{error}");
@@ -924,7 +929,7 @@ fn shared_challenge_ttl_errors_identify_the_shared_setting() {
 #[test]
 fn pool_accepted_configuration_leaves_hashwx_disabled() {
   let text = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: localhost:3333}}]\n  algorithms:\n    hashwx:\n      nonces_per_seed: 0\npolicy:\n  mode: custom\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: localhost:3333}}]\n  algorithms:\n    hashwx:\n      nonces_per_seed: 0\npolicy:\n  default_action: challenge\n"
   );
   assert!(!resolve(&text).unwrap().pow.hashwx_enabled);
 }
@@ -1050,4 +1055,78 @@ fn randomx_browser_rejects_worker_caps_outside_the_supported_range() {
       "pow.algorithms.randomx.browser.max_workers: expected 1 to 8"
     );
   }
+}
+
+#[test]
+fn moved_policy_sections_fail_with_their_new_path() {
+  if std::env::var_os("RILGATE_POLICY_MODE").is_some() {
+    let error = rilgate_config::loader::load(&Default::default())
+      .err()
+      .unwrap();
+    assert_eq!(
+      error.to_string(),
+      "RILGATE_POLICY_MODE: removed; select a preset with policy: !include builtin:policies/<name>.yml or write policy.rules"
+    );
+    return;
+  }
+  let status = std::process::Command::new(std::env::current_exe().unwrap())
+    .env_clear()
+    .env("RILGATE_POLICY_MODE", "balanced")
+    .args(["--exact", "moved_policy_sections_fail_with_their_new_path"])
+    .status()
+    .unwrap();
+  assert!(status.success());
+  for name in [
+    "ip_sets", "asn_sets", "geoip", "dns", "honeypot", "counters",
+  ] {
+    let error = parse(&format!("policy:\n  {name}: {{}}\n")).unwrap_err();
+    assert!(
+      error
+        .to_string()
+        .contains(&format!("policy.{name}: renamed to signals.{name}")),
+      "{error:#}"
+    );
+  }
+  let hint =
+    "select a preset with policy: !include builtin:policies/<name>.yml or write policy.rules";
+  let error = parse("policy: {mode: balanced}").unwrap_err();
+  assert!(
+    error
+      .to_string()
+      .contains(&format!("policy.mode: removed; {hint}")),
+    "{error:#}"
+  );
+  let setting = rilgate_config::Setting {
+    path: "policy.mode".into(),
+    source: "RILGATE_POLICY_MODE".into(),
+    value: rilgate_config::SettingValue::Scalar("balanced".into()),
+  };
+  let error = rilgate_config::loader::parse_with("{}", &[setting]).unwrap_err();
+  assert!(
+    error
+      .to_string()
+      .contains(&format!("policy.mode: removed; {hint}")),
+    "{error:#}"
+  );
+}
+
+#[test]
+fn missing_policy_uses_the_balanced_preset_and_empty_policy_allows() {
+  use rilgate_config::schema::policy::Action;
+  let document = parse("{}").unwrap();
+  let rules = document.policy.rules.unwrap();
+  assert_eq!(
+    rules
+      .iter()
+      .map(|rule| rule.name.as_str())
+      .collect::<Vec<_>>(),
+    ["public-endpoints", "protected-traffic"]
+  );
+  let challenge = rules[1].challenge.as_ref().unwrap();
+  assert_eq!(challenge.algorithm, Some(PowAlgorithm::Fast));
+  assert_eq!(challenge.difficulty, Some(2));
+  let document = parse("policy: {}").unwrap();
+  let (rules, action) = document.policy.resolved_rules().unwrap();
+  assert!(rules.is_empty());
+  assert_eq!(action, Action::Allow);
 }

@@ -8,7 +8,7 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use http::Method;
 use rilgate_ip_feeds::{GeoRefresher, GeoState, Outcome};
-use rilgate_policy::{PolicyEngine, conditions::Request, policy::schema::Definition};
+use rilgate_policy::{PolicyEngine, conditions::Request, policy::schema::PolicyDocument};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -18,9 +18,9 @@ const TELSTRA_ADDRESS: &str = "1.128.0.1";
 
 fn engine(geoip: &str) -> PolicyEngine {
   let text = format!(
-    "mode: custom\ngeoip:\n  asn: {geoip}\nrules:\n  - {{name: google, when: {{asn: [15169]}}, action: score, score: 5}}\n  - {{name: telstra, when: {{asn: [1221]}}, action: score, score: 7}}\n"
+    "signals:\n  geoip:\n    asn: {geoip}\npolicy:\n  rules:\n    - {{name: google, when: {{asn: [15169]}}, action: score, score: 5}}\n    - {{name: telstra, when: {{asn: [1221]}}, action: score, score: 7}}\n"
   );
-  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<Definition>(&text).unwrap()).unwrap()
+  PolicyEngine::from_definition(&serde_yaml_ng::from_str::<PolicyDocument>(&text).unwrap()).unwrap()
 }
 
 fn weight(engine: &PolicyEngine, ip: &str) -> i32 {
