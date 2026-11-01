@@ -6,6 +6,14 @@ use crate::{
 use anyhow::{Context, Result, anyhow};
 use rilgate_protocol::{PowAlgorithm, PowEnforcement, claims::*};
 use uuid::Uuid;
+/// The grant that an authentication token records.
+pub(crate) struct AuthGrant {
+  pub host: String,
+  pub algorithm: PowAlgorithm,
+  pub difficulty: u64,
+  pub enforce: PowEnforcement,
+  pub issued_at: i64,
+}
 pub struct IssuedAuthToken {
   pub token: String,
   pub claims: AuthClaims,
@@ -92,27 +100,31 @@ impl ChallengeService {
       .validate_difficulty(receipt.difficulty)?;
 
     self.issue_auth_token(
-      receipt.host,
-      receipt.algorithm,
-      receipt.difficulty,
-      receipt.enforce,
-      receipt.issued_at,
+      AuthGrant {
+        host: receipt.host,
+        algorithm: receipt.algorithm,
+        difficulty: receipt.difficulty,
+        enforce: receipt.enforce,
+        issued_at: receipt.issued_at,
+      },
       binding,
       previous,
     )
   }
 
-  #[allow(clippy::too_many_arguments)]
   pub(crate) fn issue_auth_token(
     &self,
-    host: String,
-    algorithm: PowAlgorithm,
-    difficulty: u64,
-    enforce: PowEnforcement,
-    issued_at: i64,
+    grant: AuthGrant,
     binding: &BindingInput<'_>,
     previous: Option<&str>,
   ) -> Result<IssuedAuthToken> {
+    let AuthGrant {
+      host,
+      algorithm,
+      difficulty,
+      enforce,
+      issued_at,
+    } = grant;
     let mut claims = AuthClaims {
       host,
       v: 1,
@@ -314,11 +326,13 @@ mod tests {
   ) -> IssuedAuthToken {
     service
       .issue_auth_token(
-        "example.test".into(),
-        PowAlgorithm::Refresh,
-        difficulty,
-        PowEnforcement::LocalVerify,
-        at,
+        AuthGrant {
+          host: "example.test".into(),
+          algorithm: PowAlgorithm::Refresh,
+          difficulty,
+          enforce: PowEnforcement::LocalVerify,
+          issued_at: at,
+        },
         &input(ip, &browser("Chrome/130")),
         previous,
       )

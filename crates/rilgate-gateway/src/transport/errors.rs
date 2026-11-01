@@ -53,7 +53,7 @@ impl ApiError {
         .insert(http::header::RETRY_AFTER, "1".parse().unwrap());
       response
         .headers_mut()
-        .insert(http::header::CACHE_CONTROL, "no-store".parse().unwrap());
+        .insert(http::header::CACHE_CONTROL, super::headers::NO_STORE);
       return response;
     }
     let status = match self {

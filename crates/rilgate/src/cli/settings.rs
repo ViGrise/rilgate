@@ -70,6 +70,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SERVER, Text, "server.decision_log", "server-decision-log", "RILGATE_SERVER_DECISION_LOG", None, "Policy decision logs at info level: off, deny, challenge or all"),
   spec!(SERVER, Switch, "server.metrics_enabled", "server-metrics-enabled", "RILGATE_SERVER_METRICS_ENABLED", None, "Expose Prometheus metrics"),
   spec!(SERVER, Text, "server.readiness_timeout", "server-readiness-timeout", "RILGATE_SERVER_READINESS_TIMEOUT", None, "Dependency timeout for readiness probes"),
+  spec!(SERVER, Text, "server.request_timeout", "server-request-timeout", "RILGATE_SERVER_REQUEST_TIMEOUT", None, "Time limit to receive a request and connect to the upstream"),
   spec!(SITE, Text, "site.name", "site-name", "RILGATE_SITE_NAME", None, "Site name shown on challenge pages"),
   spec!(SITE, Text, "site.url", "site-url", "RILGATE_SITE_URL", None, "Site URL linked from challenge pages"),
   spec!(SITE, Text, "site.base_path", "site-base-path", "RILGATE_SITE_BASE_PATH", None, "Path prefix of the internal namespace"),

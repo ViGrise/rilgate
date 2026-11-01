@@ -5,7 +5,10 @@ use http::{HeaderMap, Method, StatusCode};
 use rilgate_config::schema::policy::{Action, Condition, IpMatch, Rule};
 use rilgate_dns::{DnsLookups, LookupError, Resolver};
 use rilgate_gateway::{
-  proxy::{client::ProxyService, gate::gate_with_client},
+  proxy::{
+    client::ProxyService,
+    gate::{GateRequest, gate_with_client},
+  },
   runtime::state::AppState,
   transport::rate_limit::RateLimiter,
 };
@@ -102,13 +105,15 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
   for ip in [CRAWLER, IMPOSTOR, UNREACHABLE] {
     let outcome = gate_with_client(
       &state,
-      &headers,
-      &uri,
-      "/protected",
-      &Method::GET,
-      Some(ip.parse().unwrap()),
-      false,
-      "",
+      GateRequest {
+        headers: &headers,
+        uri: &uri,
+        policy_path: "/protected",
+        method: &Method::GET,
+        client_ip: Some(ip.parse().unwrap()),
+        trusted_peer: false,
+        request_id: "",
+      },
     )
     .await
     .unwrap();

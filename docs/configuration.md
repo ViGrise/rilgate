@@ -469,7 +469,7 @@ or overflow.
 | `server.trusted_proxies` | `[]`, trust no peers |
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
 | `server.decision_log` | `challenge`, log denied and challenged requests at info level |
-| `server.metrics_enabled`, `.readiness_timeout` | `false`, `2s` |
+| `server.metrics_enabled`, `.readiness_timeout`, `.request_timeout` | `false`, `2s`, `30s` |
 | `site.name`, `.url`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `/.well-known/rilgate`, `css/rilgate.css` |
 | `site.resources.directory`, `.seed` | none, `if_empty` |
 | `site.resources.watch.enabled`, `.debounce` | `false`, `300ms` |

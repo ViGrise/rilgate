@@ -2,7 +2,7 @@ use crate::{
   runtime::state::AppState,
   transport::response::{Response, response},
 };
-use http::{StatusCode, header::CONTENT_TYPE};
+use http::{HeaderValue, StatusCode, header::CONTENT_TYPE};
 use std::fmt::Write;
 use std::sync::atomic::Ordering;
 
@@ -116,7 +116,7 @@ pub fn exposition(state: &AppState) -> Response {
   let mut out = response(StatusCode::OK, text);
   out.headers_mut().insert(
     CONTENT_TYPE,
-    "text/plain; version=0.0.4; charset=utf-8".parse().unwrap(),
+    HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
   );
   out
 }

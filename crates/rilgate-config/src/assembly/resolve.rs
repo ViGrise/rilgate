@@ -152,6 +152,7 @@ impl Document {
         decision_log: self.server.decision_log,
         metrics_enabled: self.server.metrics_enabled,
         readiness_timeout: self.server.readiness_timeout.0,
+        request_timeout: self.server.request_timeout.0,
       },
       upstream: UpstreamConfig {
         url: self.server.upstream.url.clone(),

@@ -1,11 +1,13 @@
 use crate::{
   proof::handlers,
-  proxy::gate::{gate_with_client, page_response},
+  proxy::gate::{GateRequest, gate_with_client, page_response},
   runtime::state::AppState,
   transport::{
     errors::ApiError,
+    headers::NO_STORE,
     path::policy_path,
     response::{Response, json, response},
+    routes::{Endpoint, Exposure},
     stream::DownstreamStream,
   },
   web::{assets, pages::render_page},
@@ -13,7 +15,7 @@ use crate::{
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use http::{
-  Method, StatusCode,
+  HeaderMap, Method, StatusCode,
   header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, HOST},
 };
 use http_body::Body as _;
@@ -38,6 +40,13 @@ use tokio::{
   task::JoinSet,
 };
 
+const SHUTDOWN_DRAIN: Duration = Duration::from_secs(30);
+const WEBSOCKET_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const WEBSOCKET_BUFFER_BYTES: usize = 16 * 1024;
+const WEBSOCKET_MAX_MESSAGE_BYTES: usize = 4096;
+const WEBSOCKET_RELAY_CHUNK_BYTES: usize = 8192;
+const MAX_JSON_BODY_BYTES: usize = 16 * 1024;
+
 #[derive(Clone)]
 pub struct Gateway {
   proxy: Arc<HttpProxy<Handler>>,
@@ -48,6 +57,14 @@ pub struct Gateway {
 enum ListenerRole {
   Public,
   Operations,
+}
+impl ListenerRole {
+  fn exposure(self) -> Exposure {
+    match self {
+      Self::Public => Exposure::Public,
+      Self::Operations => Exposure::Operations,
+    }
+  }
 }
 struct Handler {
   state: AppState,
@@ -169,7 +186,7 @@ impl Gateway {
     let _ = stop.send(true);
     self.proxy.cleanup().await;
     self.operations_proxy.cleanup().await;
-    if tokio::time::timeout(Duration::from_secs(30), async {
+    if tokio::time::timeout(SHUTDOWN_DRAIN, async {
       while connections.join_next().await.is_some() {}
     })
     .await
@@ -320,14 +337,14 @@ async fn read_json<T: serde::de::DeserializeOwned>(
     .get(CONTENT_LENGTH)
     .and_then(|v| v.to_str().ok())
     .and_then(|v| v.parse::<usize>().ok())
-    .is_some_and(|n| n > 16 * 1024)
+    .is_some_and(|n| n > MAX_JSON_BODY_BYTES)
   {
     return Err(Box::new(ApiError::PayloadTooLarge.into_response()));
   }
   let mut bytes = BytesMut::new();
   loop {
     match session.read_request_body().await {
-      Ok(Some(chunk)) if bytes.len().saturating_add(chunk.len()) <= 16 * 1024 => {
+      Ok(Some(chunk)) if bytes.len().saturating_add(chunk.len()) <= MAX_JSON_BODY_BYTES => {
         bytes.extend_from_slice(&chunk)
       }
       Ok(Some(_)) => return Err(Box::new(ApiError::PayloadTooLarge.into_response())),
@@ -351,6 +368,36 @@ async fn read_json<T: serde::de::DeserializeOwned>(
   })
 }
 impl Handler {
+  async fn reload(&self, headers: &HeaderMap, method: &Method) -> Response {
+    if headers.contains_key(http::header::ORIGIN) {
+      return response(StatusCode::FORBIDDEN, "");
+    }
+    if !Endpoint::Reload.accepts(method) {
+      let mut out = response(StatusCode::METHOD_NOT_ALLOWED, "");
+      out
+        .headers_mut()
+        .insert(http::header::ALLOW, Endpoint::Reload.allow());
+      return out;
+    }
+    use crate::runtime::reload::ReloadOutcome;
+    let result = match &self.reload {
+      Some(control) => control.reload().await,
+      None => Err(anyhow::anyhow!("Reload control is unavailable")),
+    };
+    let (status, body) = match result {
+      Ok(ReloadOutcome::Reloaded) => (StatusCode::OK, serde_json::json!({"status":"reloaded"})),
+      Ok(ReloadOutcome::Unchanged) => (StatusCode::OK, serde_json::json!({"status":"unchanged"})),
+      Ok(ReloadOutcome::RestartRequired { sections }) => (
+        StatusCode::CONFLICT,
+        serde_json::json!({"status":"restart_required", "sections":sections}),
+      ),
+      Err(error) => (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        serde_json::json!({"status":"failed", "error":format!("{error:#}")}),
+      ),
+    };
+    json(status, &body)
+  }
   async fn local(
     &self,
     session: &mut Session,
@@ -361,57 +408,26 @@ impl Handler {
     let headers = session.req_header().headers.clone();
     let uri = session.req_header().uri.clone();
     let method = session.req_header().method.clone();
-    if path == "/reload"
+    let endpoint = Endpoint::from_path(path);
+    if endpoint == Some(Endpoint::Reload)
       && self.role == ListenerRole::Operations
       && self.state.cfg.server.operations_reload
     {
-      if headers.contains_key(http::header::ORIGIN) {
-        return Ok(Some(response(StatusCode::FORBIDDEN, "")));
-      }
-      if method != Method::POST {
-        let mut out = response(StatusCode::METHOD_NOT_ALLOWED, "");
-        out
-          .headers_mut()
-          .insert(http::header::ALLOW, "POST".parse().unwrap());
-        return Ok(Some(out));
-      }
-      use crate::runtime::reload::ReloadOutcome;
-      let result = match &self.reload {
-        Some(control) => control.reload().await,
-        None => Err(anyhow::anyhow!("Reload control is unavailable")),
-      };
-      let (status, body) = match result {
-        Ok(ReloadOutcome::Reloaded) => (StatusCode::OK, serde_json::json!({"status":"reloaded"})),
-        Ok(ReloadOutcome::Unchanged) => (StatusCode::OK, serde_json::json!({"status":"unchanged"})),
-        Ok(ReloadOutcome::RestartRequired { sections }) => (
-          StatusCode::CONFLICT,
-          serde_json::json!({"status":"restart_required", "sections":sections}),
-        ),
-        Err(error) => (
-          StatusCode::INTERNAL_SERVER_ERROR,
-          serde_json::json!({"status":"failed", "error":format!("{error:#}")}),
-        ),
-      };
-      return Ok(Some(json(status, &body)));
+      return Ok(Some(self.reload(&headers, &method).await));
     }
-    let operational = matches!(
-      path,
-      "/api/live" | "/api/health" | "/api/ready" | "/api/metrics"
-    );
-    let hidden = match self.role {
-      ListenerRole::Public => operational,
-      ListenerRole::Operations => !operational,
+    let hidden = match endpoint {
+      Some(Endpoint::Reload) => true,
+      Some(endpoint) => endpoint.exposure() != self.role.exposure(),
+      None => self.role == ListenerRole::Operations,
     };
     if hidden {
       let mut out = response(StatusCode::NOT_FOUND, "");
       if path.starts_with("/api/") {
-        out
-          .headers_mut()
-          .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+        out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
       }
       return Ok(Some(out));
     }
-    if path.starts_with("/trap/") {
+    if endpoint == Some(Endpoint::Trap) {
       if let Some(honeypot) = &self.state.policy_services.load().honeypot {
         honeypot.record_hit(resolved_client_ip.ok().flatten());
         self
@@ -422,34 +438,12 @@ impl Handler {
       }
       return Ok(Some(response(StatusCode::NOT_FOUND, "")));
     }
-    let proof = matches!(
-      path,
-      "/challenge"
-        | "/api/challenge"
-        | "/api/verify"
-        | "/api/exchange"
-        | "/api/ws"
-        | "/api/refresh"
-        | "/api/session"
-    );
-    let expected = if matches!(path, "/api/challenge" | "/api/verify" | "/api/exchange") {
-      Method::POST
-    } else {
-      Method::GET
-    };
-    let known = proof
-      || matches!(
-        path,
-        "/api/client-config" | "/api/health" | "/api/live" | "/api/ready"
-      )
-      || (path == "/api/metrics" && self.state.cfg.server.metrics_enabled)
-      || path.starts_with("/static/");
     let socket_peer = session
       .client_addr()
       .and_then(|address| address.as_inet())
       .map(|address| address.ip());
     let mut client_ip = None;
-    if proof {
+    if endpoint.is_some_and(Endpoint::is_proof) {
       let peer = match resolved_client_ip {
         Ok(peer) => peer,
         Err(message) => {
@@ -461,125 +455,82 @@ impl Handler {
       client_ip = peer;
       if let Err(seconds) = self.state.limiter.check(peer) {
         let mut out = ApiError::RateLimited(seconds).into_response();
-        out
-          .headers_mut()
-          .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+        out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
         return Ok(Some(out));
       }
     }
-    let mut out = if !known {
-      response(StatusCode::NOT_FOUND, "")
-    } else if method != expected
-      && !(expected == Method::GET && method == Method::HEAD && path != "/api/ws")
-    {
-      let mut out = response(StatusCode::METHOD_NOT_ALLOWED, "");
-      out.headers_mut().insert(
-        http::header::ALLOW,
-        (if expected == Method::POST {
-          "POST"
-        } else {
-          "GET, HEAD"
-        })
-        .parse()
-        .unwrap(),
-      );
-      out
-    } else {
-      let result: Result<Response, ApiError> = match path {
-        "/challenge" => {
-          crate::web::pages::challenge_page(&self.state, &headers, &uri, method == Method::HEAD)
-        }
-        "/api/client-config" => Ok(handlers::client_config(&self.state)),
-        "/api/live" => Ok(json(StatusCode::OK, &serde_json::json!({"status": "ok"}))),
-        "/api/ready" => Ok(crate::observability::readiness::service::check(&self.state).await),
-        "/api/metrics" => Ok(crate::observability::metrics::service::exposition(
-          &self.state,
-        )),
-        "/api/health" => Ok(json(
-          StatusCode::OK,
-          &crate::observability::health::service::status(
-            self.state.web.diagnostics(),
-            self.state.pool.failures(),
-          ),
-        )),
-        "/api/challenge" => match read_json(session).await {
-          Ok(value) => handlers::challenge(&self.state, &headers, &uri, value).await,
-          Err(out) => Ok(*out),
-        },
-        "/api/verify" => match read_json(session).await {
-          Ok(value) => {
-            let binding = BindingInput {
-              client_ip,
-              headers: &headers,
-              trusted_peer: crate::transport::client_ip::trusted_peer(
-                socket_peer,
-                &self.state.cfg.server,
-              ),
-            };
-            handlers::verify(&self.state, &headers, &uri, value, &binding).await
+    let binding = BindingInput {
+      client_ip,
+      headers: &headers,
+      trusted_peer: crate::transport::client_ip::trusted_peer(socket_peer, &self.state.cfg.server),
+    };
+    let endpoint = endpoint
+      .filter(|endpoint| *endpoint != Endpoint::Metrics || self.state.cfg.server.metrics_enabled);
+    let mut out = match endpoint {
+      None => response(StatusCode::NOT_FOUND, ""),
+      Some(endpoint) if !endpoint.accepts(&method) => {
+        let mut out = response(StatusCode::METHOD_NOT_ALLOWED, "");
+        out
+          .headers_mut()
+          .insert(http::header::ALLOW, endpoint.allow());
+        out
+      }
+      Some(endpoint) => {
+        let result: Result<Response, ApiError> = match endpoint {
+          Endpoint::ChallengePage => {
+            crate::web::pages::challenge_page(&self.state, &headers, &uri, method == Method::HEAD)
           }
-          Err(out) => Ok(*out),
-        },
-        "/api/exchange" => match read_json(session).await {
-          Ok(value) => {
-            let binding = BindingInput {
-              client_ip,
-              headers: &headers,
-              trusted_peer: crate::transport::client_ip::trusted_peer(
-                socket_peer,
-                &self.state.cfg.server,
-              ),
-            };
-            handlers::exchange(&self.state, &headers, &uri, value, &binding)
-          }
-          Err(out) => Ok(*out),
-        },
-        "/api/session" => {
-          let binding = BindingInput {
-            client_ip,
-            headers: &headers,
-            trusted_peer: crate::transport::client_ip::trusted_peer(
-              socket_peer,
-              &self.state.cfg.server,
+          Endpoint::ClientConfig => Ok(handlers::client_config(&self.state)),
+          Endpoint::Live => Ok(json(StatusCode::OK, &serde_json::json!({"status": "ok"}))),
+          Endpoint::Ready => Ok(crate::observability::readiness::service::check(&self.state).await),
+          Endpoint::Metrics => Ok(crate::observability::metrics::service::exposition(
+            &self.state,
+          )),
+          Endpoint::Health => Ok(json(
+            StatusCode::OK,
+            &crate::observability::health::service::status(
+              self.state.web.diagnostics(),
+              self.state.pool.failures(),
             ),
-          };
-          Ok(handlers::session(&self.state, &headers, &uri, &binding))
-        }
-        "/api/refresh" => {
-          let binding = BindingInput {
-            client_ip,
-            headers: &headers,
-            trusted_peer: crate::transport::client_ip::trusted_peer(
-              socket_peer,
-              &self.state.cfg.server,
-            ),
-          };
-          handlers::refresh(
+          )),
+          Endpoint::Challenge => match read_json(session).await {
+            Ok(value) => handlers::challenge(&self.state, &headers, &uri, value).await,
+            Err(out) => Ok(*out),
+          },
+          Endpoint::Verify => match read_json(session).await {
+            Ok(value) => handlers::verify(&self.state, &headers, &uri, value, &binding).await,
+            Err(out) => Ok(*out),
+          },
+          Endpoint::Exchange => match read_json(session).await {
+            Ok(value) => handlers::exchange(&self.state, &headers, &uri, value, &binding),
+            Err(out) => Ok(*out),
+          },
+          Endpoint::Session => Ok(handlers::session(&self.state, &headers, &uri, &binding)),
+          Endpoint::Refresh => handlers::refresh(
             &self.state,
             &headers,
             &uri,
             &binding,
             method == Method::HEAD,
-          )
-        }
-        "/api/ws" => match self.websocket(session, ctx).await {
-          Ok(()) => return Ok(None),
-          Err(error) => Err(error),
-        },
-        _ => {
-          let raw = path.strip_prefix("/static/").unwrap_or_default();
-          match percent_encoding::percent_decode_str(raw).decode_utf8() {
-            Ok(path) => assets::static_asset(&self.state, &path, &headers, &method),
-            Err(_) => Ok(response(StatusCode::BAD_REQUEST, "Invalid asset path")),
+          ),
+          Endpoint::WebSocket => match self.websocket(session, ctx).await {
+            Ok(()) => return Ok(None),
+            Err(error) => Err(error),
+          },
+          Endpoint::Static => {
+            let raw = path.strip_prefix("/static/").unwrap_or_default();
+            match percent_encoding::percent_decode_str(raw).decode_utf8() {
+              Ok(path) => assets::static_asset(&self.state, &path, &headers, &method),
+              Err(_) => Ok(response(StatusCode::BAD_REQUEST, "Invalid asset path")),
+            }
           }
-        }
-      };
-      result.unwrap_or_else(ApiError::into_response)
+          Endpoint::Reload | Endpoint::Trap => Ok(response(StatusCode::NOT_FOUND, "")),
+        };
+        result.unwrap_or_else(ApiError::into_response)
+      }
     };
     if path.starts_with("/api/") {
-      out
-        .headers_mut()
-        .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+      out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
     }
     Ok(Some(out))
   }
@@ -598,23 +549,21 @@ impl Handler {
     let _slot = self.state.pool.acquire_slot().map_err(ApiError::proof)?;
     let (mut parts, _) = handshake.into_parts();
     parts.headers.insert("x-request-id", ctx.id.clone());
-    parts
-      .headers
-      .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+    parts.headers.insert(CACHE_CONTROL, NO_STORE);
     session
       .write_response_header(Box::new(parts.into()), false)
       .await
       .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
     session.set_read_timeout(None);
-    session.set_write_timeout(Some(Duration::from_secs(5)));
-    let (socket, mut bridge) = tokio::io::duplex(16 * 1024);
+    session.set_write_timeout(Some(WEBSOCKET_WRITE_TIMEOUT));
+    let (socket, mut bridge) = tokio::io::duplex(WEBSOCKET_BUFFER_BYTES);
     let socket = tokio_tungstenite::WebSocketStream::from_raw_socket(
       socket,
       tokio_tungstenite::tungstenite::protocol::Role::Server,
       Some(
         tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
-          .max_message_size(Some(4096))
-          .max_frame_size(Some(4096)),
+          .max_message_size(Some(WEBSOCKET_MAX_MESSAGE_BYTES))
+          .max_frame_size(Some(WEBSOCKET_MAX_MESSAGE_BYTES)),
       ),
     )
     .await;
@@ -626,11 +575,11 @@ impl Handler {
     );
     session.set_keepalive(None);
     let relay = async move {
-      let mut bytes = [0u8; 8192];
+      let mut bytes = [0u8; WEBSOCKET_RELAY_CHUNK_BYTES];
       loop {
         tokio::select! {
           chunk = session.read_request_body() => match chunk {
-            Ok(Some(chunk)) => { tokio::time::timeout(Duration::from_secs(5), bridge.write_all(&chunk)).await.map_err(|_| anyhow::anyhow!("WebSocket backpressure timeout"))??; }
+            Ok(Some(chunk)) => { tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, bridge.write_all(&chunk)).await.map_err(|_| anyhow::anyhow!("WebSocket backpressure timeout"))??; }
             Ok(None) => break,
             Err(error) => return Err(anyhow::anyhow!(error)),
           },
@@ -708,16 +657,15 @@ impl ProxyHttp for Handler {
         );
         out
           .headers_mut()
-          .insert("retry-after", "1".parse().unwrap());
-        out
-          .headers_mut()
-          .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+          .insert("retry-after", http::HeaderValue::from_static("1"));
+        out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
         send(session, out, ctx).await?;
         return Ok(true);
       }
     }
-    session.set_read_timeout(Some(Duration::from_secs(30)));
-    session.set_write_timeout(Some(Duration::from_secs(30)));
+    let request_timeout = self.state.cfg.server.request_timeout;
+    session.set_read_timeout(Some(request_timeout));
+    session.set_write_timeout(Some(request_timeout));
     if session
       .req_header()
       .headers
@@ -755,7 +703,7 @@ impl ProxyHttp for Handler {
         self.local(session, ctx, &path, resolved_client_ip).await?
       } else {
         match tokio::time::timeout(
-          Duration::from_secs(30),
+          request_timeout,
           self.local(session, ctx, &path, resolved_client_ip),
         )
         .await
@@ -808,13 +756,15 @@ impl ProxyHttp for Handler {
     };
     match gate_with_client(
       &self.state,
-      &header.headers,
-      &header.uri,
-      &ctx.policy_path,
-      &header.method,
-      client_ip,
-      trusted_peer,
-      ctx.id.to_str().unwrap_or_default(),
+      GateRequest {
+        headers: &header.headers,
+        uri: &header.uri,
+        policy_path: &ctx.policy_path,
+        method: &header.method,
+        client_ip,
+        trusted_peer,
+        request_id: ctx.id.to_str().unwrap_or_default(),
+      },
     )
     .await
     {
@@ -847,7 +797,11 @@ impl ProxyHttp for Handler {
     _: &mut Session,
     ctx: &mut RequestContext,
   ) -> pingora::Result<Box<HttpPeer>> {
-    let remaining = Duration::from_secs(30)
+    let remaining = self
+      .state
+      .cfg
+      .server
+      .request_timeout
       .checked_sub(ctx.started.elapsed())
       .ok_or_else(|| failure(StatusCode::REQUEST_TIMEOUT, "Request timed out"))?;
     let (peer, addresses) = self
@@ -868,7 +822,8 @@ impl ProxyHttp for Handler {
   ) -> Box<Error> {
     // An alternate address is safe only before any HTTP request has been sent.
     error.set_retry(
-      ctx.connect_attempts < ctx.addresses && ctx.started.elapsed() < Duration::from_secs(30),
+      ctx.connect_attempts < ctx.addresses
+        && ctx.started.elapsed() < self.state.cfg.server.request_timeout,
     );
     error
   }
@@ -918,7 +873,7 @@ impl ProxyHttp for Handler {
     if session.as_ref().was_upgraded() {
       return Ok(());
     }
-    if ctx.started.elapsed() >= Duration::from_secs(30) {
+    if ctx.started.elapsed() >= self.state.cfg.server.request_timeout {
       ctx.failure = Some(StatusCode::REQUEST_TIMEOUT);
       *body = None;
       return Err(failure(StatusCode::REQUEST_TIMEOUT, "Request timed out"));
