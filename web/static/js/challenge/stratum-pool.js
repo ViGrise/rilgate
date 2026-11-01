@@ -6,6 +6,9 @@
     const delays = [1, 2, 4, 8, 15];
     let attempt = 0;
     let failuresWithoutJob = 0;
+    // Workers keep their cache across jobs with the same seed.
+    let started = false;
+    let seed = null;
 
     try {
       for (;;) {
@@ -36,8 +39,20 @@
                   receivedJob = true;
                   failuresWithoutJob = 0;
                   const myGeneration = ++generation;
-                  state("initializing");
-                  if (progressEl) progressEl.removeAttribute("value");
+                  window.PowClient.job({
+                    id: message.job.job_id,
+                    height: message.job.height,
+                    seed: message.job.seed_hash,
+                    reseeded: started && message.job.seed_hash !== seed,
+                  });
+                  if (started && message.job.seed_hash === seed) {
+                    state("randomx");
+                  } else {
+                    started = true;
+                    state("initializing");
+                    if (progressEl) progressEl.removeAttribute("value");
+                  }
+                  seed = message.job.seed_hash;
                   const solution = await window.PowClient.solveRandomX(
                     solver,
                     window.PowClient.randomxJob(

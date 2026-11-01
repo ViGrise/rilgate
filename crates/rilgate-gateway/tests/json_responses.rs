@@ -279,37 +279,41 @@ fn unsupported_status_is_rejected() {
 
 #[tokio::test]
 async fn client_config_exposes_randomx_browser_options_only_for_randomx() {
-  let mut cfg = common::config();
-  let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
-  pow.randomx_enabled = true;
-  pow.browser.max_workers = 2;
-  pow.browser.store_cache = false;
-  let router = app::router(cfg).await.unwrap();
-  let response = router
-    .oneshot(
-      Request::builder()
-        .uri("/.well-known/test-pow/api/client-config")
-        .header("host", "example.test")
-        .body(Body::empty())
-        .unwrap(),
-    )
-    .await
-    .unwrap();
-  assert_eq!(response.status(), StatusCode::OK);
-  let body: Value =
-    serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
-  let algorithms = body["algorithms"].as_array().unwrap();
-  let randomx = algorithms
-    .iter()
-    .find(|entry| entry["id"] == "randomx")
-    .unwrap();
-  assert_eq!(
-    randomx["browser"],
-    serde_json::json!({"max_workers": 2, "store_cache": false})
-  );
-  let fast = algorithms
-    .iter()
-    .find(|entry| entry["id"] == "fast")
-    .unwrap();
-  assert!(fast.get("browser").is_none());
+  for (setting, job_details) in [("        job_details: false\n", false), ("", true)] {
+    let configured = rilgate_config::loader::parse(&format!(
+    "server:\n  upstream:\n    url: http://127.0.0.1:3000\nsecurity:\n  secret: '0123456789abcdef0123456789abcdef'\npow:\n  algorithms:\n    randomx:\n      browser:\n        max_workers: 2\n        store_cache: false\n{setting}"
+  )).unwrap().resolve().unwrap();
+    let mut cfg = common::config();
+    let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
+    pow.randomx_enabled = true;
+    pow.browser = configured.pow.browser.clone();
+    let router = app::router(cfg).await.unwrap();
+    let response = router
+      .oneshot(
+        Request::builder()
+          .uri("/.well-known/test-pow/api/client-config")
+          .header("host", "example.test")
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value =
+      serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    let algorithms = body["algorithms"].as_array().unwrap();
+    let randomx = algorithms
+      .iter()
+      .find(|entry| entry["id"] == "randomx")
+      .unwrap();
+    assert_eq!(
+      randomx["browser"],
+      serde_json::json!({"max_workers": 2, "store_cache": false, "job_details": job_details})
+    );
+    let fast = algorithms
+      .iter()
+      .find(|entry| entry["id"] == "fast")
+      .unwrap();
+    assert!(fast.get("browser").is_none());
+  }
 }

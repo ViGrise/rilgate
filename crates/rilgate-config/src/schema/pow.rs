@@ -149,6 +149,7 @@ pub struct Browser {
   pub module: String,
   pub max_workers: u8,
   pub store_cache: bool,
+  pub job_details: bool,
 }
 impl Default for Browser {
   fn default() -> Self {
@@ -156,6 +157,7 @@ impl Default for Browser {
       module: "/static/js/solvers/randomx/solver.js".into(),
       max_workers: 8,
       store_cache: true,
+      job_details: true,
     }
   }
 }

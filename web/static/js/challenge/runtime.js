@@ -53,6 +53,12 @@
   let previousMode = "none";
   let currentState = "preparing";
   let attemptsCount = 0;
+  let jobDetails = true;
+  let jobInfo = null;
+  let jobHasPrevious = false;
+  let jobReseeded = false;
+  let jobUpdatedUntil = 0;
+  let jobTimer = null;
   function element(id) {
     return document.querySelector("#" + id);
   }
@@ -98,11 +104,78 @@
   function showStats() {
     const solving = ["fast", "hashwx", "randomx"].indexOf(currentState) !== -1;
     const retaining =
-      ["verifying", "pool", "success"].indexOf(currentState) !== -1 && attemptsCount > 0;
+      ["initializing", "verifying", "pool", "success"].indexOf(currentState) !== -1 &&
+      attemptsCount > 0;
     hidden("stats", !solving && !retaining);
+  }
+  function setJobDetails(enabled) {
+    jobDetails = enabled !== false;
+    showJob();
+  }
+  function job(info) {
+    if (jobInfo) jobHasPrevious = true;
+    if (info.reseeded === true) {
+      jobReseeded = true;
+      jobUpdatedUntil = 0;
+      clearTimeout(jobTimer);
+    } else if (jobInfo && info.id !== jobInfo.id) {
+      jobUpdatedUntil = Date.now() + 5000;
+      clearTimeout(jobTimer);
+      jobTimer = setTimeout(renderJob, 5000);
+    }
+    jobInfo = info;
+    renderJob();
+  }
+  function renderJob() {
+    const parts = [];
+    const { id, height, seed } = jobInfo;
+    if (id !== undefined && id !== null && id !== "") {
+      parts.push(t("challenge.job.id", "Job {job}", { job: id }));
+    }
+    if (jobReseeded) {
+      parts.push(t("challenge.job.reseeded", "new seed, preparing again"));
+    } else if (Date.now() < jobUpdatedUntil) {
+      parts.push(t("challenge.job.updated", "new work, continuing"));
+    }
+    // biome-ignore lint/suspicious/noGlobalIsFinite: Number.isFinite is unavailable in legacy browsers
+    if (typeof height === "number" && isFinite(height)) {
+      const locale = (document.documentElement && document.documentElement.lang) || "en";
+      const formatter =
+        typeof Intl === "object" && Intl.NumberFormat
+          ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+          : null;
+      parts.push(
+        t("challenge.job.height", "Block {height}", {
+          height: formatter ? formatter.format(height) : String(Math.round(height)),
+        }),
+      );
+    }
+    if (seed !== undefined && seed !== null && seed !== "") {
+      parts.push(
+        t("challenge.job.seed", "Seed {seed}", {
+          seed: seed.length > 12 ? seed.slice(0, 8) + "…" + seed.slice(-4) : seed,
+        }),
+      );
+    }
+    const target = element("job");
+    if (target) target.textContent = parts.join(" · ");
+    showJob();
+  }
+  function showJob() {
+    hidden(
+      "job",
+      !jobDetails ||
+        !jobInfo ||
+        (["randomx", "pool", "verifying"].indexOf(currentState) === -1 &&
+          !(currentState === "initializing" && jobHasPrevious)),
+    );
   }
   function state(name, values) {
     currentState = name;
+    if (name === "randomx" && jobReseeded) {
+      jobReseeded = false;
+      renderJob();
+    }
     ["title", "description", "status"].forEach((id) => {
       const target = element(id);
       if (target) target.textContent = t("challenge.state." + name + "." + id, "", values);
@@ -123,6 +196,7 @@
       if (rate) rate.textContent = "0";
     }
     showStats();
+    showJob();
   }
   function currentStateName() {
     return currentState;
@@ -471,6 +545,8 @@
     state,
     currentState: currentStateName,
     stats,
+    job,
+    setJobDetails,
     endpoint,
     asset,
     jsonFetch,

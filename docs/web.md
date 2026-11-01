@@ -185,6 +185,7 @@ The catch handler keeps diagnostic error messages in the console only.
 | `stats` | Attempt and hash rate line. |
 | `attempts` | Localized attempt count. |
 | `hashrate` | Localized hashes per second. |
+| `job` | Job, block and seed line while RandomX runs. |
 | `randomx-start` | RandomX consent button. |
 | `retry` | Reload button. |
 | `load-error` | Message with a retry link, shown when the bundle could not start. |

@@ -30,6 +30,7 @@ pub(super) fn services(
         solver_module_path: cfg.browser.solver_module_path.clone(),
         max_workers: cfg.browser.max_workers,
         store_cache: cfg.browser.store_cache,
+        job_details: cfg.browser.job_details,
         nonce_offset: cfg.nonce_offset,
         queue_capacity: cfg.verifier_queue_capacity,
         cache_idle_timeout: cfg.randomx_cache_idle_timeout,

@@ -22,23 +22,33 @@
     return window.PowClient.loadSolver(window.POW_SOLVER_MODULE_URL);
   }
 
+  // The attempt count covers every job of the page, because a pool replaces jobs during a solve.
+  let earlierAttempts = 0;
+  let currentProgress = null;
+
   function randomxJob(job, difficulty, nonceOffset, expiresIn, receivedAt) {
+    const progress = { attempts: 0 };
     return {
       ...job,
       difficulty,
       nonceOffset,
       expiresIn,
       receivedAt,
-      onProgress: reportRandomxProgress,
+      onProgress: (report) => reportRandomxProgress(progress, report),
     };
   }
 
-  function reportRandomxProgress({ attempts, elapsedMs }) {
+  function reportRandomxProgress(progress, { attempts, elapsedMs }) {
+    if (currentProgress !== progress) {
+      if (currentProgress) earlierAttempts += currentProgress.attempts;
+      currentProgress = progress;
+    }
+    progress.attempts = attempts;
     const seconds = Math.max(elapsedMs / 1000, 0.001);
     const rate = (attempts / seconds).toFixed(2);
 
     state("randomx");
-    stats(attempts, rate);
+    stats(earlierAttempts + attempts, rate);
   }
 
   // The solver abandons an in-flight attempt when the pool publishes a newer job,
@@ -77,6 +87,11 @@
       throw new Error(`Expected randomx challenge, got ${challenge.algorithm}`);
     }
 
+    window.PowClient.job({
+      id: challenge.job.job_id,
+      height: challenge.job.height,
+      seed: challenge.job.seed_hash,
+    });
     state("initializing");
     if (progressEl) progressEl.removeAttribute("value");
 
@@ -102,6 +117,7 @@
     state("initializing");
     const module = await loadRandomXSolver();
     const options = config.algorithms.find((entry) => entry.id === "randomx")?.browser;
+    window.PowClient.setJobDetails(options?.job_details);
     const solver = {
       solve: (job) => module.solve(job, options),
       cancel: () => module.cancel?.(),

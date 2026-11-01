@@ -32,6 +32,7 @@ pub struct RandomXConfig {
   pub solver_module_path: String,
   pub max_workers: u8,
   pub store_cache: bool,
+  pub job_details: bool,
   pub queue_capacity: usize,
   pub cache_idle_timeout: Duration,
 }
@@ -117,6 +118,7 @@ impl RandomXAlgorithm {
       browser: rilgate_pow::algorithm::BrowserSolverOptions {
         max_workers: config.max_workers,
         store_cache: config.store_cache,
+        job_details: config.job_details,
       },
       hasher,
       local_hasher: None,
@@ -296,6 +298,7 @@ mod tests {
       solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
       max_workers: 8,
       store_cache: true,
+      job_details: true,
       nonce_offset: 39,
       queue_capacity: 8,
       cache_idle_timeout: Duration::from_secs(60),
