@@ -20,7 +20,7 @@ preserves the current browser floor.
 
 The embedded fast challenge targets IE11, Safari and iOS 9+, Chrome 49
 (including Windows XP), Firefox 52 ESR, Android 4.4 WebView, Samsung Internet 4
-and KaiOS 2.5 ([configuration](../configuration.md#challenge-browser-support)).
+and KaiOS 2.5 ([browser support](../web.md#browser-support)).
 
 | Requirement | Current handling |
 | --- | --- |

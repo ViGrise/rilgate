@@ -227,8 +227,8 @@ regex explicitly selects case-insensitive matching or `same_as: host` compares w
 host name keeps its brackets; otherwise a final colon followed only by ASCII digits marks the port.
 Header names are case-insensitive.
 
-`edge_headers` matches headers only when the socket peer belongs to `server.trusted_proxies`;
-an untrusted peer never matches. The trusted edge must overwrite these headers.
+`edge_headers` matches headers that the edge sets, only from a trusted peer; see
+[client address and forwarding](configuration.md#client-address-and-forwarding).
 Like `headers`, it works in rules, `count_when` and `site.open_graph.when`.
 
 Any repeated header value can satisfy its matcher. Missing headers do not match,
@@ -433,9 +433,9 @@ expired flags first and then the oldest flag. The metric `rilgate_honeypot_hits_
 the requests to the trap URL. A page template can place the link with the variable
 `honeypot_url`, which is an empty string when the honeypot is off.
 
-Client IP comes from the TCP peer unless `server.trusted_proxies` authorizes a forwarded chain.
-Forwarded headers from untrusted peers cannot influence IP rules. The same resolved
-address controls proof API quotas.
+Client IP resolution is described in
+[client address and forwarding](configuration.md#client-address-and-forwarding). The same
+resolved address controls IP rules and proof API quotas.
 
 Policies permit at most 128 rules plus thresholds and 512 compiled condition nodes. They
 permit at most 16 nested condition levels and 64 entries per membership list. Matcher
@@ -664,28 +664,47 @@ configured database has loaded once. `/metrics` reports
 A `maxmind` source that fails retries with the delays of a loaded IP set, starting at
 5 minutes, because MaxMind limits the downloads per day for each account.
 
-## Challenge selection and score debugging
+## Challenge selection
 
-A challenge without an algorithm uses `pow.default_algorithm`. Explicit Fast difficulty must be
-1..64 leading zero hexadecimal digits. Explicit RandomX difficulty must be at least
-1000. It is used as supplied. Without an explicit RandomX difficulty:
+A challenge without an algorithm uses `pow.default_algorithm`. An explicit difficulty in a
+rule takes precedence over the score mapping of the algorithm. Each algorithm below
+states its difficulty unit and range.
 
-```text
-difficulty = base * 2^(score / score_step)
+A challenge action accepts an existing cookie only when algorithm and enforcement match
+and cookie difficulty meets the current requirement. A Fast cookie therefore cannot
+satisfy a HashWX rule. Host and optional client bindings still apply. A DENY rule still
+rejects a valid cookie.
+
+### Fast
+
+Explicit Fast difficulty counts leading zero hexadecimal digits, from 1 to 64. Without an
+explicit difficulty, the score selects it: 1 below score 10, otherwise `2 * (score / 10)`,
+bounded to 1..64.
+
+### HashWX
+
+Select HashWX in a custom rule or score threshold:
+
+```yaml
+policy:
+  default_action: allow
+  rules:
+    - name: hashwx-protected
+      when:
+        path: {prefix: /protected/}
+      action: challenge
+      challenge: {algorithm: hashwx, difficulty: 50000}
 ```
 
-The exponent uses integer division and is clamped to 0..63. Multiplication saturates and
-the result is bounded by `pow.algorithms.randomx.difficulty.max`. Fast fallback difficulty is 1 below score 10,
-otherwise `2 * (score / 10)`, bounded to 1..64. RandomX rules need explicit `pow.stratum_pool`
-infrastructure. `stratum_pool_accepted` permits only RandomX challenges and grants access only
-after an actual accepted Stratum response on the owning session.
+HashWX difficulty is an expected hash count, from 1 to 2^40, and needs
+`pow.verification: local_verify`. When difficulty is omitted,
+`pow.algorithms.hashwx.difficulty` maps the score to work. An explicit rule difficulty
+overrides that mapping, including its `max` cap. See
+[HashWX configuration](configuration.md#hashwx) for the cost settings and
+[browser support](web.md#hashwx) for the client requirements. A browser with no WASM
+support gets the failure and retry controls. The client keeps the selected algorithm.
 
-In development only, set `policy.score.debug_header.enabled: true` to let the configured header replace the initial
-score. Its default name is `x-pow-weight`. The gateway signs the selected rule, final
-score, difficulty, algorithm, host and verification backend into the presentation. A
-browser cannot alter these claims.
-
-## Refresh selection
+### Refresh
 
 Select the script-free refresh challenge in a custom rule:
 
@@ -702,32 +721,24 @@ policy:
 
 Difficulty is a delay of 1 to 10 seconds. See [the refresh algorithm](pow.md#refresh---delay-without-javascript).
 
-## HashWX selection
+### RandomX
 
-Select HashWX in a custom rule or score threshold:
+Explicit RandomX difficulty must be at least 1000. It is used as supplied. Without an
+explicit RandomX difficulty:
 
-```yaml
-policy:
-  default_action: allow
-  rules:
-    - name: hashwx-protected
-      when:
-        path: {prefix: /protected/}
-      action: challenge
-      challenge: {algorithm: hashwx, difficulty: 50000}
+```text
+difficulty = base * 2^(score / score_step)
 ```
 
-Use `pow.verification: local_verify`. HashWX difficulty is an expected hash
-count, between 1 and 2^40. Fast difficulty counts leading zero hex digits.
-When difficulty is omitted, `pow.algorithms.hashwx.difficulty` maps the score
-to work. Explicit rule difficulty takes precedence over that mapping.
+The exponent uses integer division and is clamped to 0..63. Multiplication saturates and
+the result is bounded by `pow.algorithms.randomx.difficulty.max`. The
+`stratum_pool_accepted` verification mode permits only RandomX challenges, needs
+`pow.stratum_pool` infrastructure, and grants access only after an actual accepted Stratum
+response on the owning session.
 
-The shipped HashWX base and max values are placeholders. Measure a mid-range
-phone before choosing a production cost. A browser with no WASM support gets
-the failure and retry controls. The client keeps the selected algorithm;
-capability fallback is not implemented.
+### Score debugging
 
-A challenge action accepts an existing cookie only when algorithm and
-enforcement match and cookie difficulty meets the current requirement.
-A Fast cookie therefore cannot satisfy a HashWX rule. Host and optional client
-bindings still apply. A DENY rule still rejects a valid HashWX cookie.
+In development only, set `policy.score.debug_header.enabled: true` to let the configured header replace the initial
+score. Its default name is `x-pow-weight`. The gateway signs the selected rule, final
+score, difficulty, algorithm, host and verification backend into the presentation. A
+browser cannot alter these claims.

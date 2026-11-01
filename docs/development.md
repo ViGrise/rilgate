@@ -65,7 +65,7 @@ after the classic adapter checks capabilities and consent. Generated headers and
 
 `web init` and `web diff` use `web/` sources, never generated outputs.
 Operator JavaScript overrides are concatenated as authored and must supply their own
-browser compatibility. See [browser requirements](configuration.md#challenge-browser-support).
+browser compatibility. See [browser support](web.md#browser-support).
 
 ## Code organization
 
@@ -87,6 +87,22 @@ configuration live in `tests/e2e/`. The npm manifest for Playwright and Biome li
 live in `tests/container/`. Dependency audit policy lives in `.config/deny.toml`, and `scripts/advisories.sh` checks that each advisory has a tracking issue. Deployment examples
 and monitoring configuration live under `deploy/`, with the operator guide in
 `docs/production.md`.
+
+## Documentation
+
+- Fold each change into the section that owns the topic. Do not append a paragraph,
+  section or note for a new feature or fix. Rewrite the existing text so the page reads
+  as if it was written once.
+- One topic has one canonical section. Other pages keep one sentence and a link.
+- Write what is true. Do not use "now", "no longer", "previously", "new" or
+  version-specific wording. Commits and release notes hold the history.
+- `configuration.md` follows the order of the YAML groups. A new setting goes into its
+  group.
+- Per-algorithm text goes into the subsection of that algorithm, in the order of
+  [`pow.md`](pow.md).
+- When a change renames or removes a heading, update every link to its anchor, including
+  comments in `config/`.
+- Update the matching platform docs page in the same way.
 
 ## Verification
 
@@ -116,11 +132,13 @@ interrupted and oversized Stratum frames. Signatures bind tokens to presentation
 challenge, receipt, or authentication purpose, even when signing keys are shared.
 Signatures from other token formats are rejected.
 
-## Performance
-
 CI runs `scripts/test.sh`, real HTTPS browser E2E tests, native RandomX reference tests,
 dependency checks and production container checks. See [production
 operations](production.md) for the release gate and local commands.
+
+## Benchmarks
+
+Measurements and design notes are in [performance](performance.md).
 
 Static response construction and body streaming can be measured separately:
 

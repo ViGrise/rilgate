@@ -1,10 +1,12 @@
 # Configuration
 
-The YAML contract has six groups: `environment`, `server`, `site`,
-`security`, `pow`, and `policy`. Configuration has no schema version.
+The YAML contract has seven groups: `environment`, `server`, `site`,
+`security`, `pow`, `signals`, and `policy`. The `signals` group holds data sources
+and the `policy` group holds rules; see [signals](policy.md#signals).
+Configuration has no schema version.
 Unknown fields, unsupported values and conflicting settings are errors in every
-environment. This unreleased schema replaces the previous configuration format. Old keys
-are rejected, with no compatibility loader or migration command.
+environment. A renamed or removed key is also an error, and the error names the
+replacement when one exists.
 
 The minimal configuration requires an upstream URL. Production deployments also set a
 signing secret:
@@ -389,62 +391,6 @@ non-public. Names under `.local`, `.internal`, `.lan`, `.home.arpa`, `.svc` and
 `.cluster.local` also count as non-public. These checks ignore letter case and a
 final dot in a DNS name.
 
-## Challenge browser support
-
-The embedded fast challenge targets IE11, Safari and iOS 9+, and Chrome 49 (including
-Windows XP). It also targets Firefox 52 ESR, Android 4.4 WebView, Samsung Internet 4,
-and KaiOS 2.5. Its classic ES5 startup bundle includes a small Promise fallback.
-
-Requests use XMLHttpRequest when fetch or AbortController is unavailable, and SHA-256
-work yields in short chunks on the main thread when workers are absent. JavaScript must
-be enabled. This compatibility target is established by syntax checks and API fallback
-tests. The Playwright suite exercises current Chromium, Firefox and WebKit, not those
-historical browser releases.
-
-RandomX requires a modern browser with ES modules, workers, BigInt and WebAssembly,
-plus about 256 MiB per worker for its cache. See [RandomX throughput](pow.md#randomx-throughput)
-for worker selection and the scalar module. An incapable browser displays the localized
-failure and retry controls after consent. It never switches a RandomX challenge to the
-fast algorithm on the client.
-
-`rilgate web init` and automatic seeding retain readable source files. The server assembles
-`static/js/challenge.bundle.js` from generated ES5 outputs when each source matches the embedded source
-digest, including seeded, unedited files. An operator-edited startup member or fast
-worker is served as authored, without the legacy browser guarantee.
-
-Individual script routes remain available. A change to a source member updates the
-assembled bundle on resource reload. A custom template must load the classic bundle to
-use it. No JavaScript compiler runs in the server.
-
-Before you build the server, build the generated outputs with `cargo xtask build-web`. This stages
-the outputs as `cargo xtask build-wasm` stages the RandomX WASM. The [development guide](development.md)
-describes the regeneration workflow.
-
-## Policy decision logs
-
-`server.decision_log` controls policy decision logs at info level. Set it to `off` to
-suppress them, `deny` to log denied requests, `challenge` (the default) to log denied
-and challenged requests, or `all` to include allowed requests. Requests allowed by a
-valid authentication cookie are logged as `allow`. The equivalent overrides are
-`RILGATE_SERVER_DECISION_LOG` and `--server-decision-log`.
-
-Each decision includes `request_id`, `client_ip`, `method`, `host`, `path`, `action`,
-`rule`, `weight`, `algorithm`, `difficulty`, and `unresolved`. These logs contain client
-IP addresses and request paths. Algorithm and difficulty are optional policy values.
-
-## Client IP forwarding
-
-`server.trusted_proxies` lists the immediate proxy peers allowed to supply the client IP.
-Set `server.client_ip_header` to an HTTP header name, such as `cf-connecting-ip`, to read
-one IP address from that header. The edge must overwrite the header. Duplicate values,
-address lists, and invalid IP addresses are rejected. IPv4-mapped IPv6 addresses resolve
-to IPv4. Headers from other peers are ignored.
-
-When the configured header is absent, Rilgate reads `X-Forwarded-For` from right to left
-and stops at the nearest untrusted hop. The same behavior applies when
-`server.client_ip_header` is unset. Use `RILGATE_SERVER_CLIENT_IP_HEADER` or
-`--server-client-ip-header` to set the header through the environment or CLI.
-
 ## Defaults
 
 Durations use units such as `300ms`, `5s`, `1m`, `6h`.
@@ -511,165 +457,65 @@ settings can be supplied directly or merged with preset files. Signals default t
 in production. Development also accepts `http`. Debug headers are forbidden in
 production.
 
-## Stratum pools and proxies
+## Server
 
-The old `pow.p2pool` section, `p2pool_accepted` configuration value and
-`RILGATE_POW_P2POOL_*` variables fail at startup with the new names. Old flags
-are unknown arguments. Existing tokens accept `p2pool_accepted` for one release.
-New tokens contain only `stratum_pool_accepted`.
+### Client address and forwarding
 
-Set `pow.stratum_pool.pools` to a list of 1 to 8 pools. The gateway tries them
-in order. Each entry requires a unique `name` and an `address`. Names use 1 to
-64 lowercase ASCII letters, digits, hyphens or underscores. An address is
-`HOST:PORT` or `[IPv6]:PORT`. It has no scheme, credentials or path.
+Rilgate resolves one client address for each request. Policy conditions, IP sets,
+authentication bindings, proof API quotas and decision logs all use that address.
 
-`login.user` defaults to `x+{difficulty}`. It must contain `{difficulty}` exactly
-once, with no other placeholders. The substituted value must fit in 256 bytes.
-Environment references resolve first. `login.password` defaults to `x`.
-Both login fields are secrets in displayed configuration.
+The address is the socket peer, with an IPv4-mapped IPv6 address resolved to IPv4.
+`server.trusted_proxies` lists the immediate proxy peers allowed to supply another address.
+The default list is empty. Never trust an entire public network; the
+`trusted-proxy-broad` and `trusted-proxy-public` [environment checks](#environment-checks)
+report broad and public networks. Headers from any other peer are ignored.
 
-| Pool field | Default | Operation |
-| --- | --- | --- |
-| `tls.enabled` | `false` | Verify TLS from the gateway to the pool |
-| `tls.server_name` | address host | Verify this DNS name or IP address |
-| `tls.ca` | none | Trust a PEM CA file; otherwise use webpki roots |
-| `proxies` | shared list | Replace `pow.stratum_pool.proxies`; `[]` connects directly |
+When the socket peer is a trusted proxy, Rilgate reads the address from the first source
+that is present:
 
-Each proxy list has 0 to 8 entries. Each proxy requires a unique `name` and a
-`url`. Proxy names follow the pool name rules. URLs use `socks5://HOST:PORT`,
-`socks5h://HOST:PORT` or `http://HOST:PORT`, with no credentials, path, query or
-fragment. Set `username` and `password` together, or omit both. Displayed
-configuration masks URLs and credentials.
+1. The header named by `server.client_ip_header`, such as `cf-connecting-ip`. The header
+   holds one IP address. Duplicate values, address lists and invalid IP addresses are
+   rejected. Use `RILGATE_SERVER_CLIENT_IP_HEADER` or `--server-client-ip-header` to set
+   the header through the environment or CLI.
+2. The `X-Forwarded-For` header, read from right to left until the nearest untrusted hop.
+   A malformed chain is rejected. This source also applies when
+   `server.client_ip_header` is unset.
 
-`socks5` resolves the pool host on the gateway. `socks5h` resolves it on the
-proxy. `http` uses CONNECT. TLS verifies the pool certificate through the proxy.
-Certificate verification is always on. HTTP response headers are limited to 8 KiB.
+The edge must overwrite these headers. `Forwarded` is not used to resolve the address.
 
-`failover.cooldown` defaults to `30s` and accepts `1s` to `10m`. A TCP connection,
-proxy handshake or TLS handshake failure puts the proxy in cooldown. The gateway
-then tries the next proxy. A login failure puts the pool in cooldown and selects
-the next pool. If all entries of a list are in cooldown, the gateway tries them
-in order. `timeout.connect` limits the transport phase and the login round trip
-separately. The transport phase includes TCP, proxy and TLS handshakes.
+Before a request reaches the upstream, Rilgate removes every value of the headers in
+`server.upstream.client_ip_headers` and writes the resolved client address in each one.
+The default list is `x-forwarded-for`, `x-real-ip` and `forwarded`. `Forwarded` receives
+`for=<address>`, with an IPv6 address as `for="[<address>]"`. The other headers receive the
+bare address. A request without a resolved address receives none of them. An empty list
+leaves these headers as the client or edge sent them. The cookie named by
+`security.auth.cookie` is removed from the `Cookie` header, and other cookies stay
+unchanged. The same rules apply to WebSocket upgrades. An upstream that trusts forwarded
+headers therefore sees the client that the policy used.
 
-`failover.timeout` limits the total connection time across all pools and proxies,
-including login. It defaults to `15s` and accepts `1s` to `5m`. It must be at least
-`timeout.connect`. Each phase uses the smaller of its timeout and the time left.
-When the budget expires, the gateway stops and reports that all Stratum pools
-are unavailable. A try that this budget stops does not start a pool or
-proxy cooldown. A failure before the budget expires still starts the applicable
-cooldown. Readiness probes keep the separate `server.readiness_timeout` bound.
-Use `--pow-stratum-pool-failover-timeout` or
-`RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT` to set the budget.
+Generated request IDs are UUIDv7. Rilgate keeps an incoming `x-request-id` only from a
+trusted proxy, and only when the value has 1 to 128 ASCII letters, digits, `.`, `_` or
+`-`. Other requests receive a generated ID.
 
-The provider loads the TLS CA file once at startup. A missing or invalid CA file
-stops startup with an error that names the pool.
+The `edge_headers` policy condition reads headers that the edge sets, such as a TLS
+fingerprint. It matches only when the socket peer is a trusted proxy; from any other peer
+the headers count as absent. See [conditions](policy.md#conditions).
 
-### Indexed environment variables
+### Policy decision logs
 
-Pool and proxy entries have no CLI flags. Use indexed variables or YAML:
+`server.decision_log` controls policy decision logs at info level. Set it to `off` to
+suppress them, `deny` to log denied requests, `challenge` (the default) to log denied
+and challenged requests, or `all` to include allowed requests. Requests allowed by a
+valid authentication cookie are logged as `allow`. The equivalent overrides are
+`RILGATE_SERVER_DECISION_LOG` and `--server-decision-log`.
 
-```bash
-RILGATE_POW_STRATUM_POOL_POOLS_0_NAME=local
-RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS=127.0.0.1:3333
-RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_USER=x+{difficulty}
-RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES=
-RILGATE_POW_STRATUM_POOL_POOLS_1_NAME=backup
-RILGATE_POW_STRATUM_POOL_POOLS_1_ADDRESS=pool.example:443
-RILGATE_POW_STRATUM_POOL_POOLS_1_TLS_ENABLED=true
-RILGATE_POW_STRATUM_POOL_PROXIES_0_NAME=tunnel
-RILGATE_POW_STRATUM_POOL_PROXIES_0_URL=socks5h://127.0.0.1:1080
-```
+Each decision includes `request_id`, `client_ip`, `method`, `host`, `path`, `action`,
+`rule`, `weight`, `algorithm`, `difficulty`, and `unresolved`. These logs contain client
+IP addresses and request paths. Algorithm and difficulty are optional policy values.
 
-| Variable prefix | Fields |
-| --- | --- |
-| `RILGATE_POW_STRATUM_POOL_POOLS_<N>_` | `NAME`, `ADDRESS`, `LOGIN_USER`, `LOGIN_PASSWORD`, `TLS_ENABLED`, `TLS_SERVER_NAME`, `TLS_CA`, `PROXIES` |
-| `RILGATE_POW_STRATUM_POOL_PROXIES_<N>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
-| `RILGATE_POW_STRATUM_POOL_POOLS_<N>_PROXIES_<M>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
+## Site
 
-Indexes start at 0 and have no gaps. A variable changes one field of the YAML
-item with that index. The next index adds one item at the end. An unknown field
-fails with the valid field list. Invalid values name their source variable.
-An empty `POOLS_<N>_PROXIES` value sets an empty proxy list for that pool.
-Shared settings keep their flags, including `--pow-stratum-pool-failover-cooldown`.
-
-## Separate keys and rotation
-
-If independent key management or rolling rotation is required, use explicit keys. In
-this mode, do not use a master secret. The two modes are mutually exclusive.
-
-```yaml
-security:
-  keys:
-    challenge: "${RILGATE_SECURITY_KEYS_CHALLENGE}"
-    auth: "${RILGATE_SECURITY_KEYS_AUTH}"
-    challenge_rotation:
-      active_id: proof-next
-      previous:
-        proof-current: "${RILGATE_SECURITY_KEYS_CHALLENGE_PREVIOUS}"
-    auth_rotation:
-      active_id: auth-next
-      previous:
-        auth-current: "${RILGATE_SECURITY_KEYS_AUTH_PREVIOUS}"
-```
-
-Each key must have at least 32 bytes. Key IDs contain 1 to 32 ASCII letters, digits,
-underscores or hyphens. Each ring permits at most eight verification keys.
-
-The active ID cannot be in `previous`. Omit the active ID for unversioned signing. A
-verification entry named `legacy` explicitly accepts unversioned signatures during a
-named-key transition.
-
-A change to a master secret invalidates its existing tokens. If an overlap window is
-required, use explicit keys. Secrets never appear in configuration output or debug
-representations. See [production rotation](production.md).
-
-## Authentication cookie binding
-
-By default the authentication cookie is a portable bearer credential: a cookie earned on
-one machine works from any other until it expires. Set `security.auth.bind` to tie it to the
-client that solved the challenge.
-
-```yaml
-security:
-  auth:
-    bind:
-      client_ip: {ipv4_prefix: 24, ipv6_prefix: 64}
-      user_agent: family
-      headers: [accept-language]
-      proxy_headers: [x-ja4]
-```
-
-- `client_ip` binds the network of the resolved client IP. If the section is present,
-  even as `{}`, it enables the binding with the defaults shown. Prefixes are 0
-  to 32 and 0 to 128. The resolved IP honors `server.trusted_proxies`, so that list must be correct.
-- `client_ip.max_networks` accepts integers from 1 to 8, with default 1 preserving the
-  legacy cookie format. Set it to 4 to remember up to four proven networks. Each new
-  network still needs a solved challenge. Entries expire independently, and a merged
-  cookie uses the lower difficulty. A different bound User-Agent family or algorithm
-  starts a new cookie. With several gateway instances, deploy the same version
-  everywhere before raising this value: older instances reject the network form and
-  challenge again. `rilgate_auth_network_merges_total` counts successful merges.
-- `user_agent` is `full` for the exact header or `family` for the header
-  without version numbers. A browser update keeps a `family` cookie valid. A
-  different browser does not.
-- `headers` lists client request headers, read on every request.
-- `proxy_headers` lists headers that an edge proxy sets, such as a JA4 TLS fingerprint.
-  They are read only when the immediate TCP peer is inside `server.trusted_proxies`. From any other
-  peer they count as absent, so a client cannot choose their value.
-
-Each list holds at most 16 distinct, valid header names. A missing header differs from
-an empty one. Settings are also available as flags and variables, such as `--security-auth-bind-client-ip-ipv4-prefix`.
-If you set either prefix, IP binding is enabled.
-
-A cookie that does not match its binding is treated as absent. The client receives the
-challenge and never a 403. `rilgate_auth_binding_mismatches_total` counts the event.
-
-Clients whose network or browser changes, such as mobile and VPN users, solve again. The
-binding is a keyed digest derived from the auth signing key. A change to that key makes
-every bound client solve again. Without any binding configured, behavior is unchanged.
-
-## API response presentation
+### API response presentation
 
 `site.responses.format` selects `auto`, `html` or `json`. Automatic mode
 negotiates request headers. `site.responses.json_paths` can force JSON for API path prefixes. Operator
@@ -682,123 +528,10 @@ notification headers, JSON body templates and iframe completion.
 JSON challenges always return 403 with `Rilgate-Challenge: required`.
 See [response status codes](web.md#response-status-codes) for allowed values.
 
-## Dedicated RandomX verifier
+### Open Graph passthrough
 
-Run the hash service with a separate command:
-
-```sh
-rilgate verifier config check --config /etc/rilgate/verifier.yml --strict
-rilgate verifier config show --config /etc/rilgate/verifier.yml --defaults
-rilgate verifier serve --config /etc/rilgate/verifier.yml
-```
-
-This command resolves only `environment`, `pow.algorithms.randomx.cache`,
-`pow.algorithms.randomx.serve`, `server.operations` and `server.metrics_enabled`.
-It uses the same YAML loader, environment variables, flags and logging options
-as the gateway. It needs no upstream URL, signing secret, policy or pool.
-Configuration checks load TLS files but do not open a listener.
-
-```yaml
-server:
-  operations:
-    listen: 127.0.0.1:9091
-  metrics_enabled: true
-pow:
-  algorithms:
-    randomx:
-      cache:
-        idle_timeout: 30m
-      serve:
-        listen: 10.0.0.5:9443
-        workers: 1
-        queue: 64
-        max_connections: 256
-        tls:
-          cert: /etc/rilgate/verifier.pem
-          key: /etc/rilgate/verifier.key
-          client_ca: /etc/rilgate/gateway-ca.pem
-```
-
-| Setting under `pow.algorithms.randomx.serve` | Default | Requirement |
-| --- | --- | --- |
-| `listen` | none | One socket address. Must differ from gateway and operations addresses. |
-| `workers` | `1` | Must be `1`. Several workers are reserved for phase 2. |
-| `queue` | `64` | `1` to `4096` admitted hash requests. |
-| `max_connections` | `256` | `1` to `65536` hash connections. |
-| `tls.cert`, `tls.key` | none | Both files are required in every environment. |
-| `tls.client_ca` | none | Required in production. Authenticates gateway certificates. |
-
-Each client certificate can hold half the admission limit, rounded down, with a
-minimum of one request. Gateways that share one certificate share this half, so
-give each gateway its own certificate. Requests without a client certificate use
-only the total limit. Admission applies before the service reads a body.
-Excess hash requests receive `503` with `Retry-After: 1`. Excess connections are
-closed. The service accepts JSON bodies of at most 4 KiB.
-
-The verifier listener serves only `POST /v1/randomx/hash` and `GET /v1/ready`.
-The operations listener serves `GET /api/live`, `GET /api/ready` and, when metrics
-are enabled, `GET /api/metrics`. These routes do not check an upstream or pool.
-A cold worker is ready. A worker failure makes it not ready for one second.
-The next hash can retry initialization. During shutdown, it stays not ready.
-The verifier stops new hash connections and allows up to 30 seconds for active
-requests to finish. Each operations listener has a separate limit of 16 connections.
-
-Production rejects a missing client CA with
-`verifier-serve-unauthenticated`. A public verifier address produces the
-`verifier-serve-public` warning. Public operations addresses also produce a
-warning. A gateway configuration with `serve` is rejected. Run a dedicated
-verifier process; combined mode is reserved for phase 2.
-
-## HashWX configuration
-
-Use a custom policy to select HashWX. Presets select Fast explicitly. HashWX
-is registered and its cost settings are validated only when a challenge rule
-selects it with local verification.
-
-```yaml
-pow:
-  verification: local_verify
-  default_algorithm: hashwx
-  algorithms:
-    hashwx:
-      nonces_per_seed: 65536
-      difficulty:
-        base: 50000
-        score_step: 10
-        max: 5000000
-policy:
-  default_action: challenge
-```
-
-| YAML path under `pow.algorithms.hashwx` | Default | Valid values |
-| --- | ---: | --- |
-| `nonces_per_seed` | 65536 | 463 to 1048576 |
-| `difficulty.base` | 50000 | 1 to 2^40 |
-| `difficulty.score_step` | 10 | Positive i32 |
-| `difficulty.max` | 5000000 | `base` to 2^40 |
-
-The base and max defaults are placeholders until a mid-range phone is measured.
-The iPhone 15 Pro Max result does not supply that calibration. An explicit
-rule difficulty must be between 1 and 2^40 and overrides the score mapping,
-including its `max` cap. `pow.challenge.ttl` controls the work lifetime.
-
-Each setting has the corresponding CLI flag and environment variable:
-
-| Flag | Environment variable |
-| --- | --- |
-| `--pow-algorithms-hashwx-nonces-per-seed` | `RILGATE_POW_ALGORITHMS_HASHWX_NONCES_PER_SEED` |
-| `--pow-algorithms-hashwx-difficulty-base` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_BASE` |
-| `--pow-algorithms-hashwx-difficulty-score-step` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_SCORE_STEP` |
-| `--pow-algorithms-hashwx-difficulty-max` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_MAX` |
-
-`--pow-default-algorithm hashwx` and `RILGATE_POW_DEFAULT_ALGORITHM=hashwx`
-select it for challenge actions that omit an algorithm. HashWX work is local.
-It needs no `pow.stratum_pool` entry or dedicated verifier queue.
-
-## Open Graph passthrough
-
-Enable `site.open_graph` to expose anonymous upstream preview metadata in HTML
-challenges for protected GET requests:
+`site.open_graph` exposes anonymous upstream preview metadata in HTML challenges for
+protected GET requests. It is disabled by default:
 
 ```yaml
 site:
@@ -869,3 +602,291 @@ site:
 
 See [gateway behavior](gateway.md#open-graph-passthrough) for fetch limits and
 [web resources](web.md) for custom layout integration.
+
+## Security
+
+### Separate keys and rotation
+
+`security.keys` sets separate challenge and authentication signing keys with rotation.
+Use explicit keys when you need independent key management or rolling rotation. Do not
+set a master secret in this mode. The two modes are mutually exclusive.
+
+```yaml
+security:
+  keys:
+    challenge: "${RILGATE_SECURITY_KEYS_CHALLENGE}"
+    auth: "${RILGATE_SECURITY_KEYS_AUTH}"
+    challenge_rotation:
+      active_id: proof-next
+      previous:
+        proof-current: "${RILGATE_SECURITY_KEYS_CHALLENGE_PREVIOUS}"
+    auth_rotation:
+      active_id: auth-next
+      previous:
+        auth-current: "${RILGATE_SECURITY_KEYS_AUTH_PREVIOUS}"
+```
+
+Each key must have at least 32 bytes. Key IDs contain 1 to 32 ASCII letters, digits,
+underscores or hyphens. Each ring permits at most eight verification keys.
+
+The active ID cannot be in `previous`. Omit the active ID for unversioned signing. A
+verification entry named `legacy` explicitly accepts unversioned signatures during a
+named-key transition.
+
+A change to a master secret invalidates its existing tokens. Explicit keys provide an
+overlap window. Secrets never appear in configuration output or debug
+representations. See [production rotation](production.md).
+
+### Authentication cookie binding
+
+`security.auth.bind` ties the authentication cookie to the client that solved the
+challenge. Without a binding the cookie is a portable bearer credential: a cookie earned
+on one machine works from any other until it expires.
+
+```yaml
+security:
+  auth:
+    bind:
+      client_ip: {ipv4_prefix: 24, ipv6_prefix: 64}
+      user_agent: family
+      headers: [accept-language]
+      proxy_headers: [x-ja4]
+```
+
+- `client_ip` binds the network of the resolved client IP. If the section is present,
+  even as `{}`, it enables the binding with the defaults shown. Prefixes are 0
+  to 32 and 0 to 128. The resolved IP honors `server.trusted_proxies`, so that list must be correct.
+- `client_ip.max_networks` accepts integers from 1 to 8, with default 1 preserving the
+  legacy cookie format. Set it to 4 to remember up to four proven networks. Each new
+  network still needs a solved challenge. Entries expire independently, and a merged
+  cookie uses the lower difficulty. A different bound User-Agent family or algorithm
+  starts a new cookie. With several gateway instances, deploy the same version
+  everywhere before raising this value: older instances reject the network form and
+  challenge again. `rilgate_auth_network_merges_total` counts successful merges.
+- `user_agent` is `full` for the exact header or `family` for the header
+  without version numbers. A browser update keeps a `family` cookie valid. A
+  different browser does not.
+- `headers` lists client request headers, read on every request.
+- `proxy_headers` lists headers that an edge proxy sets, such as a JA4 TLS fingerprint.
+  They are read only when the immediate TCP peer is inside `server.trusted_proxies`. From any other
+  peer they count as absent, so a client cannot choose their value.
+
+Each list holds at most 16 distinct, valid header names. A missing header differs from
+an empty one. Settings are also available as flags and variables, such as `--security-auth-bind-client-ip-ipv4-prefix`.
+If you set either prefix, IP binding is enabled.
+
+A cookie that does not match its binding is treated as absent. The client receives the
+challenge and never a 403. `rilgate_auth_binding_mismatches_total` counts the event.
+
+Clients whose network or browser changes, such as mobile and VPN users, solve again. The
+binding is a keyed digest derived from the auth signing key. A change to that key makes
+every bound client solve again.
+
+## Proof of work
+
+### Stratum pools and proxies
+
+`pow.stratum_pool` configures the Stratum pools that RandomX challenges use with
+`pow.verification: stratum_pool_accepted`. Token decoding accepts the legacy
+`p2pool_accepted` value. Tokens carry only `stratum_pool_accepted`.
+
+Set `pow.stratum_pool.pools` to a list of 1 to 8 pools. The gateway tries them
+in order. Each entry requires a unique `name` and an `address`. Names use 1 to
+64 lowercase ASCII letters, digits, hyphens or underscores. An address is
+`HOST:PORT` or `[IPv6]:PORT`. It has no scheme, credentials or path.
+
+`login.user` defaults to `x+{difficulty}`. It must contain `{difficulty}` exactly
+once, with no other placeholders. The substituted value must fit in 256 bytes.
+Environment references resolve first. `login.password` defaults to `x`.
+Both login fields are secrets in displayed configuration.
+
+| Pool field | Default | Operation |
+| --- | --- | --- |
+| `tls.enabled` | `false` | Verify TLS from the gateway to the pool |
+| `tls.server_name` | address host | Verify this DNS name or IP address |
+| `tls.ca` | none | Trust a PEM CA file; otherwise use webpki roots |
+| `proxies` | shared list | Replace `pow.stratum_pool.proxies`; `[]` connects directly |
+
+Each proxy list has 0 to 8 entries. Each proxy requires a unique `name` and a
+`url`. Proxy names follow the pool name rules. URLs use `socks5://HOST:PORT`,
+`socks5h://HOST:PORT` or `http://HOST:PORT`, with no credentials, path, query or
+fragment. Set `username` and `password` together, or omit both. Displayed
+configuration masks URLs and credentials.
+
+`socks5` resolves the pool host on the gateway. `socks5h` resolves it on the
+proxy. `http` uses CONNECT. TLS verifies the pool certificate through the proxy.
+Certificate verification is always on. HTTP response headers are limited to 8 KiB.
+
+`failover.cooldown` defaults to `30s` and accepts `1s` to `10m`. A TCP connection,
+proxy handshake or TLS handshake failure puts the proxy in cooldown. The gateway
+then tries the next proxy. A login failure puts the pool in cooldown and selects
+the next pool. If all entries of a list are in cooldown, the gateway tries them
+in order. `timeout.connect` limits the transport phase and the login round trip
+separately. The transport phase includes TCP, proxy and TLS handshakes.
+
+`failover.timeout` limits the total connection time across all pools and proxies,
+including login. It defaults to `15s` and accepts `1s` to `5m`. It must be at least
+`timeout.connect`. Each phase uses the smaller of its timeout and the time left.
+When the budget expires, the gateway stops and reports that all Stratum pools
+are unavailable. A try that this budget stops does not start a pool or
+proxy cooldown. A failure before the budget expires still starts the applicable
+cooldown. Readiness probes keep the separate `server.readiness_timeout` bound.
+Use `--pow-stratum-pool-failover-timeout` or
+`RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT` to set the budget.
+
+The provider loads the TLS CA file once at startup. A missing or invalid CA file
+stops startup with an error that names the pool.
+
+#### Indexed environment variables
+
+Pool and proxy entries have no CLI flags. Use indexed variables or YAML:
+
+```bash
+RILGATE_POW_STRATUM_POOL_POOLS_0_NAME=local
+RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS=127.0.0.1:3333
+RILGATE_POW_STRATUM_POOL_POOLS_0_LOGIN_USER=x+{difficulty}
+RILGATE_POW_STRATUM_POOL_POOLS_0_PROXIES=
+RILGATE_POW_STRATUM_POOL_POOLS_1_NAME=backup
+RILGATE_POW_STRATUM_POOL_POOLS_1_ADDRESS=pool.example:443
+RILGATE_POW_STRATUM_POOL_POOLS_1_TLS_ENABLED=true
+RILGATE_POW_STRATUM_POOL_PROXIES_0_NAME=tunnel
+RILGATE_POW_STRATUM_POOL_PROXIES_0_URL=socks5h://127.0.0.1:1080
+```
+
+| Variable prefix | Fields |
+| --- | --- |
+| `RILGATE_POW_STRATUM_POOL_POOLS_<N>_` | `NAME`, `ADDRESS`, `LOGIN_USER`, `LOGIN_PASSWORD`, `TLS_ENABLED`, `TLS_SERVER_NAME`, `TLS_CA`, `PROXIES` |
+| `RILGATE_POW_STRATUM_POOL_PROXIES_<N>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
+| `RILGATE_POW_STRATUM_POOL_POOLS_<N>_PROXIES_<M>_` | `NAME`, `URL`, `USERNAME`, `PASSWORD` |
+
+Indexes start at 0 and have no gaps. A variable changes one field of the YAML
+item with that index. The next index adds one item at the end. An unknown field
+fails with the valid field list. Invalid values name their source variable.
+An empty `POOLS_<N>_PROXIES` value sets an empty proxy list for that pool.
+Shared settings keep their flags, including `--pow-stratum-pool-failover-cooldown`.
+
+### HashWX
+
+`pow.algorithms.hashwx` sets the cost of HashWX, the local CPU algorithm. Presets select
+Fast explicitly, so select HashWX in a custom policy. HashWX is registered and its cost
+settings are validated only when a challenge rule selects it with local verification.
+
+```yaml
+pow:
+  verification: local_verify
+  default_algorithm: hashwx
+  algorithms:
+    hashwx:
+      nonces_per_seed: 65536
+      difficulty:
+        base: 50000
+        score_step: 10
+        max: 5000000
+policy:
+  default_action: challenge
+```
+
+| YAML path under `pow.algorithms.hashwx` | Default | Valid values |
+| --- | ---: | --- |
+| `nonces_per_seed` | 65536 | 463 to 1048576 |
+| `difficulty.base` | 50000 | 1 to 2^40 |
+| `difficulty.score_step` | 10 | Positive i32 |
+| `difficulty.max` | 5000000 | `base` to 2^40 |
+
+The base and max defaults are placeholders. The iPhone 15 Pro Max result in
+[HashWX measurements](performance.md#hashwx-measurements-2026-10-23) does not calibrate
+them. Measure a mid-range phone and representative traffic before choosing production
+costs. `pow.challenge.ttl` controls the work lifetime. Set it for the chosen cost.
+[Challenge selection](policy.md#challenge-selection) describes how rule difficulty
+overrides the score mapping.
+
+Each setting has the corresponding CLI flag and environment variable:
+
+| Flag | Environment variable |
+| --- | --- |
+| `--pow-algorithms-hashwx-nonces-per-seed` | `RILGATE_POW_ALGORITHMS_HASHWX_NONCES_PER_SEED` |
+| `--pow-algorithms-hashwx-difficulty-base` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_BASE` |
+| `--pow-algorithms-hashwx-difficulty-score-step` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_SCORE_STEP` |
+| `--pow-algorithms-hashwx-difficulty-max` | `RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_MAX` |
+
+`--pow-default-algorithm hashwx` and `RILGATE_POW_DEFAULT_ALGORITHM=hashwx`
+select it for challenge actions that omit an algorithm. HashWX work is local.
+It needs no `pow.stratum_pool` entry or dedicated verifier queue.
+
+### Dedicated RandomX verifier
+
+`rilgate verifier` runs the RandomX hash service as a separate process for remote
+verification. See [Proof of work deployment](production.md#remote-randomx-verifier) for
+the operator steps.
+
+
+```sh
+rilgate verifier config check --config /etc/rilgate/verifier.yml --strict
+rilgate verifier config show --config /etc/rilgate/verifier.yml --defaults
+rilgate verifier serve --config /etc/rilgate/verifier.yml
+```
+
+This command resolves only `environment`, `pow.algorithms.randomx.cache`,
+`pow.algorithms.randomx.serve`, `server.operations` and `server.metrics_enabled`.
+It uses the same YAML loader, environment variables, flags and logging options
+as the gateway. It needs no upstream URL, signing secret, policy or pool.
+Configuration checks load TLS files but do not open a listener.
+
+```yaml
+server:
+  operations:
+    listen: 127.0.0.1:9091
+  metrics_enabled: true
+pow:
+  algorithms:
+    randomx:
+      cache:
+        idle_timeout: 30m
+      serve:
+        listen: 10.0.0.5:9443
+        workers: 1
+        queue: 64
+        max_connections: 256
+        tls:
+          cert: /etc/rilgate/verifier.pem
+          key: /etc/rilgate/verifier.key
+          client_ca: /etc/rilgate/gateway-ca.pem
+```
+
+| Setting under `pow.algorithms.randomx.serve` | Default | Requirement |
+| --- | --- | --- |
+| `listen` | none | One socket address. Must differ from gateway and operations addresses. |
+| `workers` | `1` | Must be `1`. Several workers are reserved for phase 2. |
+| `queue` | `64` | `1` to `4096` admitted hash requests. |
+| `max_connections` | `256` | `1` to `65536` hash connections. |
+| `tls.cert`, `tls.key` | none | Both files are required in every environment. |
+| `tls.client_ca` | none | Required in production. Authenticates gateway certificates. |
+
+Each client certificate can hold half the admission limit, rounded down, with a
+minimum of one request. Gateways that share one certificate share this half, so
+give each gateway its own certificate. Requests without a client certificate use
+only the total limit. Admission applies before the service reads a body.
+Excess hash requests receive `503` with `Retry-After: 1`. Excess connections are
+closed. The service accepts JSON bodies of at most 4 KiB.
+
+The verifier listener serves only `POST /v1/randomx/hash` and `GET /v1/ready`.
+The operations listener serves `GET /api/live`, `GET /api/ready` and, when metrics
+are enabled, `GET /api/metrics`. These routes do not check an upstream or pool.
+A cold worker is ready. A worker failure makes it not ready for one second.
+The next hash can retry initialization. During shutdown, it stays not ready.
+The verifier stops new hash connections and allows up to 30 seconds for active
+requests to finish. Each operations listener has a separate limit of 16 connections.
+
+Production rejects a missing client CA with
+`verifier-serve-unauthenticated`. A public verifier address produces the
+`verifier-serve-public` warning. Public operations addresses also produce a
+warning. A gateway configuration with `serve` is rejected. Run a dedicated
+verifier process; combined mode is reserved for phase 2.
+
+## Signals and policy
+
+The `signals` group defines IP sets, ASN sets, GeoIP databases, DNS checks, the honeypot
+and counters. The `policy` group defines the rules, thresholds and score that use them.
+See [signals](policy.md#signals) and [custom evaluation](policy.md#custom-evaluation) for
+the settings, and [conditions](policy.md#conditions) for the rule grammar. Reload both
+groups with the [policy reload](#reloading-the-policy).

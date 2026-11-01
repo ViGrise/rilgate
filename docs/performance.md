@@ -1,31 +1,29 @@
 # Performance measurements
 
-## Findings
+## Design notes
 
-Generated asset responses copied the complete payload on every GET, and their
-constructor also cloned the input vector. These assets now use `bytes::Bytes`:
-construction takes ownership of the vector, and response bodies share its immutable
-storage. The explicit `AssetMetadata::bytes()` API still returns an owned vector. Embedded assets
-already used static storage and remain unchanged.
+Generated asset responses share storage. Asset bodies use `bytes::Bytes`: construction
+takes ownership of the vector, and response bodies share its immutable storage, so a GET
+does not copy the payload. `AssetSource::Memory` holds `Bytes`. The explicit
+`AssetMetadata::bytes()` API returns an owned vector. Embedded assets use static storage.
 
 Filesystem overrides are copied into immutable backing files when a web snapshot is
-built. `ReaderStream::new` used its default 4 KiB buffer to serve those files. This produced a
-separate asynchronous read and body frame per chunk. The read buffer now scales with
-file size up to 64 KiB. This reduces blocking file work and response frame overhead, and
-keeps file bodies streamed and independent of later changes to the operator's source
-files.
+built. Rilgate streams them through `ReaderStream`, whose read buffer scales with file
+size up to 64 KiB. A larger buffer reduces blocking file work and response frame
+overhead, and file bodies stay streamed and independent of later changes to the
+operator's source files. Small files use their own size, with a minimum capacity of one
+byte for empty files. HEAD and conditional 304 responses do not open a file or allocate
+this read buffer.
 
-The buffer can use up to 60 KiB more per active file response than the previous default,
-plus Tokio's file buffering. Small files use their own size, with a minimum capacity of
-one byte for empty files. HEAD and conditional 304 responses do not open a file or
-allocate this read buffer.
+The buffer costs up to 60 KiB more per active file response than the 4 KiB default of
+`ReaderStream`, plus Tokio's file buffering.
 
 These choices follow the documented behavior of [Bytes shared storage](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) and
-[ReaderStream capacity](https://docs.rs/tokio-util/latest/tokio_util/io/struct.ReaderStream.html). `AssetSource::Memory` now holds `Bytes`. It previously
-held `Vec<u8>`. Direct enum constructors need `.into()`. `AssetMetadata::memory` retains its
-existing API.
+[ReaderStream capacity](https://docs.rs/tokio-util/latest/tokio_util/io/struct.ReaderStream.html).
 
-## Local measurements
+## Measurements
+
+### Asset responses, 2026-10-07
 
 Measured on macOS arm64 using the release profile on 2026-10-07. Each entry is the
 median of five samples, with 200 sequential responses per sample. The benchmark
@@ -58,7 +56,7 @@ deployment hardware can change the results. Use `scripts/perf-gate.sh` for the e
 health and challenge page load checks, plus allowed and authenticated proxy traffic. It
 does not measure static assets.
 
-## Policy and authentication gate
+### Policy and authentication gate, 2026-10-07
 
 Cookie lookup returns a slice of the request header. It does not allocate an owned
 value. Policy decisions borrow the matched rule name from the compiled engine. The
@@ -85,10 +83,6 @@ authenticated request. The table uses runs without concurrent builds.
 cargo run --release --locked -p rilgate-gateway --example gate-throughput -- 200000
 ```
 
-`PolicyDecision` now has a lifetime parameter and a borrowed `rule: &str`. Code that retains
-a rule beyond the engine's lifetime must take an owned copy. `cookie_value` now returns
-`Option<&str>` tied to the headers. Callers that need ownership can use `.map(str::to_owned)`.
-
 The HTTP performance gate gets its cookie through presentation, challenge, verification,
 and exchange endpoints with Fast difficulty 1. It checks the authenticated response
 against the mock upstream before and after load. It reports authenticated and allowed
@@ -101,7 +95,7 @@ proxy throughput was 70,389 req/s with p50 444 us. There were no HTTP or socket 
 and no measured log growth. These numbers validate the load harness and are not a
 throughput comparison before and after the change.
 
-## Client connection writes
+### Client connection writes, 2026-10-07
 
 The gateway accepts connections itself and gives Pingora streams with unbuffered writes.
 Thus, a local response cost one `sendto` for its header and another for its body.
@@ -134,7 +128,52 @@ Proxy throughput is bounded by the single-threaded mock upstream and the added h
 latency. Gateway CPU per proxied request changed from 62.8 us to 60.7 us, which is
 within run-to-run variation.
 
-## Gateway with an HTTP null upstream, 2026-10-24
+### HashWX measurements, 2026-10-23
+
+Measured on 2026-10-23 with three seeds per row and one worker. The Mac is an
+Apple M4 Pro, arm64, running macOS 26.4.1. Chrome 155.0.8059.86 ran headless;
+Safari 26.4 ran in its application. Native results use Rust 1.98.0 and the
+release profile. The phone is an iPhone 15 Pro Max. Its user agent reports
+Safari 17.5, iOS 17.5.1 and hardware concurrency 4.
+
+These rates use the prototype artifact recorded in proposal section 8.
+Rates below include per-seed generation and compilation at 65536 nonces per
+seed. They exclude initial WASM loading, SHA-256 challenge seed derivation,
+network traffic and token verification. The native path uses interpretation.
+The browser generated path compiles the generated WASM. A native code generator
+was not measured.
+
+| Runtime | Interpreter total H/s | Generated WASM total H/s |
+| --- | ---: | ---: |
+| M4 Pro, native | 71224 | Not measured |
+| M4 Pro, Chrome | 64997 | 323475 |
+| M4 Pro, Safari | 69917 | 306721 |
+| iPhone 15 Pro Max, Safari | 62814 | 386263 |
+
+Native instance generation plus one hash averaged 25.9 microseconds. This
+kernel measurement excludes the proof API, seed derivation, signature checks
+and blocking-task scheduling. It does not establish server request latency.
+The native interpreter / iPhone generated-WASM rate ratio is 0.184; the
+native interpreter / iPhone interpreter ratio is 1.134. These compare different
+machines. They do not measure a native JIT or GPU advantage.
+
+The iPhone 15 Pro Max is high-end. It does not satisfy the mid-range phone
+requirement. The default base of 50000 and max of 5000000 stay placeholders
+until that measurement is available. The native-to-mid-range-phone ratio
+remains pending.
+
+Three trials per difficulty give a wide solve-time spread. On the iPhone at
+50000 difficulty and 463 nonces per seed, generated trials were 20663, 310 and
+589 ms. Hash rates are the reliable figures for these samples. Use more trials
+on a mid-range phone before selecting defaults. The prototype uses deterministic
+synthetic seeds; the production solver uses the signed SHA-256 seed scheme
+and up to two workers. Prototype solve medians are not production medians.
+
+See [proposal section 8](proposals/browser-pow-algorithms.md#8-measurement-before-defaults)
+for full rates, individual-result file names, solve medians and benchmark
+commands. Result JSON stays in the ignored `target/hashwx-bench/` directory.
+
+### Gateway with an HTTP null upstream, 2026-10-24
 
 The performance gate uses the `null-upstream` Rust example. It runs on a
 multithreaded Tokio runtime, consumes and discards incoming body frames, and
@@ -187,7 +226,7 @@ and error checks. In the 4 / 12 run, gateway RSS after allowed traffic was
 41.23 MiB and upstream RSS was 9.30 MiB. Gateway CPU was about 384% of one core,
 upstream CPU 190%, and client CPU 157% during that measurement.
 
-### Bottleneck evidence
+#### Bottleneck evidence
 
 - **Transport and scheduling are the leading measured costs.** Three separate
   five-second `sample` profiles covered allowed traffic at 12 and 2 gateway
@@ -204,7 +243,7 @@ upstream CPU 190%, and client CPU 157% during that measurement.
   65,000 req/s and increased allowed p50 from 461 to 1900 us. At two workers,
   gateway CPU reached about 199% of one core and proxy throughput fell. Four
   workers are a useful tuning candidate on this host, not a production default.
-- **The upstream application is no longer the earlier single-threaded ceiling.**
+- **The multi-threaded upstream sink is not the ceiling.**
   In the 4 / 12 run, the sink alone handled about 1.82 times allowed proxy
   throughput. The extra HTTP hop still consumes CPU and sockets on this host.
   Authenticated and allowed proxy rates were nearly equal. Challenge and health
@@ -222,9 +261,9 @@ upstream CPU 190%, and client CPU 157% during that measurement.
   TIME_WAIT sockets rose to 15,322 while about 300 upstream connections were
   established. Metrics recorded zero connection and request quota rejections.
 
-### Upstream pool sized to the connection limit
+#### Upstream pool sized to the connection limit
 
-The gateway now sizes the upstream keepalive pool to `server.max_connections`,
+The gateway sizes the upstream keepalive pool to `server.max_connections`,
 default 1024. The earlier tables in this section used Pingora's default pool.
 Rerun with default workers (12 / 12), four `wrk` threads, two
 seconds of warmup and eight seconds of measurement:
@@ -264,7 +303,7 @@ The gate keeps raw `wrk` output, client CPU time, cumulative server CPU/RSS
 snapshots and metrics counters per measured path in `PERF_GATE_RUNDIR`. These
 results are not committed.
 
-## Linux container measurements, 2026-10-24
+### Linux container measurements, 2026-10-24
 
 Measured in the Docker Desktop Linux VM on the same Apple M4 Pro: kernel
 7.0.14-linuxkit, arm64, 12 vCPUs and 7.7 GiB of memory. The image is Debian trixie
@@ -275,7 +314,7 @@ communicate over loopback HTTP/1.1. Each path uses four `wrk` threads, two secon
 of warmup and eight seconds of measurement. Gateway CPU is user plus system time
 read from procfs, divided by completed requests.
 
-### Upstream pool on Linux
+#### Upstream pool on Linux
 
 The same working tree was built with the upstream pool sized to
 `server.max_connections` and with Pingora's default pool of 128. Each run waited
@@ -302,7 +341,7 @@ pooled connection while its idle watcher still holds the connection. Pingora
 then opens a new connection, and the response checks pass. These lines are the
 127 to 381 log bytes the gate reported.
 
-### Axum and Pingora transport comparison
+#### Axum and Pingora transport comparison
 
 Three gateway builds served the same null upstream:
 
@@ -356,7 +395,7 @@ used to get a cookie changed after the migration. These results come from one
 VM that runs the generator, gateway and upstream together. They do not replace
 a benchmark on the deployment host with separate generator and upstream hosts.
 
-## Global allocator, 2026-10-24
+### Global allocator, 2026-10-24
 
 The `rilgate` binary uses mimalloc as its global allocator. mimalloc keeps
 per-thread heaps, so request handling on many Tokio workers does not contend on
@@ -416,61 +455,7 @@ throughput change. RSS increased by 14 MiB at 128 connections and decreased by
 10 MiB at 512. Loopback throughput on macOS stays near 80,000 req/s with
 both allocators.
 
-## Further investigation
-
-The authenticated path still allocates for the normalized request host, decoded token
-payload, and deserialized host claim. These need further profiling before changes to
-their ownership or validation. The rate limiter serializes token updates under one
-mutex. This preserves its global quota. Before you change its synchronization, measure
-contention. RandomX has its own throughput benchmark and reference vectors, and requires
-separate analysis from HTTP response performance.
-
-## HashWX measurements
-
-Measured on 2026-10-23 with three seeds per row and one worker. The Mac is an
-Apple M4 Pro, arm64, running macOS 26.4.1. Chrome 155.0.8059.86 ran headless;
-Safari 26.4 ran in its application. Native results use Rust 1.98.0 and the
-release profile. The phone is an iPhone 15 Pro Max. Its user agent reports
-Safari 17.5, iOS 17.5.1 and hardware concurrency 4.
-
-These rates use the prototype artifact recorded in proposal section 8.
-Rates below include per-seed generation and compilation at 65536 nonces per
-seed. They exclude initial WASM loading, SHA-256 challenge seed derivation,
-network traffic and token verification. The native path uses interpretation.
-The browser generated path compiles the generated WASM. A native code generator
-was not measured.
-
-| Runtime | Interpreter total H/s | Generated WASM total H/s |
-| --- | ---: | ---: |
-| M4 Pro, native | 71224 | Not measured |
-| M4 Pro, Chrome | 64997 | 323475 |
-| M4 Pro, Safari | 69917 | 306721 |
-| iPhone 15 Pro Max, Safari | 62814 | 386263 |
-
-Native instance generation plus one hash averaged 25.9 microseconds. This
-kernel measurement excludes the proof API, seed derivation, signature checks
-and blocking-task scheduling. It does not establish server request latency.
-The native interpreter / iPhone generated-WASM rate ratio is 0.184; the
-native interpreter / iPhone interpreter ratio is 1.134. These compare different
-machines. They do not measure a native JIT or GPU advantage.
-
-The iPhone 15 Pro Max is high-end. It does not satisfy the mid-range phone
-requirement. The default base of 50000 and max of 5000000 stay placeholders
-until that measurement is available. The native-to-mid-range-phone ratio
-remains pending.
-
-Three trials per difficulty give a wide solve-time spread. On the iPhone at
-50000 difficulty and 463 nonces per seed, generated trials were 20663, 310 and
-589 ms. Hash rates are the reliable figures for these samples. Use more trials
-on a mid-range phone before selecting defaults. The prototype uses deterministic
-synthetic seeds; the production solver uses the signed SHA-256 seed scheme
-and up to two workers. Prototype solve medians are not production medians.
-
-See [proposal section 8](proposals/browser-pow-algorithms.md#8-measurement-before-defaults)
-for full rates, individual-result file names, solve medians and benchmark
-commands. Result JSON stays in the ignored `target/hashwx-bench/` directory.
-
-## RandomX browser measurements, 2026-10-30
+### RandomX browser measurements, 2026-10-30
 
 The desktop is an Apple M4 Pro with 12 logical CPUs, running Chrome 156.0.8078.76
 on macOS. Chrome reports `hardwareConcurrency = 12` and `deviceMemory = 16` GiB.
@@ -500,7 +485,7 @@ reached an upstream error page; the rates are observations before that error,
 not successful end-to-end solve times. The following parallel tables use their
 own single-worker runs for speedup comparisons.
 
-### Desktop worker counts
+#### Desktop worker counts
 
 | Configuration | Run 1 H/s | Run 2 H/s | Mean H/s | Speedup vs 1 worker |
 | --- | ---: | ---: | ---: | ---: |
@@ -517,7 +502,7 @@ confirmed 8 live workers. Their hashing windows were
 45.101 s and 45.060 s. No worker startup or allocation
 failures were observed in the earlier or release desktop trials.
 
-### Galaxy A17 worker counts
+#### Galaxy A17 worker counts
 
 | Configuration | Run 1 H/s | Run 2 H/s | Mean H/s | Speedup vs 1 worker |
 | --- | ---: | ---: | ---: | ---: |
@@ -532,7 +517,7 @@ Its automatic worker count stays 4 with cap 8. No worker startup or allocation
 failures were observed. Battery temperature before the trials ranged from
 32.4 to 33.0 degrees C.
 
-### Stored cache setup and solve estimates
+#### Stored cache setup and solve estimates
 
 These setup measurements use the earlier automatic configuration: 4 workers on
 both devices. Each cold and warm setup measurement is one run, with one stored
@@ -553,3 +538,12 @@ See [RandomX throughput](pow.md#randomx-throughput) for worker selection, cache
 storage and browser requirements. Raw results remain outside the repository in
 `/tmp/rilgate-randomx-parallel/`, with release confirmation in its `release/`
 subdirectory. Generated benchmark secrets are deleted during cleanup.
+
+## Further investigation
+
+The authenticated path still allocates for the normalized request host, decoded token
+payload, and deserialized host claim. These need further profiling before changes to
+their ownership or validation. The rate limiter serializes token updates under one
+mutex. This preserves its global quota. Before you change its synchronization, measure
+contention. RandomX has its own throughput benchmark and reference vectors, and requires
+separate analysis from HTTP response performance.

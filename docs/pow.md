@@ -70,12 +70,12 @@ checks expiry during range searches. It terminates all workers on completion,
 error, cancellation or page exit. It keeps 64-bit values as u32 halves and
 needs no BigInt or SIMD. A failure to compile a generated module retains the
 WASM interpreter. A worker policy that denies all WASM blocks both engines.
-See [browser requirements](web.md#hashwx-browser-requirements).
+See [browser requirements](web.md#hashwx).
 
 The shipped difficulty defaults are placeholders. The iPhone 15 Pro Max
 measurement is from a high-end device. A mid-range phone measurement is still
 required before the defaults can target 1 to 3 seconds. See
-[measurements](performance.md#hashwx-measurements) and the
+[measurements](performance.md#hashwx-measurements-2026-10-23) and the
 [complete example](../config/examples/hashwx.yml).
 
 HashWX tokens use version 1 with an explicit `hashwx` algorithm tag. Older
@@ -550,7 +550,7 @@ policy:
 ```
 
 For a dedicated verifier, see [configuration](configuration.md#dedicated-randomx-verifier)
-and [production operations](production.md#remote-randomx-verification).
+and [production operations](production.md#remote-randomx-verifier).
 
 HashWX reserves one verification slot per available CPU. When all slots are
 reserved, verification returns the capacity error (HTTP 503). A slot stays

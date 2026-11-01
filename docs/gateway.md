@@ -139,13 +139,10 @@ The proxy streams request and response bodies. Requests are limited by `server.u
 removes standard hop-by-hop headers and headers named by `Connection` on both sides, and
 retains the protocol fields required for accepted WebSocket upgrades.
 
-Before a request reaches the upstream, Rilgate removes every value of the headers in
-`server.upstream.client_ip_headers` (default `x-forwarded-for`, `x-real-ip` and
-`forwarded`) and writes the resolved client address in each one. `Forwarded` receives
-`for=<address>`, with an IPv6 address as `for="[<address>]"`. The other headers receive the
-bare address. An empty list leaves these headers as the client or edge sent them. The
-access cookie named by `pow.auth_cookie_name` is removed from the `Cookie` header, and
-other cookies stay unchanged. The same rules apply to WebSocket upgrades.
+Before a request reaches the upstream, Rilgate writes the resolved client address in the
+headers of `server.upstream.client_ip_headers` and removes the access cookie. See
+[client address and forwarding](configuration.md#client-address-and-forwarding). The same
+rules apply to WebSocket upgrades.
 
 Redirects are returned to the client. Upstream HTTP requests are never replayed. On
 connection failure, another resolved address can be tried before the request is sent.
@@ -277,11 +274,9 @@ every 10 seconds. The global bucket permits a burst of 64 and replenishes 16 req
 per second. Limits are local to each gateway instance. Multiple instances have separate
 quotas. They do not replace the verifier's queue or Stratum pool connection limits.
 
-Client identity defaults to the TCP peer address. `Forwarded` is ignored. When
-`server.trusted_proxies` contains the peer, `X-Forwarded-For` is resolved from right to left through
-trusted hops.
-
-Untrusted peers cannot override their IP. IPv4-mapped IPv6 addresses share the same
+Client identity is the resolved client address; see
+[client address and forwarding](configuration.md#client-address-and-forwarding).
+IPv4-mapped IPv6 addresses share the same
 bucket as their IPv4 address. Clients behind an untrusted reverse proxy or NAT share
 that peer's quota. Configure trusted proxies or enforce client quotas at the edge.
 `Gateway::serve` gets peer addresses from accepted TCP sockets. Requests without connection
@@ -296,9 +291,9 @@ external store is required. Set `enabled: false` to disable this limiter explici
 
 `RUST_LOG` accepts a `tracing` filter and defaults to `rilgate=info,pingora=error`.
 
-Generated request IDs are UUIDv7 with ordering within each worker. The gateway keeps an
-incoming `x-request-id` only from a peer in `server.trusted_proxies` when the value is 1 to
-128 ASCII letters, digits, `.`, `_` or `-`. Other requests receive a generated ID.
+Generated request IDs are UUIDv7 with ordering within each worker. The
+[request ID rule](configuration.md#client-address-and-forwarding) decides when an
+incoming `x-request-id` is kept.
 
 Per-request diagnostics (the HTTP completion event, per-request policy decisions,
 presented challenges and missing translations) are `DEBUG`, so the default does not

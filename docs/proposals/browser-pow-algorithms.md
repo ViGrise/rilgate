@@ -83,7 +83,7 @@ under Apache-2.0:
 - Use the test vectors in Appendix F of the specification only to check
   conformance.
 - Record the specification revision and the conformance results in the crate
-  README. The [license review](../hashwx-license-review.md) records the inputs
+  README. The [license review](hashwx-license-review.md) records the inputs
   and the earlier upstream fetch. No upstream implementation code was copied.
 
 ### Crates
@@ -423,7 +423,7 @@ The recorded files for the tables above are:
 
 ### License review record
 
-The [step 5 license review](../hashwx-license-review.md) records the single
+The [step 5 license review](hashwx-license-review.md) records the single
 earlier upstream fetch and the pinned specification input. No upstream
 implementation code was copied, translated or adapted. No upstream source was
 read or fetched during the continuation that completed steps 3 to 5.

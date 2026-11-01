@@ -10,10 +10,10 @@ signatures remain in their existing layers. The challenge service validates
 the token before dispatch and validates lifetime before and after verification.
 
 Use `pow.algorithms.hashwx` as described in
-[configuration](../../docs/configuration.md#hashwx-configuration).
+[configuration](../../docs/configuration.md#hashwx).
 The difficulty defaults remain placeholders until a mid-range phone is measured.
 The browser solver and raw ABI share the specification implementation in
-`hashwx-core`. See the [license review](../../docs/hashwx-license-review.md).
+`hashwx-core`. See the [license review](../../docs/proposals/hashwx-license-review.md).
 
 ```sh
 cargo test -p rilgate-pow-hashwx --locked
