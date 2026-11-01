@@ -8,8 +8,9 @@ const runtime = readFileSync(
   "utf8",
 );
 const startup = readFileSync(new URL("../web/static/js/challenge.js", import.meta.url), "utf8");
+const boot = readFileSync(new URL("../web/static/js/challenge/boot.js", import.meta.url), "utf8");
 const english = JSON.parse(readFileSync(new URL("../web/i18n/en.json", import.meta.url), "utf8"));
-function page(ids = ["status"], bootstrap = {}) {
+function page(ids = ["status"], bootstrap = {}, extra = {}) {
   const elements = new Map(
     ids.map((id) => [
       "#" + id,
@@ -40,10 +41,11 @@ function page(ids = ["status"], bootstrap = {}) {
   });
   const context = vm.createContext({
     document: { documentElement: { lang: "en" }, querySelector: (id) => elements.get(id) || null },
-    window: {},
+    window: { addEventListener() {} },
     navigator: {},
     console: { error() {} },
     TypeError,
+    ...extra,
   });
   vm.runInContext(runtime, context);
   return { context, client: context.window.PowClient, elements };
@@ -202,4 +204,117 @@ test("a cookie that does not reach the gateway shows the cookies state", async (
       assert.equal(reloads, 1);
     }
   }
+});
+
+function bootPage(window = {}) {
+  const listeners = {};
+  const root = { className: "" };
+  const context = vm.createContext({
+    window: { addEventListener: (type, handler) => (listeners[type] = handler), ...window },
+    document: {
+      documentElement: root,
+      createElement: () => ({}),
+      getElementById: () => null,
+      querySelector: () => null,
+    },
+    location: { reload() {} },
+    console: { error() {} },
+  });
+  return { context, listeners, root };
+}
+
+test("a failed runtime shows the load error instead of hanging", async () => {
+  const { context, root } = bootPage();
+  vm.runInContext(boot, context);
+  assert.doesNotThrow(() => vm.runInContext(startup, context));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(root.className, /pow-load-failed/);
+});
+
+test("a duplicate bundle stops before it runs twice", () => {
+  const { context, listeners, root } = bootPage({ POW_STATIC_URL: "https://example.test/static" });
+  vm.runInContext(boot, context);
+  assert.throws(() => vm.runInContext(boot, context), { name: "PowDuplicateLoad" });
+  const filename = "https://example.test/static/js/challenge.bundle.js";
+  listeners.error({
+    filename,
+    message: "Uncaught Error: Challenge script is already running",
+  });
+  assert.equal(root.className, "");
+  listeners.error({ filename: "https://elsewhere.test/extension.js", message: "boom" });
+  assert.equal(root.className, "");
+  listeners.error({ filename, message: "boom" });
+  assert.match(root.className, /pow-load-failed/);
+});
+
+test("safe requests retry a short outage", async () => {
+  const calls = [];
+  const answer = (status, body) => ({
+    status,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(body),
+  });
+  const { client, context } = page(
+    ["status", "retry"],
+    {},
+    {
+      AbortController,
+      setTimeout,
+      clearTimeout,
+      fetch: async (url) => {
+        calls.push(url);
+        if (url.endsWith("client-config"))
+          return calls.filter((call) => call.endsWith("client-config")).length === 1
+            ? answer(503, {})
+            : answer(200, { algorithms: [{ id: "fast" }] });
+        if (url.endsWith("session")) return answer(200, { authenticated: true });
+        return answer(503, {});
+      },
+    },
+  );
+  let ran = false;
+  client.algorithm = () => ({
+    run: async () => {
+      ran = true;
+    },
+  });
+  context.location = { reload() {} };
+  vm.runInContext(startup, context);
+  for (let attempt = 0; attempt < 400 && !calls.some((call) => call.endsWith("session")); attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(ran, true);
+  assert.equal(calls.filter((call) => call.endsWith("client-config")).length, 2);
+  calls.length = 0;
+  await assert.rejects(client.verify("token", "1"), { status: 503 });
+  assert.equal(calls.length, 1);
+});
+
+test("a timed-out safe request retries", async () => {
+  let calls = 0;
+  const { client } = page(
+    ["status"],
+    {},
+    {
+      AbortController,
+      clearTimeout,
+      // The request timeout fires at once; retry backoff delays run normally.
+      setTimeout: (callback, delay) => setTimeout(callback, delay === 30000 ? 0 : delay),
+      fetch: (_url, { signal }) => {
+        calls += 1;
+        if (calls > 1)
+          return Promise.resolve({
+            status: 200,
+            headers: { get: () => null },
+            text: async () => "{}",
+          });
+        return new Promise((_resolve, reject) =>
+          signal.addEventListener("abort", () =>
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          ),
+        );
+      },
+    },
+  );
+  await client.jsonFetch("/gateway/api/client-config", { retries: 1 });
+  assert.equal(calls, 2);
 });

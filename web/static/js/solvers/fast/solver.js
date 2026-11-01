@@ -4,6 +4,7 @@
     return new Promise((resolve, reject) => {
       let worker = null;
       let cancel = null;
+      let messaged = false;
 
       const abort = () => {
         finish();
@@ -24,6 +25,7 @@
 
       const onmessage = (event) => {
         const message = event.data;
+        messaged = true;
 
         if (message.type === "solved") {
           finish();
@@ -47,7 +49,10 @@
 
       const onerror = (event) => {
         finish();
-        reject(new Error(event.message || "SHA-256 worker failed"));
+        const error = new Error(event.message || "SHA-256 worker failed");
+        // A script that fails before its first message was blocked or could not load.
+        if (!event.message && !messaged) error.code = "asset_blocked";
+        reject(error);
       };
 
       try {

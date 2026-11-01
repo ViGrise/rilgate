@@ -145,7 +145,8 @@ RandomX asks for consent before starting; details explain the check and permissi
 `window.PowClient.state(name, values)` updates translated title, description and
 status using `challenge.state.<name>.{title,description,status}`. Placeholder values
 come from `values`. `stats(attempts, rate)` updates statistics. `status(message)`
-continues to support custom status messages.
+continues to support custom status messages. The `challenge.load_error` key supplies
+the `load-error` message that the page shows when its script could not start.
 
 | State | Mode | Trigger |
 | --- | --- | --- |
@@ -162,7 +163,8 @@ continues to support custom status messages.
 | `expired` | `retry` | Local solver deadline exceeded. |
 | `failed` | `retry` | Other failure; details remain in console. |
 | `network` | `retry` | Fetch TypeError or XHR network failure. |
-| `unsupported` | `none` | Missing RandomX or HashWX browser features. |
+| `unsupported` | `none` | Missing RandomX or HashWX browser features, module scripts, or WebAssembly compilation. |
+| `blocked` | `retry` | An extension or filter blocked a solver module or worker script. |
 | `limited` | `none` | HTTP 429; append Retry-After text. |
 | `unavailable` | `retry` | HTTP 503 after the single RandomX reload. |
 
@@ -184,12 +186,14 @@ The catch handler keeps diagnostic error messages in the console only.
 | `hashrate` | Localized hashes per second. |
 | `randomx-start` | RandomX consent button. |
 | `retry` | Reload button. |
+| `load-error` | Message with a retry link, shown when the bundle could not start. |
 | `pow-i18n` | Client translation JSON. |
 
 Every element is optional. Missing IDs are skipped, and templates with only
 `status` still receive status updates. Keep `randomx-start` to collect RandomX
 consent, and `retry` for reload actions. Preserve the `.actions` wrapper,
-`noscript`, honeypot link, `pow-i18n`, `challenge_bootstrap` and bundle script
+`noscript`, honeypot link, `pow-i18n`, `challenge_bootstrap`, the bundle script
+with its `challenge-bundle` ID and the inline loader that follows it
 when adapting the embedded challenge template. The `progress` element remains
 visually hidden. The former `partials/pow-info.html.jinja` include is removed.
 
@@ -232,7 +236,18 @@ Reload resources and run `rilgate web validate ./custom-web` after editing.
 
 ## Browser support
 
-Every challenge page needs JavaScript, except the Refresh algorithm. The support for each
+Every challenge page needs JavaScript, except the Refresh algorithm. A short inline
+loader requests the startup bundle again, up to three times with a growing random delay,
+when the script fails to load. After the last attempt, or after 30 seconds when no script
+runs at all, the page shows the localized `challenge.load_error` message with a retry link.
+Requests for the client configuration, the challenge and the session retry twice after a
+network error, a 502, a 504, a 503 without an error code, or a 429 whose Retry-After is at
+most 10 seconds. Proof submission, exchange and refresh never retry, because a proof is
+single-use.
+
+A browser that lacks module scripts, cannot compile WebAssembly, or rejects the solver
+syntax shows the `unsupported` state. When an extension or network filter blocks a solver
+file, the page shows the `blocked` state with retry controls. The support for each
 algorithm follows.
 
 ### Fast

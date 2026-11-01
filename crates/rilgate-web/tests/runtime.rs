@@ -681,6 +681,7 @@ fn generated_manifest_matches_sources_and_declares_startup_order() {
   assert_eq!(
     paths,
     [
+      "static/js/challenge/boot.js",
       "static/js/challenge/promise.js",
       "static/js/challenge/runtime.js",
       "static/js/challenge/registry.js",
@@ -713,7 +714,9 @@ fn generated_manifest_matches_sources_and_declares_startup_order() {
   assert!(html.contains("/js/challenge.bundle.js"));
   assert!(!html.contains("type=\"module\""));
   assert!(
-    html.contains("<noscript><style>.bar,#status{display:none}</style><p>Please enable JavaScript")
+    html.contains(
+      "<noscript><style>.bar,#status{display:none}.load-error{display:none!important}</style><p>Please enable JavaScript"
+    )
   );
 }
 

@@ -3,10 +3,11 @@
 <main>
   <h1 id="title">{{ t("challenge.state.preparing.title") }}</h1>
   <p id="description">{{ t("challenge.state.preparing.description") }}</p>
-  <noscript><style>.bar,#status{display:none}</style><p>{{ t("challenge.javascript_required") }}</p></noscript>
+  <noscript><style>.bar,#status{display:none}.load-error{display:none!important}</style><p>{{ t("challenge.javascript_required") }}</p></noscript>
   <div id="bar" class="bar" aria-hidden="true"><span id="bar-shimmer" class="bar-shimmer"></span><span id="bar-complete" class="bar-complete"></span></div>
   <progress id="progress" aria-label="{{ t('pow.progress_label') }}"></progress>
   <p id="status" role="status" aria-live="polite">{{ t("challenge.state.preparing.status") }}</p>
+  <p id="load-error" class="load-error" role="alert">{{ t("challenge.load_error") }} <a href="">{{ t("common.retry") }}</a></p>
   <p id="stats" aria-label="{{ t('challenge.stats.label') }}" hidden><span id="attempts">0</span> {{ t("challenge.stats.attempts") }} · <span id="hashrate">0</span> {{ t("challenge.stats.rate") }}</p>
   <div class="actions">
     <button id="randomx-start" type="button" hidden>{{ t("pow.disclosure.start") }}</button>
@@ -23,5 +24,41 @@
 {% block scripts %}
 <script type="application/json" id="pow-i18n">{{ client_i18n_json }}</script>
 {{ challenge_bootstrap }}
-<script defer src="{{ rilgate.static_url }}/js/challenge.bundle.js"></script>
+<script defer src="{{ rilgate.static_url }}/js/challenge.bundle.js" id="challenge-bundle"></script>
+<script>
+(function () {
+  var html = document.documentElement;
+  html.className += " pow-script";
+  var tag = document.getElementById("challenge-bundle");
+  if (!tag) return;
+  var source = tag.getAttribute("src");
+  var attempt = 0;
+  var generation = 0;
+  function booted() { return window.POW_BOOTED === true; }
+  function next(current) {
+    return function () {
+      if (booted() || current !== generation) return;
+      generation += 1;
+      attempt += 1;
+      if (attempt > 3) {
+        html.className += " pow-load-failed";
+        return;
+      }
+      setTimeout(load, Math.random() * Math.min(10000, 750 * attempt * attempt));
+    };
+  }
+  function load() {
+    if (booted()) return;
+    var retry = next(generation);
+    var script = document.createElement("script");
+    script.src = source + (source.indexOf("?") === -1 ? "?" : "&") + "retry=" + attempt;
+    script.onerror = retry;
+    document.body.appendChild(script);
+    setTimeout(retry, 10000);
+  }
+  var first = next(0);
+  tag.onerror = first;
+  setTimeout(first, 10000);
+})();
+</script>
 {% endblock %}

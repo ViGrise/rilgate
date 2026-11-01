@@ -44,3 +44,40 @@ test("page controls open their dialog and reload on retry", async () => {
   assert.equal(opened, 1);
   assert.equal(reloads, 1);
 });
+
+test("legal dialogs open without showModal", async () => {
+  const source = await readFile(new URL("../web/static/js/page.js", import.meta.url), "utf8");
+  const attributes = new Set();
+  let submit;
+  let prevented = 0;
+  const form = {
+    addEventListener(type, handler) {
+      if (type === "submit") submit = handler;
+    },
+  };
+  const dialog = {
+    setAttribute: (name) => attributes.add(name),
+    removeAttribute: (name) => attributes.delete(name),
+    querySelector: () => form,
+  };
+  const legal = {
+    getAttribute: () => "privacy",
+    addEventListener(_type, handler) {
+      this.click = handler;
+    },
+  };
+  const context = vm.createContext({
+    window: {},
+    document: {
+      querySelectorAll: (selector) => (selector === "[data-dialog]" ? [legal] : []),
+      getElementById: () => dialog,
+    },
+    location: {},
+  });
+  vm.runInContext(source, context);
+  legal.click();
+  assert.equal(attributes.has("open"), true);
+  submit({ preventDefault: () => prevented++ });
+  assert.equal(attributes.has("open"), false);
+  assert.equal(prevented, 1);
+});
