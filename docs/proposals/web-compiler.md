@@ -61,7 +61,7 @@ the workflow.
 | WASM revision | `crates/rilgate-web/src/runtime/snapshot.rs` substitutes `__WASM_REVISION__` after assembly in the solver, bundle and fast worker | The placeholder never passes through the compiler. |
 | RandomX loading | `web/static/js/solvers/randomx/adapter.js` inserts `loader.js` as a module script after capability checks | The ES5 bundle contains no `import()` and needs no `eval`. |
 | Seeding | `crates/rilgate-web/src/resources/seed.rs` copies `web/` byte for byte | Seeded and diffed files stay readable sources. |
-| Configuration | `crates/rilgate-config/src/assembly/resolve.rs` builds `WebConfig` without `pow.browser.solver_module_path` | A runtime compiler cannot identify the configured solver module. |
+| Configuration | `crates/rilgate-config/src/assembly/resolve/web.rs` builds `WebConfig` without `pow.browser.solver_module_path` | A runtime compiler cannot identify the configured solver module. |
 | Stylesheet | `web/templates/layouts/base.html.jinja` links `rilgate.stylesheet_url`; `web/static/css/rilgate.css` is 379 bytes | Inlining removes one render-blocking request. |
 | Shell cache | `snapshot.rs` builds per-locale challenge shells only when no template differs from the embedded set | Any template override disables shell caching for every page. |
 | Asset HTTP | `crates/rilgate-web/src/assets/response.rs` serves strong ETags, HEAD, 304 and `max-age=0, must-revalidate`; no content encoding | Encoding must be negotiated before validators are evaluated. |

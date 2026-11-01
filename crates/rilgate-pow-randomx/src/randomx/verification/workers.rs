@@ -74,6 +74,7 @@ impl TaskQueue {
     let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
     state.closed = true;
     state.tasks.clear();
+    drop(state);
     self.ready.notify_one();
   }
 }
@@ -102,6 +103,7 @@ impl QueueSender {
       return Err(anyhow::Error::new(CapacityExceeded));
     }
     state.tasks.push_back(task);
+    drop(state);
     self.queue.ready.notify_one();
     Ok(())
   }

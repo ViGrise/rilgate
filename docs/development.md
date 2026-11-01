@@ -69,8 +69,9 @@ browser compatibility. See [browser requirements](configuration.md#challenge-bro
 
 ## Code organization
 
+New modules live in their own directory with `mod.rs`; leaf child modules are files inside that directory.
 Typed YAML configuration and defaults live in `crates/rilgate-config/src/schema/`. The loader parses and
-expands values, `assembly/resolve.rs` validates and resolves immutable runtime settings, and
+expands values, `assembly/resolve/` validates and resolves immutable runtime settings, and
 `rilgate-policy` compiles request conditions.
 
 Token signing lives in `crates/rilgate-crypto/src/token/`: `keys.rs` owns key rotation configuration,

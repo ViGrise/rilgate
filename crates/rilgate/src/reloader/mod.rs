@@ -5,8 +5,6 @@ use rilgate_config::{Config, Configuration, Overrides};
 use rilgate_gateway::runtime::policy::PolicyHandle;
 use rilgate_ip_feeds::Refreshers;
 
-const HOST_LOAD_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
-
 pub use rilgate_gateway::runtime::reload::ReloadOutcome;
 use tokio::sync::{mpsc, oneshot};
 
@@ -150,7 +148,7 @@ impl Reloader {
     }
     self.refreshers = refreshers;
     if self.sampler.is_none() && (challenge.uses_load() || self.handle.open_graph_uses_load()) {
-      self.sampler = Some(tokio::spawn(sample_host_load()));
+      self.sampler = Some(tokio::spawn(crate::host_load::sample_host_load()));
     }
     Ok(())
   }
@@ -228,22 +226,6 @@ pub fn changed_sections(running: &Configuration, loaded: &Configuration) -> Vec<
     .into_iter()
     .filter_map(|(name, changed)| changed.then_some(name))
     .collect()
-}
-
-async fn sample_host_load() {
-  let mut interval = tokio::time::interval(HOST_LOAD_INTERVAL);
-  let mut warned = false;
-  loop {
-    interval.tick().await;
-    match rilgate_policy::read_host_load() {
-      Some(averages) => rilgate_policy::HOST_LOAD.store(averages),
-      None if !warned => {
-        warned = true;
-        tracing::warn!("host load average is unavailable, load conditions stay unknown");
-      }
-      None => {}
-    }
-  }
 }
 
 #[derive(Default)]

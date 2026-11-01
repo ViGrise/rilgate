@@ -1,4 +1,6 @@
-use crate::model::gateway::RateLimitConfig;
+use super::rate_limit::RateLimitConfig;
+
+mod validation;
 use rilgate_challenge::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
 use rilgate_policy::policy::schema::PolicyDocument;

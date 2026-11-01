@@ -205,7 +205,7 @@ policy:
   );
   let config = parse(&source).unwrap().resolve().unwrap();
   let built = rilgate::app::build(config.clone()).await.unwrap();
-  let _reload = rilgate::reload::spawn_reloader(
+  let _reload = rilgate::reloader::spawn_reloader(
     built.policy_handle(),
     config,
     Default::default(),
