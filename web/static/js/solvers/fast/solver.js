@@ -67,6 +67,5 @@
     });
   }
 
-
   window.PowClient.solveFast = solveFast;
 })();

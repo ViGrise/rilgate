@@ -2,8 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHashWx, loadHashWx, words } from "../scripts/lib/hashwx-wasm.mjs";
 
-const seedA = Buffer.from("5468697320697320612074657374207365656420666f72206861736877780000", "hex");
-const seedB = Buffer.from("4c6f72656d20697073756d20646f6c6f722073697420616d6574000000000000", "hex");
+const seedA = Buffer.from(
+  "5468697320697320612074657374207365656420666f72206861736877780000",
+  "hex",
+);
+const seedB = Buffer.from(
+  "4c6f72656d20697073756d20646f6c6f722073697420616d6574000000000000",
+  "hex",
+);
 const vectors = [
   [seedA, [0, 0], [0x6f8ee362, 0x97368417]],
   [seedA, [123456, 0], [0x07d69b07, 0x401983bb]],
@@ -37,7 +43,9 @@ test("4096 pseudorandom nonces across 64 seeds match in both engines", async () 
   const exports = await loadHashWx();
   let state = 0x12345678;
   function random() {
-    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
     return state >>> 0;
   }
   for (let i = 0; i < 64; i++) {
@@ -48,12 +56,24 @@ test("4096 pseudorandom nonces across 64 seeds match in both engines", async () 
       assert.ok(bytes.length < 32768);
       const { instance } = await WebAssembly.instantiate(bytes, {});
       const generated = instance.exports;
-  assert.equal(typeof generated.result_ptr.value, "number");
-      const boundary = [[0, 0], [1, 0], [0xffffffff, 0], [0, 1], [0xffffffff, 0x7fffffff], [0, 0x80000000], [0xffffffff, 0xffffffff]];
+      assert.equal(typeof generated.result_ptr.value, "number");
+      const boundary = [
+        [0, 0],
+        [1, 0],
+        [0xffffffff, 0],
+        [0, 1],
+        [0xffffffff, 0x7fffffff],
+        [0, 0x80000000],
+        [0xffffffff, 0xffffffff],
+      ];
       for (let j = 0; j < 64; j++) {
         const nonce = boundary[j] ?? [random(), random()];
         assert.equal(generated.hash(...nonce), 0);
-        assert.deepEqual(words(generated.memory, 16400), context.hash(...nonce), `seed ${i}, nonce ${nonce}`);
+        assert.deepEqual(
+          words(generated.memory, 16400),
+          context.hash(...nonce),
+          `seed ${i}, nonce ${nonce}`,
+        );
       }
       assert.deepEqual(context.moduleBytes(), bytes);
     } finally {
@@ -77,7 +97,11 @@ test("range search returns the first strict match, handles carries, wraparound a
   const generated = instance.exports;
   assert.equal(typeof generated.result_ptr.value, "number");
   try {
-    for (const start of [[0, 0], [0xfffffff0, 0], [0xfffffff0, 0xffffffff]]) {
+    for (const start of [
+      [0, 0],
+      [0xfffffff0, 0],
+      [0xfffffff0, 0xffffffff],
+    ]) {
       const candidates = [];
       let nonce = start;
       for (let i = 0; i < 64; i++) {
@@ -93,11 +117,20 @@ test("range search returns the first strict match, handles carries, wraparound a
           assert.equal(context.search(...start, count, ...target), expected ? 0 : -1);
           assert.equal(generated.search(...start, count, ...target), expected ? 0 : -1);
           if (expected) {
-            assert.deepEqual(words(exports.memory, context.output, 4), [...expected.nonce, ...expected.hash]);
-            assert.deepEqual(words(generated.memory, generated.result_ptr.value - 8, 4), [...expected.hash, ...expected.nonce]);
+            assert.deepEqual(words(exports.memory, context.output, 4), [
+              ...expected.nonce,
+              ...expected.hash,
+            ]);
+            assert.deepEqual(words(generated.memory, generated.result_ptr.value - 8, 4), [
+              ...expected.hash,
+              ...expected.nonce,
+            ]);
           } else {
             assert.deepEqual(words(exports.memory, context.output, 4), previousInterpreted);
-            assert.deepEqual(words(generated.memory, generated.result_ptr.value - 8, 4), previousGenerated);
+            assert.deepEqual(
+              words(generated.memory, generated.result_ptr.value - 8, 4),
+              previousGenerated,
+            );
           }
         }
       }
@@ -134,16 +167,24 @@ test("ABI rejects invalid handles and seed lengths and keeps instances independe
   }
 });
 
-test('seed derivation uses the exact little-endian u64 batch above the JavaScript integer limit', async () => {
-  const { createHash } = await import('node:crypto');
+test("seed derivation uses the exact little-endian u64 batch above the JavaScript integer limit", async () => {
+  const { createHash } = await import("node:crypto");
   const api = await loadHashWx();
-  const input = api.hx_alloc(), output = api.hx_alloc();
+  const input = api.hx_alloc(),
+    output = api.hx_alloc();
   try {
     new Uint8Array(api.memory.buffer, input, 32).set(seedA);
     for (const batch of [0n, 1n, 0x123456789abcdef0n, 0xffffffffffffffffn]) {
-      const suffix = Buffer.alloc(8); suffix.writeBigUInt64LE(batch);
+      const suffix = Buffer.alloc(8);
+      suffix.writeBigUInt64LE(batch);
       api.hx_seed(input, Number(batch & 0xffffffffn), Number(batch >> 32n), output);
-      assert.deepEqual(Buffer.from(api.memory.buffer, output, 32), createHash('sha256').update(seedA).update(suffix).digest());
+      assert.deepEqual(
+        Buffer.from(api.memory.buffer, output, 32),
+        createHash("sha256").update(seedA).update(suffix).digest(),
+      );
     }
-  } finally { api.hx_free(output); api.hx_free(input); }
+  } finally {
+    api.hx_free(output);
+    api.hx_free(input);
+  }
 });

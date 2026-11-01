@@ -1,0 +1,25 @@
+server:
+  listen: "${FIXTURE_LISTEN}"
+  metrics_enabled: true
+  decision_log: off
+  operations:
+    listen: "${FIXTURE_OPERATIONS_LISTEN}"
+  upstream:
+    url: "${FIXTURE_UPSTREAM_URL}"
+security:
+  keys:
+    challenge: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    auth: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+pow:
+  rate_limit:
+    enabled: false
+policy:
+  rules:
+    - name: protected
+      when:
+        path:
+          exact: /protected
+      action: challenge
+      challenge:
+        algorithm: fast
+        difficulty: 1

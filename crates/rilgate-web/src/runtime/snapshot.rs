@@ -277,6 +277,7 @@ impl WebSnapshot {
       "js/solvers/fast/worker.js",
       "js/solvers/hashwx/adapter.js",
       "js/solvers/loader.js",
+      "js/solvers/worker-pool.js",
       "js/solvers/hashwx/solver.js",
       "js/solvers/hashwx/worker.js",
       "js/solvers/hashwx/hashwx_wasm.wasm",

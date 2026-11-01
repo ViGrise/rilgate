@@ -68,7 +68,8 @@ crates/rilgate-gateway/src/
   runtime/          Shared application state and resources
 crates/xtask/src/   Browser WASM staging and ES5 resource generation
 scripts/test/       Production browser and container verification runners
-tests/e2e/          Playwright configuration, npm manifests and browser tests
+tests/              Node tests and the npm manifest for Playwright and Biome
+tests/e2e/          Playwright configuration and browser tests
 tests/container/    Container protocol helpers
 config/             Production, commented, custom and RandomX configuration examples
 deploy/             Docker, systemd, edge proxy and monitoring examples

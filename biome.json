@@ -1,0 +1,35 @@
+{
+  "$schema": "./tests/node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "web/static/js/**",
+      "tests/**/*.mjs",
+      "scripts/**/*.mjs",
+      "!crates/rilgate-web/generated",
+      "!**/node_modules",
+      "!target",
+      "!tmp"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "correctness": { "preset": "recommended" },
+      "suspicious": { "preset": "recommended" }
+    }
+  },
+  "assist": { "enabled": false }
+}

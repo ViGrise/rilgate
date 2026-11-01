@@ -6,9 +6,7 @@
     const challenge = await requestChallenge();
 
     if (challenge.algorithm !== "fast") {
-      throw new Error(
-        `Expected fast challenge, got ${challenge.algorithm}`,
-      );
+      throw new Error(`Expected fast challenge, got ${challenge.algorithm}`);
     }
 
     state("fast");
@@ -21,6 +19,5 @@
     await verify(challenge.challenge_token, solution.nonce);
   }
 
-
-  window.PowClient.register("fast", {run: fastVerify});
+  window.PowClient.register("fast", { run: fastVerify });
 })();

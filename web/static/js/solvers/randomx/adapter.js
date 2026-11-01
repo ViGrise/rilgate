@@ -2,9 +2,18 @@
   const { t, state, stats, verify, requestChallenge, progressEl, once } = window.PowClient;
   function loadRandomXSolver() {
     const moduleUrl = window.POW_SOLVER_MODULE_URL;
-    if (typeof Worker !== "function" || typeof WebAssembly !== "object" ||
-        typeof WebAssembly.validate !== "function" || typeof BigInt !== "function") {
-      const error = new Error(t("challenge.randomx_unsupported", "This browser cannot run RandomX. A browser with WebAssembly, BigInt, and workers is required."));
+    if (
+      typeof Worker !== "function" ||
+      typeof WebAssembly !== "object" ||
+      typeof WebAssembly.validate !== "function" ||
+      typeof BigInt !== "function"
+    ) {
+      const error = new Error(
+        t(
+          "challenge.randomx_unsupported",
+          "This browser cannot run RandomX. A browser with WebAssembly, BigInt, and workers is required.",
+        ),
+      );
       error.code = "unsupported_browser";
       return Promise.reject(error);
     }
@@ -54,8 +63,11 @@
       challenge = await requestChallenge();
       sessionStorage.removeItem(reloadKey);
     } catch (error) {
-      if (error.status === 503 && error.code === "work_unavailable" &&
-          sessionStorage.getItem(reloadKey) !== window.location.href) {
+      if (
+        error.status === 503 &&
+        error.code === "work_unavailable" &&
+        sessionStorage.getItem(reloadKey) !== window.location.href
+      ) {
         sessionStorage.setItem(reloadKey, window.location.href);
         window.location.reload();
         return;
@@ -64,16 +76,20 @@
     }
 
     if (challenge.algorithm !== "randomx") {
-      throw new Error(
-        `Expected randomx challenge, got ${challenge.algorithm}`,
-      );
+      throw new Error(`Expected randomx challenge, got ${challenge.algorithm}`);
     }
 
     state("initializing");
     if (progressEl) progressEl.removeAttribute("value");
 
     const solution = await solver.solve(
-      randomxJob(challenge.job, challenge.difficulty, challenge.nonce_offset, challenge.expires_in, challenge.received_at),
+      randomxJob(
+        challenge.job,
+        challenge.difficulty,
+        challenge.nonce_offset,
+        challenge.expires_in,
+        challenge.received_at,
+      ),
     );
 
     state("verifying");
@@ -81,33 +97,30 @@
     await verify(challenge.challenge_token, solution.nonce);
   }
 
-
   async function run(config) {
-      state("consent");
-      const startButton = document.querySelector("#randomx-start");
-      await new Promise((resolve) => once(startButton, "click", resolve));
-      state("initializing");
-      const module = await loadRandomXSolver();
-      const options = config.algorithms.find((entry) => entry.id === "randomx")?.browser;
-      const solver = {
-        solve: (job) => module.solve(job, options),
-        cancel: () => module.cancel?.(),
-      };
-      const removePagehide = once(window, "pagehide", () => solver.cancel?.());
-      try {
-        if (config.enforce === "local_verify") {
-          await randomxLocalVerify(solver);
-        } else if (config.enforce === "stratum_pool_accepted") {
-          await window.PowClient.stratumPoolAccepted(solver);
-        } else {
-          throw new Error(
-            `Unsupported enforcement mode: ${config.enforce}`,
-          );
-        }
-      } finally {
-        removePagehide();
-        solver.cancel?.();
+    state("consent");
+    const startButton = document.querySelector("#randomx-start");
+    await new Promise((resolve) => once(startButton, "click", resolve));
+    state("initializing");
+    const module = await loadRandomXSolver();
+    const options = config.algorithms.find((entry) => entry.id === "randomx")?.browser;
+    const solver = {
+      solve: (job) => module.solve(job, options),
+      cancel: () => module.cancel?.(),
+    };
+    const removePagehide = once(window, "pagehide", () => solver.cancel?.());
+    try {
+      if (config.enforce === "local_verify") {
+        await randomxLocalVerify(solver);
+      } else if (config.enforce === "stratum_pool_accepted") {
+        await window.PowClient.stratumPoolAccepted(solver);
+      } else {
+        throw new Error(`Unsupported enforcement mode: ${config.enforce}`);
       }
+    } finally {
+      removePagehide();
+      solver.cancel?.();
+    }
   }
   window.PowClient.randomxJob = randomxJob;
   window.PowClient.solveRandomX = solveRandomX;
