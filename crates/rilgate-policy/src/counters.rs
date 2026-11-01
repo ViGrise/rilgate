@@ -1,6 +1,6 @@
 use crate::{
   PolicySets,
-  conditions::{Budget, Compiled, Request, Truth},
+  conditions::{Budget, Compiled, Request, Scope, Truth},
   geoip::{GeoDatabases, Lookup},
   host_load::HostLoad,
   policy::schema::{CounterDefinition, CounterField, CounterIp, CounterKeyPart, PolicyDocument},
@@ -172,7 +172,7 @@ pub(crate) fn compile(
       ensure!(seen.insert(identity), "{path}.key: duplicate part");
       parts.push(extractor);
     }
-    budget.counter_selection = true;
+    let outer_scope = std::mem::replace(&mut budget.scope, Scope::CountWhen);
     let count_when = counter
       .count_when
       .as_ref()
@@ -187,7 +187,7 @@ pub(crate) fn compile(
         )
       })
       .transpose()?;
-    budget.counter_selection = false;
+    budget.scope = outer_scope;
     let used = document
       .policy
       .rules
