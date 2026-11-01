@@ -839,6 +839,7 @@ server:
 ################################### SIGNALS ###################################
 
 # signals:
+  # Guide: docs/signals.md.
   # Named IP and ASN sets. Each registry permits 64 sets.
   # Each set takes exactly one source: cidrs/asns or url with format.
   #

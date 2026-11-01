@@ -158,7 +158,8 @@ this repository track the source:
 | [Architecture](docs/architecture.md)      | Crate boundaries, dependencies and detailed source tree |
 | [Configuration](docs/configuration.md)    | Loading, precedence, scaling and a full example         |
 | [Gateway](docs/gateway.md)                | Routing, reverse proxy behavior and resource limits     |
-| [Policies](docs/policy.md)                | Conditions, counters, honeypot, IP sets, GeoIP and algorithm selection |
+| [Signals](docs/signals.md)                | IP sets, ASN sets, GeoIP, DNS lookups, honeypot and counters |
+| [Policies](docs/policy.md)                | Presets, rules, conditions, difficulty escalation and algorithm selection |
 | [Proof of work](docs/pow.md)              | Fast, HashWX, refresh, RandomX, Stratum pools, fallback and token lifecycle |
 | [Web resources](docs/web.md)              | Branding, page design, legal notices, templates, translations and reloads |
 | [AJAX and API integration](docs/api-integration.md) | JSON challenge responses and iframe completion |
