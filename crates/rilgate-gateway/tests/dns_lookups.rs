@@ -104,6 +104,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
       &state,
       &headers,
       &uri,
+      "/protected",
       &Method::GET,
       Some(ip.parse().unwrap()),
       false,

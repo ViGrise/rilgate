@@ -230,10 +230,16 @@ Header names are case-insensitive.
 `edge_headers` matches headers only when the socket peer belongs to `server.trusted_proxies`;
 an untrusted peer never matches. The trusted edge must overwrite these headers.
 Like `headers`, it works in rules, `count_when` and `site.open_graph.when`.
+
 Any repeated header value can satisfy its matcher. Missing headers do not match,
 including an empty-string regex. `not` can test absence. A missing User-Agent is
 an empty string. A missing client IP does not match CIDR. Numeric comparisons combine
 with AND and impossible ranges are rejected.
+
+`path` conditions and counter `path` keys use the canonical request path: percent-encoded
+unreserved characters and `%2F` are decoded, and runs of `/` collapse to one. Matching stays
+case-sensitive, so use `(?i)` in a regex for an upstream that ignores case. Rilgate rejects
+dot segments, including `..;`, with `400`.
 
 `load` compares the host load average over `window` with decimal bounds of at
 least 0. Rilgate samples the average every 5 seconds, and only when a condition

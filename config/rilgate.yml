@@ -104,6 +104,14 @@ server:
     #
     # max_body_size: 16MiB
 
+    # Headers that carry the resolved client address to the upstream. Rilgate
+    # removes the values that the client or an edge proxy sent, then writes the
+    # address that it resolved from server.trusted_proxies. Forwarded receives
+    # for=<address>; other headers receive the bare address. At most 8 names.
+    # An empty list forwards these headers unchanged.
+    #
+    # client_ip_headers: [x-forwarded-for, x-real-ip, forwarded]
+
     # timeout:
       # Per-attempt upstream connection timeout, within the overall connection
       # budget of 30s. DNS resolution and connection setup consume that budget.

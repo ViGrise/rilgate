@@ -40,6 +40,7 @@ pub struct UpstreamConfig {
   pub url: String,
   pub preserve_host: bool,
   pub max_body_bytes: usize,
+  pub client_ip_headers: Vec<http::HeaderName>,
   pub connect_timeout: std::time::Duration,
   pub read_timeout: std::time::Duration,
 }

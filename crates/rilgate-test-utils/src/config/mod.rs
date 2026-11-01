@@ -20,6 +20,9 @@ pub fn config() -> Config {
       url: "http://127.0.0.1:3000".into(),
       preserve_host: false,
       max_body_bytes: 1024,
+      client_ip_headers: ["x-forwarded-for", "x-real-ip", "forwarded"]
+        .map(http::HeaderName::from_static)
+        .into(),
       connect_timeout: std::time::Duration::from_secs(1),
       read_timeout: std::time::Duration::from_secs(2),
     },

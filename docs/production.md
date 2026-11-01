@@ -67,7 +67,9 @@ proxy subnet. The default trusts no proxies. Never trust an entire public networ
 hop is found. Malformed trusted chains are rejected. `Forwarded` is not used. The edge
 must overwrite incoming client headers as the examples do. An upstream that
 independently trusts forwarded headers must also configure its own trust boundary.
-Rilgate does not rewrite the application's forwarding headers.
+Rilgate writes the resolved client address to the upstream in the headers listed in
+`server.upstream.client_ip_headers` and replaces any value that the client or edge sent.
+An upstream that trusts these headers sees the same client that the policy used.
 
 ## Web frontends and caches
 

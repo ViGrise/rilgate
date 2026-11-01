@@ -157,6 +157,7 @@ impl Document {
         url: self.server.upstream.url.clone(),
         preserve_host: self.server.upstream.preserve_host,
         max_body_bytes: self.server.upstream.max_body_size.0,
+        client_ip_headers: client_ip_headers(&self.server.upstream.client_ip_headers)?,
         connect_timeout: self.server.upstream.timeout.connect.0,
         read_timeout: self.server.upstream.timeout.read.0,
       },
@@ -320,4 +321,43 @@ fn validate_proxies(proxies: &[rilgate_pool::Proxy], path: &str) -> Result<()> {
       .with_context(|| format!("{path}[{index}]"))?;
   }
   Ok(())
+}
+
+const MAX_CLIENT_IP_HEADERS: usize = 8;
+const RESERVED_CLIENT_IP_HEADERS: [&str; 12] = [
+  "host",
+  "cookie",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "upgrade",
+  "te",
+  "trailer",
+  "keep-alive",
+  "proxy-connection",
+  "proxy-authorization",
+  "x-request-id",
+];
+
+fn client_ip_headers(names: &[String]) -> Result<Vec<http::HeaderName>> {
+  ensure!(
+    names.len() <= MAX_CLIENT_IP_HEADERS,
+    "server.upstream.client_ip_headers: at most {MAX_CLIENT_IP_HEADERS} headers are supported"
+  );
+  let mut headers: Vec<http::HeaderName> = Vec::with_capacity(names.len());
+  for (index, name) in names.iter().enumerate() {
+    let header: http::HeaderName = name.parse().with_context(|| {
+      format!("server.upstream.client_ip_headers[{index}]: expected an HTTP header name")
+    })?;
+    ensure!(
+      !headers.contains(&header),
+      "server.upstream.client_ip_headers[{index}]: duplicate header {header}"
+    );
+    ensure!(
+      !RESERVED_CLIENT_IP_HEADERS.contains(&header.as_str()),
+      "server.upstream.client_ip_headers[{index}]: {header} cannot carry the client address"
+    );
+    headers.push(header);
+  }
+  Ok(headers)
 }

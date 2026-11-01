@@ -200,6 +200,7 @@ mod tests {
         url: upstream.into(),
         preserve_host: true,
         max_body_bytes: 1024,
+        client_ip_headers: vec![],
         connect_timeout: std::time::Duration::from_secs(2),
         read_timeout: std::time::Duration::from_secs(3),
       })
@@ -271,6 +272,7 @@ mod tests {
         url: url.into(),
         preserve_host: true,
         max_body_bytes: 1024,
+        client_ip_headers: vec![],
         connect_timeout: std::time::Duration::from_secs(2),
         read_timeout: std::time::Duration::from_secs(3),
       })
@@ -298,6 +300,7 @@ mod tests {
       url: "https://localhost:8443/base".into(),
       preserve_host: true,
       max_body_bytes: 1024,
+      client_ip_headers: vec![],
       connect_timeout: std::time::Duration::from_secs(2),
       read_timeout: std::time::Duration::from_secs(3),
     })
