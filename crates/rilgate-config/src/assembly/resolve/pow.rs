@@ -1,7 +1,7 @@
 use super::keys::SigningKeys;
 use crate::{
-  BrowserConfig, DifficultyConfig, PowAlgorithm, PowConfig, PowEnforcement, RateLimitConfig,
-  StratumPoolConfig,
+  BrowserConfig, DifficultyConfig, PowAlgorithm, PowConfig, PowVerification, RateLimitConfig,
+  StratumPoolConfig, VerificationModes,
   runtime::RandomXFallback,
   schema::{Document, pow::StratumPool},
 };
@@ -12,7 +12,7 @@ impl Document {
   pub(super) fn requires_stratum_pool(&self, policy_document: &PolicyDocument) -> Result<bool> {
     Ok(
       self.pow.default_algorithm == PowAlgorithm::RandomX
-        || self.pow.verification == PowEnforcement::StratumPoolAccepted
+        || self.pow.algorithms.randomx.verify.mode == PowVerification::PoolShare
         || policy_document
           .challenges()?
           .iter()
@@ -109,10 +109,9 @@ impl Document {
           })
         })
         .transpose()?,
-      hashwx_enabled: self.pow.verification == PowEnforcement::LocalVerify
-        && policy_document.challenges()?.iter().any(|(_, choice)| {
-          choice.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::Hashwx
-        }),
+      hashwx_enabled: policy_document.challenges()?.iter().any(|(_, choice)| {
+        choice.algorithm.unwrap_or(self.pow.default_algorithm) == PowAlgorithm::Hashwx
+      }),
       hashwx: rilgate_pow_hashwx::HashWxConfig {
         nonces_per_seed: self.pow.algorithms.hashwx.nonces_per_seed,
         difficulty: DifficultyConfig {
@@ -123,7 +122,9 @@ impl Document {
         ttl: self.pow.challenge.ttl.whole_seconds("pow.challenge.ttl")?,
       },
       randomx_enabled: needs_pool,
-      enforce: self.pow.verification,
+      verification: VerificationModes {
+        randomx: self.pow.algorithms.randomx.verify.mode,
+      },
       default_algorithm: self.pow.default_algorithm,
       signing_key: keys.signing_key,
       auth_signing_key: keys.auth_signing_key,

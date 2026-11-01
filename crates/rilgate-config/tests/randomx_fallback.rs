@@ -8,36 +8,30 @@ fn unusable_fallbacks_fail_configuration_assembly() {
     (
       "randomx",
       4,
-      "local_verify",
+      "gateway",
       "pow.algorithms.randomx.fallback.algorithm: expected fast or hashwx",
     ),
     (
       "refresh",
       4,
-      "local_verify",
+      "gateway",
       "pow.algorithms.randomx.fallback.algorithm: expected fast or hashwx",
     ),
     (
       "hashwx",
       4,
-      "local_verify",
+      "gateway",
       "pow.algorithms.randomx.fallback.algorithm: hashwx is not enabled",
     ),
     (
       "fast",
       0,
-      "local_verify",
+      "gateway",
       "pow.algorithms.randomx.fallback.difficulty: fast difficulty must be between 1 and 64 leading hexadecimal zeroes",
-    ),
-    (
-      "fast",
-      4,
-      "stratum_pool_accepted",
-      "pow.algorithms.randomx.fallback: requires pow.verification: local_verify",
     ),
   ] {
     let yaml = format!(
-      "{BASE}pow:\n  verification: {verification}\n  algorithms:\n    randomx:\n      fallback:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n  stratum_pool:\n    pools:\n      - name: default\n        address: 127.0.0.1:3333\n"
+      "{BASE}pow:\n  algorithms:\n    randomx:\n      verify: {{mode: {verification}}}\n      fallback:\n        algorithm: {algorithm}\n        difficulty: {difficulty}\n  stratum_pool:\n    pools:\n      - name: default\n        address: 127.0.0.1:3333\n"
     );
     let error = parse(&yaml).unwrap().resolve().unwrap_err();
     assert_eq!(error.to_string(), message);
@@ -66,4 +60,12 @@ fn a_lone_fallback_flag_requires_the_other_field() {
       "{error}"
     );
   }
+}
+
+#[test]
+fn pool_share_accepts_fast_fallback() {
+  let yaml = format!(
+    "{BASE}pow:\n  stratum_pool: {{}}\n  algorithms:\n    randomx:\n      verify: {{mode: pool_share}}\n      fallback: {{algorithm: fast, difficulty: 4}}\n"
+  );
+  parse(&yaml).unwrap().resolve().unwrap();
 }

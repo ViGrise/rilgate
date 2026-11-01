@@ -9,7 +9,7 @@ use rilgate_pow::{
   Algorithm, AlgorithmDescriptor, AlgorithmFuture, PowAlgorithm, PreparedWork, Proof, Work,
   WorkRequest,
 };
-use rilgate_protocol::PowEnforcement;
+use rilgate_protocol::PowVerification;
 
 pub struct HashWxAlgorithm {
   config: HashWxConfig,
@@ -59,10 +59,10 @@ impl Algorithm for HashWxAlgorithm {
     Ok(())
   }
 
-  fn validate_enforcement(&self, enforce: PowEnforcement) -> Result<()> {
+  fn validate_verification(&self, verification: PowVerification) -> Result<()> {
     ensure!(
-      enforce == PowEnforcement::LocalVerify,
-      "HashWX requires local_verify enforcement"
+      verification == PowVerification::Gateway,
+      "HashWX requires gateway verification"
     );
     Ok(())
   }
@@ -73,7 +73,7 @@ impl Algorithm for HashWxAlgorithm {
 
   fn issue(&self, request: WorkRequest) -> AlgorithmFuture<'_, PreparedWork> {
     Box::pin(async move {
-      self.validate_enforcement(request.enforce)?;
+      self.validate_verification(request.verification)?;
       self.validate_difficulty(request.difficulty)?;
       let mut challenge = [0; 32];
       getrandom::fill(&mut challenge)

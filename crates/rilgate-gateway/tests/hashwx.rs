@@ -6,7 +6,7 @@ use rilgate_pow::{
   Proof, WorkRequest,
 };
 use rilgate_pow_hashwx::{HashWxAlgorithm, proof::seed};
-use rilgate_protocol::{ChallengeResponse, PowEnforcement, claims::ChallengeClaims};
+use rilgate_protocol::{ChallengeResponse, PowVerification, claims::ChallengeClaims};
 use rilgate_test_utils::binding::unbound;
 use std::sync::{
   Arc,
@@ -27,8 +27,8 @@ impl Algorithm for CountingHashWx {
   fn validate_difficulty(&self, difficulty: u64) -> anyhow::Result<()> {
     self.inner.validate_difficulty(difficulty)
   }
-  fn validate_enforcement(&self, mode: PowEnforcement) -> anyhow::Result<()> {
-    self.inner.validate_enforcement(mode)
+  fn validate_verification(&self, mode: PowVerification) -> anyhow::Result<()> {
+    self.inner.validate_verification(mode)
   }
   fn challenge_ttl(&self) -> u64 {
     self.inner.challenge_ttl()
@@ -136,13 +136,13 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
       .await
       .is_err()
   );
-  for scenario in ["version", "expired", "enforcement", "difficulty"] {
+  for scenario in ["version", "expired", "verification", "difficulty"] {
     let mut modified = claims.clone();
     let ChallengeClaims::Hashwx {
       v,
       issued_at,
       expires_at,
-      enforce,
+      verification,
       difficulty,
       ..
     } = &mut modified
@@ -155,7 +155,7 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
         *issued_at -= 120;
         *expires_at -= 120;
       }
-      "enforcement" => *enforce = PowEnforcement::StratumPoolAccepted,
+      "verification" => *verification = PowVerification::PoolShare,
       "difficulty" => *difficulty = 0,
       _ => unreachable!(),
     }

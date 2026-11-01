@@ -45,7 +45,7 @@ impl ChallengeService {
         host: claims.host,
         algorithm: claims.algorithm,
         difficulty: claims.difficulty,
-        enforce: claims.enforce,
+        verification: claims.verification,
         issued_at: now,
       },
       binding,

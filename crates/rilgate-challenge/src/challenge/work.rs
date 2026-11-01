@@ -1,9 +1,9 @@
 use rilgate_pow::{PreparedWork, Work};
-use rilgate_protocol::{ChallengeResponse, PowEnforcement, StratumJob, claims::ChallengeClaims};
+use rilgate_protocol::{ChallengeResponse, PowVerification, StratumJob, claims::ChallengeClaims};
 pub(super) fn claims(
   work: &PreparedWork,
   host: String,
-  enforce: PowEnforcement,
+  verification: PowVerification,
 ) -> ChallengeClaims {
   match &work.work {
     Work::Fast {
@@ -11,7 +11,7 @@ pub(super) fn claims(
       difficulty,
     } => ChallengeClaims::Fast {
       v: 1,
-      enforce,
+      verification,
       challenge_id: work.challenge_id.clone(),
       host,
       challenge: challenge.clone(),
@@ -25,7 +25,7 @@ pub(super) fn claims(
       nonces_per_seed,
     } => ChallengeClaims::Hashwx {
       v: 1,
-      enforce,
+      verification,
       challenge_id: work.challenge_id.clone(),
       host,
       challenge: challenge.clone(),
@@ -40,7 +40,7 @@ pub(super) fn claims(
       nonce_offset,
     } => ChallengeClaims::Randomx {
       v: 1,
-      enforce,
+      verification,
       challenge_id: work.challenge_id.clone(),
       host,
       blob: job.blob.clone(),

@@ -4,14 +4,14 @@ use crate::{
   tokens::validation::{unix_now, validate_lifetime},
 };
 use anyhow::{Context, Result, anyhow};
-use rilgate_protocol::{PowAlgorithm, PowEnforcement, claims::*};
+use rilgate_protocol::{PowAlgorithm, PowVerification, claims::*};
 use uuid::Uuid;
 /// The grant that an authentication token records.
 pub(crate) struct AuthGrant {
   pub host: String,
   pub algorithm: PowAlgorithm,
   pub difficulty: u64,
-  pub enforce: PowEnforcement,
+  pub verification: PowVerification,
   pub issued_at: i64,
 }
 pub struct IssuedAuthToken {
@@ -27,7 +27,7 @@ impl ChallengeService {
       Uuid::now_v7().to_string(),
       PowAlgorithm::RandomX,
       difficulty,
-      PowEnforcement::StratumPoolAccepted,
+      PowVerification::PoolShare,
     )
   }
 
@@ -37,7 +37,7 @@ impl ChallengeService {
     challenge_id: String,
     algorithm: PowAlgorithm,
     difficulty: u64,
-    enforce: PowEnforcement,
+    verification: PowVerification,
   ) -> Result<String> {
     let now = unix_now()?;
     let claims = ReceiptClaims {
@@ -46,7 +46,7 @@ impl ChallengeService {
       challenge_id,
       algorithm,
       difficulty,
-      enforce,
+      verification,
       issued_at: now,
       expires_at: now + self.cfg.receipt_ttl_seconds as i64,
     };
@@ -90,8 +90,8 @@ impl ChallengeService {
       return Err(anyhow!("Proof receipt host does not match request host"));
     }
 
-    if receipt.enforce != self.cfg.enforce {
-      return Err(anyhow!("Proof receipt uses a different enforcement mode"));
+    if receipt.verification != self.cfg.verification.of(receipt.algorithm) {
+      return Err(anyhow!("Proof receipt uses a different verification mode"));
     }
 
     self
@@ -104,7 +104,7 @@ impl ChallengeService {
         host: receipt.host,
         algorithm: receipt.algorithm,
         difficulty: receipt.difficulty,
-        enforce: receipt.enforce,
+        verification: receipt.verification,
         issued_at: receipt.issued_at,
       },
       binding,
@@ -122,7 +122,7 @@ impl ChallengeService {
       host,
       algorithm,
       difficulty,
-      enforce,
+      verification,
       issued_at,
     } = grant;
     let mut claims = AuthClaims {
@@ -130,7 +130,7 @@ impl ChallengeService {
       v: 1,
       algorithm,
       difficulty,
-      enforce,
+      verification,
       issued_at,
       expires_at: issued_at + self.cfg.auth_ttl_seconds as i64,
       binding: self.cfg.auth_binding.digest(&self.binding_key, binding),
@@ -169,7 +169,7 @@ impl ChallengeService {
           )
           .is_ok()
             && old.host == claims.host
-            && old.enforce == self.cfg.enforce
+            && old.verification == self.cfg.verification.of(old.algorithm)
             && old.binding == claims.binding
             && old.algorithm == claims.algorithm
             && old.networks.is_some()
@@ -218,7 +218,9 @@ impl ChallengeService {
       claims.expires_at,
       self.cfg.auth_ttl_seconds,
     )?;
-    if claims.host != request_host || claims.enforce != self.cfg.enforce {
+    if claims.host != request_host
+      || claims.verification != self.cfg.verification.of(claims.algorithm)
+    {
       return Err(anyhow!("Access token scope does not match request"));
     }
     self
@@ -270,7 +272,7 @@ mod tests {
 
   fn service(max_networks: u8) -> ChallengeService {
     let cfg = ChallengeConfig {
-      enforce: PowEnforcement::LocalVerify,
+      verification: rilgate_protocol::VerificationModes::default(),
       default_algorithm: PowAlgorithm::Refresh,
       signing_key: rilgate_crypto::Secret("test-signing-key".into()),
       auth_signing_key: rilgate_crypto::Secret("test-auth-key".into()),
@@ -330,7 +332,7 @@ mod tests {
           host: "example.test".into(),
           algorithm: PowAlgorithm::Refresh,
           difficulty,
-          enforce: PowEnforcement::LocalVerify,
+          verification: PowVerification::Gateway,
           issued_at: at,
         },
         &input(ip, &browser("Chrome/130")),
@@ -382,7 +384,7 @@ mod tests {
       "browser",
       "algorithm",
       "host",
-      "enforcement",
+      "verification",
       "legacy",
       "signature",
       "expired",
@@ -397,7 +399,7 @@ mod tests {
         }
         "algorithm" => claims.algorithm = PowAlgorithm::Fast,
         "host" => claims.host = "other.test".into(),
-        "enforcement" => claims.enforce = PowEnforcement::StratumPoolAccepted,
+        "verification" => claims.verification = PowVerification::PoolShare,
         "legacy" => {
           claims.networks = None;
           claims.binding = service.cfg.auth_binding.digest(

@@ -1,5 +1,5 @@
 mod common;
-use rilgate_config::{ChallengePolicy, PowAlgorithm, PowEnforcement};
+use rilgate_config::{ChallengePolicy, PowAlgorithm, PowVerification};
 use rilgate_crypto::token::{self as crypto, TokenPurpose};
 use rilgate_protocol::claims::ReceiptClaims;
 use rilgate_test_utils::gateway as app;
@@ -177,7 +177,7 @@ async fn proof_of_work_cookie_satisfies_a_refresh_requirement() {
       challenge_id: "proof".into(),
       algorithm: PowAlgorithm::Fast,
       difficulty: 1,
-      enforce: PowEnforcement::LocalVerify,
+      verification: PowVerification::Gateway,
       issued_at: now,
       expires_at: now + 30,
     },

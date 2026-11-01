@@ -4,7 +4,7 @@ use rilgate_pow::{
   Algorithm, PowAlgorithm, PreparedWork, Proof, Work, WorkRequest, difficulty::DifficultyConfig,
 };
 use rilgate_pow_hashwx::{HashWxAlgorithm, HashWxConfig, MAX_DIFFICULTY, proof::seed};
-use rilgate_protocol::PowEnforcement;
+use rilgate_protocol::PowVerification;
 
 fn config() -> HashWxConfig {
   HashWxConfig {
@@ -127,19 +127,19 @@ fn seed_encoding_retains_the_full_little_endian_batch_and_weight_mapping_saturat
 }
 
 #[tokio::test]
-async fn issuance_is_local_and_rejects_mining_enforcement() {
+async fn issuance_is_local_and_rejects_pool_share_verification() {
   let algorithm = HashWxAlgorithm::new(&config()).unwrap();
   let first = algorithm
     .issue(WorkRequest {
       difficulty: 1,
-      enforce: PowEnforcement::LocalVerify,
+      verification: PowVerification::Gateway,
     })
     .await
     .unwrap();
   let second = algorithm
     .issue(WorkRequest {
       difficulty: 1,
-      enforce: PowEnforcement::LocalVerify,
+      verification: PowVerification::Gateway,
     })
     .await
     .unwrap();
@@ -167,7 +167,7 @@ async fn issuance_is_local_and_rejects_mining_enforcement() {
     algorithm
       .issue(WorkRequest {
         difficulty: 1,
-        enforce: PowEnforcement::StratumPoolAccepted
+        verification: PowVerification::PoolShare
       })
       .await
       .is_err()

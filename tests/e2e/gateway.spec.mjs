@@ -301,8 +301,7 @@ test("RandomX without WebAssembly reaches the localized unsupported state before
   await page.route("**/api/client-config", (route) =>
     route.fulfill({
       json: {
-        enforce: "local_verify",
-        algorithms: [{ id: "randomx" }],
+        algorithms: [{ id: "randomx", verification: "gateway" }],
       },
     }),
   );

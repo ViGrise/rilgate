@@ -574,7 +574,7 @@ async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_g
 
 #[tokio::test]
 async fn socket_remote_readiness_probes_only_required_hashers() {
-  use rilgate_config::{Environment, PowAlgorithm, PowEnforcement, schema::pow::Hasher};
+  use rilgate_config::{Environment, PowAlgorithm, PowVerification, schema::pow::Hasher};
   use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
   let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let pool = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -606,35 +606,35 @@ async fn socket_remote_readiness_probes_only_required_hashers() {
     .await
     .unwrap();
   });
-  for (enforce, algorithm, order, required) in [
+  for (verification, algorithm, order, required) in [
     (
-      PowEnforcement::LocalVerify,
+      PowVerification::Gateway,
       PowAlgorithm::RandomX,
       vec![Hasher::Remote],
       true,
     ),
     (
-      PowEnforcement::LocalVerify,
+      PowVerification::Gateway,
       PowAlgorithm::Fast,
       vec![Hasher::Remote],
       false,
     ),
     (
-      PowEnforcement::LocalVerify,
+      PowVerification::Gateway,
       PowAlgorithm::RandomX,
       vec![Hasher::Remote, Hasher::Local],
       false,
     ),
     (
-      PowEnforcement::LocalVerify,
+      PowVerification::Gateway,
       PowAlgorithm::RandomX,
       vec![Hasher::Local, Hasher::Remote],
       false,
     ),
     (
-      PowEnforcement::StratumPoolAccepted,
+      PowVerification::PoolShare,
       PowAlgorithm::RandomX,
-      vec![Hasher::Remote],
+      vec![Hasher::Local],
       false,
     ),
   ] {
@@ -643,9 +643,10 @@ async fn socket_remote_readiness_probes_only_required_hashers() {
     config.env = Environment::Development;
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
     config.pow.stratum_pool.pools[0].port = pool.local_addr().unwrap().port();
-    config.pow.enforce = enforce;
+    config.pow.verification.randomx = verification;
     config.pow.randomx_verify.order = order;
-    config.pow.randomx_verify.remote.endpoint = Some(endpoint.clone());
+    config.pow.randomx_verify.remote.endpoint =
+      (verification == PowVerification::Gateway).then(|| endpoint.clone());
     let challenge = config.pow.policy.policy.rules.as_mut().unwrap()[0]
       .challenge
       .as_mut()

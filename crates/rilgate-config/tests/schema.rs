@@ -108,8 +108,11 @@ fn invalid_schema_fields_report_the_configuration_path() {
     ("version: 1", "version"),
     ("serve: {port: 8080}", "serve"),
     ("web: {}", "web"),
-    ("pow: {enforce: local_verify}", "pow"),
-    ("pow: {verification: unsupported}", "pow.verification"),
+    ("pow: {enforce: gateway}", "pow"),
+    (
+      "pow: {algorithms: {randomx: {verify: {mode: unsupported}}}}",
+      "pow.algorithms.randomx.verify.mode",
+    ),
     ("pow: {default_algorithm: md5}", "pow.default_algorithm"),
     ("pow: {challenge: {ttl: 10}}", "pow.challenge.ttl"),
     ("pow: {challenge: {ttl: bananas}}", "pow.challenge.ttl"),
@@ -201,7 +204,7 @@ fn randomx_and_p2pool_verification_require_explicit_infrastructure() {
       .contains("pow.stratum_pool.pools")
   );
   let config = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: '[::1]:3333'}}]\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  algorithms: {{randomx: {{verify: {{mode: pool_share}}}}}}\n  stratum_pool:\n    pools: [{{name: primary, address: '[::1]:3333'}}]\n    timeout:\n      connect: 300ms\n    job_sessions:\n      mode: per_challenge\npolicy:\n  default_action: challenge\n"
   );
   let cfg = resolve(&config).unwrap();
   assert!(cfg.pow.randomx_enabled);
@@ -590,16 +593,13 @@ fn randomx_verification_rejects_invalid_order_endpoint_and_tls() {
 
 #[test]
 fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_only() {
-  use rilgate_config::{PowEnforcement, schema::pow::Hasher};
+  use rilgate_config::{PowVerification, schema::pow::Hasher};
   let mut document = parse(BASE).unwrap();
   document.pow.stratum_pool = Some(Default::default());
   let cfg = document.resolve().unwrap();
   let mut pow = cfg.pow.clone();
   pow.policy = parse(&format!("{BASE}\npolicy:\n  rules:\n    - name: all\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n")).unwrap().resolve().unwrap().pow.policy.clone();
-  for enforce in [
-    PowEnforcement::LocalVerify,
-    PowEnforcement::StratumPoolAccepted,
-  ] {
+  for verification in [PowVerification::Gateway, PowVerification::PoolShare] {
     for algorithm in [PowAlgorithm::Fast, PowAlgorithm::RandomX] {
       for order in [
         vec![Hasher::Local],
@@ -607,19 +607,19 @@ fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_on
         vec![Hasher::Remote, Hasher::Local],
         vec![Hasher::Local, Hasher::Remote],
       ] {
-        pow.enforce = enforce;
+        pow.verification.randomx = verification;
         pow.default_algorithm = algorithm;
         pow.randomx_verify.order = order.clone();
         assert_eq!(
           pow.needs_remote_verifier(),
-          enforce == PowEnforcement::LocalVerify
+          verification == PowVerification::Gateway
             && algorithm == PowAlgorithm::RandomX
             && order == [Hasher::Remote]
         );
       }
     }
   }
-  pow.enforce = PowEnforcement::LocalVerify;
+  pow.verification.randomx = PowVerification::Gateway;
   pow.default_algorithm = PowAlgorithm::RandomX;
   pow.randomx_verify.order = vec![Hasher::Remote];
   pow.policy = parse(&format!(
@@ -643,19 +643,14 @@ fn remote_readiness_requires_local_verification_randomx_challenges_and_remote_on
 
 #[test]
 fn renamed_pool_keys_fail_with_the_new_name() {
-  for (text, expected) in [
-    (
-      "pow:\n  p2pool: {}\n",
-      "pow.p2pool: renamed to pow.stratum_pool",
-    ),
-    (
-      "pow:\n  verification: p2pool_accepted\n",
-      "pow.verification: p2pool_accepted is renamed to stratum_pool_accepted",
-    ),
-  ] {
-    let error = format!("{:#}", parse(&format!("{BASE}{text}")).unwrap_err());
-    assert!(error.contains(expected), "{error}");
-  }
+  let error = format!(
+    "{:#}",
+    parse(&format!("{BASE}pow:\n  p2pool: {{}}\n")).unwrap_err()
+  );
+  assert!(
+    error.contains("pow.p2pool: renamed to pow.stratum_pool"),
+    "{error}"
+  );
 }
 
 #[test]
@@ -902,7 +897,7 @@ fn hashwx_resolves_without_a_pool_and_rejects_invalid_cost_bounds() {
     invalid.pow.algorithms.hashwx.difficulty.max = max;
     assert!(invalid.resolve().is_err());
   }
-  document.pow.verification = rilgate_config::PowEnforcement::StratumPoolAccepted;
+  document.pow.algorithms.randomx.verify.mode = rilgate_config::PowVerification::PoolShare;
   assert!(document.resolve().is_err());
 }
 
@@ -945,9 +940,9 @@ fn shared_challenge_ttl_errors_identify_the_shared_setting() {
 }
 
 #[test]
-fn pool_accepted_configuration_leaves_hashwx_disabled() {
+fn pool_share_configuration_leaves_unselected_hashwx_disabled() {
   let text = format!(
-    "{BASE}pow:\n  default_algorithm: randomx\n  verification: stratum_pool_accepted\n  stratum_pool:\n    pools: [{{name: primary, address: localhost:3333}}]\n  algorithms:\n    hashwx:\n      nonces_per_seed: 0\npolicy:\n  default_action: challenge\n"
+    "{BASE}pow:\n  default_algorithm: randomx\n  stratum_pool:\n    pools: [{{name: primary, address: localhost:3333}}]\n  algorithms:\n    randomx: {{verify: {{mode: pool_share}}}}\n    hashwx:\n      nonces_per_seed: 0\npolicy:\n  default_action: challenge\n"
   );
   assert!(!resolve(&text).unwrap().pow.hashwx_enabled);
 }
@@ -1208,5 +1203,24 @@ fn client_ip_headers_are_validated() {
       )),
       "{name}"
     );
+  }
+}
+
+#[test]
+fn pool_share_rejects_hashers_and_remote_settings() {
+  for (verify, message) in [
+    (
+      "order: [remote]",
+      "pow.algorithms.randomx.verify.order: requires pow.algorithms.randomx.verify.mode: gateway",
+    ),
+    (
+      "remote: {endpoint: 'http://127.0.0.1:9443'}",
+      "pow.algorithms.randomx.verify.remote: requires pow.algorithms.randomx.verify.mode: gateway",
+    ),
+  ] {
+    let yaml = format!(
+      "{BASE}pow:\n  stratum_pool: {{}}\n  algorithms:\n    randomx:\n      verify:\n        mode: pool_share\n        {verify}\n"
+    );
+    assert_eq!(resolve(&yaml).unwrap_err().to_string(), message);
   }
 }

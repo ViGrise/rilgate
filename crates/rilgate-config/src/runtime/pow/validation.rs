@@ -22,7 +22,7 @@ impl PowConfig {
 fn validate_randomx_fallback(config: &PowConfig) -> anyhow::Result<()> {
   use anyhow::ensure;
   if let Some(fallback) = &config.randomx_fallback {
-    use crate::{PowAlgorithm, PowEnforcement};
+    use crate::PowAlgorithm;
     use rilgate_pow::Algorithm;
     ensure!(
       matches!(
@@ -30,10 +30,6 @@ fn validate_randomx_fallback(config: &PowConfig) -> anyhow::Result<()> {
         PowAlgorithm::Fast | PowAlgorithm::Hashwx
       ),
       "pow.algorithms.randomx.fallback.algorithm: expected fast or hashwx"
-    );
-    ensure!(
-      config.enforce == PowEnforcement::LocalVerify,
-      "pow.algorithms.randomx.fallback: requires pow.verification: local_verify"
     );
     ensure!(
       fallback.algorithm != PowAlgorithm::Hashwx || config.hashwx_enabled,
@@ -75,6 +71,20 @@ fn validate_hashwx(config: &PowConfig) -> anyhow::Result<()> {
 fn validate_randomx_verify(config: &PowConfig) -> anyhow::Result<()> {
   use anyhow::{Context, ensure};
   let verify = &config.randomx_verify;
+  if config.verification.randomx == crate::PowVerification::PoolShare {
+    ensure!(
+      verify.order == [crate::schema::pow::Hasher::Local],
+      "pow.algorithms.randomx.verify.order: requires pow.algorithms.randomx.verify.mode: gateway"
+    );
+    let remote = &verify.remote;
+    ensure!(
+      remote.endpoint.is_none()
+        && remote.tls.ca.is_none()
+        && remote.tls.client_cert.is_none()
+        && remote.tls.client_key.is_none(),
+      "pow.algorithms.randomx.verify.remote: requires pow.algorithms.randomx.verify.mode: gateway"
+    );
+  }
   ensure!(
     (1..=2).contains(&verify.order.len())
       && (verify.order.len() == 1 || verify.order[0] != verify.order[1]),
@@ -219,11 +229,6 @@ fn validate_policy(config: &PowConfig) -> anyhow::Result<()> {
   rilgate_policy::PolicyEngine::from_definition(&config.policy)?;
   for (name, selection) in config.policy.challenges()? {
     let algorithm = selection.algorithm.unwrap_or(config.default_algorithm);
-    ensure!(
-      config.enforce != crate::PowEnforcement::StratumPoolAccepted
-        || algorithm == crate::PowAlgorithm::RandomX,
-      "policy ({name}): stratum_pool_accepted requires RandomX challenges"
-    );
     if let Some(difficulty) = selection.difficulty {
       let valid = match algorithm {
         crate::PowAlgorithm::Hashwx => {

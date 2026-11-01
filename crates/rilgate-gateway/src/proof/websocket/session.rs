@@ -6,7 +6,7 @@ type WebSocket = WebSocketStream<tokio::io::DuplexStream>;
 use futures_util::{SinkExt, StreamExt};
 use rilgate_pool::StratumEvent;
 use rilgate_pow::target::hash_meets_difficulty;
-use rilgate_protocol::PowEnforcement;
+use rilgate_protocol::{PowAlgorithm, PowVerification};
 use std::time::Duration;
 use tokio::time::{Instant, sleep_until};
 
@@ -17,8 +17,8 @@ pub async fn handle(socket: WebSocket, state: AppState, difficulty: u64, host: S
 }
 
 async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) -> Result<()> {
-  if state.pow.enforcement() != PowEnforcement::StratumPoolAccepted {
-    return Err(anyhow!("WebSocket enforcement is disabled"));
+  if state.pow.verification(PowAlgorithm::RandomX) != PowVerification::PoolShare {
+    return Err(anyhow!("WebSocket verification is disabled"));
   }
 
   let (mut ws_tx, mut ws_rx) = socket.split();
@@ -29,6 +29,9 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
         &mut ws_tx,
         ServerWsMessage::Error {
           message: "Stratum pool connection unavailable".into(),
+          code: error
+            .is::<rilgate_pool::provider::AllPoolsUnavailable>()
+            .then(|| "work_unavailable".into()),
         },
       )
       .await?;
@@ -52,7 +55,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
   loop {
     tokio::select! {
       _ = sleep_until(session_deadline) => {
-        send_ws(&mut ws_tx, ServerWsMessage::Error { message: "Proof-of-work session expired".into() }).await?;
+        send_ws(&mut ws_tx, ServerWsMessage::Error { code: None, message: "Proof-of-work session expired".into() }).await?;
         return Ok(());
       }
       _ = async {
@@ -62,7 +65,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
           std::future::pending::<()>().await;
         }
       } => {
-        send_ws(&mut ws_tx, ServerWsMessage::Error { message: "Stratum pool share acceptance timed out".into() }).await?;
+        send_ws(&mut ws_tx, ServerWsMessage::Error { code: None, message: "Stratum pool share acceptance timed out".into() }).await?;
         return Ok(());
       }
       browser = ws_rx.next() => {

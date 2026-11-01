@@ -1,10 +1,10 @@
 use crate::authorization::binding::AuthBinding;
 use rilgate_crypto::Secret;
 use rilgate_policy::policy::schema::PolicyDocument;
-use rilgate_protocol::{PowAlgorithm, PowEnforcement};
+use rilgate_protocol::{PowAlgorithm, VerificationModes};
 #[derive(Debug, Clone)]
 pub struct ChallengeConfig {
-  pub enforce: PowEnforcement,
+  pub verification: VerificationModes,
   pub default_algorithm: PowAlgorithm,
   pub signing_key: Secret,
   pub auth_signing_key: Secret,

@@ -313,7 +313,8 @@ test("RandomX asks for consent before loading the solver", async () => {
       return {
         status: 200,
         headers: { get: () => null },
-        text: async () => JSON.stringify({ enforce: "stratum_pool_accepted" }),
+        text: async () =>
+          JSON.stringify({ algorithms: [{ id: "randomx", verification: "pool_share" }] }),
       };
     },
     console: { error: (error) => assert.fail(error.message) },

@@ -173,7 +173,7 @@ before changing the policy. Older builds reject the `hashwx` token variant.
 Keep shared signing keys and compatible lifetimes across instances.
 
 The gateway creates each HashWX challenge locally. It verifies one interpreted
-hash on a blocking task after signature, version, lifetime, enforcement and
+hash on a blocking task after signature, version, lifetime, verification mode and
 host checks. The normal proof API quotas and request limits stay in front of
 this work. It needs no pool or dedicated verifier queue. The measured 25.9
 microsecond kernel cost excludes the HTTP handler, signature checks, seed
@@ -246,8 +246,8 @@ Monitor these counters without endpoint or certificate labels:
 The gateway also exposes `rilgate_randomx_remote_duration_seconds`. The verifier
 exposes its request counter only on its operations listener when
 `server.metrics_enabled` is true. Readiness of a remote-only gateway probes the
-verifier only when a rule selects RandomX and `pow.verification` is
-`local_verify`. The probe uses `server.readiness_timeout`.
+verifier only when a rule selects RandomX and
+`pow.algorithms.randomx.verify.mode` is `gateway`. The probe uses `server.readiness_timeout`.
 
 ## Capacity and quotas
 

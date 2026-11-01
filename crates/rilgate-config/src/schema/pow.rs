@@ -1,12 +1,11 @@
 use super::value::{IdleTimeout, Time};
 use rilgate_crypto::Secret;
-use rilgate_protocol::{PowAlgorithm, PowEnforcement};
+use rilgate_protocol::{PowAlgorithm, PowVerification};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Pow {
-  pub verification: PowEnforcement,
   pub default_algorithm: PowAlgorithm,
   pub challenge: Challenge,
   pub rate_limit: RateLimit,
@@ -16,7 +15,6 @@ pub struct Pow {
 impl Default for Pow {
   fn default() -> Self {
     Self {
-      verification: PowEnforcement::LocalVerify,
       default_algorithm: PowAlgorithm::Fast,
       challenge: Challenge::default(),
       rate_limit: RateLimit::default(),
@@ -284,12 +282,14 @@ pub use rilgate_pow_randomx::{DeadlinePolicy, HasherKind as Hasher};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Verify {
+  pub mode: PowVerification,
   pub order: Vec<Hasher>,
   pub remote: Remote,
 }
 impl Default for Verify {
   fn default() -> Self {
     Self {
+      mode: PowVerification::Gateway,
       order: vec![Hasher::Local],
       remote: Remote::default(),
     }

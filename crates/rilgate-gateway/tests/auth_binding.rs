@@ -3,7 +3,7 @@ use rilgate_challenge::authorization::binding::{
   AuthBinding, BindingInput, BindingMismatch, ClientIpBinding, UserAgentBinding,
 };
 use rilgate_crypto::token::{self as crypto, TokenPurpose};
-use rilgate_gateway::config::{PowAlgorithm, PowEnforcement};
+use rilgate_gateway::config::{PowAlgorithm, PowVerification};
 use rilgate_protocol::claims::ReceiptClaims;
 use rilgate_test_utils::{binding::unbound, gateway as app};
 use std::{
@@ -76,7 +76,7 @@ impl Fixture {
         challenge_id: "proof".into(),
         algorithm: PowAlgorithm::Fast,
         difficulty: 1,
-        enforce: PowEnforcement::LocalVerify,
+        verification: PowVerification::Gateway,
         issued_at: now,
         expires_at: now + 30,
       },
@@ -290,7 +290,7 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
         challenge_id: "proof".into(),
         algorithm: PowAlgorithm::Fast,
         difficulty: 1,
-        enforce: PowEnforcement::LocalVerify,
+        verification: PowVerification::Gateway,
         issued_at: now,
         expires_at: now + 30,
       },

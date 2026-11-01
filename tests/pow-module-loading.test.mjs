@@ -43,7 +43,10 @@ for (const algorithm of ["hashwx", "randomx"]) {
       "utf8",
     );
     vm.runInContext(source, context);
-    await assert.rejects(adapter.run({ enforce: "local_verify" }), /Module request captured/);
+    await assert.rejects(
+      adapter.run({ algorithms: [{ id: "randomx", verification: "gateway" }] }),
+      /Module request captured/,
+    );
     assert.equal(selected, moduleUrl);
   });
 }

@@ -365,7 +365,7 @@ warning-free configuration, run it in CI or before deployment.
 | `verifier-remote-credentials` | production | error | Remote hashing lacks CA, client certificate or client key |
 | `verifier-remote-missing` | both | error | Order selects remote without an endpoint |
 | `verifier-local-fallback` | both | warning | Local follows remote; outages can build a 256 MiB cache on every gateway |
-| `verifier-remote-unused` | both | warning | Order selects remote while no challenge selects RandomX or verification is stratum_pool_accepted |
+| `verifier-remote-unused` | both | warning | Order selects remote while no challenge selects RandomX |
 | `stratum-pool-plain-tcp` | both | production error, development warning | A public pool has TLS disabled |
 | `stratum-proxy-plain-credentials` | both | production error, development warning | A public proxy has credentials |
 | `stratum-pool-per-challenge-public` | both | warning | A public pool uses per-challenge job sessions |
@@ -422,13 +422,14 @@ or overflow.
 | `site.templates.cache`, `.strict`, `.recursion_limit`, `.fuel` | `true`, `true`, `64`, `50000` |
 | `site.i18n.default`, `.supported`, `.strict`, `.cookie` | `en`, `[]` (discover), `false`, `rilgate_lang` |
 | `security.auth.cookie`, `.ttl` | `rilgate_auth`, `6h` |
-| `pow.verification`, `.default_algorithm` | `local_verify`, `fast` |
+| `pow.default_algorithm` | `fast` |
 | `pow.challenge.ttl`, `.receipt_ttl` | `1m`, `30s` |
 | `pow.rate_limit.enabled`, `.max_clients` | `true`, `4096` |
 | `pow.rate_limit.client.burst`, `.refill_per_second` | `10`, `0.1` |
 | `pow.rate_limit.global.burst`, `.refill_per_second` | `64`, `16` |
 | `pow.algorithms.randomx.challenge_ttl`, `.nonce_offset`, `.verifier_queue` | `1h`, `39`, `8` |
 | `pow.algorithms.randomx.cache.idle_timeout` | `30m` (0s disables release, at most 7d) |
+| `pow.algorithms.randomx.verify.mode` | `gateway` (`gateway` or `pool_share`; see [verification modes](pow.md#verification-modes)) |
 | `pow.algorithms.randomx.verify.order` | `[local]` (1-2 distinct entries: local, remote) |
 | `pow.algorithms.randomx.verify.remote.endpoint` | none (required for remote; HTTPS origin, HTTP only in development) |
 | `pow.algorithms.randomx.verify.remote.server_name` | endpoint host |
@@ -686,9 +687,8 @@ every bound client solve again.
 
 ### Stratum pools and proxies
 
-`pow.stratum_pool` configures the Stratum pools that RandomX challenges use with
-`pow.verification: stratum_pool_accepted`. Token decoding accepts the legacy
-`p2pool_accepted` value. Tokens carry only `stratum_pool_accepted`.
+`pow.stratum_pool` configures the Stratum pools that RandomX challenges use in
+both [verification modes](pow.md#verification-modes).
 
 Set `pow.stratum_pool.pools` to a list of 1 to 8 pools. The gateway tries them
 in order. Each entry requires a unique `name` and an `address`. Names use 1 to
@@ -769,11 +769,10 @@ Shared settings keep their flags, including `--pow-stratum-pool-failover-cooldow
 
 `pow.algorithms.hashwx` sets the cost of HashWX, the local CPU algorithm. Presets select
 Fast explicitly, so select HashWX in a custom policy. HashWX is registered and its cost
-settings are validated only when a challenge rule selects it with local verification.
+settings are validated when a challenge rule selects it.
 
 ```yaml
 pow:
-  verification: local_verify
   default_algorithm: hashwx
   algorithms:
     hashwx:
@@ -816,7 +815,9 @@ It needs no `pow.stratum_pool` entry or dedicated verifier queue.
 ### Dedicated RandomX verifier
 
 `rilgate verifier` runs the RandomX hash service as a separate process for remote
-verification. See [Proof of work deployment](production.md#remote-randomx-verifier) for
+verification with `pow.algorithms.randomx.verify.mode: gateway`. See
+[RandomX hash location](pow.md#randomx-hash-location) for the hasher order and
+configuration limits. See [Proof of work deployment](production.md#remote-randomx-verifier) for
 the operator steps.
 
 

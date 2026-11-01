@@ -101,7 +101,6 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SECURITY, Text, "security.auth.bind.user_agent", "security-auth-bind-user-agent", "RILGATE_SECURITY_AUTH_BIND_USER_AGENT", None, "Bind the cookie to the User-Agent: full or family"),
   spec!(SECURITY, List, "security.auth.bind.headers", "security-auth-bind-headers", "RILGATE_SECURITY_AUTH_BIND_HEADERS", None, "Client request headers the cookie is bound to"),
   spec!(SECURITY, List, "security.auth.bind.proxy_headers", "security-auth-bind-proxy-headers", "RILGATE_SECURITY_AUTH_BIND_PROXY_HEADERS", None, "Headers set by trusted proxies the cookie is bound to"),
-  spec!(POW, Text, "pow.verification", "pow-verification", "RILGATE_POW_VERIFICATION", None, "Proof verification: local_verify or stratum_pool_accepted"),
   spec!(POW, Text, "pow.default_algorithm", "pow-default-algorithm", "RILGATE_POW_DEFAULT_ALGORITHM", None, "Algorithm for challenges without one: fast, hashwx or randomx"),
   spec!(POW, Text, "pow.challenge.ttl", "pow-challenge-ttl", "RILGATE_POW_CHALLENGE_TTL", None, "Challenge lifetime"),
   spec!(POW, Text, "pow.challenge.receipt_ttl", "pow-challenge-receipt-ttl", "RILGATE_POW_CHALLENGE_RECEIPT_TTL", None, "Proof receipt lifetime"),
@@ -121,6 +120,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.randomx.nonce_offset", "pow-algorithms-randomx-nonce-offset", "RILGATE_POW_ALGORITHMS_RANDOMX_NONCE_OFFSET", None, "Nonce byte offset in the RandomX blob"),
   spec!(POW, Text, "pow.algorithms.randomx.verifier_queue", "pow-algorithms-randomx-verifier-queue", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFIER_QUEUE", None, "Queued RandomX verifications"),
   spec!(POW, Text, "pow.algorithms.randomx.cache.idle_timeout", "pow-algorithms-randomx-cache-idle-timeout", "RILGATE_POW_ALGORITHMS_RANDOMX_CACHE_IDLE_TIMEOUT", None, "Idle time before releasing the RandomX cache; 0s keeps it resident"),
+  spec!(POW, Text, "pow.algorithms.randomx.verify.mode", "pow-algorithms-randomx-verify-mode", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_MODE", None, "RandomX proof check: gateway or pool_share"),
   spec!(POW, List, "pow.algorithms.randomx.verify.order", "pow-algorithms-randomx-verify-order", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_ORDER", None, "Ordered RandomX hashers: local, remote"),
   spec!(POW, Text, "pow.algorithms.randomx.verify.remote.endpoint", "pow-algorithms-randomx-verify-remote-endpoint", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_ENDPOINT", None, "Remote verifier HTTP or HTTPS origin"),
   spec!(POW, Text, "pow.algorithms.randomx.verify.remote.server_name", "pow-algorithms-randomx-verify-remote-server-name", "RILGATE_POW_ALGORITHMS_RANDOMX_VERIFY_REMOTE_SERVER_NAME", None, "Remote verifier certificate name; defaults to endpoint host"),
@@ -607,7 +607,10 @@ mod hashwx_tests {
     let prepared = algorithm
       .issue(WorkRequest {
         difficulty: algorithm.difficulty_for_weight(7),
-        enforce: config.pow.enforce,
+        verification: config
+          .pow
+          .verification
+          .of(rilgate_protocol::PowAlgorithm::Hashwx),
       })
       .await
       .unwrap();

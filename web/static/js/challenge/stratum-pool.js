@@ -73,7 +73,12 @@
             }
 
             if (message.type === "error") {
-              reject(new Error(message.message));
+              const error = new Error(message.message);
+              if (message.code === "work_unavailable") {
+                error.status = 503;
+                error.code = "work_unavailable";
+              }
+              reject(error);
             }
           } catch (error) {
             reject(error);

@@ -182,7 +182,7 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? "
       this.status = failureStatus;
       this.responseText = JSON.stringify(
         this.url.endsWith("client-config")
-          ? { enforce: "local_verify", algorithms: [{ id: algorithm }] }
+          ? { algorithms: [{ id: algorithm, verification: "gateway" }] }
           : this.url.endsWith("challenge")
             ? {
                 algorithm: "fast",

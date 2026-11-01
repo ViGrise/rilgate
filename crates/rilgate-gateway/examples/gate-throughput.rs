@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
       v: 1,
       algorithm: PowAlgorithm::Fast,
       difficulty: 1,
-      enforce: cfg.pow.enforce,
+      verification: cfg.pow.verification.of(PowAlgorithm::Fast),
       issued_at: now,
       expires_at: now + cfg.pow.auth_ttl_seconds as i64,
       binding: None,

@@ -9,7 +9,7 @@ use axum::{
 };
 use rilgate_crypto::token::{self as crypto, TokenPurpose};
 use rilgate_gateway::{
-  config::{PowAlgorithm, PowEnforcement},
+  config::{PowAlgorithm, PowVerification},
   proxy::client::ProxyService,
 };
 use rilgate_pow_hash::sha256::verifier::verify_fast;
@@ -148,7 +148,7 @@ async fn unsolved_randomx_challenge_cannot_be_exchanged_or_used_as_auth() {
   let claims = ChallengeClaims::Randomx {
     v: 1,
     challenge_id: "test".into(),
-    enforce: PowEnforcement::LocalVerify,
+    verification: PowVerification::Gateway,
     host: "example.test".into(),
     blob: "00".repeat(64),
     seed_hash: "00".repeat(32),
@@ -202,7 +202,7 @@ async fn expired_receipt_is_rejected_at_its_expiry_second() {
     challenge_id: "expired".into(),
     algorithm: PowAlgorithm::Fast,
     difficulty: 1,
-    enforce: PowEnforcement::LocalVerify,
+    verification: PowVerification::Gateway,
     issued_at: now - 30,
     expires_at: now,
   };

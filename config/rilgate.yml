@@ -513,19 +513,10 @@ server:
 ################################ PROOF OF WORK ################################
 
 # pow:
-  # local_verify checks Fast SHA-256 or RandomX proofs on this gateway.
-  # Compatible signed local proofs can be verified across instances.
-  # stratum_pool_accepted requires RandomX challenges and an actual accepted share
-  # response from the mining pool, through a retained WebSocket/Stratum session. HTTP
-  # RandomX issue/verify is unavailable in that mode. Route sessions back to
-  # their owning gateway; there is no distributed session store.
-  #
-  # verification: local_verify
-
   # Algorithm when a challenge action omits algorithm: fast, hashwx or randomx.
   # refresh is not allowed here because it needs an explicit delay in a policy rule.
   # Presets explicitly select fast. Selecting RandomX requires explicit Stratum pool
-  # configuration for jobs, including when verification is local.
+  # configuration for jobs, including with verify.mode: gateway.
   #
   # default_algorithm: fast
 
@@ -592,7 +583,7 @@ server:
         # max: 5000000
 
     # randomx:
-      # Signed RandomX work lifetime for local verification, separate from the
+      # Signed RandomX work lifetime with verify.mode: gateway, separate from the
       # shorter presentation-token TTL. Positive whole seconds, at most 365d.
       #
       # challenge_ttl: 1h
@@ -650,6 +641,14 @@ server:
         # idle_timeout: 30m
 
       # verify:
+        # How Rilgate accepts a RandomX proof: gateway or pool_share.
+        # gateway checks the hash with the hashers in order. pool_share needs a share
+        # that a Stratum pool accepts. Fast, HashWX and refresh always use gateway.
+        # A pool_share session stays on the gateway that opened it. Route its
+        # requests back to that gateway, because no shared session store exists.
+        #
+        # mode: gateway
+
         # One or two distinct hashers, tried in order on unavailability.
         # A returned hash or invalid request ends the sequence.
         #
@@ -723,7 +722,7 @@ server:
         # store_cache: true
 
       # Optional fallback while every pool is in its failure cooldown.
-      # Both fields are required. Requires local_verify and an enabled algorithm.
+      # Both fields are required. Works in both modes with an enabled algorithm.
       #
       # fallback:
         # algorithm: fast
@@ -808,7 +807,7 @@ server:
       # connect: 5s
 
       # Maximum wait for the pool response to a submitted share. A locally valid
-      # hash alone does not grant access with stratum_pool_accepted verification.
+      # hash alone does not grant access with verify.mode: pool_share.
       #
       # submit: 20s
     # sessions:
