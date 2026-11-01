@@ -10,7 +10,7 @@ let nextRequestId = 0;
 
 export function workerCount(cores, deviceMemory, maxWorkers = 8) {
   const byCores = Math.max(1, (cores || 2) - 1);
-  const byMemory = deviceMemory ? Math.floor(deviceMemory / 2) : 2;
+  const byMemory = deviceMemory ? Math.floor(deviceMemory / 2) : 1; // Browsers without a memory report, such as WebKit on iOS, get one 256 MiB cache.
   return Math.max(1, Math.min(byCores, byMemory, maxWorkers));
 }
 

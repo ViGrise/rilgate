@@ -83,6 +83,68 @@ for (const verification of ["gateway", "pool_share"]) {
   });
 }
 
+test("pool_share shows preparing until a job arrives and pool only after a share", async () => {
+  const source = await readFile(
+    new URL("../web/static/js/challenge/stratum-pool.js", import.meta.url),
+    "utf8",
+  );
+  const events = [];
+  const states = [];
+  class WebSocket {
+    addEventListener(type, listener) {
+      if (type === "open") queueMicrotask(listener);
+      if (type === "message") {
+        this.onmessage = listener;
+        queueMicrotask(() =>
+          listener({
+            data: JSON.stringify({
+              type: "job",
+              job: { job_id: "job", blob: "00000000", seed_hash: "00".repeat(32) },
+              difficulty: 1,
+              nonce_offset: 0,
+            }),
+          }),
+        );
+      }
+    }
+    removeEventListener() {}
+    send(data) {
+      const message = JSON.parse(data);
+      assert.equal(message.type, "share");
+      events.push(message.type);
+      queueMicrotask(() =>
+        this.onmessage({ data: JSON.stringify({ type: "accepted", receipt: "receipt" }) }),
+      );
+    }
+    close() {}
+  }
+  const window = {
+    POW_PRESENTATION_TOKEN: "presentation",
+    PowClient: {
+      state(name) {
+        states.push(name);
+        events.push(name);
+      },
+      endpoint: (path) => path,
+      exchange: async (receipt) => assert.equal(receipt, "receipt"),
+      once: (target, type, listener) => target.addEventListener(type, listener),
+      randomxJob: (job) => job,
+      solveRandomX: (solver, job) => solver.solve(job),
+    },
+  };
+  vm.runInNewContext(source, {
+    window,
+    location: { protocol: "https:", host: "example.test" },
+    WebSocket,
+  });
+  await window.PowClient.stratumPoolAccepted({
+    solve: async () => ({ nonce: "00000000", result: "00".repeat(32) }),
+  });
+  assert.deepEqual(states.slice(0, 2), ["preparing", "initializing"]);
+  assert.ok(events.includes("share"));
+  assert.ok(events.indexOf("pool") > events.indexOf("share"));
+});
+
 test("a pool work_unavailable message reloads once and then shows unavailable", async () => {
   const values = new Map();
   let reloads = 0;

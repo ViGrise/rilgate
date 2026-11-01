@@ -1,7 +1,7 @@
 (() => {
   const { state, endpoint, exchange, progressEl, once } = window.PowClient;
   async function stratumPoolAccepted(solver) {
-    state("pool");
+    state("preparing");
 
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const presentation = encodeURIComponent(window.POW_PRESENTATION_TOKEN);

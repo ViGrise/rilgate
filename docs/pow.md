@@ -461,8 +461,9 @@ interpretation within the assigned nonce groups. No C++ or Emscripten is require
 
 The worker count is `max(1, min(byCores, byMemory, max_workers))`, where
 `byCores = max(1, (cores || 2) - 1)` and
-`byMemory = deviceMemory ? floor(deviceMemory / 2) : 2`. Missing core and memory reports use
-2 cores and a 2-worker memory budget. Set `pow.algorithms.randomx.browser.max_workers`
+`byMemory = deviceMemory ? floor(deviceMemory / 2) : 1`. A missing core report counts as 2 cores. A
+browser without a memory report, such as Firefox, Safari and every iOS browser, gets one
+worker, so the cache needs 256 MiB. Set `pow.algorithms.randomx.browser.max_workers`
 to an integer from 1 to 8 (default 8) to cap the count, including the development
 `rx_workers` override. CPU and memory limits can select fewer workers.
 
