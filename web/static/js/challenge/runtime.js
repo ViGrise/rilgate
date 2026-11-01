@@ -10,8 +10,10 @@
   const translations = translationData ? JSON.parse(translationData) : {};
 
   function t(key, fallback, args = {}) {
-    return (translations[key] ?? fallback).replace(/\{([a-zA-Z0-9_]+)\}/g,
-      (token, name) => Object.prototype.hasOwnProperty.call(args, name) ? String(args[name]) : token);
+    return (translations[key] ?? fallback).replace(/\{([a-zA-Z0-9_]+)\}/g, (token, name) =>
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn is unavailable in legacy browsers
+      Object.prototype.hasOwnProperty.call(args, name) ? String(args[name]) : token,
+    );
   }
 
   function once(target, type, listener) {
@@ -49,7 +51,9 @@
   let previousMode = "none";
   let currentState = "preparing";
   let attemptsCount = 0;
-  function element(id) { return document.querySelector("#" + id); }
+  function element(id) {
+    return document.querySelector("#" + id);
+  }
   function hidden(id, value) {
     const target = element(id);
     if (target) target.hidden = value;
@@ -74,21 +78,25 @@
     } else if (mode === "done" && complete) {
       complete.style.transition = "none";
       complete.style.transform = "scaleX(0)";
-      const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const reduced =
+        typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (reduced || typeof requestAnimationFrame !== "function") {
         complete.style.transform = "scaleX(1)";
       } else {
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          if (previousMode !== "done") return;
-          complete.style.transition = "transform .55s ease-out";
-          complete.style.transform = "scaleX(1)";
-        }));
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (previousMode !== "done") return;
+            complete.style.transition = "transform .55s ease-out";
+            complete.style.transform = "scaleX(1)";
+          }),
+        );
       }
     }
   }
   function showStats() {
     const solving = ["fast", "hashwx", "randomx"].indexOf(currentState) !== -1;
-    const retaining = ["verifying", "pool", "success"].indexOf(currentState) !== -1 && attemptsCount > 0;
+    const retaining =
+      ["verifying", "pool", "success"].indexOf(currentState) !== -1 && attemptsCount > 0;
     hidden("stats", !solving && !retaining);
   }
   function state(name, values) {
@@ -102,8 +110,10 @@
     hidden("randomx-start", mode !== "start");
     hidden("retry", mode !== "retry");
     if (progressEl) {
-      if (mode === "done") { progressEl.max = 1; progressEl.value = 1; }
-      else progressEl.removeAttribute("value");
+      if (mode === "done") {
+        progressEl.max = 1;
+        progressEl.value = 1;
+      } else progressEl.removeAttribute("value");
       progressEl.hidden = mode !== "run" && mode !== "done";
     }
     if (["fast", "hashwx", "randomx"].indexOf(name) === -1) {
@@ -114,12 +124,18 @@
   }
   function stats(attempts, rate) {
     attemptsCount = Math.max(0, Number(attempts) || 0);
-    const locale = document.documentElement && document.documentElement.lang || "en";
-    const formatter = typeof Intl === "object" && Intl.NumberFormat
-      ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }) : null;
-    [["attempts", attemptsCount], ["hashrate", Math.max(0, Number(rate) || 0)]].forEach((entry) => {
+    const locale = (document.documentElement && document.documentElement.lang) || "en";
+    const formatter =
+      typeof Intl === "object" && Intl.NumberFormat
+        ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+        : null;
+    [
+      ["attempts", attemptsCount],
+      ["hashrate", Math.max(0, Number(rate) || 0)],
+    ].forEach((entry) => {
       const target = element(entry[0]);
-      if (target) target.textContent = formatter ? formatter.format(entry[1]) : String(Math.round(entry[1]));
+      if (target)
+        target.textContent = formatter ? formatter.format(entry[1]) : String(Math.round(entry[1]));
     });
     hidden("stats", false);
   }
@@ -134,12 +150,20 @@
 
   function responseBody(text, code, retryHeader) {
     let body;
-    try { body = JSON.parse(text); } catch (_) { body = {}; }
+    try {
+      body = JSON.parse(text);
+    } catch (_) {
+      body = {};
+    }
     if (code < 200 || code >= 300) {
       const retryAfter = Number(retryHeader);
-      const retry = code === 429 && isFinite(retryAfter) && retryAfter > 0
-        ? t("challenge.retry_after", " Try again in {seconds} seconds.", { seconds: Math.ceil(retryAfter) })
-        : "";
+      const retry =
+        // biome-ignore lint/suspicious/noGlobalIsFinite: Number.isFinite is unavailable in legacy browsers
+        code === 429 && isFinite(retryAfter) && retryAfter > 0
+          ? t("challenge.retry_after", " Try again in {seconds} seconds.", {
+              seconds: Math.ceil(retryAfter),
+            })
+          : "";
       const error = new Error((body?.message || `HTTP ${code}`) + retry);
       error.status = code;
       error.code = body?.code;
@@ -164,18 +188,40 @@
       request.open(options.method || "GET", url, true);
       request.timeout = 30000;
       request.setRequestHeader("content-type", "application/json");
-      Object.keys(options.headers || {}).forEach((name) => request.setRequestHeader(name, options.headers[name]));
+      Object.keys(options.headers || {}).forEach((name) => {
+        request.setRequestHeader(name, options.headers[name]);
+      });
       request.onload = () => {
         cleanup();
         try {
-          resolve(responseBody(request.responseText, request.status, request.getResponseHeader("retry-after")));
-        } catch (error) { reject(error); }
+          resolve(
+            responseBody(
+              request.responseText,
+              request.status,
+              request.getResponseHeader("retry-after"),
+            ),
+          );
+        } catch (error) {
+          reject(error);
+        }
       };
-      request.onerror = () => { cleanup(); reject(new TypeError("Network request failed")); };
-      request.ontimeout = () => { cleanup(); reject(new TypeError("Request timed out")); };
-      request.onabort = () => { cleanup(); reject(new Error("Request canceled")); };
+      request.onerror = () => {
+        cleanup();
+        reject(new TypeError("Network request failed"));
+      };
+      request.ontimeout = () => {
+        cleanup();
+        reject(new TypeError("Request timed out"));
+      };
+      request.onabort = () => {
+        cleanup();
+        reject(new Error("Request canceled"));
+      };
       if (signal) {
-        if (signal.aborted) { abort(); return; }
+        if (signal.aborted) {
+          abort();
+          return;
+        }
         signal.addEventListener("abort", abort);
       }
       request.send(options.body === undefined ? null : options.body);
@@ -195,7 +241,9 @@
       else signal.addEventListener("abort", abort);
     }
     const headers = { "content-type": "application/json" };
-    Object.keys(options.headers || {}).forEach((name) => { headers[name] = options.headers[name]; });
+    Object.keys(options.headers || {}).forEach((name) => {
+      headers[name] = options.headers[name];
+    });
     try {
       const response = await fetch(url, {
         method: options.method || "GET",
@@ -205,7 +253,11 @@
         signal: controller.signal,
         headers,
       });
-      return responseBody(await response.text(), response.status, response.headers.get("retry-after"));
+      return responseBody(
+        await response.text(),
+        response.status,
+        response.headers.get("retry-after"),
+      );
     } finally {
       clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", abort);
@@ -246,23 +298,51 @@
     return new Promise((resolve, reject) => {
       const request = String(++nextSolverRequest);
       const script = document.createElement("script");
-      const timer = setTimeout(() => finish(null, new Error("Solver module load timed out")), 30000);
+      const timer = setTimeout(
+        () => finish(null, new Error("Solver module load timed out")),
+        30000,
+      );
       function finish(module, error) {
         clearTimeout(timer);
         delete solverRequests[request];
         script.onerror = null;
         if (script.parentNode) script.parentNode.removeChild(script);
         if (error) reject(error);
-        else if (!module || typeof module.solve !== "function") reject(new Error("Solver module must export solve"));
+        else if (!module || typeof module.solve !== "function")
+          reject(new Error("Solver module must export solve"));
         else resolve(module);
       }
       solverRequests[request] = finish;
       script.type = "module";
-      script.src = asset("/js/solvers/loader.js") + "?request=" + request + "&module=" + encodeURIComponent(moduleUrl);
+      script.src =
+        asset("/js/solvers/loader.js") +
+        "?request=" +
+        request +
+        "&module=" +
+        encodeURIComponent(moduleUrl);
       script.onerror = () => finish(null, new Error("Solver module failed to load"));
-      try { document.head.appendChild(script); } catch (error) { finish(null, error); }
+      try {
+        document.head.appendChild(script);
+      } catch (error) {
+        finish(null, error);
+      }
     });
   }
 
-  window.PowClient = { loadSolver, solverLoaded, t, status, state, stats, endpoint, asset, jsonFetch, exchange, verify, requestChallenge, progressEl, once };
+  window.PowClient = {
+    loadSolver,
+    solverLoaded,
+    t,
+    status,
+    state,
+    stats,
+    endpoint,
+    asset,
+    jsonFetch,
+    exchange,
+    verify,
+    requestChallenge,
+    progressEl,
+    once,
+  };
 })();

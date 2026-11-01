@@ -7,26 +7,12 @@ network="rilgate-smoke-$$"
 cleanup() {
   docker rm -f "$name" "$name-origin" >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
-  if [[ -n "${workdir:-}" ]]; then rm -rf "$workdir"; fi
 }
 trap cleanup EXIT
 
 docker network create "$network" >/dev/null
-workdir="$(mktemp -d /tmp/rilgate-container.XXXXXX)"
-cat > "$workdir/origin.yml" <<'YAML'
-server:
-  upstream:
-    url: http://127.0.0.1:3000
-site:
-  base_path: /origin-internal
-security:
-  secret: ${RILGATE_SECURITY_SECRET}
-policy: !include builtin:policies/off.yml
-YAML
-chmod 755 "$workdir"
-chmod 644 "$workdir/origin.yml"
 docker run -d --name "$name-origin" --network "$network" --network-alias origin \
-  -v "$workdir/origin.yml:/app/config/rilgate.yml:ro" \
+  -v "$PWD/tests/fixtures/container-origin.yml:/app/config/rilgate.yml:ro" \
   -e RILGATE_SERVER_OPERATIONS_LISTEN=0.0.0.0:9090 \
   -e RILGATE_SECURITY_SECRET=container-origin-secret-with-at-least-32-bytes \
   "$image" >/dev/null

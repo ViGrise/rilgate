@@ -8,8 +8,8 @@
 
     const ws = new WebSocket(
       `${protocol}//${location.host}` +
-      `${endpoint("/api/ws")}` +
-      `?presentation_token=${presentation}`,
+        `${endpoint("/api/ws")}` +
+        `?presentation_token=${presentation}`,
     );
 
     await new Promise((resolve, reject) => {
@@ -46,12 +46,14 @@
                 return;
               }
 
-              ws.send(JSON.stringify({
-                type: "share",
-                job_id: message.job.job_id,
-                nonce: solution.nonce,
-                result: solution.result,
-              }));
+              ws.send(
+                JSON.stringify({
+                  type: "share",
+                  job_id: message.job.job_id,
+                  nonce: solution.nonce,
+                  result: solution.result,
+                }),
+              );
 
               state("pool");
               return;
@@ -78,18 +80,11 @@
           }
         });
 
-        once(
-          ws, "close",
-          () => {
-            if (!completed) {
-              reject(
-                new Error(
-                  "Challenge connection closed before acceptance",
-                ),
-              );
-            }
-          },
-        );
+        once(ws, "close", () => {
+          if (!completed) {
+            reject(new Error("Challenge connection closed before acceptance"));
+          }
+        });
       });
     } finally {
       generation += 1;
@@ -97,7 +92,6 @@
       solver.cancel?.();
     }
   }
-
 
   window.PowClient.stratumPoolAccepted = stratumPoolAccepted;
 })();

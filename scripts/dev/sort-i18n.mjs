@@ -22,9 +22,7 @@ async function sortJson(file) {
     }
 
     const comma = i < keys.length - 1 ? "," : "";
-    lines.push(
-      `  ${JSON.stringify(key)}: ${JSON.stringify(data[key])}${comma}`,
-    );
+    lines.push(`  ${JSON.stringify(key)}: ${JSON.stringify(data[key])}${comma}`);
   }
 
   lines.push("}", "");
@@ -44,9 +42,7 @@ async function main() {
     const info = await stat(input);
 
     if (info.isDirectory()) {
-      const files = (await readdir(input))
-        .filter((name) => name.endsWith(".json"))
-        .sort();
+      const files = (await readdir(input)).filter((name) => name.endsWith(".json")).sort();
 
       for (const file of files) {
         await sortJson(join(input, file));

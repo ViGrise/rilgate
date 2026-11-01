@@ -146,41 +146,17 @@ fi
 PIDS+=($!)
 wait_for_http "http://127.0.0.1:$UPSTREAM_PORT/" "${PIDS[0]}"
 
-cat >"$RUNDIR/rilgate.yml" <<EOF
-server:
-  listen: "127.0.0.1:$PORT"
-  metrics_enabled: true
-  decision_log: off
-  operations:
-    listen: "127.0.0.1:$OPERATIONS_PORT"
-  upstream:
-    url: "http://127.0.0.1:$UPSTREAM_PORT"
-security:
-  keys:
-    challenge: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    auth: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-pow:
-  rate_limit:
-    enabled: false
-policy:
-  rules:
-    - name: protected
-      when:
-        path:
-          exact: /protected
-      action: challenge
-      challenge:
-        algorithm: fast
-        difficulty: 1
-
-EOF
+# The fixture reads its addresses from these variables.
+export FIXTURE_LISTEN="127.0.0.1:$PORT"
+export FIXTURE_OPERATIONS_LISTEN="127.0.0.1:$OPERATIONS_PORT"
+export FIXTURE_UPSTREAM_URL="http://127.0.0.1:$UPSTREAM_PORT"
 
 # Use the shipping log filter unless PERF_GATE_RUST_LOG supplies an override.
 if [[ -n "${PERF_GATE_RUST_LOG+x}" ]]; then
-  RUST_LOG="$PERF_GATE_RUST_LOG" "$BINARY" --config "$RUNDIR/rilgate.yml" \
+  RUST_LOG="$PERF_GATE_RUST_LOG" "$BINARY" --config tests/fixtures/perf-gate.yml \
     >"$RUNDIR/gateway.log" 2>&1 &
 else
-  env -u RUST_LOG "$BINARY" --config "$RUNDIR/rilgate.yml" \
+  env -u RUST_LOG "$BINARY" --config tests/fixtures/perf-gate.yml \
     >"$RUNDIR/gateway.log" 2>&1 &
 fi
 PIDS+=($!)

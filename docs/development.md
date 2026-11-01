@@ -12,7 +12,7 @@ Run commands from the repository root.
 
 1. Build with `scripts/build.sh` or `scripts/build.sh --release`.
 2. Run `scripts/test.sh` for the complete default checks.
-3. Run browser E2E tests with `scripts/test/browser.sh` or `npm --prefix tests/e2e run test:e2e`.
+3. Run browser E2E tests with `scripts/test/browser.sh` or `npm --prefix tests run test:e2e`.
 
 The build script creates the browser WASM artifact and generated ES5 resources before
 the gateway embeds them. The default checks include WASM and web resource generation,
@@ -81,8 +81,8 @@ Gateway operational endpoints live under `crates/rilgate-gateway/src/observabili
 Readiness response types live in `readiness/dto.rs`, while request counters and histograms
 live in `metrics/collector.rs`. The transport router dispatches to these services.
 
-Production verification runners live in `scripts/test/`. Browser scenarios and Playwright
-configuration and npm manifests live together in `tests/e2e/`. Container proof helpers
+Production verification runners live in `scripts/test/`. Browser scenarios and the Playwright
+configuration live in `tests/e2e/`. The npm manifest for Playwright and Biome lives in `tests/`. Container proof helpers
 live in `tests/container/`. Dependency audit policy lives in `.config/deny.toml`, and `scripts/advisories.sh` checks that each advisory has a tracking issue. Deployment examples
 and monitoring configuration live under `deploy/`, with the operator guide in
 `docs/production.md`.
@@ -94,6 +94,9 @@ Run the gateway integration tests, worker lifecycle tests, and static checks:
 ```bash
 scripts/test.sh
 ```
+
+`scripts/test.sh` also checks the JavaScript with Biome. Run `tests/node_modules/.bin/biome format --write .`
+to format it.
 
 The Node tests exercise worker messaging with test doubles and check the built WASM
 module against a reference hash. They need Node.js with ES module, WebAssembly, fetch,

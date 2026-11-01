@@ -1,0 +1,15 @@
+environment: development
+server:
+  listen: "${FIXTURE_LISTEN}"
+  upstream:
+    url: "${FIXTURE_UPSTREAM_URL}"
+security:
+  secret: "hashwx-browser-test-secret-with-at-least-32-bytes"
+pow:
+  default_algorithm: hashwx
+  algorithms:
+    hashwx:
+      nonces_per_seed: 463
+      difficulty: {base: 1000, score_step: 10, max: 1000}
+policy:
+  default_action: challenge

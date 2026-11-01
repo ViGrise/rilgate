@@ -3,7 +3,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 workdir="$(mktemp -d "/tmp/rilgate-browser-suite.XXXXXX")"
 trap 'rm -rf "$workdir"' EXIT
-cp "$root/tests/e2e/package.json" "$root/tests/e2e/package-lock.json" "$workdir/"
+cp "$root/tests/package.json" "$root/tests/package-lock.json" "$workdir/"
 mkdir -p "$workdir/tests/e2e"
 cp "$root/tests/e2e/"*.mjs "$workdir/tests/e2e/"
 cd "$workdir"

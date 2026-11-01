@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 
 export async function loadHashWx() {
-  const bytes = await readFile(new URL("../../web/static/js/solvers/hashwx/hashwx_wasm.wasm", import.meta.url));
+  const bytes = await readFile(
+    new URL("../../web/static/js/solvers/hashwx/hashwx_wasm.wasm", import.meta.url),
+  );
   const { instance } = await WebAssembly.instantiate(bytes, {});
   return instance.exports;
 }
