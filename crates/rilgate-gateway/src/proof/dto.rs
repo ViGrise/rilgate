@@ -9,6 +9,11 @@ pub struct ClientConfigResponse {
   pub websocket_url: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SessionResponse {
+  pub authenticated: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ChallengeRequest {
   pub presentation_token: String,

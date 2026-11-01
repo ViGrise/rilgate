@@ -28,7 +28,7 @@ impl GeoKind {
   fn accepts(self, database_type: &str) -> bool {
     match self {
       Self::Country => database_type.contains("Country") || database_type.contains("City"),
-      Self::Asn => database_type.contains("ASN"),
+      Self::Asn => database_type.contains("ASN") || database_type.contains("ISP"),
     }
   }
 }

@@ -9,13 +9,13 @@ const english = JSON.parse(readFileSync(new URL('../web/i18n/en.json', import.me
 function page(ids = ['status'], bootstrap = {}) {
   const elements = new Map(ids.map(id => ['#' + id, {
     style: {}, hidden: true, textContent: '', removeAttribute() {},
-    addEventListener() {}, removeEventListener() {},
+    addEventListener(type, handler) { this[type] = handler; }, removeEventListener(type) { delete this[type]; },
   }]));
   elements.set('#pow-i18n', { textContent: JSON.stringify(english) });
   elements.set('#pow-bootstrap', { textContent: JSON.stringify({ internal_prefix: '/gateway', algorithm: 'fast', presentation_token: 'presentation', embedded: false, solver_module_url: '/solver.js', ...bootstrap }) });
   const context = vm.createContext({
     document: { documentElement: { lang: 'en' }, querySelector: id => elements.get(id) || null },
-    window: {}, console: { error() {} }, TypeError,
+    window: {}, navigator: {}, console: { error() {} }, TypeError,
   });
   vm.runInContext(runtime, context);
   return { context, client: context.window.PowClient, elements };
@@ -112,4 +112,33 @@ test('XHR network failures reach the network state', async () => {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(elements.get('#status').textContent, english['challenge.state.network.status']);
   assert.equal(elements.get('#retry').hidden, false);
+});
+
+test('a cookie that does not reach the gateway shows the cookies state', async () => {
+  for (const embedded of [false, true]) {
+    for (const cookieEnabled of [true, false]) {
+      const { client, context, elements } = page(['status', 'retry'], { embedded });
+      let fetches = 0;
+      let reloads = 0;
+      let messages = 0;
+      context.navigator.cookieEnabled = cookieEnabled;
+      context.location = { reload() { reloads++; } };
+      context.window.parent = { postMessage() { messages++; } };
+      context.window.opener = { postMessage() { messages++; } };
+      client.jsonFetch = async url => {
+        fetches++;
+        return url.endsWith('/api/session') ? { authenticated: false } : {};
+      };
+      client.algorithm = () => ({ async run() {} });
+      vm.runInContext(startup, context);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(elements.get('#status').textContent, english['challenge.state.cookies.status']);
+      assert.equal(elements.get('#retry').hidden, false);
+      assert.equal(reloads, 0);
+      assert.equal(messages, 0);
+      assert.equal(fetches, cookieEnabled ? 2 : 0);
+      elements.get("#retry").click();
+      assert.equal(reloads, 1);
+    }
+  }
 });

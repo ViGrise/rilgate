@@ -29,6 +29,7 @@
   }
 
   const modes = {
+    cookies: "retry",
     preparing: "run",
     fast: "run",
     hashwx: "run",

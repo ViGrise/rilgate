@@ -3,7 +3,9 @@ use crate::geoip::{GeoDatabase, GeoDatabases, Lookup, MAX_LIST_ENTRIES};
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::ip_sets::{IpRanges, IpSet, Membership};
 use crate::lookups::{Lookups, in_domains, normalize_name};
-use crate::policy::schema::{AsnMatch, Condition, LoadMatch, NumberMatch, RateMatch, StringMatch};
+use crate::policy::schema::{
+  AsnMatch, Condition, LoadMatch, NumberMatch, RateMatch, SameAs, StringMatch,
+};
 use crate::{AsnSet, PolicySets};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, HeaderName, Method};
@@ -15,6 +17,7 @@ use std::sync::Arc;
 
 pub struct Request<'a> {
   pub headers: &'a HeaderMap,
+  pub trusted_peer: bool,
   pub path: &'a str,
   pub host: &'a str,
   pub method: &'a Method,
@@ -68,6 +71,7 @@ pub(crate) enum Field {
   Method,
   UserAgent,
   Header(HeaderName),
+  EdgeHeader(HeaderName),
 }
 #[derive(Debug)]
 pub(crate) struct Text {
@@ -167,19 +171,30 @@ impl Compiled {
           Field::Host => "host",
           Field::Method => "method",
           Field::UserAgent => "user_agent",
-          Field::Header(_) => unreachable!(),
+          Field::Header(_) | Field::EdgeHeader(_) => unreachable!(),
         };
         let test = Text::compile(source, budget).with_context(|| format!("{path}.{label}"))?;
         nodes.push(Self::Text(field, test));
       }
     }
-    for (name, source) in &condition.headers {
-      budget.consume(depth, path)?;
-      let header = HeaderName::from_bytes(name.as_bytes())
-        .with_context(|| format!("{path}.headers: expected an HTTP header name"))?;
-      let test =
-        Text::compile(source, budget).with_context(|| format!("{path}.headers.{header}"))?;
-      nodes.push(Self::Text(Field::Header(header), test));
+    for (label, headers, edge) in [
+      ("headers", &condition.headers, false),
+      ("edge_headers", &condition.edge_headers, true),
+    ] {
+      for (name, source) in headers {
+        budget.consume(depth, path)?;
+        let header = HeaderName::from_bytes(name.as_bytes())
+          .with_context(|| format!("{path}.{label}: expected an HTTP header name"))?;
+        let matcher_name = if edge { name.as_str() } else { header.as_str() };
+        let test = Text::compile(source, budget)
+          .with_context(|| format!("{path}.{label}.{matcher_name}"))?;
+        let field = if edge {
+          Field::EdgeHeader(header)
+        } else {
+          Field::Header(header)
+        };
+        nodes.push(Self::Text(field, test));
+      }
     }
     if let Some(value) = &condition.client_ip {
       budget.consume(depth, path)?;
@@ -525,17 +540,18 @@ impl Compiled {
               .and_then(|v| v.to_str().ok())
               .unwrap_or_default(),
           ),
-          Field::Header(name) => {
+          Field::EdgeHeader(_) if !request.trusted_peer => return Truth::False,
+          Field::Header(name) | Field::EdgeHeader(name) => {
             return truth(
               request
                 .headers
                 .get_all(name)
                 .iter()
-                .any(|v| v.to_str().is_ok_and(|v| test.matches(v))),
+                .any(|v| v.to_str().is_ok_and(|v| test.matches(v, request))),
             );
           }
         };
-        truth(value.is_some_and(|v| test.matches(v)))
+        truth(value.is_some_and(|v| test.matches(v, request)))
       }
       Self::Ip(ranges) => truth(request.client_ip.is_some_and(|ip| ranges.contains(ip))),
       Self::Sets(sets) => {
@@ -671,13 +687,14 @@ impl Text {
       source.contains.is_some(),
       source.values.is_some(),
       source.regex.is_some(),
+      source.same_as.is_some(),
     ]
     .into_iter()
     .filter(|v| *v)
     .count();
     ensure!(
       count == 1,
-      "string matcher requires exactly one of exact, prefix, contains, in, regex"
+      "string matcher requires exactly one of exact, prefix, contains, in, regex, same_as"
     );
     if let Some(values) = &source.values {
       ensure!(
@@ -719,7 +736,7 @@ impl Text {
       regex,
     })
   }
-  fn matches(&self, value: &str) -> bool {
+  fn matches(&self, value: &str, request: &Request<'_>) -> bool {
     self.source.exact.as_ref().is_none_or(|v| value == v)
       && self
         .source
@@ -737,6 +754,20 @@ impl Text {
         .as_ref()
         .is_none_or(|v| v.iter().any(|v| v == value))
       && self.regex.as_ref().is_none_or(|v| v.is_match(value))
+      && self.source.same_as.is_none_or(|field| match field {
+        SameAs::Host => {
+          let host = request.host;
+          let hostname = if host.starts_with('[') {
+            host.find(']').map_or(host, |end| &host[..=end])
+          } else {
+            host
+              .rsplit_once(':')
+              .filter(|(_, port)| port.bytes().all(|byte| byte.is_ascii_digit()))
+              .map_or(host, |(name, _)| name)
+          };
+          value.eq_ignore_ascii_case(hostname)
+        }
+      })
   }
 }
 

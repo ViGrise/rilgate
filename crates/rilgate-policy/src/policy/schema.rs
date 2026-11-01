@@ -182,6 +182,8 @@ pub struct Condition {
   pub user_agent: Option<StringMatch>,
   #[serde(skip_serializing_if = "BTreeMap::is_empty")]
   pub headers: BTreeMap<String, StringMatch>,
+  #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+  pub edge_headers: BTreeMap<String, StringMatch>,
   #[serde(
     default,
     deserialize_with = "present",
@@ -317,6 +319,17 @@ pub struct StringMatch {
     skip_serializing_if = "Option::is_none"
   )]
   pub regex: Option<String>,
+  #[serde(
+    default,
+    deserialize_with = "present",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub same_as: Option<SameAs>,
+}
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SameAs {
+  Host,
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]

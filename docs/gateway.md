@@ -22,6 +22,7 @@ With the default prefix:
 /.well-known/rilgate/api/challenge
 /.well-known/rilgate/api/verify
 /.well-known/rilgate/api/exchange
+/.well-known/rilgate/api/session
 /.well-known/rilgate/api/ws
 /.well-known/rilgate/static/js/challenge.bundle.js
 /.well-known/rilgate/static/js/challenge.js

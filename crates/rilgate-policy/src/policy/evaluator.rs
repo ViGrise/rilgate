@@ -297,6 +297,7 @@ impl PolicyEngine {
       .to_ascii_lowercase();
     self.evaluate_context(
       &Request {
+        trusted_peer: false,
         headers,
         host: &host,
         path,

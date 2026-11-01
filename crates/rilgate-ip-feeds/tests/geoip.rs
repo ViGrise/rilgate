@@ -28,6 +28,7 @@ fn weight(engine: &PolicyEngine, ip: &str) -> i32 {
   engine
     .evaluate_context(
       &Request {
+        trusted_peer: false,
         host: "example.test",
         headers: &headers,
         path: "/",

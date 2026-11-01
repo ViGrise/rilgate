@@ -1,5 +1,10 @@
 async function main() {
   const { state, jsonFetch, endpoint } = window.PowClient;
+  window.PowClient.once(document.querySelector("#retry"), "click", () => location.reload());
+  if (navigator.cookieEnabled === false) {
+    state("cookies");
+    return;
+  }
   state("preparing");
   const config = await jsonFetch(endpoint("/api/client-config"));
   const algorithm = window.POW_ALGORITHM;
@@ -7,6 +12,11 @@ async function main() {
     throw new Error(`PoW algorithm is not enabled: ${algorithm}`);
   }
   await window.PowClient.algorithm(algorithm).run(config);
+  const session = await jsonFetch(endpoint("/api/session"));
+  if (session.authenticated !== true) {
+    state("cookies");
+    return;
+  }
   state("success");
   if (window.POW_EMBEDDED) {
     const message = { type: "rilgate:verified" };
@@ -30,5 +40,4 @@ main().catch((error) => {
   if (name === "limited" && error.retryAfter) {
     client.status(client.t("challenge.state.limited.status", "Too many requests (429)") + error.retryAfter);
   }
-  client.once(document.querySelector("#retry"), "click", () => location.reload());
 });

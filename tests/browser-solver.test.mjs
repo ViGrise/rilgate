@@ -201,7 +201,7 @@ test("RandomX asks for consent before loading the solver", async () => {
   element("#pow-bootstrap").textContent = JSON.stringify({ internal_prefix: "/gateway", algorithm: "randomx", embedded: false, presentation_token: "presentation", solver_module_url: "/solver.js" });
   const calls = [];
   const context = vm.createContext({
-    AbortSignal, AbortController, setTimeout, clearTimeout,
+    AbortSignal, AbortController, setTimeout, clearTimeout, navigator: {},
     document: { querySelector: element },
     window: {},
     fetch: async (url) => {

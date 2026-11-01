@@ -14,6 +14,7 @@ fn decide(engine: &PolicyEngine) -> (PolicyAction, i32, bool) {
   let headers = HeaderMap::new();
   let decision = engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/",

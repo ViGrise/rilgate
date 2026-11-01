@@ -83,6 +83,7 @@ pub async fn gate_with_client(
   }
   known.rates = state.pow.counter_values(
     &Request {
+      trusted_peer,
       headers,
       host: &host,
       path: uri.path(),
@@ -101,6 +102,7 @@ pub async fn gate_with_client(
     },
   );
   let mut request = Request {
+    trusted_peer,
     headers,
     host: &host,
     path: uri.path(),

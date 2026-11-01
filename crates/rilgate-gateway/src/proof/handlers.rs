@@ -30,6 +30,20 @@ pub fn client_config(state: &AppState) -> Response {
     },
   )
 }
+pub fn session(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  binding: &BindingInput<'_>,
+) -> Response {
+  let authenticated = cookie_value(headers, &state.cfg.pow.auth_cookie_name).is_some_and(|token| {
+    state
+      .pow
+      .verify_auth_token(token, &request_host(headers, uri), binding)
+      .is_ok()
+  });
+  json(StatusCode::OK, &SessionResponse { authenticated })
+}
 pub async fn challenge(
   state: &AppState,
   headers: &HeaderMap,

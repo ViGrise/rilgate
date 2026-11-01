@@ -175,6 +175,7 @@ impl ChallengeService {
       .unwrap_or_default()
       .to_ascii_lowercase();
     self.evaluate_context(&rilgate_policy::conditions::Request {
+      trusted_peer: false,
       headers,
       host: &host,
       path,

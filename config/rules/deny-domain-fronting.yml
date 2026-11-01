@@ -1,0 +1,10 @@
+# Needs an edge proxy in server.trusted_proxies that sets X-Tls-Sni-Name to the TLS server name.
+name: deny-domain-fronting
+when:
+  all:
+    - edge_headers:
+        X-Tls-Sni-Name: {regex: '.+'}
+    - not:
+        edge_headers:
+          X-Tls-Sni-Name: {same_as: host}
+action: deny

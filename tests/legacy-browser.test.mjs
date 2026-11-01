@@ -108,13 +108,14 @@ function legacyPage(failureStatus = 200, randomx = null, algorithm = randomx ? '
       this.status = failureStatus;
       this.responseText = JSON.stringify(this.url.endsWith('client-config') ? { enforce: 'local_verify', algorithms: [{ id: algorithm }] }
         : this.url.endsWith('challenge') ? { algorithm: 'fast', challenge: 'fallback-😀', difficulty: 1, challenge_token: 'signed-challenge' }
-        : this.url.endsWith('verify') ? { receipt: 'signed-receipt' } : {});
+        : this.url.endsWith('verify') ? { receipt: 'signed-receipt' }
+        : this.url.endsWith('session') ? { authenticated: true } : {});
       setTimeout(() => this.onload(), 0);
     }
   }
   const context = vm.createContext({
     Promise: undefined, Worker: undefined, TextEncoder: undefined, fetch: undefined,
-    AbortController: undefined, AbortSignal: undefined, XMLHttpRequest, setTimeout, clearTimeout,
+    AbortController: undefined, AbortSignal: undefined, XMLHttpRequest, setTimeout, clearTimeout, navigator: {},
     addEventListener() {}, removeEventListener() {},
     location: { reload() { reloads++; } },
     document: { querySelector: element,
@@ -147,7 +148,7 @@ test('fast page completes over XHR with Promise, workers, TextEncoder and modern
   const state = legacyPage();
   await until(() => state.reloads() === 1);
   assert.deepEqual(state.errors, []);
-  assert.equal(state.requests.length, 4);
+  assert.equal(state.requests.length, 5);
   const verify = state.requests.find(request => request.url.endsWith('verify'));
   const proof = JSON.parse(verify.body);
   assert.equal(proof.challenge_token, 'signed-challenge');

@@ -1,0 +1,4 @@
+name: deny-empty-user-agent
+when:
+  user_agent: {exact: ""}
+action: deny
