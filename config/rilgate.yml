@@ -721,6 +721,10 @@ server:
         #
         # store_cache: true
 
+        # Show the job, block and seed under the attempt count while RandomX runs.
+        #
+        # job_details: true
+
       # Optional fallback while every pool is in its failure cooldown.
       # Both fields are required. Works in both modes with an enabled algorithm.
       #

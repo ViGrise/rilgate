@@ -271,6 +271,7 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
           solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
           max_workers: 8,
           store_cache: true,
+          job_details: true,
           nonce_offset: cfg.nonce_offset,
           queue_capacity: cfg.verifier_queue_capacity,
           cache_idle_timeout: cfg.randomx_cache_idle_timeout,

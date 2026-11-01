@@ -46,6 +46,8 @@ for (const verification of ["gateway", "pool_share"]) {
       },
       POW_SOLVER_MODULE_URL: "/solver.js",
       PowClient: {
+        job() {},
+        setJobDetails() {},
         t: (_key, text) => text,
         supportsWasm: () => true,
         status() {},
@@ -65,7 +67,7 @@ for (const verification of ["gateway", "pool_share"]) {
         requestChallenge: async () => {
           paths.push("gateway");
           if (failure) throw unavailable;
-          return { algorithm: "randomx" };
+          return { algorithm: "randomx", job: {} };
         },
         verify: async () => {},
         register: (_id, value) => {
@@ -143,6 +145,7 @@ test("pool_share shows connecting until a job arrives and pool only after a shar
   const window = {
     POW_PRESENTATION_TOKEN: "presentation",
     PowClient: {
+      job() {},
       state(name) {
         states.push(name);
         events.push(name);
@@ -165,6 +168,103 @@ test("pool_share shows connecting until a job arrives and pool only after a shar
   assert.deepEqual(states.slice(0, 2), ["connecting", "initializing"]);
   assert.ok(events.includes("share"));
   assert.ok(events.indexOf("pool") > events.indexOf("share"));
+});
+
+test("a replacement pool job keeps the hashing state", async () => {
+  const source = await readFile(
+    new URL("../web/static/js/challenge/stratum-pool.js", import.meta.url),
+    "utf8",
+  );
+  const states = [];
+  const job = (id, seed = "00".repeat(32)) => ({
+    data: JSON.stringify({
+      type: "job",
+      job: { job_id: id, blob: "00000000", seed_hash: seed },
+      difficulty: 1,
+      nonce_offset: 0,
+    }),
+  });
+  class WebSocket {
+    addEventListener(type, listener) {
+      if (type === "open") queueMicrotask(listener);
+      if (type === "message") {
+        this.onmessage = listener;
+        queueMicrotask(() => listener(job("first")));
+      }
+    }
+    removeEventListener() {}
+    send() {
+      queueMicrotask(() =>
+        this.onmessage({ data: JSON.stringify({ type: "accepted", receipt: "receipt" }) }),
+      );
+    }
+    close() {}
+  }
+  const window = {
+    POW_PRESENTATION_TOKEN: "presentation",
+    PowClient: {
+      job() {},
+      state: (name) => states.push(name),
+      endpoint: (path) => path,
+      exchange: async () => {},
+      once: (target, type, listener) => target.addEventListener(type, listener),
+      randomxJob: (value) => value,
+      solveRandomX: (solver, value) => solver.solve(value),
+    },
+  };
+  vm.runInNewContext(source, {
+    window,
+    location: { protocol: "https:", host: "example.test" },
+    WebSocket,
+    sessionStorage: { removeItem() {} },
+  });
+  let socket;
+  const originalAdd = WebSocket.prototype.addEventListener;
+  WebSocket.prototype.addEventListener = function (type, listener) {
+    socket = this;
+    return originalAdd.call(this, type, listener);
+  };
+  await window.PowClient.stratumPoolAccepted({
+    solve: async (value) => {
+      if (value.job_id === "first") {
+        // The pool replaces the job while the first one is still being solved.
+        queueMicrotask(() => socket.onmessage(job("second")));
+        return null;
+      }
+      if (value.job_id === "second") {
+        queueMicrotask(() => socket.onmessage(job("third", "11".repeat(32))));
+        return null;
+      }
+      return { nonce: "00000000", result: "00".repeat(32) };
+    },
+  });
+  assert.equal(states.filter((name) => name === "initializing").length, 2);
+  assert.deepEqual(states.slice(0, 4), ["connecting", "initializing", "randomx", "initializing"]);
+  assert.ok(states.indexOf("randomx") > states.indexOf("initializing"));
+});
+
+test("RandomX attempts keep counting when a pool job replaces the previous one", async () => {
+  const source = await readFile(
+    new URL("../web/static/js/solvers/randomx/adapter.js", import.meta.url),
+    "utf8",
+  );
+  const shown = [];
+  const window = {
+    PowClient: {
+      t: (_key, text) => text,
+      state() {},
+      stats: (attempts) => shown.push(attempts),
+      register() {},
+      once: () => () => {},
+    },
+  };
+  vm.runInNewContext(source, { window, document: { querySelector: () => null } });
+  const first = window.PowClient.randomxJob({}, 1, 0);
+  const second = window.PowClient.randomxJob({}, 1, 0);
+  first.onProgress({ attempts: 10, elapsedMs: 1000 });
+  second.onProgress({ attempts: 4, elapsedMs: 500 });
+  second.onProgress({ attempts: 6, elapsedMs: 700 });
+  assert.deepEqual(shown, [10, 14, 16]);
 });
 
 test("a pool work_unavailable message reloads once and then shows unavailable", async () => {
@@ -336,6 +436,7 @@ async function resumePage({ closeBeforeJob = false, reloadUsed = false } = {}) {
     location: { href: "https://example.test/", reload: () => reloads++ },
     POW_PRESENTATION_TOKEN: "presentation",
     PowClient: {
+      job() {},
       state: (name) => states.push(name),
       endpoint: (path) => path,
       exchange: async (receipt) => assert.equal(receipt, "receipt"),

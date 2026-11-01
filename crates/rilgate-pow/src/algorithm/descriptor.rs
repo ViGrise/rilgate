@@ -3,6 +3,7 @@ use super::PowAlgorithm;
 pub struct BrowserSolverOptions {
   pub max_workers: u8,
   pub store_cache: bool,
+  pub job_details: bool,
 }
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AlgorithmDescriptor {

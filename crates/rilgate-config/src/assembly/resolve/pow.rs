@@ -165,6 +165,7 @@ impl Document {
         solver_module_path: randomx.browser.module.clone(),
         max_workers: randomx.browser.max_workers,
         store_cache: randomx.browser.store_cache,
+        job_details: randomx.browser.job_details,
       },
     })
   }

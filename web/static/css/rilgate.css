@@ -13,7 +13,7 @@ p{margin:8px 0}#description{color:var(--muted)}
 [hidden]{display:none!important}
 progress{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}
 #status{font-size:.91rem;min-height:1.5em;color:var(--muted);white-space:pre-wrap}
-#stats{margin:3px 0 0;font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#stats,#job{margin:3px 0 0;font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .actions{margin-top:14px}
 button{font:inherit;cursor:pointer}
 .actions button{padding:7px 18px;border:1px solid var(--line);border-radius:6px;background:var(--fg);color:var(--bg)}
@@ -34,7 +34,7 @@ dialog form button{padding:6px 16px;background:transparent;border:1px solid var(
 .load-error{display:none}
 html:not(.pow-script) .load-error{display:block;visibility:hidden;animation:load-error-show 0s linear 30s forwards}
 html.pow-load-failed .load-error{display:block;visibility:visible;animation:none}
-.pow-load-failed .bar,.pow-load-failed #progress,.pow-load-failed #status,.pow-load-failed #stats{display:none}
+.pow-load-failed .bar,.pow-load-failed #progress,.pow-load-failed #status,.pow-load-failed #stats,.pow-load-failed #job{display:none}
 @keyframes load-error-show{to{visibility:visible}}
 @media(prefers-reduced-motion:reduce){.bar-shimmer{animation:none;transform:translateX(150%)}.bar-complete{transition:none!important}}
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

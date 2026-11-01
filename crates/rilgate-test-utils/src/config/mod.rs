@@ -121,6 +121,7 @@ pub fn config() -> Config {
         solver_module_path: "/static/js/solvers/randomx/solver.js".into(),
         max_workers: 8,
         store_cache: true,
+        job_details: true,
       },
     },
   })

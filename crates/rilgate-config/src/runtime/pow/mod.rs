@@ -13,6 +13,7 @@ pub struct BrowserConfig {
   pub solver_module_path: String,
   pub max_workers: u8,
   pub store_cache: bool,
+  pub job_details: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -357,3 +357,150 @@ test("a page reload ends the check without another request or state", async () =
   );
   assert.equal(elements.get("#status").textContent, english["challenge.state.preparing.status"]);
 });
+
+test("RandomX job details format work and expire the replacement notice", () => {
+  let now = 1000;
+  let timer;
+  const { client, elements } = page(
+    ["job"],
+    {},
+    {
+      Date: { now: () => now },
+      setTimeout(callback, delay) {
+        assert.equal(delay, 5000);
+        timer = callback;
+        return callback;
+      },
+      clearTimeout() {},
+    },
+  );
+  const line = elements.get("#job");
+  client.state("randomx");
+  client.job({ id: "1", height: 3797188, seed: "422eeb3100002169" });
+  assert.equal(line.textContent, "Job 1 · Block 3,797,188 · Seed 422eeb31…2169");
+  client.job({ id: "2", seed: "short" });
+  assert.equal(line.textContent, "Job 2 · new work, continuing · Seed short");
+  now += 3000;
+  client.job({ id: "3" });
+  now += 2000;
+  assert.equal(line.textContent, "Job 3 · new work, continuing");
+  now += 3000;
+  timer();
+  assert.equal(line.textContent, "Job 3");
+});
+
+test("RandomX job visibility follows the state and the job details setting", () => {
+  const { client, elements } = page(["job"]);
+  const line = elements.get("#job");
+  client.state("randomx");
+  assert.equal(line.hidden, true);
+  client.job({ id: "1" });
+  for (const state of ["connecting", "failed", "randomx", "pool", "verifying"]) {
+    client.state(state);
+    assert.equal(line.hidden, !["randomx", "pool", "verifying"].includes(state));
+  }
+  client.setJobDetails(false);
+  for (const state of [
+    "cookies",
+    "preparing",
+    "connecting",
+    "fast",
+    "hashwx",
+    "consent",
+    "initializing",
+    "randomx",
+    "pool",
+    "verifying",
+    "success",
+    "expired",
+    "failed",
+    "network",
+    "unsupported",
+    "blocked",
+    "limited",
+    "unavailable",
+  ]) {
+    client.state(state);
+    assert.equal(line.hidden, true);
+  }
+});
+
+test("a seed change keeps the attempt count and explains the setup", async () => {
+  let socket;
+  const message = (id, seed) => ({
+    data: JSON.stringify({
+      type: "job",
+      job: { job_id: id, seed_hash: seed },
+      difficulty: 1,
+      nonce_offset: 0,
+    }),
+  });
+  class WebSocket {
+    constructor() {
+      socket = this;
+    }
+    addEventListener(type, listener) {
+      if (type === "open") queueMicrotask(listener);
+      if (type === "message") {
+        this.onmessage = listener;
+        queueMicrotask(() => listener(message("1", "A")));
+      }
+    }
+    removeEventListener() {}
+    send() {
+      queueMicrotask(() =>
+        this.onmessage({
+          data: JSON.stringify({ type: "accepted", receipt: "receipt" }),
+        }),
+      );
+    }
+    close() {}
+  }
+  const { client, context, elements } = page(
+    ["job", "stats", "attempts", "hashrate"],
+    { algorithm: "randomx" },
+    {
+      WebSocket,
+      location: { protocol: "https:", host: "example.test" },
+      sessionStorage: { removeItem() {} },
+      setTimeout() {
+        assert.fail("A seed change must not start the new work timer");
+      },
+      clearTimeout() {},
+    },
+  );
+  client.register = () => {};
+  client.exchange = async () => {};
+  vm.runInContext(
+    readFileSync(new URL("../web/static/js/solvers/randomx/adapter.js", import.meta.url), "utf8"),
+    context,
+  );
+  vm.runInContext(
+    readFileSync(new URL("../web/static/js/challenge/stratum-pool.js", import.meta.url), "utf8"),
+    context,
+  );
+  const line = elements.get("#job");
+  const stats = elements.get("#stats");
+  const attempts = elements.get("#attempts");
+  await client.stratumPoolAccepted({
+    async solve(job) {
+      assert.equal(client.currentState(), "initializing");
+      if (job.seed_hash === "A") {
+        assert.equal(line.hidden, true);
+        assert.equal(stats.hidden, true);
+        job.onProgress({ attempts: 10, elapsedMs: 1000 });
+        queueMicrotask(() => socket.onmessage(message("2", "B")));
+        return null;
+      }
+      assert.equal(stats.hidden, false);
+      assert.equal(attempts.textContent, "10");
+      assert.equal(line.hidden, false);
+      assert.equal(line.textContent, "Job 2 · new seed, preparing again · Seed B");
+      job.onProgress({ attempts: 4, elapsedMs: 500 });
+      assert.equal(client.currentState(), "randomx");
+      assert.equal(attempts.textContent, "14");
+      assert.equal(line.textContent, "Job 2 · Seed B");
+      return { nonce: "00000000", result: "00".repeat(32) };
+    },
+  });
+});

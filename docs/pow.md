@@ -276,6 +276,8 @@ protocol event from a Stratum `accepted` response.
 With `pool_share`, a RandomX proof is valid only when a Stratum pool accepts
 the share. Shares for the last 3 jobs go to the pool, which decides if each job is
 still valid. The browser keeps its workers and cache across jobs with the same seed.
+A job with the same seed keeps the hashing state and the total attempt count; a
+different seed shows the setup state.
 
 ```yaml
 pow:
@@ -474,6 +476,12 @@ to an integer from 1 to 8 (default 8) to cap the count, including the developmen
 Set `pow.algorithms.randomx.browser.store_cache` to `false` to disable IndexedDB
 reads and writes. Workers build the cache when the seed changes and keep it across
 jobs with the same seed. The default is `true`.
+
+The `pow.algorithms.randomx.browser.job_details` setting defaults to `true`. The page
+shows the job, the block and the seed under the attempt count while RandomX runs,
+and a notice for 5 seconds after the pool replaces the job. A different seed shows
+the setup state with the notice "new seed, preparing again" and keeps the attempt
+count until hashing resumes. Set it to `false` to hide the line.
 
 Each worker owns its cache. IndexedDB retains
 one seed cache in `rilgate-randomx` / `caches`, with a SHA-256 digest checked before
