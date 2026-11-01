@@ -157,6 +157,7 @@ continues to support custom status messages.
 | `randomx` | `run` | RandomX hashing. |
 | `pool` | `run` | Pool connection and acceptance wait. |
 | `verifying` | `run` | Proof verification. |
+| `cookies` | `retry` | Cookies disabled, or the access cookie did not reach the gateway after verification. |
 | `success` | `done` | Verification completed. |
 | `expired` | `retry` | Local solver deadline exceeded. |
 | `failed` | `retry` | Other failure; details remain in console. |

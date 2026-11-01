@@ -909,7 +909,7 @@ server:
       #
       # refresh: 1h
 
-    # ASN database source.
+    # ASN database source; accepts ASN or ISP editions.
     #
     # asn:
       # MaxMind download source.
@@ -1043,6 +1043,10 @@ server:
   # Example, not a default.
   #
   # rules:
+    # Deny empty or missing User-Agent headers.
+    # - !include builtin:rules/deny-empty-user-agent.yml
+    # Deny host and TLS server name mismatches from a trusted edge proxy.
+    # - !include builtin:rules/deny-domain-fronting.yml
     # - name: public-endpoints
 
       # Any matching alternative allows these public machine-readable paths.

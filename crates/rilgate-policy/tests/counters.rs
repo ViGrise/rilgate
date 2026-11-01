@@ -12,6 +12,7 @@ fn compile(text: &str) -> anyhow::Result<PolicyEngine> {
 fn decide(engine: &PolicyEngine, rates: Vec<Option<u32>>, weight: i32) -> PolicyDecision {
   engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &HeaderMap::new(),
       path: "/",
@@ -135,6 +136,7 @@ fn key_parts_separate_hosts_join_networks_and_bound_header_values() {
   let engine = compile("signals:\n  counters:\n    hosts: {key: [client_ip, host], window: 1m}\n    networks: {key: [{client_ip: {ipv4_prefix: 24}}], window: 1m}\n    headers: {key: [{header: X-Counter}], window: 1m}\n").unwrap();
   let headers = HeaderMap::new();
   let request = Request {
+    trusted_peer: false,
     headers: &headers,
     host: "a.example.com",
     path: "/",
@@ -251,6 +253,7 @@ fn request_selection_controls_counting_and_unused_counters_are_skipped() {
   let engine = compile("signals:\n  counters:\n    login: {key: [client_ip], window: 1m, count_when: {path: {prefix: /login}}}\n    unknown: {key: [client_ip], window: 1m, count_when: {client_ip: {in_sets: [remote]}}}\n    unused: {key: [host], window: 1m}\n  ip_sets:\n    remote: {url: 'https://example.com/prefixes.json', format: ip_prefixes_json}\npolicy:\n  rules:\n    - {name: login, when: {rate: {counter: login, gte: 10}}, action: deny}\n    - {name: unknown, when: {rate: {counter: unknown, gte: 10}}, action: deny}").unwrap();
   let headers = HeaderMap::new();
   let request = Request {
+    trusted_peer: false,
     headers: &headers,
     host: "example.com",
     path: "/page",

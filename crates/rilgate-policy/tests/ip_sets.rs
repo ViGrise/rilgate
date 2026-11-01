@@ -56,6 +56,7 @@ fn action(engine: &PolicyEngine, ip: &str) -> PolicyAction {
   engine
     .evaluate_context(
       &Request {
+        trusted_peer: false,
         host: "example.test",
         headers: &headers,
         path: "/",
@@ -153,6 +154,7 @@ fn decide(engine: &PolicyEngine, ip: &str, score: i32) -> rilgate_policy::Policy
   let headers = HeaderMap::new();
   engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/",

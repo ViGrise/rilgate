@@ -387,6 +387,7 @@ impl Handler {
         | "/api/exchange"
         | "/api/ws"
         | "/api/refresh"
+        | "/api/session"
     );
     let expected = if matches!(path, "/api/challenge" | "/api/verify" | "/api/exchange") {
       Method::POST
@@ -490,6 +491,17 @@ impl Handler {
           }
           Err(out) => Ok(*out),
         },
+        "/api/session" => {
+          let binding = BindingInput {
+            client_ip,
+            headers: &headers,
+            trusted_peer: crate::transport::client_ip::trusted_peer(
+              socket_peer,
+              &self.state.cfg.server,
+            ),
+          };
+          Ok(handlers::session(&self.state, &headers, &uri, &binding))
+        }
         "/api/refresh" => {
           let binding = BindingInput {
             client_ip,

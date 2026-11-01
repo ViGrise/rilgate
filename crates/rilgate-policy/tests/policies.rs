@@ -54,6 +54,7 @@ policy:
   headers.insert("user-agent", "Mozilla/5".parse().unwrap());
   let decision = engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/api/public",
@@ -68,6 +69,7 @@ policy:
   assert_eq!(&*decision.rule, "trusted-api");
   let decision = engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/api/private/info",
@@ -93,6 +95,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
   headers.append("x-test", "first".parse().unwrap());
   headers.append("x-test", "second".parse().unwrap());
   let request = Request {
+    trusted_peer: false,
     host: "example.test",
     headers: &headers,
     path: "/api/users",
@@ -129,6 +132,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
   };
   assert!(matched("{client_ip: {cidr: '2001:db8::/32'}}", &ipv6, 0));
   let unknown = Request {
+    trusted_peer: false,
     client_ip: None,
     lookups: &rilgate_policy::Lookups::NONE,
     ..ipv6
@@ -287,6 +291,7 @@ fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
   let headers = HeaderMap::new();
   let lookups = rilgate_policy::Lookups::NONE;
   let request = |ip: &str| Request {
+    trusted_peer: false,
     host: "example.test",
     headers: &headers,
     path: "/",
@@ -324,4 +329,54 @@ fn condition_budget_errors_report_the_rule_path() {
       && error.contains("condition depth must not exceed 16"),
     "{error}"
   );
+}
+
+#[test]
+fn edge_headers_require_a_trusted_peer() {
+  let mut headers = HeaderMap::new();
+  headers.insert("x-tls-sni-name", "example.com".parse().unwrap());
+  for trusted_peer in [false, true] {
+    let request = Request {
+      headers: &headers,
+      trusted_peer,
+      host: "example.com",
+      path: "/",
+      method: &Method::GET,
+      client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
+    };
+    assert_eq!(
+      matched(
+        "{edge_headers: {X-Tls-Sni-Name: {exact: example.com}}}",
+        &request,
+        0
+      ),
+      trusted_peer
+    );
+  }
+}
+
+#[test]
+fn same_as_host_ignores_port_and_case() {
+  for (value, expected) in [("Example.COM", true), ("other.example", false)] {
+    let mut headers = HeaderMap::new();
+    headers.insert("x-tls-sni-name", value.parse().unwrap());
+    let request = Request {
+      headers: &headers,
+      trusted_peer: true,
+      host: "example.com:8443",
+      path: "/",
+      method: &Method::GET,
+      client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
+    };
+    assert_eq!(
+      matched(
+        "{edge_headers: {X-Tls-Sni-Name: {same_as: host}}}",
+        &request,
+        0
+      ),
+      expected
+    );
+  }
 }

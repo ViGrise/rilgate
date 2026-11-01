@@ -50,6 +50,7 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
       let mut headers = http::HeaderMap::new();
       headers.insert("user-agent", user_agent.parse().unwrap());
       let request = Request {
+        trusted_peer: false,
         host: "example.test",
         headers: &headers,
         path: "/content",
@@ -249,6 +250,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
   );
   let decision = engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/content",
@@ -290,6 +292,7 @@ fn tor_exit_rule_scores_members_of_the_tor_set() {
   for (ip, expected) in [("192.0.2.10", 20), ("198.51.100.10", 0)] {
     let headers = http::HeaderMap::new();
     let request = Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/",
@@ -353,5 +356,42 @@ fn preset_files_match_the_previous_presets() {
         assert_eq!(challenge.difficulty, difficulty);
       }
     }
+  }
+}
+
+#[test]
+fn domain_fronting_and_empty_user_agent_rules() {
+  let document = rilgate_config::loader::parse(
+    "policy:\n  rules:\n    - !include builtin:rules/deny-domain-fronting.yml\n    - !include builtin:rules/deny-empty-user-agent.yml\n"
+  ).unwrap();
+  let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals,
+    policy: document.policy,
+  })
+  .unwrap();
+  for (sni, user_agent, denied) in [
+    ("other.example", Some("Mozilla/5.0"), true),
+    ("example.com", Some("Mozilla/5.0"), false),
+    ("example.com", None, true),
+    ("example.com", Some(""), true),
+  ] {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("x-tls-sni-name", sni.parse().unwrap());
+    if let Some(value) = user_agent {
+      headers.insert("user-agent", value.parse().unwrap());
+    }
+    let request = Request {
+      headers: &headers,
+      trusted_peer: true,
+      host: "example.com",
+      path: "/",
+      method: &http::Method::GET,
+      client_ip: None,
+      lookups: &rilgate_policy::Lookups::NONE,
+    };
+    assert_eq!(
+      engine.evaluate_context(&request, 0).action == PolicyAction::Deny,
+      denied
+    );
   }
 }

@@ -76,6 +76,8 @@ policy:
 | `challenge-all.yml` | Terminal catchall challenge with Fast difficulty 2. Place it last. |
 | `deny-ai-crawlers.yml` | Denies recognized AI-affiliated agents, training and search crawlers, and user-triggered AI clients. |
 | `deny-headless-browsers.yml` | Denies recognized headless User-Agents and Lightpanda client hints. |
+| `deny-domain-fronting.yml` | Denies a nonempty `X-Tls-Sni-Name` that differs from the host; requires an edge proxy in `server.trusted_proxies` that sets this header to the TLS server name. |
+| `deny-empty-user-agent.yml` | Denies empty or missing User-Agent headers. |
 | `client-score.yml` | Adds 10 for browser-like User-Agents, 15 for a present `CF-Worker` header and 5 for a present `X-Firefox-Ai` header. Requires score thresholds to act on the result. |
 
 Rule names in this table use the `builtin:rules/` prefix. The optional deny
@@ -209,7 +211,7 @@ empty.
 
 | Field | Operators |
 | --- | --- |
-| `host`, `path`, `method`, `user_agent`, individual `headers` | `exact`, `prefix`, `contains`, `in`, `regex` |
+| `host`, `path`, `method`, `user_agent`, individual `headers` and `edge_headers` | `exact`, `prefix`, `contains`, `in`, `regex`, `same_as` |
 | `client_ip` | `cidr`, `in_sets`, `reverse_dns` (a list of 1 to 16 domains) |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 | `load` | `window` (`1m`, `5m` default, `15m`), `gt`, `gte`, `lt`, `lte` |
@@ -220,8 +222,14 @@ empty.
 | `honeypot` | `true` or `false` |
 
 A string matcher requires exactly one operator. Matching is case-sensitive unless a
-regex explicitly selects case-insensitive matching. Header names are case-insensitive.
+regex explicitly selects case-insensitive matching or `same_as: host` compares with the host name.
+`same_as: host` ignores ASCII case and removes the request host's port. A bracketed
+host name keeps its brackets; otherwise a final colon followed only by ASCII digits marks the port.
+Header names are case-insensitive.
 
+`edge_headers` matches headers only when the socket peer belongs to `server.trusted_proxies`;
+an untrusted peer never matches. The trusted edge must overwrite these headers.
+Like `headers`, it works in rules, `count_when` and `site.open_graph.when`.
 Any repeated header value can satisfy its matcher. Missing headers do not match,
 including an empty-string regex. `not` can test absence. A missing User-Agent is
 an empty string. A missing client IP does not match CIDR. Numeric comparisons combine
@@ -613,7 +621,7 @@ policy:
 
 `signals.geoip` configures one database for `country` and one for `asn`. A database defines exactly one source: `path`, a local MaxMind `.mmdb`
 file, or `maxmind`, a download. A `country` database accepts a country or city edition
-and an `asn` database accepts an ASN edition. The software refuses a database of another type.
+and an `asn` database accepts ASN or ISP editions. The software refuses a database of another type.
 
 ```yaml
 signals:

@@ -17,6 +17,7 @@ fn decide(engine: &PolicyEngine, honeypot: Option<bool>) -> PolicyAction {
   engine
     .evaluate_context(
       &Request {
+        trusted_peer: false,
         host: "example.test",
         headers: &headers,
         path: "/",

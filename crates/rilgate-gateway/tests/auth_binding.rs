@@ -509,3 +509,46 @@ async fn solved_networks_are_remembered_up_to_the_configured_limit() {
     );
   }
 }
+
+#[tokio::test]
+async fn session_reports_whether_the_access_cookie_is_valid() {
+  let gateway = fixture(
+    AuthBinding {
+      user_agent: Some(UserAgentBinding::Family),
+      ..Default::default()
+    },
+    false,
+  )
+  .await;
+  let verified = gateway
+    .verify(Some(true), true, &[("user-agent", CHROME_130)])
+    .await;
+  assert_eq!(verified.status(), 200);
+  let cookie = verified.headers()["set-cookie"]
+    .to_str()
+    .unwrap()
+    .split(';')
+    .next()
+    .unwrap()
+    .to_owned();
+  for (cookie, user_agent, expected) in [
+    (None, CHROME_130, false),
+    (Some(cookie.as_str()), CHROME_130, true),
+    (Some(cookie.as_str()), FIREFOX, false),
+  ] {
+    let mut request = gateway
+      .client
+      .get(gateway.url("/.well-known/test-pow/api/session"))
+      .header("host", "example.test")
+      .header("user-agent", user_agent);
+    if let Some(cookie) = cookie {
+      request = request.header("cookie", cookie);
+    }
+    let response = request.send().await.unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let body: serde_json::Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+    assert_eq!(body, serde_json::json!({"authenticated": expected}));
+  }
+  assert_eq!(gateway.mismatches().await, 0);
+}

@@ -48,6 +48,7 @@ fn decide(engine: &PolicyEngine, ip: &str) -> (PolicyAction, i32, bool) {
   let headers = HeaderMap::new();
   let decision = engine.evaluate_context(
     &Request {
+      trusted_peer: false,
       host: "example.test",
       headers: &headers,
       path: "/",
@@ -176,4 +177,23 @@ fn asn_set_errors() {
   let definition: PolicyDocument =
     serde_yaml_ng::from_str("signals: {asn_sets: {dc: {asns: [15169]}}}").unwrap();
   assert!(PolicyEngine::from_definition(&definition).is_ok());
+}
+
+#[test]
+fn isp_database_supplies_asn_lookups() {
+  let path = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/data/GeoIP2-ISP-Test.mmdb"
+  );
+  let document: PolicyDocument = serde_yaml_ng::from_str(&format!(
+    "signals:\n  geoip:\n    asn: {{path: '{path}'}}\npolicy:\n  rules:\n    - {{name: telstra, when: {{asn: [1221]}}, action: deny}}\n"
+  )).unwrap();
+  let engine = PolicyEngine::from_definition(&document).unwrap();
+  engine
+    .geoip()
+    .asn()
+    .unwrap()
+    .publish(std::fs::read(path).unwrap())
+    .unwrap();
+  assert_eq!(decide(&engine, TELSTRA_ASN_ADDRESS).0, PolicyAction::Deny);
 }

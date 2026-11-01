@@ -31,7 +31,7 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
     }
   }
   const context = vm.createContext({
-    AbortSignal, AbortController, DOMException, Worker, setTimeout, clearTimeout,
+    AbortSignal, AbortController, DOMException, Worker, setTimeout, clearTimeout, navigator: {},
     document: { querySelector: element },
     window: {
       parent: { postMessage: (message, origin) => messages.push({ message, origin }) },
@@ -62,6 +62,7 @@ async function until(predicate) {
 
 function response(body) { return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) }; }
 function challengeFetch(url) {
+  if (url.endsWith("session")) return response({ authenticated: true });
   return response(url.endsWith("client-config") ? { enforce: "local_verify" } : { algorithm: "fast", challenge: "data", difficulty: 1, challenge_token: "challenge" });
 }
 
@@ -109,7 +110,7 @@ test("completed fast proofs fall back to exchange when cookie_set is missing", a
   state.workers[0].onmessage({ data: { type: "solved", nonce: "153" } });
   await until(() => state.reloads() === 1);
   assert.equal(state.element("#retry").hidden, true);
-  assert.equal(state.requests.length, 4);
+  assert.equal(state.requests.length, 5);
   assert.deepEqual(JSON.parse(state.requests.find(({ url }) => url.endsWith("exchange")).options.body), { receipt: "receipt" });
   assert.deepEqual(JSON.parse(state.requests.find(({ url }) => url.endsWith("verify")).options.body), { challenge_token: "challenge", nonce: "153", set_cookie: true });
 });
