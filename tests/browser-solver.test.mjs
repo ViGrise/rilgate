@@ -90,7 +90,8 @@ test("job rotation rejects the old solve and ignores its late replies", async (t
     settled = true;
     return value;
   });
-  const currentWorker = instances[1];
+  assert.equal(instances.length, 1);
+  const currentWorker = instances[0];
   const currentId = lastRequest(currentWorker).requestId;
   worker.emit({ type: "solved", requestId: oldId, nonce: "stale" });
   worker.emit({ type: "error", requestId: oldId, message: "stale" });

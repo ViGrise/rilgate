@@ -11,7 +11,10 @@ const poolSource = await readFile(
 );
 const solverSource = (
   await readFile(new URL("../web/static/js/solvers/randomx/solver.js", import.meta.url), "utf8")
-).replace('import { runWorkers } from "../worker-pool.js";', poolSource.replace("export ", ""));
+).replace(
+  'import { createWorkerGroup } from "../worker-pool.js";',
+  poolSource.replaceAll("export ", ""),
+);
 const workerSource = await readFile(
   new URL("../web/static/js/solvers/randomx/randomx-worker.js", import.meta.url),
   "utf8",
@@ -137,6 +140,7 @@ async function solverSelection(development, simd, options = {}) {
         workers.push(this);
       }
       postMessage(message) {
+        if (message.type !== "solve") return;
         jobs.push(message.job);
         queueMicrotask(() =>
           this.onmessage({
@@ -160,6 +164,7 @@ async function solverSelection(development, simd, options = {}) {
     'solve({blob: "00000000", seedHash: "00".repeat(32), nonceOffset: 0, difficulty: 1000000}, options)',
     context,
   );
+  vm.runInContext("cancel()", context);
   assert.ok(workers.every((worker) => worker.terminated));
   return jobs;
 }
@@ -230,6 +235,7 @@ test("surviving workers continue after startup and cache allocation failures", a
   );
   assert.equal(result.nonce, "winner");
   assert.equal(warnings.length, 2);
+  vm.runInContext("cancel()", context);
   assert.ok(workers.every((worker) => worker.terminated));
 });
 
@@ -293,4 +299,57 @@ test("disabled cache storage builds the cache without opening IndexedDB", async 
   await vm.runInContext("persistCache()", context);
   assert.equal(builds, 1);
   assert.equal(opens, 0);
+});
+
+test("a superseded solve reuses workers and leaves the replacement job running", async () => {
+  const workers = [];
+  const context = vm.createContext({
+    URL,
+    URLSearchParams,
+    navigator: { hardwareConcurrency: 4, deviceMemory: 4 },
+    WebAssembly,
+    console,
+    Worker: class {
+      constructor() {
+        this.messages = [];
+        workers.push(this);
+      }
+      postMessage(message) {
+        this.messages.push(message);
+      }
+      terminate() {
+        this.terminated = true;
+      }
+    },
+  });
+  vm.runInContext(
+    solverSource
+      .replaceAll("import.meta.url", JSON.stringify("https://example.test/solver.js"))
+      .replaceAll("export ", ""),
+    context,
+  );
+  const job = { blob: "00000000", seedHash: "00".repeat(32), difficulty: 1000 };
+  context.job = job;
+  const first = vm.runInContext("solve(job)", context);
+  const rejected = assert.rejects(first, { name: "SupersededError" });
+  const second = vm.runInContext("solve(job)", context);
+  await rejected;
+  assert.equal(workers.length, 2);
+  for (const worker of workers) {
+    assert.deepEqual(
+      worker.messages.map((message) => message.type),
+      ["solve", "solve"],
+    );
+    assert.equal(worker.terminated, undefined);
+  }
+  workers[0].onmessage({
+    data: {
+      type: "solved",
+      requestId: workers[0].messages[1].requestId,
+      nonce: "winner",
+      result: "00",
+    },
+  });
+  assert.equal((await second).nonce, "winner");
+  vm.runInContext("cancel()", context);
 });

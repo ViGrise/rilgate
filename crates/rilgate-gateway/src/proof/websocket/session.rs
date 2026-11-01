@@ -95,10 +95,14 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
 
             let valid_result = hex::decode(&result)
               .is_ok_and(|hash| hash_meets_difficulty(&hash, difficulty));
-            if job_id != stratum.current_job.job_id || !valid_result {
+            if !stratum.is_recent_job(&job_id) || !valid_result {
               send_ws(&mut ws_tx, ServerWsMessage::Rejected {
                 reason: "Share must match the current job and required difficulty".into(),
               }).await?;
+              send_ws(
+                &mut ws_tx,
+                messages::job(stratum.current_job.clone(), difficulty, state.cfg.pow.nonce_offset),
+              ).await?;
               continue;
             }
             let request_id = stratum.submit_share(&job_id, &nonce, &result).await?;

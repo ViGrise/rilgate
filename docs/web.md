@@ -151,6 +151,7 @@ the `load-error` message that the page shows when its script could not start.
 | State | Mode | Trigger |
 | --- | --- | --- |
 | `preparing` | `run` | Page startup and challenge request. |
+| `connecting` | `run` | Pool session setup and wait for the first job, also after a resume. |
 | `fast` | `run` | Fast hashing. |
 | `hashwx` | `run` | HashWX hashing. |
 | `consent` | `start` | Wait for RandomX consent. |

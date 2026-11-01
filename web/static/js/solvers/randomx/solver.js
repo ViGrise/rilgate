@@ -1,11 +1,13 @@
 // Browser RandomX solver adapter.
-import { runWorkers } from "../worker-pool.js";
+import { createWorkerGroup } from "../worker-pool.js";
 
 const WORKER_URL = new URL("./randomx-worker.js?v=__WASM_REVISION__", import.meta.url);
 const SIMD_URL = new URL("./randomx_wasm.wasm?v=__WASM_REVISION__", import.meta.url);
 const SCALAR_URL = new URL("./randomx_wasm_scalar.wasm?v=__WASM_REVISION__", import.meta.url);
 const DEVELOPMENT = "__RX_DEVELOPMENT__" === "true";
 let inFlight = null;
+let group = null;
+let groupKey = "";
 let nextRequestId = 0;
 
 export function workerCount(cores, deviceMemory, maxWorkers = 8) {
@@ -41,16 +43,24 @@ export async function solve(
     ? Math.min(Number(override), maxWorkers)
     : workerCount(navigator.hardwareConcurrency, navigator.deviceMemory, maxWorkers);
   const scalar = params?.get("rx_scalar") === "1" || !supportsSimd();
+  const wasmUrl = job.wasmUrl || (scalar ? SCALAR_URL : SIMD_URL).href;
+  const key = `${count}|${wasmUrl}`;
+  if (!group || group.size() === 0 || groupKey !== key) {
+    group?.terminate();
+    group = createWorkerGroup({
+      url: WORKER_URL,
+      options: { type: "classic" },
+      count,
+      label: "RandomX",
+    });
+    groupKey = key;
+  }
   const requestId = ++nextRequestId;
   const progress = new Map();
   let cacheWriter = false;
-  const run = runWorkers({
-    url: WORKER_URL,
-    options: { type: "classic" },
-    count,
-    label: "RandomX",
+  const run = group.run({
     failures: "last",
-    start: (worker, index) =>
+    start: (worker, index, liveCount) =>
       worker.postMessage({
         type: "solve",
         requestId,
@@ -63,9 +73,9 @@ export async function solve(
             job.expiresIn === undefined
               ? undefined
               : (job.receivedAt ?? Date.now()) + job.expiresIn * 1000,
-          wasmUrl: job.wasmUrl || (scalar ? SCALAR_URL : SIMD_URL).href,
+          wasmUrl,
           workerIndex: index,
-          workerCount: count,
+          workerCount: liveCount,
           storeCache,
         },
       }),
@@ -94,7 +104,10 @@ export async function solve(
   try {
     return await run.promise;
   } finally {
-    if (inFlight === run) inFlight = null;
+    if (inFlight === run) {
+      inFlight = null;
+      group.post({ type: "cancel" });
+    }
   }
 }
 
@@ -105,4 +118,6 @@ export function cancel() {
     inFlight.cancel(error);
     inFlight = null;
   }
+  group?.terminate();
+  group = null;
 }

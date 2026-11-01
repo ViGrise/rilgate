@@ -33,6 +33,7 @@
   const modes = {
     cookies: "retry",
     preparing: "run",
+    connecting: "run",
     fast: "run",
     hashwx: "run",
     consent: "start",
@@ -325,6 +326,25 @@
     }
   }
 
+  // Records the one-time reload for this URL; false when it already happened or storage fails.
+  function reloadAllowed(key) {
+    try {
+      if (sessionStorage.getItem(key) === window.location.href) return false;
+      sessionStorage.setItem(key, window.location.href);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Reloads the page and returns an error that ends the running check without a state change.
+  function reloadPage() {
+    window.location.reload();
+    const error = new Error("Page reload");
+    error.name = "PageReload";
+    return error;
+  }
+
   async function exchange(receipt) {
     await jsonFetch(endpoint("/api/exchange"), {
       method: "POST",
@@ -440,6 +460,8 @@
   }
 
   window.PowClient = {
+    reloadAllowed,
+    reloadPage,
     loadSolver,
     supportsModules,
     supportsWasm,

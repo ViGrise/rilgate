@@ -36,6 +36,7 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (error && error.name === "PageReload") return;
   console.error(error);
   const client = window.PowClient;
   if (!client) {

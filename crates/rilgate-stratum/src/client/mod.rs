@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 
 use crate::transport::{Stream, connect_via};
 use anyhow::{Context, Result, anyhow};
@@ -14,6 +14,9 @@ use crate::{
   job::parse_job,
 };
 use rilgate_protocol::StratumJob;
+
+// Shares for the last jobs go to the pool, which decides whether each job is still valid.
+const RECENT_JOBS: usize = 3;
 
 #[derive(Debug)]
 pub enum StratumEvent {
@@ -31,6 +34,7 @@ pub struct StratumSession {
   pub rpc_id: String,
   next_request_id: u64,
   pub current_job: StratumJob,
+  recent_job_ids: VecDeque<String>,
   submit_timeout: Duration,
   pool_name: String,
   requested_difficulty: u64,
@@ -122,6 +126,7 @@ impl StratumSession {
       writer,
       rpc_id,
       next_request_id: 2,
+      recent_job_ids: VecDeque::from([current_job.job_id.clone()]),
       current_job,
       submit_timeout: cfg.submit_timeout,
       pool_name: cfg.name.clone(),
@@ -168,6 +173,10 @@ impl StratumSession {
           .get("params")
           .ok_or_else(|| anyhow!("Stratum job notification has no params"))?;
         let job = parse_job(params)?;
+        self.recent_job_ids.push_back(job.job_id.clone());
+        if self.recent_job_ids.len() > RECENT_JOBS {
+          self.recent_job_ids.pop_front();
+        }
         self.current_job = job.clone();
         self.observe_difficulty();
         return Ok(StratumEvent::Job(job));
@@ -195,6 +204,10 @@ impl StratumSession {
     }
   }
 
+  pub fn is_recent_job(&self, job_id: &str) -> bool {
+    self.recent_job_ids.iter().any(|recent| recent == job_id)
+  }
+
   pub async fn submit_share(&mut self, job_id: &str, nonce: &str, result: &str) -> Result<u64> {
     if nonce.len() != 8 || hex::decode(nonce).is_err() {
       return Err(anyhow!("Nonce must be exactly 8 hexadecimal characters"));
@@ -206,7 +219,7 @@ impl StratumSession {
       ));
     }
 
-    if job_id != self.current_job.job_id {
+    if !self.is_recent_job(job_id) {
       return Err(anyhow!("Share refers to a stale Stratum pool job"));
     }
     // Stratum encodes the nonce's little-endian bytes, while gateway clients use a numeric hex value.

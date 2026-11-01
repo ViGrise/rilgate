@@ -274,7 +274,8 @@ protocol event from a Stratum `accepted` response.
 ### Pool share verification
 
 With `pool_share`, a RandomX proof is valid only when a Stratum pool accepts
-the share.
+the share. Shares for the last 3 jobs go to the pool, which decides if each job is
+still valid. The browser keeps its workers and cache across jobs with the same seed.
 
 ```yaml
 pow:
@@ -319,7 +320,9 @@ shared HttpOnly access cookie
 
 Only the active WebSocket challenge is temporarily tied to one gateway process. An
 established WebSocket naturally stays on that instance, so the external load balancer
-does not need sticky-session configuration.
+does not need sticky-session configuration. After a closed WebSocket, the page opens
+a pool session by itself. If 5 sessions in a row end before a job arrives, the page
+reloads one time and asks for consent again.
 
 After success, the normal access cookie is stateless and can be verified by any gateway
 that shares the auth key.
@@ -453,7 +456,8 @@ items. Integer high multiplication is inlined, and cache-line reads begin before
 independent arithmetic. The worker compiles the module against the existing cache,
 reuses three table slots across seed changes, and hashes groups of three consecutive
 nonces. Worker `i` of `N` takes group indexes `i, i + N, i + 2N` and so on. The first
-solution terminates the worker pool. Progress sums attempts and rates across workers.
+solution stops hashing. Workers stay alive across jobs and stop when the check ends.
+Progress sums attempts and rates across workers.
 
 Each nonce has independent VM state. The extra scratchpad costs about 4 MiB relative to
 a single VM alongside each worker's 256 MiB cache. Kernel installation failure retains
@@ -468,7 +472,8 @@ to an integer from 1 to 8 (default 8) to cap the count, including the developmen
 `rx_workers` override. CPU and memory limits can select fewer workers.
 
 Set `pow.algorithms.randomx.browser.store_cache` to `false` to disable IndexedDB
-reads and writes. Workers build the cache for each solve. The default is `true`.
+reads and writes. Workers build the cache when the seed changes and keep it across
+jobs with the same seed. The default is `true`.
 
 Each worker owns its cache. IndexedDB retains
 one seed cache in `rilgate-randomx` / `caches`, with a SHA-256 digest checked before

@@ -1,96 +1,119 @@
 const MAX_TIMER_DELAY = 2147483647;
 
 /**
- * Runs one task on several workers and settles once.
- * failures: "first" rejects on the first worker failure; "last" rejects when no worker is left.
+ * Keeps workers alive across tasks so each worker keeps its state, such as a RandomX cache.
  */
-export function runWorkers({
-  url, // URL of the worker script
-  options, // optional Worker constructor options
-  count, // number of workers
-  label, // name used in messages, for example "HashWX"
-  failures, // "first" or "last"
-  deadline, // optional epoch milliseconds; passing it rejects with `${label} challenge expired`
-  start, // (worker, index) => void, posts the first message
-  onMessage, // (data, { worker, index, resolve, reject, fail }) => void; fail(error) reports a failure of this worker
-}) {
-  const workers = new Set();
-  let settled = false;
-  let timer = null;
-  let remaining = count;
-  let rejectPromise;
-  let resolvePromise;
-
-  const settle = (error, result) => {
-    if (settled) return;
-    settled = true;
-    if (timer !== null) clearTimeout(timer);
-    for (const worker of workers) worker.terminate();
-    workers.clear();
-    if (error) rejectPromise(error);
-    else resolvePromise(result);
-  };
-  const resolve = (result) => settle(null, result);
-  const reject = (error) => settle(error);
+export function createWorkerGroup({ url, options, count, label }) {
+  const workers = new Map();
+  const startupErrors = [];
+  let task = null;
+  let lastError = new Error(`${label} worker failed`);
 
   const fail = (worker, error) => {
-    // A worker counts as failed once, even when it reports an error and then raises one.
-    if (settled || (worker && !workers.has(worker))) return;
-    if (failures === "first") {
-      reject(error);
-      return;
-    }
-    console.warn(`${label} worker failed:`, error.message);
+    if (worker && !workers.has(worker)) return;
     worker?.terminate();
     workers.delete(worker);
-    remaining -= 1;
-    if (remaining === 0) reject(error);
+    lastError = error;
+    if (task?.failures !== "first") console.warn(`${label} worker failed:`, error.message);
+    if (task && (task.failures === "first" || workers.size === 0)) task.reject(error);
   };
 
-  const promise = new Promise((resolvePending, rejectPending) => {
-    resolvePromise = resolvePending;
-    rejectPromise = rejectPending;
-  });
-
-  const expire = () => {
-    const left = deadline - Date.now();
-    if (left <= 0) reject(new Error(`${label} challenge expired`));
-    else timer = setTimeout(expire, Math.min(left, MAX_TIMER_DELAY));
-  };
-  if (deadline !== undefined) expire();
-
-  for (let index = 0; index < count && !settled; index += 1) {
-    let worker;
-    let messaged = false;
+  for (let index = 0; index < count; index += 1) {
     try {
-      worker = options ? new Worker(url, options) : new Worker(url);
-      workers.add(worker);
+      const worker = options ? new Worker(url, options) : new Worker(url);
+      const entry = { messaged: false, index };
+      workers.set(worker, entry);
       worker.onmessage = ({ data }) => {
-        messaged = true;
-        if (settled) return;
+        entry.messaged = true;
+        if (!task) return;
         try {
-          onMessage(data, {
+          task.onMessage(data, {
             worker,
-            index,
-            resolve,
-            reject,
+            index: entry.index,
+            resolve: task.resolve,
+            reject: task.reject,
             fail: (error) => fail(worker, error),
           });
         } catch (error) {
-          reject(error);
+          task?.reject(error);
         }
       };
       worker.onerror = (event) => {
         const error = new Error(event.message || `${label} worker failed`);
         // A script that fails before its first message was blocked or could not load.
-        if (!event.message && !messaged) error.code = "asset_blocked";
+        if (!event.message && !entry.messaged) error.code = "asset_blocked";
         fail(worker, error);
       };
-      start(worker, index);
     } catch (error) {
-      fail(worker, error);
+      startupErrors.push(error);
+      lastError = error;
     }
   }
 
-  return { promise, cancel: reject };
+  function run({ failures, deadline, start, onMessage }) {
+    if (task) throw new Error(`${label} task already running`);
+    let timer = null;
+    let resolvePromise;
+    let rejectPromise;
+    const promise = new Promise((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+    const settle = (error, result) => {
+      if (task !== current) return;
+      task = null;
+      if (timer !== null) clearTimeout(timer);
+      if (error) rejectPromise(error);
+      else resolvePromise(result);
+    };
+    const current = {
+      failures,
+      onMessage,
+      resolve: (result) => settle(null, result),
+      reject: (error) => settle(error),
+    };
+    task = current;
+    const expire = () => {
+      const left = deadline - Date.now();
+      if (left <= 0) current.reject(new Error(`${label} challenge expired`));
+      else timer = setTimeout(expire, Math.min(left, MAX_TIMER_DELAY));
+    };
+    if (deadline !== undefined) expire();
+    if (failures === "first" && startupErrors.length) current.reject(startupErrors[0]);
+    else for (const error of startupErrors) console.warn(`${label} worker failed:`, error.message);
+    startupErrors.length = 0;
+    if (workers.size === 0) current.reject(lastError);
+    const liveCount = workers.size;
+    let index = 0;
+    for (const [worker, entry] of workers) {
+      if (task !== current) break;
+      entry.index = index++;
+      try {
+        start(worker, entry.index, liveCount);
+      } catch (error) {
+        fail(worker, error);
+      }
+    }
+    return { promise, cancel: current.reject };
+  }
+
+  return {
+    run,
+    post(message) {
+      for (const worker of workers.keys()) worker.postMessage(message);
+    },
+    size: () => workers.size,
+    terminate() {
+      task?.reject(new Error(`${label} workers terminated`));
+      for (const worker of workers.keys()) worker.terminate();
+      workers.clear();
+    },
+  };
+}
+
+/** Runs one task on several workers and settles once. */
+export function runWorkers({ url, options, count, label, ...task }) {
+  const group = createWorkerGroup({ url, options, count, label });
+  const run = group.run(task);
+  return { promise: run.promise.finally(() => group.terminate()), cancel: run.cancel };
 }
