@@ -133,12 +133,14 @@ impl GeoDatabase {
   /// Parses `bytes` and publishes them as the current database.
   ///
   /// An invalid database leaves the previous reader in place.
-  pub fn publish(&self, bytes: Vec<u8>) -> Result<()> {
+  pub fn publish(&self, mut bytes: Vec<u8>) -> Result<()> {
     ensure!(
       bytes.len() <= super::MAX_DATABASE_BYTES,
       "database exceeds {} bytes",
       super::MAX_DATABASE_BYTES
     );
+    // The reader keeps this buffer until the next refresh.
+    bytes.shrink_to_fit();
     let reader = Reader::from_source(bytes).context("invalid MaxMind database")?;
     let database_type = &reader.metadata().database_type;
     ensure!(

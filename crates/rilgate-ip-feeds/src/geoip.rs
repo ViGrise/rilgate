@@ -56,11 +56,10 @@ impl GeoRefresher {
   async fn load(&self, database: &GeoDatabase, state: &mut GeoState) -> Result<Outcome> {
     match database.source() {
       GeoSource::File(path) => {
-        let modified = tokio::fs::metadata(path)
+        let metadata = tokio::fs::metadata(path)
           .await
-          .with_context(|| format!("cannot read {}", path.display()))?
-          .modified()
-          .ok();
+          .with_context(|| format!("cannot read {}", path.display()))?;
+        let modified = metadata.modified().ok();
         if modified.is_some() && modified == state.modified && database.status().loaded {
           database.renew();
           return Ok(Outcome::Unchanged);
@@ -68,7 +67,7 @@ impl GeoRefresher {
         let file = tokio::fs::File::open(path)
           .await
           .with_context(|| format!("cannot read {}", path.display()))?;
-        let mut bytes = Vec::new();
+        let mut bytes = database_buffer(metadata.len(), self.max_bytes);
         file
           .take(self.max_bytes as u64 + 1)
           .read_to_end(&mut bytes)
@@ -130,7 +129,7 @@ fn extract_database(archive: &[u8], max_bytes: usize) -> Result<Vec<u8>> {
     if !is_database {
       continue;
     }
-    let mut bytes = Vec::new();
+    let mut bytes = database_buffer(entry.size(), max_bytes);
     entry
       .take(max_bytes as u64 + 1)
       .read_to_end(&mut bytes)
@@ -142,6 +141,13 @@ fn extract_database(archive: &[u8], max_bytes: usize) -> Result<Vec<u8>> {
     return Ok(bytes);
   }
   bail!("archive contains no .mmdb file")
+}
+
+/// A buffer sized for a database of `expected` bytes. A database stays in
+/// memory for as long as it is current, so reading into an exact allocation
+/// keeps its footprint at its file size.
+fn database_buffer(expected: u64, max_bytes: usize) -> Vec<u8> {
+  Vec::with_capacity(expected.min(max_bytes as u64) as usize)
 }
 
 /// Starts a background refresher for every database in the registry.

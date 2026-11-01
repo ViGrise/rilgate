@@ -77,7 +77,7 @@ impl FeedClient {
     }
     let etag = response.headers().get(http::header::ETAG).cloned();
     let last_modified = response.headers().get(http::header::LAST_MODIFIED).cloned();
-    let mut body = Vec::new();
+    let mut body = Vec::with_capacity(response.content_length().unwrap_or(0) as usize);
     while let Some(chunk) = response.chunk().await.context("feed read failed")? {
       ensure!(
         body.len() + chunk.len() <= max_bytes,
