@@ -139,6 +139,7 @@ impl Connections {
           state.failed += 1;
           state.failed_at = Some(Instant::now());
         }
+        drop(states);
       }
       match result {
         Ok(stream) => {
@@ -171,21 +172,28 @@ impl Connections {
       }
       let pool = &self.config.pools[index];
       let result = self.attempt(index, difficulty, deadline).await;
-      let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
-      let state = &mut states[index];
-      match result {
-        Ok(Some(session)) => {
-          state.connected += 1;
-          state.failed_at = None;
-          return Ok(session);
+      {
+        let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        let state = &mut states[index];
+        match &result {
+          Ok(Some(_)) => {
+            state.connected += 1;
+            state.failed_at = None;
+          }
+          Ok(None) => {}
+          Err(_) => {
+            state.failed += 1;
+            state.failed_at = Some(Instant::now());
+            if position + 1 < order.len() {
+              state.failover += 1;
+            }
+          }
         }
+      }
+      match result {
+        Ok(Some(session)) => return Ok(session),
         Ok(None) => break,
         Err(_) => {
-          state.failed += 1;
-          state.failed_at = Some(Instant::now());
-          if position + 1 < order.len() {
-            state.failover += 1;
-          }
           tracing::warn!(pool = %pool.name, "Stratum pool connection or login failed");
         }
       }
@@ -251,6 +259,7 @@ impl Connections {
         pool.name, state.failover
       );
     }
+    drop(states);
     text.push_str("# TYPE rilgate_stratum_pool_difficulty_mismatch_total counter\n");
     for pool in &self.config.pools {
       let _ = writeln!(
@@ -385,6 +394,7 @@ mod tests {
         .iter()
         .all(|state| state.failed_at.is_none() && state.failed == 0)
     );
+    drop(states);
     server.abort();
   }
 

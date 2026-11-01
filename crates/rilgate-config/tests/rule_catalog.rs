@@ -74,7 +74,7 @@ fn embedded_policy_resolves_relative_rules_from_string_configuration() {
       .unwrap();
   let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
     signals: document.signals.clone(),
-    policy: document.policy.clone(),
+    policy: document.policy,
   })
   .unwrap();
   let mut headers = http::HeaderMap::new();
@@ -117,7 +117,7 @@ fn embedded_and_local_rules_keep_order_without_catalog_shadowing() {
   .document;
   let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
     signals: document.signals.clone(),
-    policy: document.policy.clone(),
+    policy: document.policy,
   })
   .unwrap();
   let mut headers = http::HeaderMap::new();
@@ -221,7 +221,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
   .unwrap();
   let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
     signals: document.signals.clone(),
-    policy: document.policy.clone(),
+    policy: document.policy,
   })
   .unwrap();
   engine
@@ -272,7 +272,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
   assert_eq!(
     PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
       signals: base.signals.clone(),
-      policy: base.policy.clone()
+      policy: base.policy
     })
     .unwrap()
     .evaluate(&headers, "/content", 0)
@@ -286,7 +286,7 @@ fn tor_exit_rule_scores_members_of_the_tor_set() {
   let document = rilgate_config::loader::parse("signals:\n  ip_sets:\n    tor-exits: {cidrs: [192.0.2.0/24]}\npolicy:\n  rules:\n    - !include builtin:rules/tor-exit.yml\n").unwrap();
   let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
     signals: document.signals.clone(),
-    policy: document.policy.clone(),
+    policy: document.policy,
   })
   .unwrap();
   for (ip, expected) in [("192.0.2.10", 20), ("198.51.100.10", 0)] {

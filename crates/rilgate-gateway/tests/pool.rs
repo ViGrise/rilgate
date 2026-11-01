@@ -604,7 +604,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
     body::{Body, to_bytes},
     http::Request,
   };
-  use rilgate_config::{PowAlgorithm, model::pow::RandomXFallback};
+  use rilgate_config::{PowAlgorithm, RandomXFallback};
   use rilgate_test_utils::gateway as app;
   use std::sync::Arc;
   use tower::ServiceExt;

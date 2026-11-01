@@ -13,7 +13,7 @@ pub async fn run(
 ) -> Result<()> {
   let gateway = crate::app::build(config.clone()).await?;
   let trigger =
-    crate::reload::spawn_reloader(gateway.policy_handle(), config.clone(), overrides, files)?;
+    crate::reloader::spawn_reloader(gateway.policy_handle(), config.clone(), overrides, files)?;
   let gateway = gateway.set_reload_control(std::sync::Arc::new(trigger));
   let mut listeners = bind_all(
     &[

@@ -191,6 +191,7 @@ impl StratumPoolProvider {
       self.config.job_session_idle,
     ));
     sessions.insert(difficulty, session.clone());
+    drop(sessions);
     Ok(session)
   }
 
@@ -280,9 +281,15 @@ async fn run_session(
     tokio::select! {
       _ = jobs.closed() => return,
       _ = tokio::time::sleep_until(deadline) => {
-        let mut usage = lifetime.0.lock().unwrap_or_else(|error| error.into_inner());
-        if Instant::now() >= usage.last_requested + idle_timeout {
-          usage.active = false;
+        let idle = {
+          let mut usage = lifetime.0.lock().unwrap_or_else(|error| error.into_inner());
+          let idle = Instant::now() >= usage.last_requested + idle_timeout;
+          if idle {
+            usage.active = false;
+          }
+          idle
+        };
+        if idle {
           return;
         }
       }
