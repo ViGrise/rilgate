@@ -1,7 +1,5 @@
 # Configuration file includes
 
-Status: implemented on `feat/config-includes`.
-
 ## Scope
 
 Add `!include` at any YAML value position so operators can split configuration

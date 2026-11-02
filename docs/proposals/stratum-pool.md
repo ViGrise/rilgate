@@ -1,7 +1,5 @@
 # Stratum pool
 
-Status: proposed.
-
 This proposal lets RandomX challenges use Monero mining pools that speak
 Stratum. Today Rilgate connects only to one P2Pool node. The proposal adds a
 list of pools with ordered failover, a login template, TLS, and SOCKS5 and HTTP
