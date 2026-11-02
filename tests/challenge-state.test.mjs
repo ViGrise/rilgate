@@ -358,35 +358,48 @@ test("a page reload ends the check without another request or state", async () =
   assert.equal(elements.get("#status").textContent, english["challenge.state.preparing.status"]);
 });
 
-test("RandomX job details format work and expire the replacement notice", () => {
-  let now = 1000;
-  let timer;
-  const { client, elements } = page(
-    ["job"],
+test("startup shows success until the 300 ms reload timer runs", async () => {
+  const timers = [];
+  const { client, context, elements } = page(
+    ["title"],
     {},
     {
-      Date: { now: () => now },
       setTimeout(callback, delay) {
-        assert.equal(delay, 5000);
-        timer = callback;
-        return callback;
+        timers.push({ callback, delay });
       },
-      clearTimeout() {},
     },
   );
+  const calls = [];
+  let reloads = 0;
+  context.location = { reload: () => reloads++ };
+  client.jsonFetch = async (url) => {
+    calls.push(url);
+    return url.endsWith("/api/session") ? { authenticated: true } : {};
+  };
+  client.algorithm = () => ({
+    async run() {
+      calls.push("run");
+    },
+  });
+  vm.runInContext(startup, context);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(calls, ["/gateway/api/client-config", "run", "/gateway/api/session"]);
+  assert.equal(elements.get("#title").textContent, english["challenge.state.success.title"]);
+  assert.equal(reloads, 0);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 300);
+  timers[0].callback();
+  assert.equal(reloads, 1);
+});
+
+test("RandomX job details format work", () => {
+  const { client, elements } = page(["job"]);
   const line = elements.get("#job");
   client.state("randomx");
   client.job({ id: "1", height: 3797188, seed: "422eeb3100002169" });
   assert.equal(line.textContent, "Job 1 · Block 3,797,188 · Seed 422eeb31…2169");
   client.job({ id: "2", seed: "short" });
-  assert.equal(line.textContent, "Job 2 · new work, continuing · Seed short");
-  now += 3000;
-  client.job({ id: "3" });
-  now += 2000;
-  assert.equal(line.textContent, "Job 3 · new work, continuing");
-  now += 3000;
-  timer();
-  assert.equal(line.textContent, "Job 3");
+  assert.equal(line.textContent, "Job 2 · Seed short");
 });
 
 test("RandomX job visibility follows the state and the job details setting", () => {

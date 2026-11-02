@@ -31,7 +31,8 @@ async function main() {
     if (window.parent !== window) window.parent.postMessage(message, location.origin);
     if (window.opener) window.opener.postMessage(message, location.origin);
   } else {
-    location.reload();
+    // The delay lets the browser show the success state before the reload.
+    setTimeout(() => location.reload(), 300);
   }
 }
 

@@ -478,10 +478,9 @@ reads and writes. Workers build the cache when the seed changes and keep it acro
 jobs with the same seed. The default is `true`.
 
 The `pow.algorithms.randomx.browser.job_details` setting defaults to `true`. The page
-shows the job, the block and the seed under the attempt count while RandomX runs,
-and a notice for 5 seconds after the pool replaces the job. A different seed shows
-the setup state with the notice "new seed, preparing again" and keeps the attempt
-count until hashing resumes. Set it to `false` to hide the line.
+shows the job, the block and the seed under the attempt count while RandomX runs.
+A different seed shows the setup state with the notice "new seed, preparing again"
+and keeps the attempt count until hashing resumes. Set it to `false` to hide the line.
 
 Each worker owns its cache. IndexedDB retains
 one seed cache in `rilgate-randomx` / `caches`, with a SHA-256 digest checked before

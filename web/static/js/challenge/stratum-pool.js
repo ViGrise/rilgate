@@ -76,6 +76,7 @@
                 if (message.type === "accepted") {
                   accepted = true;
                   completed = true;
+                  state("verifying");
                   await exchange(message.receipt);
                   try {
                     sessionStorage.removeItem("rilgate-work-unavailable-reload");
