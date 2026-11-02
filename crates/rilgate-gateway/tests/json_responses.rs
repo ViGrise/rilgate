@@ -317,3 +317,71 @@ async fn client_config_exposes_randomx_browser_options_only_for_randomx() {
     assert!(fast.get("browser").is_none());
   }
 }
+
+#[tokio::test]
+async fn a_browser_that_opens_an_api_url_returns_to_the_application() {
+  let router = app::router(common::config()).await.unwrap();
+  let api = "/.well-known/test-pow/api";
+  for (path, headers, location) in [
+    (
+      "/session",
+      vec![
+        ("sec-fetch-mode", "navigate"),
+        ("referer", "http://example.test/account?tab=2"),
+      ],
+      Some("/account?tab=2"),
+    ),
+    (
+      "/challenge",
+      vec![
+        ("accept", "text/html"),
+        ("referer", "http://other.test/account"),
+      ],
+      Some("/"),
+    ),
+    (
+      "/client-config",
+      vec![
+        ("sec-fetch-mode", "navigate"),
+        (
+          "referer",
+          "http://example.test/.well-known/test-pow/challenge",
+        ),
+      ],
+      Some("/"),
+    ),
+    ("/session", vec![("sec-fetch-mode", "cors")], None),
+  ] {
+    let mut request = Request::builder()
+      .method("GET")
+      .uri(format!("{api}{path}"))
+      .header("host", "example.test");
+    for (name, value) in &headers {
+      request = request.header(*name, *value);
+    }
+    let response = router
+      .clone()
+      .oneshot(request.body(Body::empty()).unwrap())
+      .await
+      .unwrap();
+    match location {
+      Some(location) => {
+        assert_eq!(
+          response.status(),
+          StatusCode::SEE_OTHER,
+          "{path} {headers:?}"
+        );
+        assert_eq!(
+          response.headers()["location"],
+          location,
+          "{path} {headers:?}"
+        );
+        assert_eq!(response.headers()["cache-control"], "no-store");
+      }
+      None => {
+        assert_eq!(response.status(), StatusCode::OK, "{path} {headers:?}");
+        assert_eq!(response.headers()["content-type"], "application/json");
+      }
+    }
+  }
+}

@@ -21,3 +21,16 @@ pub fn json(status: StatusCode, value: &impl Serialize) -> Response {
   );
   out
 }
+
+/// A `303 See Other` to a same-site path that clients must not store.
+pub fn see_other(path: &str) -> Response {
+  let mut out = response(StatusCode::SEE_OTHER, "");
+  out.headers_mut().insert(
+    http::header::LOCATION,
+    http::HeaderValue::from_str(path).unwrap_or_else(|_| http::HeaderValue::from_static("/")),
+  );
+  out
+    .headers_mut()
+    .insert(http::header::CACHE_CONTROL, super::headers::NO_STORE);
+  out
+}

@@ -415,6 +415,22 @@ impl Handler {
     {
       return Ok(Some(self.reload(&headers, &method).await));
     }
+    // A browser that opens a gateway API URL as a page goes back to the application, where
+    // the gateway serves a challenge when one is needed. A refresh URL with a token handles
+    // its own navigations because the token names the protected page.
+    if self.role == ListenerRole::Public
+      && path.starts_with("/api/")
+      && (endpoint != Some(Endpoint::Refresh) || handlers::refresh_token(&uri).is_none())
+      && crate::transport::context::is_navigation(&method, &headers)
+    {
+      let host = crate::transport::context::request_host(&headers, &uri);
+      let target = crate::transport::context::navigation_return_path(
+        &headers,
+        &host,
+        &self.state.cfg.web.base_path,
+      );
+      return Ok(Some(crate::transport::response::see_other(&target)));
+    }
     let hidden = match endpoint {
       Some(Endpoint::Reload) => true,
       Some(endpoint) => endpoint.exposure() != self.role.exposure(),

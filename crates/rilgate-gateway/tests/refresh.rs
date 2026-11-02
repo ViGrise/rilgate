@@ -1,7 +1,7 @@
 mod common;
 use rilgate_config::{ChallengePolicy, PowAlgorithm, PowVerification};
 use rilgate_crypto::token::{self as crypto, TokenPurpose};
-use rilgate_protocol::claims::ReceiptClaims;
+use rilgate_protocol::claims::{PresentationClaims, ReceiptClaims};
 use rilgate_test_utils::gateway as app;
 use std::{
   sync::Arc,
@@ -202,7 +202,8 @@ async fn refresh_redirect_stays_on_the_site() {
   assert_eq!(response.status(), 303);
   assert_eq!(response.headers()["location"], "/");
   let foreign = fixture.get(&url, "other.test", None).await;
-  assert_eq!(foreign.status(), 401);
+  assert_eq!(foreign.status(), 303);
+  assert_eq!(foreign.headers()["location"], "/");
   assert!(!foreign.headers().contains_key("set-cookie"));
 }
 
@@ -256,4 +257,46 @@ fn refresh_is_refused_as_the_default_algorithm() {
     format!("{error:#}").contains("pow.default_algorithm: refresh"),
     "{error:#}"
   );
+}
+
+#[tokio::test]
+async fn an_unredeemable_refresh_url_returns_the_browser_to_its_page() {
+  let fixture = fixture(200, 1).await;
+  let now = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap()
+    .as_secs() as i64;
+  let expired = crypto::sign_json(
+    &PresentationClaims {
+      v: 1,
+      host: "example.test".into(),
+      path: "/protected/page?q=1".into(),
+      rule: "refresh".into(),
+      weight: 0,
+      algorithm: PowAlgorithm::Refresh,
+      difficulty: 1,
+      verification: PowVerification::Gateway,
+      issued_at: now - 600,
+      expires_at: now - 540,
+    },
+    fixture.signing_key.as_bytes(),
+    TokenPurpose::Presentation,
+  )
+  .unwrap();
+  let refresh = "/.well-known/test-pow/api/refresh";
+  for (query, location) in [
+    (
+      format!("?presentation_token={expired}"),
+      "/protected/page?q=1",
+    ),
+    ("?presentation_token=forged".into(), "/"),
+    (String::new(), "/"),
+  ] {
+    let response = fixture
+      .get(&format!("{refresh}{query}"), "example.test", None)
+      .await;
+    assert_eq!(response.status(), 303, "{query}");
+    assert_eq!(response.headers()["location"], location, "{query}");
+    assert!(!response.headers().contains_key("set-cookie"));
+  }
 }

@@ -59,6 +59,18 @@ impl ChallengeService {
   }
 }
 
+impl ChallengeService {
+  /// The same-site path a refresh token was issued for, when the token is a genuine refresh
+  /// token for `host`. The token lifetime does not matter, so an expired or redeemed URL can
+  /// send the browser back to the protected page for a new challenge.
+  pub fn refresh_return_path(&self, token: &str, host: &str) -> Option<String> {
+    let claims: rilgate_protocol::claims::PresentationClaims =
+      self.tokens.presentation.verify_json(token).ok()?;
+    (claims.host == host && claims.algorithm == PowAlgorithm::Refresh)
+      .then(|| same_site_path(claims.path))
+  }
+}
+
 /// Keeps a redirect target on the current host: it must start with exactly one `/`.
 fn same_site_path(path: String) -> String {
   if path.starts_with('/') && !path.starts_with("//") && !path.contains(['\\', '\r', '\n']) {

@@ -99,7 +99,9 @@ without a difficulty waits score / 10 seconds, at least 1 and at most that max. 
 original request path on the same host. If the browser opens the URL early, it gets the
 page again with the remaining delay. When the proof API quota rejects the URL, the browser
 gets the same page with status 429 and `Retry-After`, and it opens the URL again after the
-quota delay.
+quota delay. A refresh URL with an expired token, for example after the back button,
+redirects to the protected page in the token, which shows a new challenge. A URL without a
+valid token redirects like [other API URLs](gateway.md#internal-namespace).
 
 The delay proves no work, so use it only as a speed bump for clients that do not
 run JavaScript. A refresh rule cannot be `pow.default_algorithm`, and it always
