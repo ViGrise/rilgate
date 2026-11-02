@@ -194,6 +194,7 @@ test("AJAX receives JSON, solves in an iframe and retries the original request",
     if (blocked.status !== 403 || blocked.headers.get("rilgate-challenge") !== "required") {
       throw new Error("Expected a JSON challenge notification");
     }
+    const brandId = "rilgate";
     const frame = document.createElement("iframe");
     const completed = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -204,7 +205,7 @@ test("AJAX receives JSON, solves in an iframe and retries the original request",
         if (
           event.origin !== location.origin ||
           event.source !== frame.contentWindow ||
-          event.data?.type !== "rilgate:verified"
+          event.data?.type !== `${brandId}:verified`
         )
           return;
         clearTimeout(timer);

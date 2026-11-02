@@ -27,7 +27,7 @@ export function supportsSimd() {
 
 export async function solve(
   job,
-  { max_workers: maxWorkers = 8, store_cache: storeCache = true } = {},
+  { max_workers: maxWorkers = 8, store_cache: storeCache = true, brandId } = {},
 ) {
   const seedHash = job.seedHash || job.seed_hash;
   if (!seedHash) throw new Error("RandomX job is missing the seed hash");
@@ -77,6 +77,7 @@ export async function solve(
           workerIndex: index,
           workerCount: liveCount,
           storeCache,
+          brandId,
         },
       }),
     onMessage: (message, { worker, index, resolve, fail }) => {

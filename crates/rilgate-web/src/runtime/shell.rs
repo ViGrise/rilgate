@@ -84,6 +84,7 @@ pub(super) fn script_json(value: &impl Serialize) -> Result<String> {
 
 fn bootstrap_capacity(rilgate: &PublicRilgateInfo, challenge: &PublicChallengeInfo) -> usize {
   256
+    + rilgate.brand_id.len()
     + rilgate.base_path.len()
     + rilgate.static_url.len()
     + challenge.solver_module_url.len()
@@ -100,6 +101,7 @@ fn write_bootstrap(
   write_script_json(
     output,
     &serde_json::json!({
+      "brand_id": rilgate.brand_id,
       "internal_prefix": rilgate.base_path,
       "static_url": rilgate.static_url,
       "solver_module_url": challenge.solver_module_url,

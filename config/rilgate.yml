@@ -253,6 +253,7 @@ server:
   # auth:
     # Cookie name, using valid HTTP token characters. Cookies are host-scoped,
     # HttpOnly and SameSite=Lax, with Secure enabled in production.
+    # Default: <brand_id>_auth.
     #
     # cookie: rilgate_auth
 
@@ -321,9 +322,18 @@ server:
   #
   # url: https://rilgate.com
 
+  # Identifier for client-visible names: the challenge headers
+  # <brand_id>-challenge and <brand_id>-challenge-url, the <brand_id>:verified
+  # page message, browser storage keys, and the defaults of base_path,
+  # security.auth.cookie and i18n.cookie. 1 to 32 lowercase letters, digits or
+  # hyphens, starting with a letter.
+  #
+  # brand_id: rilgate
+
   # Reserved prefix for proof APIs and assets. Use an absolute, non-root path
   # without a trailing slash, dot segments, query or fragment. Internal routing
   # runs before user policies; unknown internal routes return 404.
+  # Default: /.well-known/<brand_id>.
   #
   # base_path: /.well-known/rilgate
 
@@ -351,9 +361,10 @@ server:
   # Challenge and denial response formats. auto honors explicit Accept preferences;
   # otherwise JSON Content-Type (including application/*+json) or X-Requested-With:
   # XMLHttpRequest selects JSON. Ordinary page navigation receives HTML.
-  # JSON challenges return 403 with Rilgate-Challenge and Rilgate-Challenge-Url
-  # headers. The client opens the URL, solves the challenge, then retries its
-  # original request. No intercepted upload is automatically replayed.
+  # Every challenge response carries Rilgate-Challenge and Rilgate-Challenge-Url
+  # headers, and JSON challenges return 403. The client opens the URL, solves the
+  # challenge, then retries its original request. No intercepted upload is
+  # automatically replayed.
   #
   # responses:
     # auto, html or json. html keeps browser pages and plain 401 for unsafe methods;
@@ -362,7 +373,7 @@ server:
     # format: auto
 
     # HTML challenge status: 200, 401, 403, 429 or 503.
-    # JSON challenges always return 403 with Rilgate-Challenge: required.
+    # JSON challenges always return 403. Every challenge carries Rilgate-Challenge.
     # Use 403 behind a CDN or service worker that ignores Cache-Control: no-store,
     # so that it does not store a challenge page as the requested resource.
     #
@@ -506,6 +517,7 @@ server:
     # strict: false
 
     # Language preference cookie name, using valid HTTP token characters.
+    # Default: <brand_id>_lang.
     # Selection order: ?lang, language cookie, Accept-Language, default locale.
     #
     # cookie: rilgate_lang

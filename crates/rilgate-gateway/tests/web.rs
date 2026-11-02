@@ -20,6 +20,7 @@ async fn branded_pages_negotiate_locales_and_serve_resources_from_configured_pat
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.web.name = "Example Shield".into();
+  config.web.brand_id = "shield".into();
   config.web.website_url = "https://example.test".into();
   config.web.root = Some(root.path().into());
   config.web.stylesheet_path = "css/shield.css".into();

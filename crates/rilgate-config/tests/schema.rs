@@ -1224,3 +1224,34 @@ fn pool_share_rejects_hashers_and_remote_settings() {
     assert_eq!(resolve(&yaml).unwrap_err().to_string(), message);
   }
 }
+
+#[test]
+fn brand_id_rejects_unsafe_client_identifiers() {
+  for brand_id in [
+    "",
+    "Vigrise",
+    "1abc",
+    "abc-",
+    "a_b",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ] {
+    let error = resolve(&format!("{BASE}site: {{brand_id: '{brand_id}'}}\n")).unwrap_err();
+    assert!(format!("{error:#}").contains("site.brand_id: expected 1 to 32 lowercase letters, digits or hyphens, starting with a letter and not ending with a hyphen"));
+  }
+  for brand_id in ["a", "vigrise", "my-brand-2"] {
+    resolve(&format!("{BASE}site: {{brand_id: '{brand_id}'}}\n")).unwrap();
+  }
+}
+
+#[test]
+fn brand_id_derives_cookies_and_preserves_explicit_names() {
+  let cfg = resolve(&format!("{BASE}site: {{brand_id: vigrise}}\n")).unwrap();
+  assert_eq!(cfg.pow.auth_cookie_name, "vigrise_auth");
+  assert_eq!(cfg.web.i18n.language_cookie_name, "vigrise_lang");
+  let cfg = resolve(&format!(
+    "{}site: {{brand_id: vigrise}}\n",
+    BASE.replace("  secret:", "  auth: {cookie: custom_auth}\n  secret:")
+  ))
+  .unwrap();
+  assert_eq!(cfg.pow.auth_cookie_name, "custom_auth");
+}

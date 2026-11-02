@@ -23,6 +23,8 @@ pub async fn build(
     &pow.lookup_plan(),
   )?));
   Ok(Gateway::new(AppState {
+    challenge_header: format!("{}-challenge", cfg.web.brand_id).parse()?,
+    challenge_url_header: format!("{}-challenge-url", cfg.web.brand_id).parse()?,
     randomx_fallback_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     connections: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_connections)),
     requests: Arc::new(tokio::sync::Semaphore::new(cfg.server.max_requests)),

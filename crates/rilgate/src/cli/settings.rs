@@ -72,6 +72,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SERVER, Text, "server.readiness_timeout", "server-readiness-timeout", "RILGATE_SERVER_READINESS_TIMEOUT", None, "Dependency timeout for readiness probes"),
   spec!(SERVER, Text, "server.request_timeout", "server-request-timeout", "RILGATE_SERVER_REQUEST_TIMEOUT", None, "Time limit to receive a request and connect to the upstream"),
   spec!(SITE, Text, "site.name", "site-name", "RILGATE_SITE_NAME", None, "Site name shown on challenge pages"),
+  spec!(SITE, Text, "site.brand_id", "site-brand-id", "RILGATE_SITE_BRAND_ID", None, "Identifier for client-visible names"),
   spec!(SITE, Text, "site.url", "site-url", "RILGATE_SITE_URL", None, "Site URL linked from challenge pages"),
   spec!(SITE, Text, "site.base_path", "site-base-path", "RILGATE_SITE_BASE_PATH", None, "Path prefix of the internal namespace"),
   spec!(SITE, Switch, "site.content_security_policy.enabled", "site-content-security-policy-enabled", "RILGATE_SITE_CONTENT_SECURITY_POLICY_ENABLED", None, "Send the generated page Content Security Policy"),
@@ -408,7 +409,7 @@ mod tests {
   #[test]
   fn every_path_exists_in_the_schema() {
     let defaults = defaults_of(
-      "server:\n  client_ip_header: cf-connecting-ip\nsecurity:\n  secret: placeholder\n  auth:\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n      fallback:\n        algorithm: fast\n        difficulty: 4\n  stratum_pool: {}\n",
+      "site:\n  base_path: /.well-known/rilgate\n  i18n:\n    cookie: rilgate_lang\nserver:\n  client_ip_header: cf-connecting-ip\nsecurity:\n  secret: placeholder\n  auth:\n    cookie: rilgate_auth\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n      fallback:\n        algorithm: fast\n        difficulty: 4\n  stratum_pool: {}\n",
     )
     .unwrap();
     for spec in SPECS {

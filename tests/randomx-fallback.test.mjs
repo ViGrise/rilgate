@@ -13,7 +13,8 @@ function loadReloadAllowed(context) {
   const client = context.window.PowClient;
   const document = context.document;
   context.document = {
-    querySelector: (selector) => (selector === "#pow-bootstrap" ? { textContent: "{}" } : null),
+    querySelector: (selector) =>
+      selector === "#pow-bootstrap" ? { textContent: '{"brand_id":"rilgate"}' } : null,
   };
   vm.runInContext(runtime, context);
   client.reloadAllowed = context.window.PowClient.reloadAllowed;
@@ -38,6 +39,7 @@ for (const verification of ["gateway", "pool_share"]) {
     });
     const paths = [];
     const window = {
+      POW_BRAND_ID: "rilgate",
       location: {
         href: "https://example.test/protected",
         reload() {
@@ -143,6 +145,7 @@ test("pool_share shows connecting until a job arrives and pool only after a shar
     close() {}
   }
   const window = {
+    POW_BRAND_ID: "rilgate",
     POW_PRESENTATION_TOKEN: "presentation",
     PowClient: {
       job() {},
@@ -206,6 +209,7 @@ test("a replacement pool job keeps the hashing state", async () => {
     close() {}
   }
   const window = {
+    POW_BRAND_ID: "rilgate",
     POW_PRESENTATION_TOKEN: "presentation",
     PowClient: {
       job() {},
@@ -255,6 +259,7 @@ test("RandomX attempts keep counting when a pool job replaces the previous one",
   );
   const shown = [];
   const window = {
+    POW_BRAND_ID: "rilgate",
     PowClient: {
       t: (_key, text) => text,
       state() {},
@@ -294,6 +299,7 @@ test("a pool work_unavailable message reloads once and then shows unavailable", 
       return elements.get(id);
     };
     element("#pow-bootstrap").textContent = JSON.stringify({
+      brand_id: "rilgate",
       algorithm: "randomx",
       internal_prefix: "/gateway",
       presentation_token: "presentation",
@@ -327,7 +333,12 @@ test("a pool work_unavailable message reloads once and then shows unavailable", 
       removeEventListener() {}
       close() {}
     }
-    const window = { location, addEventListener() {}, removeEventListener() {} };
+    const window = {
+      POW_BRAND_ID: "rilgate",
+      location,
+      addEventListener() {},
+      removeEventListener() {},
+    };
     const context = vm.createContext({
       window,
       location,
@@ -438,6 +449,7 @@ async function resumePage({ closeBeforeJob = false, reloadUsed = false } = {}) {
     }
   }
   const window = {
+    POW_BRAND_ID: "rilgate",
     location: { href: "https://example.test/", reload: () => reloads++ },
     POW_PRESENTATION_TOKEN: "presentation",
     PowClient: {

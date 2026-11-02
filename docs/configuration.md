@@ -416,12 +416,12 @@ or overflow.
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
 | `server.decision_log` | `challenge`, log denied and challenged requests at info level |
 | `server.metrics_enabled`, `.readiness_timeout`, `.request_timeout` | `false`, `2s`, `30s` |
-| `site.name`, `.url`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `/.well-known/rilgate`, `css/rilgate.css` |
+| `site.name`, `.url`, `.brand_id`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `rilgate`, `/.well-known/<brand_id>`, `css/rilgate.css` |
 | `site.resources.directory`, `.seed` | none, `if_empty` |
 | `site.resources.watch.enabled`, `.debounce` | `false`, `300ms` |
 | `site.templates.cache`, `.strict`, `.recursion_limit`, `.fuel` | `true`, `true`, `64`, `50000` |
-| `site.i18n.default`, `.supported`, `.strict`, `.cookie` | `en`, `[]` (discover), `false`, `rilgate_lang` |
-| `security.auth.cookie`, `.ttl` | `rilgate_auth`, `6h` |
+| `site.i18n.default`, `.supported`, `.strict`, `.cookie` | `en`, `[]` (discover), `false`, `<brand_id>_lang` |
+| `security.auth.cookie`, `.ttl` | `<brand_id>_auth`, `6h` |
 | `pow.default_algorithm` | `fast` |
 | `pow.challenge.ttl`, `.receipt_ttl` | `1m`, `30s` |
 | `pow.rate_limit.enabled`, `.max_clients` | `true`, `4096` |
@@ -516,6 +516,17 @@ IP addresses and request paths. Algorithm and difficulty are optional policy val
 
 ## Site
 
+`site.name` is the display name on challenge pages, and `site.url` is the public
+site URL. `site.brand_id` identifies client-visible names and defaults to `rilgate`.
+It accepts 1 to 32 lowercase ASCII letters, digits or hyphens, starts with a letter,
+and cannot end with a hyphen. It names the `<brand_id>-challenge` and
+`<brand_id>-challenge-url` headers, the `<brand_id>:verified` page message, browser
+storage keys and DOM attributes. When unset, `site.base_path` resolves to
+`/.well-known/<brand_id>`, `security.auth.cookie` to `<brand_id>_auth`, and
+`site.i18n.cookie` to `<brand_id>_lang`. Explicit values for these three settings
+take precedence. `site.stylesheet` defaults to `css/rilgate.css`. Set it to rename
+the stylesheet.
+
 ### API response presentation
 
 `site.responses.format` selects `auto`, `html` or `json`. Automatic mode
@@ -526,7 +537,7 @@ notification headers, JSON body templates and iframe completion.
 
 `site.responses.challenge_status` sets the HTML challenge status (default 200).
 `site.responses.deny_status` sets the HTML and JSON denial status (default 403).
-JSON challenges always return 403 with `Rilgate-Challenge: required`.
+JSON challenges always return 403. Every challenge response carries `<brand_id>-challenge: required`.
 See [response status codes](web.md#response-status-codes) for allowed values.
 
 ### Open Graph passthrough

@@ -86,6 +86,74 @@ async fn ajax_challenge_has_a_valid_same_origin_html_page_and_signed_token() {
 }
 
 #[tokio::test]
+async fn every_challenge_response_names_a_usable_challenge_url() {
+  let router = app::router(common::config()).await.unwrap();
+  for (method, mode, status, content_type) in [
+    (
+      "GET",
+      Some("navigate"),
+      StatusCode::OK,
+      "text/html; charset=utf-8",
+    ),
+    ("GET", None, StatusCode::OK, "text/html; charset=utf-8"),
+    (
+      "GET",
+      Some("no-cors"),
+      StatusCode::OK,
+      "text/html; charset=utf-8",
+    ),
+    (
+      "GET",
+      Some("cors"),
+      StatusCode::OK,
+      "text/html; charset=utf-8",
+    ),
+    (
+      "POST",
+      None,
+      StatusCode::UNAUTHORIZED,
+      "text/plain; charset=utf-8",
+    ),
+  ] {
+    let mut request = Request::builder()
+      .method(method)
+      .uri("/protected/app.js")
+      .header("host", "example.test");
+    if let Some(mode) = mode {
+      request = request.header("sec-fetch-mode", mode);
+    }
+    let response = router
+      .clone()
+      .oneshot(request.body(Body::empty()).unwrap())
+      .await
+      .unwrap();
+    assert_eq!(response.status(), status, "{method} {mode:?}");
+    assert_eq!(response.headers()["content-type"], content_type);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    assert_eq!(response.headers()["rilgate-challenge"], "required");
+    let url = response.headers()["rilgate-challenge-url"]
+      .to_str()
+      .unwrap()
+      .to_string();
+    let page = router
+      .clone()
+      .oneshot(
+        Request::builder()
+          .uri(&url)
+          .header("host", "example.test")
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(page.status(), StatusCode::OK, "{method} {mode:?}");
+    let html =
+      String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
+    assert!(html.contains("\"embedded\":true"));
+  }
+}
+
+#[tokio::test]
 async fn operator_templates_can_use_an_application_specific_json_shape() {
   let directory = tempfile::tempdir().unwrap();
   fs::create_dir_all(directory.path().join("templates/pages")).unwrap();
@@ -383,5 +451,53 @@ async fn a_browser_that_opens_an_api_url_returns_to_the_application() {
         assert_eq!(response.headers()["content-type"], "application/json");
       }
     }
+  }
+}
+
+#[tokio::test]
+async fn brand_id_names_the_headers_namespace_and_page_message() {
+  for (setting, prefix) in [
+    ("", "/.well-known/vigrise"),
+    ("base_path: /.well-known/custom,", "/.well-known/custom"),
+  ] {
+    let configured = rilgate_config::loader::parse(&format!(
+      "server: {{upstream: {{url: 'http://127.0.0.1:3000'}}}}\nsecurity: {{secret: '0123456789abcdef0123456789abcdef'}}\nsite: {{{setting} brand_id: vigrise}}"
+    )).unwrap().resolve().unwrap();
+    let mut cfg = common::config();
+    Arc::get_mut(&mut cfg).unwrap().web = configured.web.clone();
+    let router = app::router(cfg).await.unwrap();
+    let response = router
+      .clone()
+      .oneshot(
+        Request::builder()
+          .uri("/protected/data")
+          .header("host", "example.test")
+          .header("accept", "application/json")
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(response.headers()["vigrise-challenge"], "required");
+    assert!(!response.headers().contains_key("rilgate-challenge"));
+    let url = response.headers()["vigrise-challenge-url"]
+      .to_str()
+      .unwrap()
+      .to_owned();
+    assert!(url.starts_with(&format!("{prefix}/")));
+    let page = router
+      .oneshot(
+        Request::builder()
+          .uri(url)
+          .header("host", "example.test")
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let html =
+      String::from_utf8(to_bytes(page.into_body(), 100000).await.unwrap().to_vec()).unwrap();
+    assert!(html.contains("\"brand_id\":\"vigrise\""));
   }
 }

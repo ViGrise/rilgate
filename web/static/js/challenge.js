@@ -27,7 +27,7 @@ async function main() {
   }
   state("success");
   if (window.POW_EMBEDDED) {
-    const message = { type: "rilgate:verified" };
+    const message = { type: `${window.POW_BRAND_ID}:verified` };
     if (window.parent !== window) window.parent.postMessage(message, location.origin);
     if (window.opener) window.opener.postMessage(message, location.origin);
   } else {

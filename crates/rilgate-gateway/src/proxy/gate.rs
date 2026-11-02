@@ -269,14 +269,16 @@ pub async fn gate_with_client(
     return Ok(None);
   }
 
-  if json || method == Method::GET || method == Method::HEAD {
-    let presentation = state
-      .pow
-      .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &effective)
-      .map_err(ApiError::Internal)?;
+  let presentation = state
+    .pow
+    .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &effective)
+    .map_err(ApiError::Internal)?;
+  let challenge_url: HeaderValue =
+    crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token)
+      .parse()
+      .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?;
 
-    let challenge_url =
-      crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token);
+  if json || method == Method::GET || method == Method::HEAD {
     let refresh = decision.algorithm == Some(PowAlgorithm::Refresh);
     let open_graph = if !json && !refresh && method == Method::GET {
       state
@@ -310,17 +312,7 @@ pub async fn gate_with_client(
       json,
       policy,
     );
-    if json {
-      out
-        .headers_mut()
-        .insert("rilgate-challenge", HeaderValue::from_static("required"));
-      out.headers_mut().insert(
-        "rilgate-challenge-url",
-        challenge_url
-          .parse()
-          .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?,
-      );
-    }
+    insert_challenge_notification(state, &mut out, challenge_url);
     if decision.algorithm == Some(PowAlgorithm::RandomX) {
       use std::sync::atomic::Ordering;
       let previous = state
@@ -340,10 +332,32 @@ pub async fn gate_with_client(
   }
 
   log(PolicyAction::Challenge);
-  Ok(Some(response(
+  let mut out = response(
     StatusCode::UNAUTHORIZED,
-    "Proof of work is required before sending this request.",
-  )))
+    if method == Method::HEAD {
+      ""
+    } else {
+      "Proof of work is required before sending this request."
+    },
+  );
+  out.headers_mut().insert(
+    CONTENT_TYPE,
+    HeaderValue::from_static("text/plain; charset=utf-8"),
+  );
+  out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
+  insert_challenge_notification(state, &mut out, challenge_url);
+  Ok(Some(out))
+}
+
+/// Marks a challenge response so that any client, whatever the response body, can detect the
+/// challenge and open its solver.
+fn insert_challenge_notification(state: &AppState, out: &mut Response, challenge_url: HeaderValue) {
+  let headers = out.headers_mut();
+  headers.insert(
+    state.challenge_header.clone(),
+    HeaderValue::from_static("required"),
+  );
+  headers.insert(state.challenge_url_header.clone(), challenge_url);
 }
 
 pub(crate) fn page_response(

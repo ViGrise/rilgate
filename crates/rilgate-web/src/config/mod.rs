@@ -12,6 +12,7 @@ pub struct WebConfig {
   #[serde(skip)]
   pub development: bool,
   pub name: String,
+  pub brand_id: String,
   pub website_url: String,
   pub base_path: String,
   pub stylesheet_path: String,
@@ -29,6 +30,7 @@ impl Default for WebConfig {
       content_security_policy: crate::csp::ContentSecurityPolicy::default(),
       development: false,
       name: "Rilgate".into(),
+      brand_id: "rilgate".into(),
       website_url: "https://rilgate.com".into(),
       base_path: "/.well-known/rilgate".into(),
       stylesheet_path: "css/rilgate.css".into(),
