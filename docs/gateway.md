@@ -11,7 +11,8 @@ site:
   base_path: "/.well-known/rilgate"
 ```
 
-With the default prefix:
+The default prefix derives from [`site.brand_id`](configuration.md#site), giving
+these paths for `rilgate`:
 
 ```text
 /.well-known/rilgate/api/health
@@ -116,7 +117,8 @@ The challenge page calls only the reserved gateway namespace:
 /.well-known/rilgate/static/...
 ```
 
-After the proof succeeds:
+After the proof succeeds, the gateway sets the authentication cookie. Its name
+defaults to `<brand_id>_auth` from [`site.brand_id`](configuration.md#site):
 
 ```text
 Set-Cookie: rilgate_auth=...
@@ -136,9 +138,9 @@ URLs and the browser stays at the originally requested path.
 
 For a `CHALLENGE` policy decision, unauthenticated HTML `GET` and `HEAD`
 requests receive the challenge page in-place. Other methods return a plain `401`
-when HTML is selected. JSON responses use `403` and identify the challenge with
-notification headers and a configurable body. Automatic selection considers
-`Accept`, JSON request `Content-Type`, `X-Requested-With`, and configured API path prefixes.
+when HTML is selected. JSON responses use `403` and a configurable body. Every
+challenge response identifies the challenge with notification headers. Automatic
+selection considers `Accept`, JSON request `Content-Type`, `X-Requested-With`, and configured API path prefixes.
 See [AJAX and API integration](api-integration.md) for JSON templates and the same-origin iframe
 completion protocol. Intercepted bodies are never buffered for automatic replay.
 

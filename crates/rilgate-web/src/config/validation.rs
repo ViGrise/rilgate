@@ -16,6 +16,16 @@ impl WebConfig {
       !self.name.trim().is_empty() && !self.name.chars().any(char::is_control),
       "site.name must contain visible text without control characters"
     );
+    ensure!(
+      (1..=32).contains(&self.brand_id.len())
+        && self.brand_id.as_bytes()[0].is_ascii_lowercase()
+        && self
+          .brand_id
+          .bytes()
+          .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !self.brand_id.ends_with('-'),
+      "site.brand_id: expected 1 to 32 lowercase letters, digits or hyphens, starting with a letter and not ending with a hyphen"
+    );
     let url =
       url::Url::parse(&self.website_url).context("site.url: expected an HTTP or HTTPS URL")?;
     ensure!(

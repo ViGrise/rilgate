@@ -51,7 +51,8 @@ flowchart TD
 Without a valid access cookie, protected GET and HEAD requests receive challenge HTML at
 the requested URL. Other protected methods return `401`. The client can retry
 after authentication. Internal APIs and static resources live under `site.base_path`, which
-defaults to `/.well-known/rilgate`.
+defaults to `/.well-known/<brand_id>` from [`site.brand_id`](docs/configuration.md#site),
+with `rilgate` as the default identifier.
 
 HashWX provides local CPU work with generated WASM and an interpreted verifier.
 It needs no pool. Its difficulty defaults target about 2 seconds on a mid-range phone.

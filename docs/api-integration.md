@@ -36,12 +36,17 @@ response format. API prefixes cover clients that cannot set either header.
 
 ## Notification contract
 
-A JSON challenge returns HTTP 403, `Content-Type: application/json`, `Cache-Control: no-store`, and these headers:
+Every challenge response carries these headers, whatever its format and status:
 
 ```text
 Rilgate-Challenge: required
 Rilgate-Challenge-Url: /.well-known/rilgate/challenge?presentation_token=...
 ```
+
+The `Rilgate` part of each name follows [`site.brand_id`](configuration.md#site).
+An HTML challenge page keeps `site.responses.challenge_status`, and other methods in HTML mode keep `401`.
+A client, script or service worker therefore identifies a challenge by the header.
+A JSON challenge returns HTTP 403, `Content-Type: application/json` and `Cache-Control: no-store`.
 
 The bundled body includes `code: proof_required`, a localized `message`, `challenge_url`, signed
 challenge presentation metadata and proof API endpoints. `challenge.token` is a presentation
@@ -113,6 +118,7 @@ After the proof is verified and the authentication cookie is set, this page send
 { type: "rilgate:verified" }
 ```
 
+The `rilgate` part of the type follows [`site.brand_id`](configuration.md#site).
 It uses `postMessage` with its own origin as `targetOrigin`. It targets its parent iframe
 and, when present, its popup opener. The embedded page displays success without a reload
 or navigation of the original application.

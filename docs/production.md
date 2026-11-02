@@ -70,8 +70,10 @@ how Rilgate resolves the client address and what the upstream receives.
 
 ## Web frontends and caches
 
-An asset request without a valid `rilgate_auth` cookie can receive HTML at the asset
-URL. This can occur with bots, link previews, prefetches or an expired cookie.
+An asset request without a valid authentication cookie can receive HTML at the asset
+URL. The cookie name defaults to `<brand_id>_auth` from
+[`site.brand_id`](configuration.md#site). This can occur with bots, link previews,
+prefetches or an expired cookie.
 Module scripts then fail with a strict MIME type error, and the app loses client-side
 routing. The browser receives the cookie after a successful challenge.
 
@@ -99,7 +101,8 @@ HTML challenges default to 200 and carry `Cache-Control: no-store` and
 A CDN rule that overrides origin cache headers can store HTML under an asset URL
 and serve it to visitors who passed the challenge. Cloudflare does not use
 `Vary: Cookie` in its cache key. Make the rule follow origin cache headers, or
-bypass the cache when `rilgate_auth` is absent. Purge affected URLs if HTML was cached.
+bypass the cache when the authentication cookie is absent. Purge affected URLs if
+HTML was cached.
 
 Most caches store a 403 response only when a rule tells them to. Behind such caches,
 set `site.responses.challenge_status: 403`. The default remains 200. See

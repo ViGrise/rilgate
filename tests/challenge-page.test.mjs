@@ -29,6 +29,7 @@ function page(fetch, failPost = false, translations = null, embedded = false, ti
   };
   element("#pow-i18n").textContent = JSON.stringify({ ...english, ...translations });
   const bootstrap = {
+    brand_id: "vigrise",
     internal_prefix: "/gateway",
     algorithm: "fast",
     presentation_token: "presentation",
@@ -241,7 +242,7 @@ test("embedded completion notifies only the same-origin parent without reloading
   state.workers[0].onmessage({ data: { type: "solved", nonce: "153" } });
   await until(() => state.messages.length === 1);
   assert.deepEqual(JSON.parse(JSON.stringify(state.messages)), [
-    { message: { type: "rilgate:verified" }, origin: "https://example.test" },
+    { message: { type: "vigrise:verified" }, origin: "https://example.test" },
   ]);
   assert.equal(state.reloads(), 0);
 });

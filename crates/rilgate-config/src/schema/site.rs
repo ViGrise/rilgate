@@ -7,7 +7,9 @@ use std::path::PathBuf;
 pub struct Site {
   pub name: String,
   pub url: String,
-  pub base_path: String,
+  pub brand_id: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub base_path: Option<String>,
   pub stylesheet: String,
   pub content_security_policy: rilgate_web::csp::ContentSecurityPolicy,
   pub resources: Resources,
@@ -21,7 +23,8 @@ impl Default for Site {
     Self {
       name: "Rilgate".into(),
       url: "https://rilgate.com".into(),
-      base_path: "/.well-known/rilgate".into(),
+      brand_id: "rilgate".into(),
+      base_path: None,
       stylesheet: "css/rilgate.css".into(),
       content_security_policy: Default::default(),
       resources: Resources::default(),
@@ -52,7 +55,8 @@ pub struct I18n {
   pub default: String,
   pub supported: Vec<String>,
   pub strict: bool,
-  pub cookie: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub cookie: Option<String>,
 }
 impl Default for I18n {
   fn default() -> Self {
@@ -60,7 +64,7 @@ impl Default for I18n {
       default: "en".into(),
       supported: vec![],
       strict: false,
-      cookie: "rilgate_lang".into(),
+      cookie: None,
     }
   }
 }

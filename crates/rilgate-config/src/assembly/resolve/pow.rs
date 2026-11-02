@@ -142,7 +142,12 @@ impl Document {
         .whole_seconds("pow.algorithms.randomx.challenge_ttl")?,
       auth_ttl_seconds: self.security.auth.ttl.whole_seconds("security.auth.ttl")?,
       auth_binding: self.security.auth.bind.clone(),
-      auth_cookie_name: self.security.auth.cookie.clone(),
+      auth_cookie_name: self
+        .security
+        .auth
+        .cookie
+        .clone()
+        .unwrap_or_else(|| format!("{}_auth", self.site.brand_id)),
       nonce_offset: randomx.nonce_offset,
       verifier_queue_capacity: randomx.verifier_queue,
       randomx_verify: verify,

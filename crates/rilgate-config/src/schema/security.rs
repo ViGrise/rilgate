@@ -25,14 +25,15 @@ pub struct Keys {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Auth {
-  pub cookie: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub cookie: Option<String>,
   pub ttl: Time,
   pub bind: AuthBinding,
 }
 impl Default for Auth {
   fn default() -> Self {
     Self {
-      cookie: "rilgate_auth".into(),
+      cookie: None,
       ttl: Time::seconds(21_600),
       bind: AuthBinding::default(),
     }

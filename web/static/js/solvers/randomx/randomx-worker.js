@@ -17,6 +17,7 @@ let pending = null;
 let pumping = false;
 let generation = 0;
 let storeCache = true;
+let brandId;
 
 // Linear memory offsets for the reusable hash buffers. Browsers cap wasm
 // memory, so the search loop must not allocate per candidate.
@@ -34,6 +35,7 @@ self.onmessage = (event) => {
 
   if (message.type === "solve") {
     storeCache = message.job.storeCache ?? true;
+    brandId = message.job.brandId;
     pending = {
       ...message.job,
       requestId: message.requestId,
@@ -399,7 +401,7 @@ function checkDeadline(job) {
 
 function openCache() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open("rilgate-randomx", 1);
+    const request = indexedDB.open(`${brandId}-randomx`, 1);
     request.onupgradeneeded = () => request.result.createObjectStore("caches");
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

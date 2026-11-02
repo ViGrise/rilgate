@@ -21,8 +21,9 @@ the binary. The server remains in `crates/rilgate-gateway` and delegates present
 `rilgate-web` crate.
 
 Configure `site.name`, `site.url`, `site.base_path`, and `site.stylesheet` to customize public
-branding and URLs. `security.auth.cookie` and `site.i18n.cookie` control cookie names. Templates receive
-only public `rilgate`, `page`, and `challenge` context, plus the negotiated
+branding and URLs. [`site.brand_id`](configuration.md#site) names client-visible
+identifiers and supplies the defaults for `site.base_path`, `security.auth.cookie` and
+`site.i18n.cookie`. Templates receive only public `rilgate`, `page`, and `challenge` context, plus the negotiated
 `locale` and selected client translations. Signing keys and pool credentials are
 excluded.
 
@@ -358,8 +359,10 @@ render the metadata. `rilgate web diff` shows the embedded layout change.
 ## Response status codes
 
 `site.responses.challenge_status` sets the HTML challenge status. It defaults to
-200 and accepts 200, 401, 403, 429 or 503. JSON challenges always return 403 with
-`Rilgate-Challenge: required` so API clients can identify the challenge.
+200 and accepts 200, 401, 403, 429 or 503. JSON challenges always return 403.
+Every challenge response, whatever its status, carries `Rilgate-Challenge: required`,
+so clients identify a challenge by that header, whose name follows
+[`site.brand_id`](configuration.md#site).
 
 A challenge page answers at the URL of the requested resource and carries
 `Cache-Control: no-store`. Some caches ignore that header, for example a CDN rule

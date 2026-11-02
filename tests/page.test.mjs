@@ -21,6 +21,15 @@ test("page controls open their dialog and reload on retry", async () => {
   const context = vm.createContext({
     window: {},
     document: {
+      documentElement: {
+        attributes: new Set(),
+        hasAttribute(name) {
+          return this.attributes.has(name);
+        },
+        setAttribute(name) {
+          this.attributes.add(name);
+        },
+      },
       querySelectorAll: (selector) => (selector === "[data-dialog]" ? [legal] : [retry]),
       getElementById: (id) =>
         id === "privacy"
@@ -69,6 +78,15 @@ test("legal dialogs open without showModal", async () => {
   const context = vm.createContext({
     window: {},
     document: {
+      documentElement: {
+        attributes: new Set(),
+        hasAttribute(name) {
+          return this.attributes.has(name);
+        },
+        setAttribute(name) {
+          this.attributes.add(name);
+        },
+      },
       querySelectorAll: (selector) => (selector === "[data-dialog]" ? [legal] : []),
       getElementById: () => dialog,
     },

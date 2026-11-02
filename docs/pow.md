@@ -348,9 +348,10 @@ for compatibility with older gateways. Pool mode uses its WebSocket receipt and
 
 ## Browser RandomX adapter
 
-The gateway-owned solver URL is also scoped below `site.base_path`.
+The gateway-owned solver URL is also scoped below `site.base_path`, whose default
+derives from [`site.brand_id`](configuration.md#site).
 
-Default:
+With the default brand identifier:
 
 ```text
 /.well-known/rilgate/static/js/solvers/randomx/solver.js
@@ -487,8 +488,9 @@ A different seed shows the setup state with the notice "new seed, preparing agai
 and keeps the attempt count until hashing resumes. Set it to `false` to hide the line.
 
 Each worker owns its cache. IndexedDB retains
-one seed cache in `rilgate-randomx` / `caches`, with a SHA-256 digest checked before
-import. Storage failures are ignored and workers build the cache directly. Memory use
+one seed cache in `<brand_id>-randomx` / `caches`, with the name derived from
+[`site.brand_id`](configuration.md#site) and a SHA-256 digest checked before import.
+Storage failures are ignored and workers build the cache directly. Memory use
 is up to `N x 256 MiB` plus scratchpads and runtime memory. The browser requires
 Worker, WebAssembly and BigInt. SIMD is optional. See the
 [development browser checks](development.md#browser-checks) for measurement overrides.

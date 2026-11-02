@@ -1,5 +1,5 @@
 (() => {
-  const reloadKey = "rilgate-work-unavailable-reload";
+  const reloadKey = `${window.POW_BRAND_ID}-work-unavailable-reload`;
   const { t, state, stats, verify, requestChallenge, progressEl, once, reloadAllowed } =
     window.PowClient;
   function loadRandomXSolver() {
@@ -119,7 +119,7 @@
     const options = config.algorithms.find((entry) => entry.id === "randomx")?.browser;
     window.PowClient.setJobDetails(options?.job_details);
     const solver = {
-      solve: (job) => module.solve(job, options),
+      solve: (job) => module.solve(job, { ...options, brandId: window.POW_BRAND_ID }),
       cancel: () => module.cancel?.(),
     };
     const removePagehide = once(window, "pagehide", () => solver.cancel?.());

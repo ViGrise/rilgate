@@ -1,6 +1,7 @@
 (function () {
-  if (window.RILGATE_PAGE_INITIALIZED) return;
-  window.RILGATE_PAGE_INITIALIZED = true;
+  if (document.documentElement.hasAttribute("data-page-initialized")) return;
+  document.documentElement.setAttribute("data-page-initialized", "");
+  var handledForms = new WeakSet();
   var buttons = document.querySelectorAll("[data-dialog]");
   var i;
   var j;
@@ -14,8 +15,8 @@
       }
       dialog.setAttribute("open", "");
       var form = dialog.querySelector("form");
-      if (form && !form.rilgateClosesDialog) {
-        form.rilgateClosesDialog = true;
+      if (form && !handledForms.has(form)) {
+        handledForms.add(form);
         form.addEventListener("submit", function (event) {
           event.preventDefault();
           dialog.removeAttribute("open");

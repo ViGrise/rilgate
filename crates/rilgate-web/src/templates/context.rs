@@ -5,6 +5,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicRilgateInfo {
   pub name: String,
+  pub brand_id: String,
   pub version: &'static str,
   pub website_url: String,
   pub docs_url: String,
@@ -17,6 +18,7 @@ impl PublicRilgateInfo {
     let static_url = format!("{}/static/v-{asset_revision}", config.base_path);
     Self {
       name: config.name.clone(),
+      brand_id: config.brand_id.clone(),
       version: env!("CARGO_PKG_VERSION"),
       website_url: config.website_url.clone(),
       docs_url: config.website_url.clone(),

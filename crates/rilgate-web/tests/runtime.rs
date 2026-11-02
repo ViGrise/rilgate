@@ -392,6 +392,7 @@ fn stylesheet_and_public_branding_can_remove_product_names_from_rendered_pages()
   let root = tempfile::tempdir().unwrap();
   let mut config = config(root.path());
   config.name = "Example Shield".into();
+  config.brand_id = "shield".into();
   config.website_url = "https://example.test".into();
   config.base_path = "/.well-known/shield".into();
   config.stylesheet_path = "css/shield.css".into();

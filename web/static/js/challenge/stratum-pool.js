@@ -79,8 +79,8 @@
                   state("verifying");
                   await exchange(message.receipt);
                   try {
-                    sessionStorage.removeItem("rilgate-work-unavailable-reload");
-                    sessionStorage.removeItem("rilgate-pool-resume-reload");
+                    sessionStorage.removeItem(`${window.POW_BRAND_ID}-work-unavailable-reload`);
+                    sessionStorage.removeItem(`${window.POW_BRAND_ID}-pool-resume-reload`);
                   } catch (_) {
                     // Storage can be unavailable; the one-time reload is skipped then.
                   }
@@ -134,7 +134,7 @@
         }
         if (!receivedJob) failuresWithoutJob += 1;
         if (failuresWithoutJob >= 5) {
-          if (reloadAllowed("rilgate-pool-resume-reload")) {
+          if (reloadAllowed(`${window.POW_BRAND_ID}-pool-resume-reload`)) {
             throw window.PowClient.reloadPage();
           }
           throw new Error("RandomX pool session could not resume");
