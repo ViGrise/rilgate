@@ -11,7 +11,7 @@ the token before dispatch and validates lifetime before and after verification.
 
 Use `pow.algorithms.hashwx` as described in
 [configuration](../../docs/configuration.md#hashwx).
-The difficulty defaults remain placeholders until a mid-range phone is measured.
+The difficulty defaults target about 2 seconds at score 0 on a mid-range phone.
 The browser solver and raw ABI share the specification implementation in
 `hashwx-core`. See the [license review](../../docs/proposals/hashwx-license-review.md).
 

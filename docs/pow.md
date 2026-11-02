@@ -39,7 +39,7 @@ The canonical YAML algorithm name is `fast`.
 ```yaml
 challenge:
   algorithm: hashwx
-  difficulty: 50000
+  difficulty: 610000
 ```
 
 HashWX generates a hash function from a seed. Each function has 32 programs
@@ -72,10 +72,8 @@ needs no BigInt or SIMD. A failure to compile a generated module retains the
 WASM interpreter. A worker policy that denies all WASM blocks both engines.
 See [browser requirements](web.md#hashwx).
 
-The shipped difficulty defaults are placeholders. The iPhone 15 Pro Max
-measurement is from a high-end device. A mid-range phone measurement is still
-required before the defaults can target 1 to 3 seconds. See
-[measurements](performance.md#hashwx-measurements-2026-10-23) and the
+The difficulty defaults target about 2 seconds at score 0 on a mid-range phone.
+See [measurements](performance.md#hashwx-measurements) and the
 [complete example](../config/examples/hashwx.yml).
 
 HashWX tokens use version 1 with an explicit `hashwx` algorithm tag. Older

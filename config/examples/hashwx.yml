@@ -8,10 +8,10 @@ pow:
   algorithms:
     hashwx:
       nonces_per_seed: 65536
-      # Difficulty defaults stay provisional until a mid-range phone is measured.
+      # Defaults target about 2 seconds on a mid-range phone.
       difficulty:
-        base: 50000
+        base: 610000
         score_step: 10
-        max: 5000000
+        max: 2440000
 policy:
   default_action: challenge

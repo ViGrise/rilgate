@@ -402,9 +402,9 @@ pub struct HashWxDifficulty {
 impl Default for HashWxDifficulty {
   fn default() -> Self {
     Self {
-      base: 50000,
+      base: 610000,
       score_step: 10,
-      max: 5000000,
+      max: 2440000,
     }
   }
 }

@@ -88,5 +88,5 @@ Checks completed on 2026-10-24:
   advisories are `RUSTSEC-2024-0388` (`derivative`, issue 15) and
   `RUSTSEC-2024-0449` (`unsafe-libyaml`, issue 16). No ignore was added.
 
-The mid-range phone measurement remains open. The iPhone 15 Pro Max is a
-high-end device, so the difficulty defaults remain placeholders.
+The Galaxy A17 measurement in
+[proposal section 8](browser-pow-algorithms.md#8-measurement-before-defaults) sets the difficulty defaults.
