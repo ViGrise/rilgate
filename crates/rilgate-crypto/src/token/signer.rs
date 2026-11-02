@@ -8,6 +8,10 @@ use std::collections::BTreeMap;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// The longest signed token that verification accepts. Signing refuses a longer token, so every
+/// issued token can be verified.
+pub const MAX_TOKEN_BYTES: usize = 16_384;
+
 /// A keyed, purpose-bound HMAC state that can be shared across requests.
 #[derive(Clone)]
 pub struct TokenSigner {
@@ -55,11 +59,18 @@ impl TokenSigner {
     let signature = mac.finalize().into_bytes();
     token.push('.');
     URL_SAFE_NO_PAD.encode_string(signature, &mut token);
+    anyhow::ensure!(
+      token.len() <= MAX_TOKEN_BYTES,
+      "Signed token exceeds maximum size"
+    );
     Ok(token)
   }
 
   pub fn verify_json<T: DeserializeOwned>(&self, token: &str) -> Result<T> {
-    anyhow::ensure!(token.len() <= 16_384, "Signed token exceeds maximum size");
+    anyhow::ensure!(
+      token.len() <= MAX_TOKEN_BYTES,
+      "Signed token exceeds maximum size"
+    );
     let (signed, signature_b64) = token
       .rsplit_once('.')
       .ok_or_else(|| anyhow!("Malformed signed token"))?;

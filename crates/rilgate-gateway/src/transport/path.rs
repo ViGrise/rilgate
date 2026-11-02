@@ -1,6 +1,24 @@
+/// The longest request path that the gateway accepts. A presentation token carries the path,
+/// so this bound keeps every token and proof API request within their size limits.
+pub const MAX_REQUEST_PATH_BYTES: usize = 8 * 1024;
+
 /// The request path that policy conditions match: percent-encoded unreserved
 /// characters and `%2F` decoded, and runs of `/` collapsed to one.
 pub(crate) fn policy_path(raw: &str) -> Result<String, &'static str> {
+  let decoded = decode_unreserved(raw);
+  // A decoded byte can complete a new escape, as in `%4%44`. A path that changes again on a
+  // second decode has two readings, so policy and an upstream that decodes again could differ.
+  if decoded
+    .split('/')
+    .any(|segment| matches!(segment.split(';').next(), Some("." | "..")))
+    || decode_unreserved(&decoded) != decoded
+  {
+    return Err("Request path must not require URL normalization");
+  }
+  Ok(decoded)
+}
+
+fn decode_unreserved(raw: &str) -> String {
   let bytes = raw.as_bytes();
   let mut decoded = Vec::with_capacity(bytes.len());
   let mut index = 0;
@@ -24,14 +42,7 @@ pub(crate) fn policy_path(raw: &str) -> Result<String, &'static str> {
     }
   }
   // Only ASCII bytes are rewritten, so the result stays valid UTF-8.
-  let decoded = String::from_utf8(decoded).expect("ASCII rewrites keep UTF-8 valid");
-  if decoded
-    .split('/')
-    .any(|segment| matches!(segment.split(';').next(), Some("." | "..")))
-  {
-    return Err("Request path must not require URL normalization");
-  }
-  Ok(decoded)
+  String::from_utf8(decoded).expect("ASCII rewrites keep UTF-8 valid")
 }
 
 #[cfg(test)]
@@ -43,7 +54,14 @@ mod tests {
     assert_eq!(policy_path("//admin//panel").unwrap(), "/admin/panel");
     assert_eq!(policy_path("/%61dmin%2Fpanel").unwrap(), "/admin/panel");
     assert_eq!(policy_path("/a%20b").unwrap(), "/a%20b");
-    for rejected in ["/x/..;/admin", "/a/%2e%2e/b", "/a/.;x/b"] {
+    assert_eq!(policy_path("/%2541").unwrap(), "/%2541");
+    for rejected in [
+      "/x/..;/admin",
+      "/a/%2e%2e/b",
+      "/a/.;x/b",
+      "/%4%44min",
+      "/a}.%44F/}.%4%44",
+    ] {
       assert_eq!(
         policy_path(rejected),
         Err("Request path must not require URL normalization"),

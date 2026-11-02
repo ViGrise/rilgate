@@ -154,6 +154,59 @@ async fn every_challenge_response_names_a_usable_challenge_url() {
 }
 
 #[tokio::test]
+async fn the_longest_accepted_path_gets_a_solvable_challenge_and_a_longer_path_gets_414() {
+  use rilgate_gateway::transport::path::MAX_REQUEST_PATH_BYTES;
+  let router = app::router(common::config()).await.unwrap();
+  let prefix = "/protected/";
+  let longest = format!(
+    "{prefix}{}",
+    "a".repeat(MAX_REQUEST_PATH_BYTES - prefix.len())
+  );
+  let response = router
+    .clone()
+    .oneshot(
+      Request::builder()
+        .uri(&longest)
+        .header("host", "example.test")
+        .header("accept", "application/json")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::FORBIDDEN);
+  let body: Value =
+    serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+  let work = router
+    .clone()
+    .oneshot(
+      Request::builder()
+        .method("POST")
+        .uri(body["endpoints"]["challenge"].as_str().unwrap())
+        .header("host", "example.test")
+        .header("content-type", "application/json")
+        .body(Body::from(
+          serde_json::json!({"presentation_token": body["challenge"]["token"]}).to_string(),
+        ))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(work.status(), StatusCode::OK);
+  let response = router
+    .oneshot(
+      Request::builder()
+        .uri(format!("{longest}a"))
+        .header("host", "example.test")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::URI_TOO_LONG);
+}
+
+#[tokio::test]
 async fn operator_templates_can_use_an_application_specific_json_shape() {
   let directory = tempfile::tempdir().unwrap();
   fs::create_dir_all(directory.path().join("templates/pages")).unwrap();
