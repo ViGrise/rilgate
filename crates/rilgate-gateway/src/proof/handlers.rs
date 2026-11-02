@@ -134,7 +134,7 @@ fn exchange_cookie(
   crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)
     .map_err(ApiError::Internal)
 }
-fn refresh_token(uri: &Uri) -> Option<String> {
+pub(crate) fn refresh_token(uri: &Uri) -> Option<String> {
   url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
     .find(|(key, _)| key == "presentation_token")
     .map(|(_, value)| value.into_owned())
@@ -168,9 +168,10 @@ pub fn refresh(
   binding: &BindingInput<'_>,
   head: bool,
 ) -> Result<Response, ApiError> {
-  let token = refresh_token(uri)
-    .ok_or_else(|| ApiError::InvalidRequest("Missing or oversized presentation_token".into()))?;
   let host = request_host(headers, uri);
+  let Some(token) = refresh_token(uri) else {
+    return Ok(restart_refresh(state, headers, None, &host));
+  };
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .unwrap_or_default()
@@ -184,8 +185,44 @@ pub fn refresh(
       now,
       cookie_value(headers, &state.cfg.pow.auth_cookie_name),
     )
-    .map_err(ApiError::proof)?
+    .map_err(ApiError::proof)
   {
+    Err(ApiError::Unauthorized(_)) => Ok(restart_refresh(state, headers, Some(&token), &host)),
+    Err(error) => Err(error),
+    Ok(redemption) => refresh_redemption(
+      state, headers, uri, binding, head, &token, &host, redemption,
+    ),
+  }
+}
+
+/// Sends a browser that opened a refresh URL it cannot redeem back to the protected page, where
+/// the gateway serves a new challenge. Browsers reach this URL only by navigation.
+fn restart_refresh(
+  state: &AppState,
+  headers: &HeaderMap,
+  token: Option<&str>,
+  host: &str,
+) -> Response {
+  let path = token
+    .and_then(|token| state.pow.refresh_return_path(token, host))
+    .unwrap_or_else(|| {
+      crate::transport::context::navigation_return_path(headers, host, &state.cfg.web.base_path)
+    });
+  crate::transport::response::see_other(&path)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn refresh_redemption(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  binding: &BindingInput<'_>,
+  head: bool,
+  token: &str,
+  host: &str,
+  redemption: RefreshRedemption,
+) -> Result<Response, ApiError> {
+  match redemption {
     RefreshRedemption::Granted {
       auth_token,
       path,
@@ -201,7 +238,7 @@ pub fn refresh(
         &state.pow,
         &state.cfg,
         &auth_token,
-        &host,
+        host,
         binding,
       )
       .map_err(ApiError::Internal)?;
@@ -215,7 +252,7 @@ pub fn refresh(
     }
     RefreshRedemption::Wait { seconds } => {
       let (html, locale, policy) =
-        crate::web::pages::render_refresh_page(state, &token, seconds, headers, uri);
+        crate::web::pages::render_refresh_page(state, token, seconds, headers, uri);
       Ok(crate::proxy::gate::page_response(
         state.cfg.web.responses.challenge_status,
         html,

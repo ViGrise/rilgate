@@ -42,6 +42,14 @@ Public listeners return 404 for them. Operations listeners return 404 for every 
 route. With the default empty `server.operations.listen` list, operational routes are disabled and are
 served nowhere. Metrics still need `server.metrics_enabled: true`.
 
+A browser that opens a public API URL as a page receives `303 See Other` to the same-host
+page in its `Referer`, or to `/`. The application page then shows a challenge when it needs
+one. Rilgate treats a GET or HEAD request as a page navigation when it has
+`Sec-Fetch-Mode: navigate`, or when it has no `Sec-Fetch-Mode` and its `Accept` header
+lists `text/html`. Scripts that call the APIs with `fetch` or `XMLHttpRequest` receive the
+JSON responses. `/api/refresh` returns to the protected page in its token. See
+[the refresh algorithm](pow.md#refresh---delay-without-javascript).
+
 A change to `site.base_path` moves the APIs and assets. The prefix itself has no index page
 and returns `404`.
 
