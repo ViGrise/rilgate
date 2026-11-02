@@ -99,6 +99,7 @@ services:
     image: ghcr.io/vigrise/rilgate:latest
     restart: unless-stopped
     environment:
+      RILGATE_SECURITY_SECRET: "${RILGATE_SECURITY_SECRET:?Set RILGATE_SECURITY_SECRET}"
       RILGATE_SERVER_UPSTREAM_URL: "http://host.docker.internal:3000"
     ports:
       - "8080:8080"
@@ -114,6 +115,7 @@ services:
 ```
 
 ```bash
+echo "RILGATE_SECURITY_SECRET=$(openssl rand -hex 32)" > .env
 docker compose up -d
 ```
 
@@ -170,8 +172,7 @@ this repository track the source:
 
 ## Project status
 
-Rilgate is experimental. Fast, HashWX, refresh and RandomX are implemented. GhostRider and BLAKE3 are
-potential extensions.
+Rilgate is experimental. Fast, HashWX, refresh and RandomX are implemented.
 
 HTTP serving and upstream forwarding use Pingora, including application WebSocket
 proxying. Key rotation, Prometheus metrics and production deployment defaults are

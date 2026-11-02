@@ -1,7 +1,5 @@
 # Web compiler and response encoding architecture
 
-Status: proposed.
-
 This proposal extends the web runtime with inline CSS, shell-mode templates, HTML
 minification, HTTP compression, reload hardening and, when operators need it, a
 runtime compiler for operator JavaScript. It builds on the existing build-time

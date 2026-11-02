@@ -1,7 +1,5 @@
 # RandomX remote verification
 
-Status: proposed.
-
 This proposal lets one Rilgate binary compute RandomX verification hashes in its
 own process, on a remote verifier, or on both in a configured order. It also lets
 a process serve its hasher to other gateways. The goal is to remove the 256 MiB

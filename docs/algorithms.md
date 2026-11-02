@@ -33,10 +33,6 @@ Policy evaluation does not contain hashing rules. Configuration loading remains 
 `rilgate-config`. Backend constructors receive only their own narrow settings. They do not
 receive the full application config.
 
-GhostRider and BLAKE3 are extension candidates. Their backends are not implemented. When
-their real implementation, wire contract, browser support and test vectors are
-available, add their crates.
-
 ## Work providers
 
 When work comes from an external source, implement `rilgate_pool::WorkProvider`. Its associated
