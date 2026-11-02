@@ -33,6 +33,24 @@ Production ignores both parameters. Without an accepted override, the solver sel
 its worker count and module from browser capabilities. See
 [RandomX throughput](pow.md#randomx-throughput) for the selection rules.
 
+The README shows the `fast`, `hashwx`, `randomx` and `refresh` challenge pages as GIF
+previews in `docs/images/`. The script starts a gateway that renders the real pages.
+For the JavaScript challenges, the browser solves no proof. The script plays each page
+state on a fixed timeline: 5 seconds for the work and 3 seconds for each other state.
+The refresh page runs as served. After a change to the challenge pages, record the
+previews again:
+
+```bash
+cargo build --release
+npm ci --prefix tests
+npx --prefix tests playwright install chromium
+node scripts/record-challenge-previews.mjs
+```
+
+To record some previews only, give their algorithm names, for example
+`node scripts/record-challenge-previews.mjs randomx`. The script needs `ffmpeg` and
+`ffprobe`. Set `RILGATE_BINARY` to record another build.
+
 ## Browser resource generation
 
 1. Edit readable sources under `web/`.
