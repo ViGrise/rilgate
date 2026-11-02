@@ -12,6 +12,7 @@ impl PowConfig {
     self.auth_binding.validate()?;
     self.stratum_pool.validate()?;
     validate_ttls(self)?;
+    validate_refresh(self)?;
     validate_difficulty(self)?;
     validate_browser(self)?;
     validate_signing_keys(self)?;
@@ -48,6 +49,17 @@ fn validate_randomx_fallback(config: &PowConfig) -> anyhow::Result<()> {
       .validate_difficulty(fallback.difficulty)
       .map_err(|error| anyhow::anyhow!("pow.algorithms.randomx.fallback.difficulty: {error}"))?;
   }
+  Ok(())
+}
+
+fn validate_refresh(config: &PowConfig) -> anyhow::Result<()> {
+  // The presentation token must outlive the delay, with time left for one quota wait.
+  let limit = config.challenge_ttl_seconds.saturating_sub(10);
+  anyhow::ensure!(
+    (1..=limit).contains(&config.refresh_max_seconds),
+    "pow.algorithms.refresh.max: expected 1 to {limit} seconds, 10 seconds less than pow.challenge.ttl ({}s)",
+    config.challenge_ttl_seconds
+  );
   Ok(())
 }
 
@@ -236,11 +248,12 @@ fn validate_policy(config: &PowConfig) -> anyhow::Result<()> {
         }
         crate::PowAlgorithm::Fast => (1..=64).contains(&difficulty),
         crate::PowAlgorithm::RandomX => difficulty >= 1000,
-        crate::PowAlgorithm::Refresh => (1..=10).contains(&difficulty),
+        crate::PowAlgorithm::Refresh => (1..=config.refresh_max_seconds).contains(&difficulty),
       };
       ensure!(
         valid,
-        "policy ({name}).challenge.difficulty: fast requires 1..64; hashwx requires 1..2^40; randomx requires at least 1000; refresh requires 1..10 seconds"
+        "policy ({name}).challenge.difficulty: fast requires 1..64; hashwx requires 1..2^40; randomx requires at least 1000; refresh requires 1..{} seconds (pow.algorithms.refresh.max)",
+        config.refresh_max_seconds
       );
     }
   }

@@ -300,7 +300,7 @@ mod tests {
     };
     let mut registry = AlgorithmRegistry::default();
     registry
-      .register(Arc::new(RefreshAlgorithm::new(60)))
+      .register(Arc::new(RefreshAlgorithm::new(60, 10)))
       .unwrap();
     ChallengeService::with_registry(Arc::new(cfg), registry).unwrap()
   }
@@ -461,7 +461,7 @@ mod tests {
     single.auth_binding.client_ip.as_mut().unwrap().max_networks = 1;
     let mut registry = AlgorithmRegistry::default();
     registry
-      .register(Arc::new(RefreshAlgorithm::new(60)))
+      .register(Arc::new(RefreshAlgorithm::new(60, 10)))
       .unwrap();
     let single = ChallengeService::with_registry(Arc::new(single), registry).unwrap();
     mismatch(&single, &b.token, "198.51.100.10", &headers);

@@ -18,6 +18,7 @@ pub(super) fn services(
   })))?;
   registry.register(Arc::new(rilgate_pow::RefreshAlgorithm::new(
     cfg.challenge_ttl_seconds,
+    cfg.refresh_max_seconds,
   )))?;
   if cfg.hashwx_enabled {
     registry.register(Arc::new(HashWxAlgorithm::new(&cfg.hashwx)?))?;

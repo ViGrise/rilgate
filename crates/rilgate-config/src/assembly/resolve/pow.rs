@@ -121,6 +121,7 @@ impl Document {
         },
         ttl: self.pow.challenge.ttl.whole_seconds("pow.challenge.ttl")?,
       },
+      refresh_max_seconds: self.pow.algorithms.refresh.max,
       randomx_enabled: needs_pool,
       verification: VerificationModes {
         randomx: self.pow.algorithms.randomx.verify.mode,

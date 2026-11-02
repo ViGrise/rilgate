@@ -114,6 +114,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.algorithms.hashwx.difficulty.base", "pow-algorithms-hashwx-difficulty-base", "RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_BASE", None, "HashWX base difficulty: 1 to 2^40; provisional default"),
   spec!(POW, Text, "pow.algorithms.hashwx.difficulty.score_step", "pow-algorithms-hashwx-difficulty-score-step", "RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_SCORE_STEP", None, "Positive score interval that doubles HashWX difficulty"),
   spec!(POW, Text, "pow.algorithms.hashwx.difficulty.max", "pow-algorithms-hashwx-difficulty-max", "RILGATE_POW_ALGORITHMS_HASHWX_DIFFICULTY_MAX", None, "Maximum mapped HashWX difficulty, from base to 2^40; provisional default"),
+  spec!(POW, Text, "pow.algorithms.refresh.max", "pow-algorithms-refresh-max", "RILGATE_POW_ALGORITHMS_REFRESH_MAX", None, "Longest refresh delay in seconds: 1 to pow.challenge.ttl minus 10 seconds"),
   spec!(POW, Text, "pow.algorithms.randomx.fallback.algorithm", "pow-algorithms-randomx-fallback-algorithm", "RILGATE_POW_ALGORITHMS_RANDOMX_FALLBACK_ALGORITHM", None, "Fallback algorithm when every Stratum pool is unavailable: fast or hashwx"),
   spec!(POW, Text, "pow.algorithms.randomx.fallback.difficulty", "pow-algorithms-randomx-fallback-difficulty", "RILGATE_POW_ALGORITHMS_RANDOMX_FALLBACK_DIFFICULTY", None, "Fallback challenge difficulty"),
   spec!(POW, Text, "pow.algorithms.randomx.challenge_ttl", "pow-algorithms-randomx-challenge-ttl", "RILGATE_POW_ALGORITHMS_RANDOMX_CHALLENGE_TTL", None, "RandomX challenge lifetime"),
