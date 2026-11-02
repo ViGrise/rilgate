@@ -454,7 +454,18 @@ impl Handler {
       };
       client_ip = peer;
       if let Err(seconds) = self.state.limiter.check(peer) {
-        let mut out = ApiError::RateLimited(seconds).into_response();
+        let page = (endpoint == Some(Endpoint::Refresh))
+          .then(|| {
+            handlers::refresh_rate_limited(
+              &self.state,
+              &headers,
+              &uri,
+              seconds,
+              method == Method::HEAD,
+            )
+          })
+          .flatten();
+        let mut out = page.unwrap_or_else(|| ApiError::RateLimited(seconds).into_response());
         out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
         return Ok(Some(out));
       }

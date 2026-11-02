@@ -10,7 +10,7 @@ use crate::{
 };
 use http::{
   HeaderMap, HeaderValue, StatusCode, Uri,
-  header::{LOCATION, SET_COOKIE},
+  header::{LOCATION, RETRY_AFTER, SET_COOKIE},
 };
 use rilgate_challenge::{authorization::binding::BindingInput, challenge::RefreshRedemption};
 use rilgate_protocol::{PowAlgorithm, PowVerification};
@@ -134,6 +134,33 @@ fn exchange_cookie(
   crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)
     .map_err(ApiError::Internal)
 }
+fn refresh_token(uri: &Uri) -> Option<String> {
+  url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+    .find(|(key, _)| key == "presentation_token")
+    .map(|(_, value)| value.into_owned())
+    .filter(|token| token.len() <= 16384)
+}
+
+/// Answers a rate-limited refresh URL with a refresh page that opens the same URL after
+/// the quota delay, so a browser without JavaScript continues on its own.
+pub fn refresh_rate_limited(
+  state: &AppState,
+  headers: &HeaderMap,
+  uri: &Uri,
+  seconds: u64,
+  head: bool,
+) -> Option<Response> {
+  let token = refresh_token(uri)?;
+  let (html, locale, policy) =
+    crate::web::pages::render_refresh_page(state, &token, seconds, headers, uri);
+  let mut out =
+    crate::proxy::gate::page_response(StatusCode::TOO_MANY_REQUESTS, html, locale, head, policy);
+  out
+    .headers_mut()
+    .insert(RETRY_AFTER, HeaderValue::from(seconds));
+  Some(out)
+}
+
 pub fn refresh(
   state: &AppState,
   headers: &HeaderMap,
@@ -141,10 +168,7 @@ pub fn refresh(
   binding: &BindingInput<'_>,
   head: bool,
 ) -> Result<Response, ApiError> {
-  let token = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
-    .find(|(key, _)| key == "presentation_token")
-    .map(|(_, value)| value.into_owned())
-    .filter(|token| token.len() <= 16384)
+  let token = refresh_token(uri)
     .ok_or_else(|| ApiError::InvalidRequest("Missing or oversized presentation_token".into()))?;
   let host = request_host(headers, uri);
   let now = std::time::SystemTime::now()
