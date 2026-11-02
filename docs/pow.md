@@ -95,7 +95,9 @@ The challenge page uses an HTML meta refresh and runs no script. Difficulty is a
 delay of 1 to 10 seconds. After the delay, the browser opens
 `{site.base_path}/api/refresh`. That URL sets the access cookie and redirects to the
 original request path on the same host. If the browser opens the URL early, it gets the
-page again with the remaining delay.
+page again with the remaining delay. When the proof API quota rejects the URL, the browser
+gets the same page with status 429 and `Retry-After`, and it opens the URL again after the
+quota delay.
 
 The delay proves no work, so use it only as a speed bump for clients that do not
 run JavaScript. A refresh rule cannot be `pow.default_algorithm`, and it always

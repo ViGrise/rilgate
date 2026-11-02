@@ -24,9 +24,18 @@ impl Drop for Fixture {
 }
 
 async fn fixture(challenge_status: u16, delay: u64) -> Fixture {
+  fixture_with(challenge_status, delay, |_| {}).await
+}
+
+async fn fixture_with(
+  challenge_status: u16,
+  delay: u64,
+  adjust: impl FnOnce(&mut rilgate_config::Configuration),
+) -> Fixture {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
+  adjust(config);
   config.upstream.url = format!("http://{}", listener.local_addr().unwrap());
   config.web.responses = rilgate_config::loader::parse(&format!(
     "site: {{responses: {{challenge_status: {challenge_status}}}}}"
@@ -132,6 +141,40 @@ async fn early_refresh_waits() {
   let start = body.find(marker).expect("meta refresh") + marker.len();
   let remaining: u64 = body[start..].split(';').next().unwrap().parse().unwrap();
   assert!((1..=5).contains(&remaining), "{body}");
+}
+
+#[tokio::test]
+async fn rate_limited_refresh_opens_the_same_url_after_the_quota_delay() {
+  let fixture = fixture_with(200, 1, |config| {
+    config.pow.rate_limit.client_burst = 1;
+    config.pow.rate_limit.client_refill_per_second = 0.001;
+  })
+  .await;
+  let url = fixture.refresh_url("/protected").await;
+  fixture.get(&url, "example.test", None).await;
+  let response = fixture.get(&url, "example.test", None).await;
+  assert_eq!(response.status(), 429);
+  let retry_after = response.headers()["retry-after"]
+    .to_str()
+    .unwrap()
+    .to_owned();
+  assert!(
+    response.headers()["content-type"]
+      .to_str()
+      .unwrap()
+      .starts_with("text/html")
+  );
+  let body = response.text().await.unwrap();
+  assert!(
+    body.contains(&format!(
+      r#"<meta http-equiv="refresh" content="{retry_after};url="#
+    )),
+    "{body}"
+  );
+  assert!(
+    body.contains("api&#x2f;refresh?presentation_token="),
+    "{body}"
+  );
 }
 
 #[tokio::test]
