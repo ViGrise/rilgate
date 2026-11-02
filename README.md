@@ -14,6 +14,12 @@ browser completes the required work.
 
 [Website](https://rilgate.com) · [Installation](#installation) · [Documentation](https://platform.vigrise.com/docs/open-source-software/rilgate/getting-started/introduction) · [Issues](https://github.com/ViGrise/rilgate/issues) · [Contributing](#contributing)
 
+| `fast` | `hashwx` |
+| --- | --- |
+| ![Fast challenge page. The browser solves SHA-256 work and opens the application.](docs/images/challenge-fast.gif) | ![HashWX challenge page. The browser solves CPU work and opens the application.](docs/images/challenge-hashwx.gif) |
+| **`randomx`** | **`refresh`** |
+| ![RandomX challenge page. The visitor starts the check, the browser prepares RandomX, solves the pool job and opens the application.](docs/images/challenge-randomx.gif) | ![Refresh challenge page. The browser waits four seconds and opens the application.](docs/images/challenge-refresh.gif) |
+
 </div>
 
 ## Features
