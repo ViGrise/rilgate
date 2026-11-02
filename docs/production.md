@@ -438,7 +438,7 @@ releases that revision:
    and `debian` move to the release. A tag containing `-`, such as `v1.2.0-rc.1`,
    publishes a prerelease that never moves `latest`, `latest-alpine`, `latest-debian`,
    `alpine` or `debian`.
-6. A GitHub Release attaches these files, with generated release notes:
+6. A GitHub Release attaches these files:
    - `rilgate-<os>-<arch>.tar.gz` (`.zip` on Windows), and
      `rilgate-linux-<arch>-static.tar.gz` for the static musl Linux build. Each archive
      holds the binary, `LICENSE` and `rilgate.yml`.
@@ -459,6 +459,14 @@ releases that revision:
      key, sets the secrets with `gh` and writes the secret key and its revocation
      certificate to the backup directory for offline storage. An empty passphrase
      leaves the backup key unencrypted and removes `RELEASE_GPG_PASSPHRASE`.
+7. `scripts/release/notes.sh` writes the body of the GitHub Release. The body links to
+   the release notes and the upgrade guide on the platform docs, and it shows the install
+   and verify commands. It lists the commits since the previous release (the previous
+   stable release for a stable tag), grouped by Conventional Commit type and sorted by
+   scope, and it shows the author and pull request of each commit. A commit with `!`
+   after its type, or with a `BREAKING CHANGE:` footer, goes under "Breaking changes"
+   and adds a note at the top that links to the upgrade guide. The body ends with the
+   first-time contributors that GitHub reports.
 
 A pull request with the `release-build` label runs the release builds and keeps the
 files as workflow artifacts. It publishes no image and no release. The Linux amd64 and

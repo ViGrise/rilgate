@@ -578,8 +578,12 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: read
     steps:
+      # The release notes compare the tag with the previous release tag.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -595,9 +599,15 @@ jobs:
         run: |
           cp install.sh install.ps1 dist/
           scripts/release/sign.sh dist
+      - name: Write release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/release/notes.sh "$(scripts/release/version.sh)" dist > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: ${{ runner.temp }}/release-notes.md
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
