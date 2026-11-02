@@ -150,9 +150,47 @@ interrupted and oversized Stratum frames. Signatures bind tokens to presentation
 challenge, receipt, or authentication purpose, even when signing keys are shared.
 Signatures from other token formats are rejected.
 
-CI runs `scripts/test.sh`, real HTTPS browser E2E tests, native RandomX reference tests,
-dependency checks and production container checks. See [production
-operations](production.md) for the release gate and local commands.
+### Fuzzing and Miri
+
+The fuzz targets check these input groups:
+
+- Proof verifiers check challenge and nonce parsing and proof validation.
+- RandomX and HashWX hashing check repeat results and batch results.
+- Stratum input checks job parsing and JSON line framing.
+- Signed tokens check round trips, purpose isolation and changed tokens.
+- Request paths and content negotiation check path normalization, headers and cookies.
+
+Install `cargo-fuzz` and the nightly Rust toolchain. Run one target for 60 seconds:
+
+```bash
+fuzz/run.sh randomx_hash 60
+```
+
+`fuzz/seeds/<target>/` holds the seed inputs in Git. The script writes every generated
+file below `fuzz/work/`, which Git ignores: the build, the inputs that libFuzzer finds
+and the failing inputs in `fuzz/work/artifacts/<target>/`. Set `FUZZ_TOOLCHAIN` to use
+a toolchain other than `nightly`.
+
+Install the Miri component with `rustup component add --toolchain nightly miri`.
+Run the library checks:
+
+```bash
+cargo +nightly miri test -p hashwx-core --lib
+cargo +nightly miri test -p randomx-core --lib
+```
+
+CI runs each fuzz target for 20 seconds on pull requests and 10 minutes daily.
+It runs Miri on both libraries daily, because Miri takes more than 20 minutes.
+Reproduce a failure with its saved input:
+
+```bash
+cd fuzz
+cargo +nightly fuzz run --target-dir work/target <target> work/artifacts/<target>/<file>
+```
+
+CI also runs `scripts/test.sh`, real HTTPS browser E2E tests, native RandomX
+reference tests, dependency checks and production container checks. See
+[production operations](production.md) for the release gate and local commands.
 
 ## Benchmarks
 

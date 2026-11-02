@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["fuzz"]
 members = [
   "crates/rilgate",
   "crates/rilgate-core",

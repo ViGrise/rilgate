@@ -1,0 +1,90 @@
+[package]
+name = "rilgate-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+sha2 = "0.10"
+http = "1"
+rilgate-pow-hash = { path = "../crates/rilgate-pow-hash" }
+rilgate-pow-hashwx = { path = "../crates/rilgate-pow-hashwx", features = ["fuzzing"] }
+hashwx-core = { path = "../crates/hashwx-core" }
+randomx-core = { path = "../crates/randomx-core" }
+rilgate-pow-randomx = { path = "../crates/rilgate-pow-randomx" }
+rilgate-stratum = { path = "../crates/rilgate-stratum", features = ["fuzzing"] }
+rilgate-crypto = { path = "../crates/rilgate-crypto" }
+rilgate-gateway = { path = "../crates/rilgate-gateway", features = ["fuzzing"] }
+
+[[bin]]
+name = "fast_verify"
+path = "fuzz_targets/fast_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashwx_hash"
+path = "fuzz_targets/hashwx_hash.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashwx_proof"
+path = "fuzz_targets/hashwx_proof.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "randomx_hash"
+path = "fuzz_targets/randomx_hash.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "randomx_nonce"
+path = "fuzz_targets/randomx_nonce.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stratum_job"
+path = "fuzz_targets/stratum_job.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stratum_lines"
+path = "fuzz_targets/stratum_lines.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "signed_token"
+path = "fuzz_targets/signed_token.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "request_parsing"
+path = "fuzz_targets/request_parsing.rs"
+test = false
+doc = false
+bench = false
