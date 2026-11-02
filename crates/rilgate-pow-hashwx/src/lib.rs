@@ -172,3 +172,14 @@ mod tests {
     });
   }
 }
+
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub mod fuzzing {
+  pub fn challenge_bytes(value: &str) -> anyhow::Result<[u8; 32]> {
+    crate::proof::challenge_bytes(value)
+  }
+  pub fn nonce(value: &str) -> anyhow::Result<u64> {
+    crate::proof::nonce(value)
+  }
+}

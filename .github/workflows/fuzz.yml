@@ -1,0 +1,58 @@
+name: Fuzzing and Miri
+on:
+  pull_request:
+    paths: ['crates/**', 'fuzz/**', 'Cargo.lock', '.github/workflows/fuzz.yml']
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    runs-on: ubuntu-26.04
+    strategy:
+      matrix:
+        target: [fast_verify, hashwx_hash, hashwx_proof, randomx_hash, randomx_nonce, stratum_job, stratum_lines, signed_token, request_parsing]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install native proxy dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-27
+          targets: wasm32-unknown-unknown, wasm32v1-none
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: fuzz -> work/target
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked --version 0.13.2
+      - name: Build browser resources
+        run: |
+          cargo xtask build-wasm
+          cargo xtask build-web
+      - name: Fuzz untrusted input
+        env:
+          FUZZ_TOOLCHAIN: nightly-2026-05-27
+        run: fuzz/run.sh ${{ matrix.target }} ${{ github.event_name == 'pull_request' && 20 || 600 }}
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: fuzz/work/artifacts/${{ matrix.target }}/
+  miri:
+    # Miri takes more than 20 minutes, so it runs on the daily schedule and on demand.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-27
+          components: miri
+      - name: Check memory safety
+        run: |
+          cargo +nightly-2026-05-27 miri test -p hashwx-core --lib
+          cargo +nightly-2026-05-27 miri test -p randomx-core --lib

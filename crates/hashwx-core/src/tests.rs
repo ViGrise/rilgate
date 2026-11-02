@@ -62,6 +62,7 @@ fn reused_instances_match_fresh_instances() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "slow under Miri; covered by the fuzz targets")]
 fn pseudorandom_seeds_and_nonces_do_not_panic() {
   let mut state = 0x123456789abcdef0;
   for _ in 0..256 {

@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+fuzzing = []
+
 [dependencies]
 reqwest.workspace = true
 moka.workspace = true

@@ -1,0 +1,7 @@
+# fuzz/run.sh writes every generated file below work/.
+work/
+# Default cargo-fuzz locations, for runs without fuzz/run.sh.
+target/
+corpus/
+artifacts/
+coverage/
