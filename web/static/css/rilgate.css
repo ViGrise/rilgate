@@ -19,7 +19,10 @@ button{font:inherit;cursor:pointer}
 .actions button{padding:7px 18px;border:1px solid var(--line);border-radius:6px;background:var(--fg);color:var(--bg)}
 .actions button:hover{opacity:.88}
 details{margin:26px 0 0;font-size:.84rem;color:var(--muted)}
-summary{cursor:pointer;display:inline-block}
+summary{cursor:pointer;display:inline-block;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";display:inline-block;margin:0 .5em .12em 0;border-style:solid;border-width:.3em 0 .3em .42em;border-color:transparent transparent transparent currentColor;vertical-align:middle;transition:transform .15s}
+details[open] summary::before{transform:rotate(90deg)}
 details p{max-width:360px;margin:9px auto 0}
 footer{flex-shrink:0;width:100%;padding-top:10px;font-size:.77rem;color:var(--muted);text-align:center}
 footer button{padding:0;border:0;background:none;color:inherit;text-decoration:underline;text-underline-offset:2px}
@@ -36,5 +39,5 @@ html:not(.pow-script) .load-error{display:block;visibility:hidden;animation:load
 html.pow-load-failed .load-error{display:block;visibility:visible;animation:none}
 .pow-load-failed .bar,.pow-load-failed #progress,.pow-load-failed #status,.pow-load-failed #stats,.pow-load-failed #job{display:none}
 @keyframes load-error-show{to{visibility:visible}}
-@media(prefers-reduced-motion:reduce){.bar-shimmer{animation:none;transform:translateX(150%)}.bar-complete{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.bar-shimmer{animation:none;transform:translateX(150%)}.bar-complete,summary::before{transition:none!important}}
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
