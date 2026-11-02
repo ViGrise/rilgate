@@ -57,8 +57,6 @@
   let jobInfo = null;
   let jobHasPrevious = false;
   let jobReseeded = false;
-  let jobUpdatedUntil = 0;
-  let jobTimer = null;
   function element(id) {
     return document.querySelector("#" + id);
   }
@@ -116,12 +114,6 @@
     if (jobInfo) jobHasPrevious = true;
     if (info.reseeded === true) {
       jobReseeded = true;
-      jobUpdatedUntil = 0;
-      clearTimeout(jobTimer);
-    } else if (jobInfo && info.id !== jobInfo.id) {
-      jobUpdatedUntil = Date.now() + 5000;
-      clearTimeout(jobTimer);
-      jobTimer = setTimeout(renderJob, 5000);
     }
     jobInfo = info;
     renderJob();
@@ -134,8 +126,6 @@
     }
     if (jobReseeded) {
       parts.push(t("challenge.job.reseeded", "new seed, preparing again"));
-    } else if (Date.now() < jobUpdatedUntil) {
-      parts.push(t("challenge.job.updated", "new work, continuing"));
     }
     // biome-ignore lint/suspicious/noGlobalIsFinite: Number.isFinite is unavailable in legacy browsers
     if (typeof height === "number" && isFinite(height)) {

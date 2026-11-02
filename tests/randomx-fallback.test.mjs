@@ -151,7 +151,10 @@ test("pool_share shows connecting until a job arrives and pool only after a shar
         events.push(name);
       },
       endpoint: (path) => path,
-      exchange: async (receipt) => assert.equal(receipt, "receipt"),
+      exchange: async (receipt) => {
+        assert.equal(receipt, "receipt");
+        events.push("exchange");
+      },
       once: (target, type, listener) => target.addEventListener(type, listener),
       randomxJob: (job) => job,
       solveRandomX: (solver, job) => solver.solve(job),
@@ -168,6 +171,8 @@ test("pool_share shows connecting until a job arrives and pool only after a shar
   assert.deepEqual(states.slice(0, 2), ["connecting", "initializing"]);
   assert.ok(events.includes("share"));
   assert.ok(events.indexOf("pool") > events.indexOf("share"));
+  assert.ok(states.includes("verifying"));
+  assert.ok(events.indexOf("verifying") < events.indexOf("exchange"));
 });
 
 test("a replacement pool job keeps the hashing state", async () => {
