@@ -749,6 +749,18 @@ impl ProxyHttp for Handler {
       send(session, response(StatusCode::NOT_FOUND, ""), ctx).await?;
       return Ok(true);
     }
+    if session.req_header().uri.path().len() > crate::transport::path::MAX_REQUEST_PATH_BYTES {
+      send(
+        session,
+        response(
+          StatusCode::URI_TOO_LONG,
+          "The request path is longer than 8 KiB.",
+        ),
+        ctx,
+      )
+      .await?;
+      return Ok(true);
+    }
     ctx.policy_path = match policy_path(session.req_header().uri.path()) {
       Ok(path) => path,
       Err(message) => {

@@ -87,9 +87,10 @@ server:
 
 Normal application URLs stay unchanged.
 
-Paths that need URL normalization, including `.` or `..` segments, their
-percent-encoded forms and `..;` forms, return `400`. The upstream receives the
-path byte for byte. Policy conditions match its canonical form, with decoded
+Paths that need URL normalization return `400`. These are `.` or `..` segments,
+their percent-encoded forms and `..;` forms, and paths whose canonical form
+changes again when it is decoded a second time, such as `/%4%44`. Paths longer
+than 8 KiB return `414`. The upstream receives the path byte for byte. Policy conditions match its canonical form, with decoded
 unreserved characters and `%2F` and collapsed `/`. Query strings do not affect this check.
 
 For example:

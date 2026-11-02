@@ -246,7 +246,7 @@ with AND and impossible ranges are rejected.
 `path` conditions and counter `path` keys use the canonical request path: percent-encoded
 unreserved characters and `%2F` are decoded, and runs of `/` collapse to one. Matching stays
 case-sensitive, so use `(?i)` in a regex for an upstream that ignores case. Rilgate rejects
-dot segments, including `..;`, with `400`.
+paths that need URL normalization, as described in [reverse proxy](gateway.md#reverse-proxy).
 
 `load` compares the host load average over `window` with decimal bounds of at
 least 0. Rilgate samples the average every 5 seconds, and only when a condition

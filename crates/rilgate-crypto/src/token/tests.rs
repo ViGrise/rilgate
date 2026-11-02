@@ -61,6 +61,17 @@ mod signing {
   }
 
   #[test]
+  fn signing_refuses_a_token_that_verification_would_reject() {
+    let signer = TokenSigner::new(b"secret", TokenPurpose::Presentation).unwrap();
+    assert!(signer.sign_json(&"a".repeat(MAX_TOKEN_BYTES)).is_err());
+    let token = signer.sign_json(&"a".repeat(MAX_TOKEN_BYTES / 2)).unwrap();
+    assert_eq!(
+      signer.verify_json::<String>(&token).unwrap(),
+      "a".repeat(MAX_TOKEN_BYTES / 2)
+    );
+  }
+
+  #[test]
   fn malformed_and_tampered_tokens_are_rejected() {
     let signer = TokenSigner::new(b"secret", TokenPurpose::Auth).unwrap();
     let token = signer.sign_json(&json!({"host":"example.test"})).unwrap();
