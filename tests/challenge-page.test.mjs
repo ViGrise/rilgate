@@ -5,7 +5,7 @@ import { challengeSource as source } from "./support/challenge-source.mjs";
 import test from "node:test";
 import vm from "node:vm";
 
-function page(fetch, failPost = false, translations = null, embedded = false) {
+function page(fetch, failPost = false, translations = null, embedded = false, timer = setTimeout) {
   const elements = new Map();
   const listeners = new Map();
   const workers = [];
@@ -55,7 +55,7 @@ function page(fetch, failPost = false, translations = null, embedded = false) {
     AbortController,
     DOMException,
     Worker,
-    setTimeout,
+    setTimeout: timer,
     clearTimeout,
     navigator: {},
     document: { querySelector: element },
@@ -173,16 +173,32 @@ test("completed fast proofs fall back to exchange when cookie_set is missing", a
   );
 });
 
-test("rate-limit failures display the server's retry delay", async () => {
-  const state = page(async () => ({
+function limited(retryAfter) {
+  return async () => ({
     ok: false,
     status: 429,
-    headers: { get: () => "30" },
+    headers: { get: () => retryAfter },
     text: async () => JSON.stringify({ message: "Too many proof-of-work requests" }),
-  }));
+  });
+}
+
+test("a long rate limit shows the server's delay and reloads after it", async () => {
+  // Holds the 30 second timers, the request timeouts and the reload, until the test runs them.
+  const delayed = [];
+  const state = page(limited("30"), false, null, false, (callback, delay) => {
+    if (delay === 30000) return delayed.push(callback);
+    return setTimeout(callback, delay);
+  });
   await until(() => state.element("#status").textContent.includes("Try again in 30 seconds"));
   assert.equal(state.element("#retry").hidden, true);
-  assert.match(state.element("#status").textContent, /Try again in 30 seconds/);
+  assert.equal(state.reloads(), 0);
+  for (const callback of delayed) callback();
+  assert.equal(state.reloads(), 1);
+});
+
+test("a rate limit without a delay shows the retry action", async () => {
+  const state = page(limited(null));
+  await until(() => !state.element("#retry").hidden);
   assert.equal(state.reloads(), 0);
 });
 

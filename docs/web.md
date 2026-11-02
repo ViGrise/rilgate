@@ -166,7 +166,7 @@ the `load-error` message that the page shows when its script could not start.
 | `network` | `retry` | Fetch TypeError or XHR network failure. |
 | `unsupported` | `none` | Missing RandomX or HashWX browser features, module scripts, or WebAssembly compilation. |
 | `blocked` | `retry` | An extension or filter blocked a solver module or worker script. |
-| `limited` | `none` | HTTP 429; append Retry-After text. |
+| `limited` | `none` | HTTP 429 after the quota wait; append Retry-After text and reload after that delay. Without Retry-After, show the retry button. |
 | `unavailable` | `retry` | HTTP 503 after the single RandomX reload. |
 
 Modes `run` and `done` show the bar. `start` shows the consent button, `retry`
@@ -243,9 +243,11 @@ loader requests the startup bundle again, up to three times with a growing rando
 when the script fails to load. After the last attempt, or after 30 seconds when no script
 runs at all, the page shows the localized `challenge.load_error` message with a retry link.
 Requests for the client configuration, the challenge and the session retry twice after a
-network error, a 502, a 504, a 503 without an error code, or a 429 whose Retry-After is at
-most 10 seconds. Proof submission, exchange and refresh never retry, because a proof is
-single-use.
+network error, a 502, a 504 or a 503 without an error code. Proof submission, exchange and
+refresh do not repeat after these failures, because a proof is single-use. The proof API
+quota rejects a request before the gateway processes it. Every request, proof submission
+included, therefore waits after a 429 whose Retry-After is at most 10 seconds and repeats,
+for a total wait of at most 60 seconds per request.
 
 A browser that lacks module scripts, cannot compile WebAssembly, or rejects the solver
 syntax shows the `unsupported` state. When an extension or network filter blocks a solver
