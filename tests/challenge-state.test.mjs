@@ -87,14 +87,18 @@ for (const [name, error] of [
   ["network", new TypeError("Failed to fetch")],
   [
     "limited",
-    Object.assign(new Error("HTTP 429"), { status: 429, retryAfter: " Try again in 7 seconds." }),
+    Object.assign(new Error("HTTP 429"), {
+      status: 429,
+      retryAfter: " Try again in 7 seconds.",
+      retryAfterSeconds: 7,
+    }),
   ],
   ["unavailable", Object.assign(new Error("HTTP 503"), { status: 503 })],
   ["unsupported", Object.assign(new Error("Unsupported browser"), { code: "unsupported_browser" })],
   ["failed", new Error("Private diagnostic details")],
 ]) {
   test(`startup maps ${error.message} to ${name}`, async () => {
-    const { client, context, elements } = page(["status", "retry"]);
+    const { client, context, elements } = page(["status", "retry"], {}, { setTimeout: () => 0 });
     client.jsonFetch = async () => {
       throw error;
     };
@@ -287,6 +291,29 @@ test("safe requests retry a short outage", async () => {
   calls.length = 0;
   await assert.rejects(client.verify("token", "1"), { status: 503 });
   assert.equal(calls.length, 1);
+});
+
+test("a rate-limited proof waits for quota and completes", async () => {
+  const calls = [];
+  const { client } = page(
+    ["status"],
+    {},
+    {
+      AbortController,
+      clearTimeout,
+      // The quota wait runs at once; the request timeout keeps its delay.
+      setTimeout: (callback, delay) => setTimeout(callback, delay === 30000 ? delay : 0),
+      fetch: async (url) => {
+        calls.push(url);
+        return calls.length === 1
+          ? { status: 429, headers: { get: () => "1" }, text: async () => "{}" }
+          : { status: 200, headers: { get: () => null }, text: async () => '{"cookie_set":true}' };
+      },
+    },
+  );
+  await client.verify("token", "1");
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.endsWith("/api/verify")));
 });
 
 test("a timed-out safe request retries", async () => {

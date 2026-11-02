@@ -53,10 +53,19 @@ main().catch((error) => {
   else if (error.code === "unsupported_browser") name = "unsupported";
   else if (error.code === "asset_blocked") name = "blocked";
   client.state(name);
-  if (name === "limited" && error.retryAfter) {
-    client.status(
-      client.t("challenge.state.limited.status", "Too many requests (429)") + error.retryAfter,
-    );
+  if (name === "limited") {
+    const seconds = error.retryAfterSeconds;
+    // biome-ignore lint/suspicious/noGlobalIsFinite: Number.isFinite is unavailable in legacy browsers
+    if (typeof seconds === "number" && isFinite(seconds) && seconds > 0) {
+      client.status(
+        client.t("challenge.state.limited.status", "Too many requests (429)") + error.retryAfter,
+      );
+      // The status text promises another attempt after the server's delay.
+      setTimeout(() => location.reload(), seconds * 1000);
+    } else {
+      const retry = document.querySelector("#retry");
+      if (retry) retry.hidden = false;
+    }
   }
 });
 

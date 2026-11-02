@@ -346,9 +346,10 @@
   }
 
   const MAX_RETRY_AFTER_SECONDS = 10;
+  const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
 
-  // Milliseconds to wait before another attempt, or -1 when the failure is final.
-  function retryDelay(error, attempt) {
+  // Milliseconds to wait before another attempt after a transient failure, or -1.
+  function transientDelay(error, attempt) {
     if (
       error instanceof TypeError ||
       error.status === 502 ||
@@ -357,6 +358,11 @@
     ) {
       return Math.random() * Math.min(10000, 750 * attempt * attempt);
     }
+    return -1;
+  }
+
+  // Milliseconds to wait for proof API quota, or -1 when the server asks for a longer wait.
+  function rateLimitDelay(error) {
     const seconds = error.retryAfterSeconds;
     if (
       error.status === 429 &&
@@ -364,7 +370,7 @@
       seconds >= 0 &&
       seconds <= MAX_RETRY_AFTER_SECONDS
     ) {
-      return seconds * 1000;
+      return Math.max(seconds, 1) * 1000;
     }
     return -1;
   }
@@ -373,18 +379,27 @@
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
-  // options.retries is the number of extra attempts for requests that are safe to repeat.
+  // options.retries is the number of extra attempts after transient failures, for requests
+  // that are safe to repeat. The proof API quota rejects a request before the gateway
+  // processes it, so every request waits for quota and repeats within a bounded total wait.
   async function jsonFetch(url, options = {}) {
     const retries = options.retries || 0;
-    for (let attempt = 1; ; attempt += 1) {
+    let attempt = 0;
+    let rateLimitWait = 0;
+    for (;;) {
       try {
         return await fetchOnce(url, options);
       } catch (error) {
-        const delay =
-          attempt <= retries && !(options.signal && options.signal.aborted)
-            ? retryDelay(error, attempt)
-            : -1;
-        if (delay < 0) throw error;
+        if (options.signal && options.signal.aborted) throw error;
+        let delay = rateLimitDelay(error);
+        if (delay >= 0) {
+          rateLimitWait += delay;
+          if (rateLimitWait > MAX_RATE_LIMIT_WAIT_SECONDS * 1000) throw error;
+        } else {
+          attempt += 1;
+          delay = attempt <= retries ? transientDelay(error, attempt) : -1;
+          if (delay < 0) throw error;
+        }
         await sleep(delay);
       }
     }
