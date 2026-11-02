@@ -812,6 +812,26 @@ Each setting has the corresponding CLI flag and environment variable:
 select it for challenge actions that omit an algorithm. HashWX work is local.
 It needs no `pow.stratum_pool` entry or dedicated verifier queue.
 
+### Refresh
+
+`pow.algorithms.refresh.max` sets the longest refresh delay in seconds. It limits the
+`difficulty` of refresh rules and the delay that a refresh rule without a difficulty gets
+from the score. The default is 10. The value must be from 1 to `pow.challenge.ttl` minus
+10 seconds, because the presentation token must outlive the delay. Raise
+`pow.challenge.ttl` to allow longer delays.
+
+```yaml
+pow:
+  challenge:
+    ttl: 2m
+  algorithms:
+    refresh:
+      max: 60
+```
+
+The flag is `--pow-algorithms-refresh-max` and the environment variable is
+`RILGATE_POW_ALGORITHMS_REFRESH_MAX`. See [the refresh algorithm](pow.md#refresh---delay-without-javascript).
+
 ### Dedicated RandomX verifier
 
 `rilgate verifier` runs the RandomX hash service as a separate process for remote

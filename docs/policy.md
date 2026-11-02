@@ -362,7 +362,7 @@ policy:
       challenge: {algorithm: refresh, difficulty: 3}
 ```
 
-Difficulty is a delay of 1 to 10 seconds. See [the refresh algorithm](pow.md#refresh---delay-without-javascript).
+Difficulty is a delay from 1 second to `pow.algorithms.refresh.max`, 10 seconds by default. See [the refresh algorithm](pow.md#refresh---delay-without-javascript).
 
 ### RandomX
 

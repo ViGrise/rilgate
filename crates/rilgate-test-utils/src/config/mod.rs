@@ -36,6 +36,7 @@ pub fn config() -> Config {
     pow: PowConfig {
       randomx_fallback: None,
       hashwx_enabled: false,
+      refresh_max_seconds: 10,
       hashwx: rilgate_config::HashWxConfig {
         nonces_per_seed: 65536,
         difficulty: DifficultyConfig {

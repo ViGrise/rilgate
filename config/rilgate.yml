@@ -582,6 +582,13 @@ server:
         #
         # max: 5000000
 
+    # refresh:
+      # Longest refresh delay in seconds. It limits rule delays and the delay that
+      # rules without a difficulty get from the score (score / 10 seconds).
+      # Range: 1 to pow.challenge.ttl minus 10 seconds.
+      #
+      # max: 10
+
     # randomx:
       # Signed RandomX work lifetime with verify.mode: gateway, separate from the
       # shorter presentation-token TTL. Positive whole seconds, at most 365d.

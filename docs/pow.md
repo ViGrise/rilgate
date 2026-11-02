@@ -92,7 +92,9 @@ challenge:
 ```
 
 The challenge page uses an HTML meta refresh and runs no script. Difficulty is a
-delay of 1 to 10 seconds. After the delay, the browser opens
+delay in seconds, from 1 to `pow.algorithms.refresh.max` (default 10). A refresh rule
+without a difficulty waits score / 10 seconds, at least 1 and at most that max. See
+[refresh configuration](configuration.md#refresh). After the delay, the browser opens
 `{site.base_path}/api/refresh`. That URL sets the access cookie and redirects to the
 original request path on the same host. If the browser opens the URL early, it gets the
 page again with the remaining delay. When the proof API quota rejects the URL, the browser

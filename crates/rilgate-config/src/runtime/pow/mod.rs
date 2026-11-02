@@ -27,6 +27,7 @@ pub struct PowConfig {
   pub randomx_fallback: Option<RandomXFallback>,
   pub hashwx_enabled: bool,
   pub hashwx: rilgate_pow_hashwx::HashWxConfig,
+  pub refresh_max_seconds: u64,
   pub verification: VerificationModes,
   pub randomx_enabled: bool,
   pub default_algorithm: PowAlgorithm,

@@ -86,6 +86,18 @@ quota!(GlobalQuota, 64, 16.0);
 pub struct Algorithms {
   pub hashwx: HashWx,
   pub randomx: RandomX,
+  pub refresh: Refresh,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Refresh {
+  pub max: u64,
+}
+impl Default for Refresh {
+  fn default() -> Self {
+    Self { max: 10 }
+  }
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]

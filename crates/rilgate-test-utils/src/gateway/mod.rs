@@ -15,6 +15,7 @@ pub fn services(config: &Config) -> Result<(Arc<ChallengeService>, Arc<StratumPo
   })))?;
   registry.register(Arc::new(rilgate_pow::RefreshAlgorithm::new(
     cfg.challenge_ttl_seconds,
+    cfg.refresh_max_seconds,
   )))?;
   if cfg.hashwx_enabled {
     registry.register(Arc::new(rilgate_pow_hashwx::HashWxAlgorithm::new(
