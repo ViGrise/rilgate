@@ -1,8 +1,5 @@
 # More browser proof-of-work algorithms
 
-Status: HashWX steps 1 to 5 are implemented. Difficulty defaults await a
-mid-range phone measurement. Optional algorithms and fallback remain proposed.
-
 This proposal adds proof-of-work algorithms for browser challenges next to Fast
 and RandomX. It selects HashWX as the next algorithm, through a new Apache-2.0
 implementation in this repository. Argon2id and PBKDF2-SHA256 are optional. It
@@ -127,21 +124,20 @@ pow:
     hashwx:
       nonces_per_seed: 65536
       difficulty:
-        base: 50000
+        base: 610000
         score_step: 10
-        max: 5000000
+        max: 2440000
 ```
 
 | Setting | Default | Range |
 | --- | --- | --- |
 | `nonces_per_seed` | `65536` | `463` to `1048576` |
-| `difficulty.base` | `50000` | `1` to `2^40` |
-| `difficulty.max` | `5000000` | `difficulty.base` to `2^40` |
+| `difficulty.base` | `610000` | `1` to `2^40` |
+| `difficulty.max` | `2440000` | `difficulty.base` to `2^40` |
 | `difficulty.score_step` | `10` | Positive i32 |
 
 Without an explicit difficulty, the score maps to a difficulty with the same
-`base`, `score_step` and `max` rule as RandomX. The default values are
-placeholders until a mid-range phone measurement is recorded in section 8.
+`base`, `score_step` and `max` rule as RandomX. Section 8 records the mid-range phone measurement that sets the defaults.
 Explicit rule difficulties override this mapping, including its max cap.
 
 Verification is cheap, so HashWX needs no dedicated verifier pool. It runs on a
@@ -160,7 +156,7 @@ request retains its slot until the blocking work completes.
 - The solver uses up to two workers by default, with distinct batches. It reports
   progress after each batch and supports cancellation.
 - HashWX starts without a consent step. Each VM uses 16 KiB, and the default
-  difficulty is a placeholder for a future mid-range target of 1 to 3 seconds. RandomX keeps its consent step,
+  difficulty targets about 2 seconds on a mid-range phone. RandomX keeps its consent step,
   because it allocates about 256 MiB and can run for much longer.
 
 ### Browser requirements
@@ -187,8 +183,7 @@ Known limits:
   worker uses that interpreter. A worker policy denying all WASM also blocks
   the interpreter. See `docs/web.md` and `docs/production.md`.
 - Phones have fewer cores and lower speed per core than the desktop in the
-  published benchmark. Section 8 records a high-end phone. A mid-range phone is still required
-  to set the default difficulty.
+  published benchmark. Section 8 records the mid-range reference that sets the default difficulty.
 - Module compilation costs time for each batch. The default `nonces_per_seed` of
   65536 spreads this cost over many hashes.
 - Long solves use battery and heat on phones. `difficulty.max` caps mapped work. Explicit policy difficulties
@@ -328,6 +323,10 @@ selecting defaults.
 | iPhone 15 Pro Max, generated WASM | 463 | 69450 | 66143 | 0.333 |
 | iPhone 15 Pro Max, WASM interpreter | 65536 | 62814 | 62814 | 0.000 |
 | iPhone 15 Pro Max, generated WASM | 65536 | 387024 | 386263 | 0.333 |
+| Galaxy A17, WASM interpreter | 463 | 20887 | 20731 | 0.067 |
+| Galaxy A17, generated WASM | 463 | 62851 | 41463 | 3.767 |
+| Galaxy A17, WASM interpreter | 65536 | 19534 | 19534 | 0.000 |
+| Galaxy A17, generated WASM | 65536 | 166985 | 166321 | 1.533 |
 
 For the Fast baseline, the browser worker ran the existing JavaScript SHA-256
 function on `benchmark` plus a decimal nonce. After 1000 warmup hashes, 65536
@@ -367,19 +366,22 @@ random proof lengths can make a higher difficulty finish sooner in this sample.
 | iPhone 15 Pro Max, generated WASM | 463 | 9.0 | 666.0 | 589.0 |
 | iPhone 15 Pro Max, WASM interpreter | 65536 | 17.0 | 125.0 | 624.0 |
 | iPhone 15 Pro Max, generated WASM | 65536 | 6.0 | 29.0 | 107.0 |
+| Galaxy A17, WASM interpreter | 463 | 27.8 | 2183.7 | 1633.9 |
+| Galaxy A17, generated WASM | 463 | 25.2 | 1045.0 | 814.3 |
+| Galaxy A17, WASM interpreter | 65536 | 58.4 | 413.6 | 2069.8 |
+| Galaxy A17, generated WASM | 65536 | 12.3 | 49.6 | 234.8 |
 
 The iPhone run was recorded at 2026-10-23T17:07:17Z on an iPhone 15 Pro Max.
 Its user agent reports Safari 17.5 and iOS 17.5.1. It reports
 `hardwareConcurrency: 4`. The Fast baseline was 448877 H/s.
 The source file is `target/hashwx-bench/2026-10-23T17-07-16.766Z-204e5542-2fbf-45d5-8e46-b7f30cf0b3a2.json`.
 
-The iPhone 15 Pro Max is a high-end device. It does not meet the mid-range
-phone requirement in sections 2 and 8. The section 4 defaults stay
-placeholders until a mid-range phone is measured. Three trials per difficulty
-have a wide solve-time spread. The hash rates are the reliable figures for
-these comparisons. The solve medians describe these fixed samples only.
-Use a mid-range phone to select the target of 1 to 3 seconds. Record that
-phone's native-to-browser ratio in `docs/performance.md`.
+The Galaxy A17 run was recorded at 2026-11-02T08:08:44.975Z and took 38901.900 ms.
+Its user agent is `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36`.
+It reports `hardwareConcurrency: 8`.
+The source file is `target/hashwx-bench/2026-11-02T08-08-44.385Z-4924dcac-d756-43da-8f98-140c703c68c2.json`.
+
+The Galaxy A17 is the mid-range reference. Its full challenge flow sets the defaults in section 4. See [HashWX measurements](../performance.md#hashwx-measurements) for the calibration.
 
 ### Run the prototype on the LAN
 

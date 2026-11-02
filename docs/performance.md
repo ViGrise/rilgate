@@ -128,13 +128,14 @@ Proxy throughput is bounded by the single-threaded mock upstream and the added h
 latency. Gateway CPU per proxied request changed from 62.8 us to 60.7 us, which is
 within run-to-run variation.
 
-### HashWX measurements, 2026-10-23
+### HashWX measurements
 
-Measured on 2026-10-23 with three seeds per row and one worker. The Mac is an
-Apple M4 Pro, arm64, running macOS 26.4.1. Chrome 155.0.8059.86 ran headless;
-Safari 26.4 ran in its application. Native results use Rust 1.98.0 and the
-release profile. The phone is an iPhone 15 Pro Max. Its user agent reports
-Safari 17.5, iOS 17.5.1 and hardware concurrency 4.
+Desktop and iPhone measurements used three seeds per row and one worker on 2026-10-23.
+The Mac is an Apple M4 Pro, arm64, with macOS 26.4.1, headless Chrome 155.0.8059.86 and
+Safari 26.4 in its application. Native results use Rust 1.98.0 and the release profile.
+The iPhone 15 Pro Max user agent reports Safari 17.5, iOS 17.5.1 and hardware concurrency 4.
+The Samsung Galaxy A17 (SM-A175F) ran Android 16 and Chrome 156.0.8078.47 on 2026-11-02,
+with reported hardware concurrency 8.
 
 These rates use the prototype artifact recorded in proposal section 8.
 Rates below include per-seed generation and compilation at 65536 nonces per
@@ -149,6 +150,7 @@ was not measured.
 | M4 Pro, Chrome | 64997 | 323475 |
 | M4 Pro, Safari | 69917 | 306721 |
 | iPhone 15 Pro Max, Safari | 62814 | 386263 |
+| Galaxy A17, Chrome | 19534 | 166321 |
 
 Native instance generation plus one hash averaged 25.9 microseconds. This
 kernel measurement excludes the proof API, seed derivation, signature checks
@@ -157,15 +159,19 @@ The native interpreter / iPhone generated-WASM rate ratio is 0.184; the
 native interpreter / iPhone interpreter ratio is 1.134. These compare different
 machines. They do not measure a native JIT or GPU advantage.
 
-The iPhone 15 Pro Max is high-end. It does not satisfy the mid-range phone
-requirement. The default base of 50000 and max of 5000000 stay placeholders
-until that measurement is available. The native-to-mid-range-phone ratio
-remains pending.
+The Galaxy A17 is the mid-range reference. The defaults come from its full challenge flow,
+with two browser workers and proof API quotas disabled. Ten trials at difficulty 1 gave a median page overhead of 764 ms.
+Sixty trials at difficulty 670000 gave an effective rate of 306350 H/s after that overhead.
+Two seconds at this rate, rounded to two significant figures, gives the default base of
+610000. Sixty trials at 610000 gave a mean solve time of 2121 ms and a median of 1406 ms,
+with no failed trial. The default max of 2440000, four times the base, takes about 8 seconds
+on average, so the chance that a solve outlasts the default 60-second `pow.challenge.ttl` is
+about 0.06%.
+The native-interpreter / A17 generated-WASM rate ratio is 0.4282.
 
 Three trials per difficulty give a wide solve-time spread. On the iPhone at
 50000 difficulty and 463 nonces per seed, generated trials were 20663, 310 and
-589 ms. Hash rates are the reliable figures for these samples. Use more trials
-on a mid-range phone before selecting defaults. The prototype uses deterministic
+589 ms. Hash rates are the reliable figures for these samples. The prototype uses deterministic
 synthetic seeds; the production solver uses the signed SHA-256 seed scheme
 and up to two workers. Prototype solve medians are not production medians.
 

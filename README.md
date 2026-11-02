@@ -54,7 +54,7 @@ after authentication. Internal APIs and static resources live under `site.base_p
 defaults to `/.well-known/rilgate`.
 
 HashWX provides local CPU work with generated WASM and an interpreted verifier.
-It needs no pool. Its difficulty defaults await a mid-range phone measurement.
+It needs no pool. Its difficulty defaults target about 2 seconds on a mid-range phone.
 See [the HashWX example](config/examples/hashwx.yml).
 
 Fast proofs run in a browser worker. RandomX uses roughly 256 MiB per worker for its

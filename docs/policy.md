@@ -336,7 +336,7 @@ policy:
       when:
         path: {prefix: /protected/}
       action: challenge
-      challenge: {algorithm: hashwx, difficulty: 50000}
+      challenge: {algorithm: hashwx, difficulty: 610000}
 ```
 
 HashWX difficulty is an expected hash count, from 1 to 2^40. HashWX always uses

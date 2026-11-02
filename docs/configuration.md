@@ -778,9 +778,9 @@ pow:
     hashwx:
       nonces_per_seed: 65536
       difficulty:
-        base: 50000
+        base: 610000
         score_step: 10
-        max: 5000000
+        max: 2440000
 policy:
   default_action: challenge
 ```
@@ -788,14 +788,14 @@ policy:
 | YAML path under `pow.algorithms.hashwx` | Default | Valid values |
 | --- | ---: | --- |
 | `nonces_per_seed` | 65536 | 463 to 1048576 |
-| `difficulty.base` | 50000 | 1 to 2^40 |
+| `difficulty.base` | 610000 | 1 to 2^40 |
 | `difficulty.score_step` | 10 | Positive i32 |
-| `difficulty.max` | 5000000 | `base` to 2^40 |
+| `difficulty.max` | 2440000 | `base` to 2^40 |
 
-The base and max defaults are placeholders. The iPhone 15 Pro Max result in
-[HashWX measurements](performance.md#hashwx-measurements-2026-10-23) does not calibrate
-them. Measure a mid-range phone and representative traffic before choosing production
-costs. `pow.challenge.ttl` controls the work lifetime. Set it for the chosen cost.
+The defaults target about 2 seconds of work at score 0 on a mid-range phone, and about
+8 seconds at the max. See [HashWX measurements](performance.md#hashwx-measurements).
+Measure your own traffic before you raise them. `pow.challenge.ttl` controls the work
+lifetime, so raise it together with a higher max.
 [Challenge selection](policy.md#challenge-selection) describes how rule difficulty
 overrides the score mapping.
 

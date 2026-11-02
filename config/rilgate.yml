@@ -567,12 +567,12 @@ server:
       #
       # nonces_per_seed: 65536
 
-      # Difficulty defaults stay provisional until a mid-range phone is measured.
+      # Defaults target about 2 seconds on a mid-range phone.
       #
       # difficulty:
         # Positive base difficulty, at most 2^40.
         #
-        # base: 50000
+        # base: 610000
 
         # Positive score interval that doubles difficulty.
         #
@@ -580,7 +580,7 @@ server:
 
         # At least base and at most 2^40.
         #
-        # max: 5000000
+        # max: 2440000
 
     # refresh:
       # Longest refresh delay in seconds. It limits rule delays and the delay that
