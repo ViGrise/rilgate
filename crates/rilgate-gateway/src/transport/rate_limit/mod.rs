@@ -73,7 +73,7 @@ impl RateLimiter {
     if state.global.tokens < 1.0 {
       return Err(state.global.wait_for(1.0, cfg.global_refill_per_second));
     }
-    let client = client.map(|ip| ip.to_canonical());
+    let client = client.map(|ip| client_network(ip, cfg.client_ipv6_prefix));
     if !state.clients.contains_key(&client) {
       if state.clients.len() >= cfg.max_clients {
         if let Some(deadline) = state.next_cleanup
@@ -117,6 +117,18 @@ impl RateLimiter {
   }
 }
 
+/// The address that keys a client bucket: the full IPv4 address, or the IPv6 network of
+/// `ipv6_prefix` bits with the host bits cleared.
+fn client_network(ip: IpAddr, ipv6_prefix: u8) -> IpAddr {
+  match ip.to_canonical() {
+    IpAddr::V6(ip) => {
+      let mask = u128::MAX << (128 - u32::from(ipv6_prefix.clamp(1, 128)));
+      IpAddr::V6((u128::from(ip) & mask).into())
+    }
+    ip => ip,
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -127,6 +139,7 @@ mod tests {
       enabled: true,
       client_burst: 2,
       client_refill_per_second: 1.0,
+      client_ipv6_prefix: 64,
       global_burst: 4,
       global_refill_per_second: 2.0,
       max_clients: 2,
@@ -257,6 +270,26 @@ mod tests {
     assert_eq!(
       limiter.check_at(Some("192.0.2.1".parse().unwrap()), now),
       Err(1)
+    );
+  }
+
+  #[test]
+  fn ipv6_addresses_in_one_prefix_share_a_client_quota() {
+    let mut cfg = config();
+    cfg.global_burst = 100;
+    let limiter = RateLimiter::new(cfg).unwrap();
+    let now = Instant::now();
+    for ip in ["2001:db8:1:2::1", "2001:db8:1:2::2"] {
+      assert!(limiter.check_at(Some(ip.parse().unwrap()), now).is_ok());
+    }
+    assert_eq!(
+      limiter.check_at(Some("2001:db8:1:2:ffff::3".parse().unwrap()), now),
+      Err(1)
+    );
+    assert!(
+      limiter
+        .check_at(Some("2001:db8:1:3::1".parse().unwrap()), now)
+        .is_ok()
     );
   }
 }
