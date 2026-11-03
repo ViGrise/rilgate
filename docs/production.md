@@ -330,6 +330,16 @@ Exercise alerts during staging failure tests.
 
 `rilgate_pow_fallback_total{from="randomx",to="<fallback id>"}` counts each fallback
 challenge page or JSON challenge response served by the gate.
+`rilgate_challenge_steps_completed_total` counts each completed challenge step by its position
+in the step list, with labels `step` (`1` to `4`) and `method` (`pow` or `hook`). For [challenge hooks](configuration.md#challenge-hooks),
+`rilgate_challenge_hook_verifications_total` records one sample for each finished verification,
+with labels `hook` and `outcome` (`pass`, `fail` or `unavailable`), and
+`rilgate_challenge_hook_retries_total{hook="<name>"}` counts each extra attempt after a retryable error.
+`rilgate_challenge_hook_available{hook="<name>"}` is `1` when the hook is available and `0`
+while it is [marked unavailable](configuration.md#unavailable-hooks). The availability state belongs
+to each instance, so this gauge can differ between instances.
+`rilgate_challenge_hook_fallbacks_total{hook="<name>"}` counts each presentation of the fallback
+step for that hook, by the gate or in a `next` object.
 
 ## Key rotation and token lifetime
 
