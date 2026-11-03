@@ -1,4 +1,4 @@
-use rilgate_protocol::PowVerification;
+use rilgate_protocol::{PowAlgorithm, PowVerification};
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize)]
 pub struct ClientAlgorithm {
@@ -27,6 +27,8 @@ pub struct ChallengeRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct VerifyRequest {
+  #[serde(default)]
+  pub presentation_token: Option<String>,
   pub challenge_token: String,
   pub nonce: String,
   #[serde(default)]
@@ -35,6 +37,8 @@ pub struct VerifyRequest {
 
 #[derive(Debug, Serialize)]
 pub struct VerifyResponse {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub next: Option<NextStep>,
   pub receipt: String,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub cookie_set: Option<bool>,
@@ -42,10 +46,25 @@ pub struct VerifyResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct ExchangeRequest {
+  #[serde(default)]
+  pub presentation_token: Option<String>,
   pub receipt: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ExchangeResponse {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub next: Option<NextStep>,
   pub status: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NextStep {
+  pub presentation_token: String,
+  pub step: usize,
+  pub steps: usize,
+  pub method: &'static str,
+  pub algorithm: PowAlgorithm,
+  pub difficulty: u64,
+  pub solver_module_url: String,
 }

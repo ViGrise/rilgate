@@ -69,6 +69,7 @@
   "challenge.stats.attempts": "attempts",
   "challenge.stats.label": "Work statistics",
   "challenge.stats.rate": "H/s",
+  "challenge.step": "Step {current} of {total}",
   "challenge.title": "Just a moment",
 
   "common.close": "Close",

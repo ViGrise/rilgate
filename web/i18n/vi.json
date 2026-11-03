@@ -69,6 +69,7 @@
   "challenge.stats.attempts": "lần thử",
   "challenge.stats.label": "Thống kê tính toán",
   "challenge.stats.rate": "H/s",
+  "challenge.step": "Bước {current}/{total}",
   "challenge.title": "Vui lòng chờ một chút",
 
   "common.close": "Đóng",

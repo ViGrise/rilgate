@@ -81,18 +81,26 @@ pub async fn verify(
     .await
     .map_err(ApiError::proof)?;
   let cookie = if request.set_cookie {
-    Some(exchange_cookie(state, headers, uri, &receipt, binding)?)
+    Some(exchange_cookie(
+      state,
+      headers,
+      uri,
+      &receipt,
+      binding,
+      request.presentation_token.as_deref(),
+    )?)
   } else {
     None
   };
   let mut out = json(
     StatusCode::OK,
     &VerifyResponse {
+      next: cookie.as_ref().and_then(|(_, next)| next.clone()),
       receipt,
       cookie_set: cookie.as_ref().map(|_| true),
     },
   );
-  if let Some(cookie) = cookie {
+  if let Some((cookie, _)) = cookie {
     out.headers_mut().insert(SET_COOKIE, cookie);
   }
   Ok(out)
@@ -104,8 +112,15 @@ pub fn exchange(
   request: ExchangeRequest,
   binding: &BindingInput<'_>,
 ) -> Result<Response, ApiError> {
-  let cookie = exchange_cookie(state, headers, uri, &request.receipt, binding)?;
-  let mut out = json(StatusCode::OK, &ExchangeResponse { status: "ok" });
+  let (cookie, next) = exchange_cookie(
+    state,
+    headers,
+    uri,
+    &request.receipt,
+    binding,
+    request.presentation_token.as_deref(),
+  )?;
+  let mut out = json(StatusCode::OK, &ExchangeResponse { status: "ok", next });
   out.headers_mut().insert(SET_COOKIE, cookie);
   Ok(out)
 }
@@ -115,7 +130,8 @@ fn exchange_cookie(
   uri: &Uri,
   receipt: &str,
   binding: &BindingInput<'_>,
-) -> Result<HeaderValue, ApiError> {
+  presentation_token: Option<&str>,
+) -> Result<(HeaderValue, Option<NextStep>), ApiError> {
   let issued = state
     .pow
     .exchange_receipt_with_claims(
@@ -131,9 +147,47 @@ fn exchange_cookie(
       .auth_network_merges
       .fetch_add(1, Ordering::Relaxed);
   }
-  crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.claims.expires_at)
-    .map_err(ApiError::Internal)
+  let cookie =
+    crate::auth::cookies::issued_cookie_header(&state.cfg, &issued.token, issued.expires_at)
+      .map_err(ApiError::Internal)?;
+  let next = if let Some(p) = presentation_token.and_then(|token| {
+    state
+      .pow
+      .verify_presentation(token, &request_host(headers, uri))
+      .ok()
+  }) {
+    state.metrics.challenge_steps_completed[p.step].fetch_add(1, Ordering::Relaxed);
+    if let Some(i) =
+      rilgate_challenge::authorization::steps::first_unsatisfied(&p.steps, &p.steps, &issued.grants)
+    {
+      let steps = p.steps.len();
+      let presentation = state
+        .pow
+        .issue_presentation(p.host, p.path, p.rule, p.weight, p.steps, i)
+        .map_err(ApiError::Internal)?;
+      let step = *presentation.claims.presented();
+      let solver_module_url = state.web.current().asset_url(
+        &crate::web::pages::solver_module_path(state, step.algorithm)
+          .map_err(ApiError::Internal)?,
+      );
+      Some(NextStep {
+        presentation_token: presentation.token,
+        step: i + 1,
+        steps,
+        method: "pow",
+        algorithm: step.algorithm,
+        difficulty: step.difficulty,
+        solver_module_url,
+      })
+    } else {
+      None
+    }
+  } else {
+    None
+  };
+  Ok((cookie, next))
 }
+
 pub(crate) fn refresh_token(uri: &Uri) -> Option<String> {
   url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
     .find(|(key, _)| key == "presentation_token")
@@ -267,7 +321,7 @@ pub fn websocket_admission(
   state: &AppState,
   headers: &HeaderMap,
   uri: &Uri,
-) -> Result<rilgate_protocol::claims::PresentationClaims, ApiError> {
+) -> Result<rilgate_challenge::challenge::Presentation, ApiError> {
   if state.pow.verification(PowAlgorithm::RandomX) != PowVerification::PoolShare {
     return Err(ApiError::InvalidRequest(
       "WebSocket Stratum pool verification is disabled".into(),
@@ -281,7 +335,7 @@ pub fn websocket_admission(
     .pow
     .verify_presentation(&token, &request_host(headers, uri))
     .map_err(ApiError::proof)?;
-  if presentation.algorithm != rilgate_pow::PowAlgorithm::RandomX {
+  if presentation.presented().algorithm != rilgate_pow::PowAlgorithm::RandomX {
     return Err(ApiError::InvalidRequest(
       "WebSocket verification is only valid for randomx challenges".into(),
     ));

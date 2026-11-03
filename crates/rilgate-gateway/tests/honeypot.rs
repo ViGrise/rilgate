@@ -37,6 +37,7 @@ async fn fixture(trust_proxy: bool, refresh: bool) -> Fixture {
   let rules = config.pow.policy.policy.rules.as_mut().unwrap();
   if refresh {
     rules[0].challenge = Some(ChallengePolicy {
+      steps: None,
       algorithm: Some(PowAlgorithm::Refresh),
       difficulty: Some(1),
     });

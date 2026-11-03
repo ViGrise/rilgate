@@ -15,11 +15,23 @@ async function main() {
   }
   state("preparing");
   const config = await jsonFetch(endpoint("/api/client-config"), { retries: 2 });
-  const algorithm = window.POW_ALGORITHM;
-  if (config.algorithms && !config.algorithms.some((entry) => entry.id === algorithm)) {
-    throw new Error(`PoW algorithm is not enabled: ${algorithm}`);
+  let algorithm;
+  for (;;) {
+    algorithm = window.POW_ALGORITHM;
+    if (config.algorithms && !config.algorithms.some((entry) => entry.id === algorithm)) {
+      throw new Error(`PoW algorithm is not enabled: ${algorithm}`);
+    }
+    window.PowClient.showStep();
+    await window.PowClient.algorithm(algorithm).run(config);
+    const next = window.PowClient.takeNext();
+    if (!next) break;
+    window.POW_PRESENTATION_TOKEN = next.presentation_token;
+    window.POW_ALGORITHM = next.algorithm;
+    window.POW_SOLVER_MODULE_URL = next.solver_module_url;
+    window.POW_STEP = next.step;
+    window.POW_STEPS = next.steps;
+    state("preparing");
   }
-  await window.PowClient.algorithm(algorithm).run(config);
   const session = await jsonFetch(endpoint("/api/session"), { retries: 2 });
   if (session.authenticated !== true) {
     state("cookies");

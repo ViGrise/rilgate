@@ -597,7 +597,7 @@ impl Handler {
     let handle = crate::proof::websocket::handle(
       socket,
       self.state.clone(),
-      presentation.difficulty,
+      presentation.presented().difficulty,
       presentation.host,
     );
     session.set_keepalive(None);

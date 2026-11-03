@@ -2,7 +2,7 @@ use crate::{runtime::state::AppState, transport::context::request_host};
 use http::{HeaderMap, HeaderValue, Uri};
 pub fn render_challenge_page(
   state: &AppState,
-  issued: rilgate_challenge::IssuedToken<rilgate_protocol::claims::PresentationClaims>,
+  issued: rilgate_challenge::IssuedToken<rilgate_challenge::challenge::Presentation>,
   headers: &HeaderMap,
   uri: &Uri,
   json: bool,
@@ -16,20 +16,22 @@ pub fn render_challenge_page(
     .duration_since(std::time::UNIX_EPOCH)
     .unwrap_or_default()
     .as_secs() as i64;
-  let solver_module_path =
-    solver_module_path(state, issued.claims.algorithm).expect("Registered challenge algorithm");
+  let solver_module_path = solver_module_path(state, issued.claims.presented().algorithm)
+    .expect("Registered challenge algorithm");
   let challenge = PublicChallengeInfo {
     url: challenge_url(&snapshot.config.base_path, &issued.token),
     embedded,
+    step: issued.claims.step + 1,
+    steps: issued.claims.steps.len(),
     token: issued.token,
-    algorithm: match issued.claims.algorithm {
+    algorithm: match issued.claims.presented().algorithm {
       rilgate_protocol::PowAlgorithm::Fast => "fast",
       rilgate_protocol::PowAlgorithm::Hashwx => "hashwx",
       rilgate_protocol::PowAlgorithm::RandomX => "randomx",
       rilgate_protocol::PowAlgorithm::Refresh => "refresh",
     }
     .into(),
-    difficulty: Some(issued.claims.difficulty),
+    difficulty: Some(issued.claims.presented().difficulty),
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
     solver_module_url: snapshot.asset_url(&solver_module_path),
@@ -177,7 +179,9 @@ pub fn render_page(
     challenge: PublicChallengeInfo {
       token: token.into(),
       algorithm: algorithm.into(),
-      difficulty: presentation.as_ref().map(|claims| claims.difficulty),
+      difficulty: presentation
+        .as_ref()
+        .map(|claims| claims.presented().difficulty),
       expires_at: presentation.as_ref().map(|claims| claims.expires_at),
       expires_in: presentation.as_ref().map(|claims| {
         let now = std::time::SystemTime::now()
@@ -271,7 +275,7 @@ fn query_language(query: &str) -> Option<String> {
     .filter(|value| !value.is_empty())
 }
 
-fn solver_module_path(
+pub(crate) fn solver_module_path(
   state: &AppState,
   algorithm: rilgate_protocol::PowAlgorithm,
 ) -> anyhow::Result<String> {

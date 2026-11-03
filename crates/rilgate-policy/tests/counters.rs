@@ -48,17 +48,27 @@ fn named_rates_and_fallback_select_the_required_decision() {
   ] {
     let decision = decide(&engine, vec![Some(login), Some(pages)], 0);
     assert_eq!(
-      (decision.action, decision.weight, decision.difficulty),
+      (
+        decision.action,
+        decision.weight,
+        decision.steps.first().and_then(|step| step.difficulty)
+      ),
       (action, weight, difficulty)
     );
   }
   for weight in [i32::MIN, -1, 0].into_iter().chain(1..20) {
     let decision = decide(&engine, vec![Some(0), Some(0)], weight);
-    assert_eq!(decision.difficulty, Some(2));
+    assert_eq!(
+      decision.steps.first().and_then(|step| step.difficulty),
+      Some(2)
+    );
     assert_eq!(&*decision.rule, "score fallback");
   }
   assert_eq!(
-    decide(&engine, vec![Some(0), Some(0)], 30).difficulty,
+    decide(&engine, vec![Some(0), Some(0)], 30)
+      .steps
+      .first()
+      .and_then(|step| step.difficulty),
     Some(5)
   );
   definition.policy.score = None;

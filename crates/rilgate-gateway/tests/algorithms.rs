@@ -76,10 +76,25 @@ async fn registered_backend_controls_policy_and_proof_while_common_checks_run_fi
     .unwrap();
   let service = ChallengeService::with_registry(Arc::new(cfg.challenge()), registry).unwrap();
   let decision = service.evaluate_request(&http::HeaderMap::new(), "/protected");
-  assert_eq!(decision.difficulty, Some(2));
+  assert_eq!(
+    service.resolve_steps(&decision).unwrap()[0],
+    rilgate_protocol::ChallengeStep::Pow(rilgate_protocol::PowStep {
+      algorithm: PowAlgorithm::Fast,
+      difficulty: 2,
+      verification: service.verification(PowAlgorithm::Fast)
+    })
+  );
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let ChallengeResponse::Fast {
     challenge_token,
     challenge,
@@ -136,7 +151,11 @@ async fn registered_backend_controls_policy_and_proof_while_common_checks_run_fi
     service
       .verify_auth_token(&auth, "example.test", &unbound())
       .unwrap()
-      .algorithm,
+      .grants
+      .iter()
+      .map(|rilgate_protocol::Grant::Pow(grant)| grant.algorithm)
+      .next()
+      .unwrap(),
     PowAlgorithm::Fast
   );
   assert_eq!(verified.load(Ordering::SeqCst), 1);

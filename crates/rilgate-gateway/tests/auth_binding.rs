@@ -110,8 +110,16 @@ impl Fixture {
       .evaluate_request(&http::HeaderMap::new(), "/protected");
     let presentation = self
       .service
-      .issue_presentation("example.test".into(), "/protected".into(), &decision)
-      .unwrap();
+      .issue_presentation(
+        "example.test".into(),
+        "/protected".into(),
+        decision.rule.to_string(),
+        decision.weight,
+        self.service.resolve_steps(&decision).unwrap(),
+        0,
+      )
+      .unwrap()
+      .token;
     let rilgate_protocol::ChallengeResponse::Fast {
       challenge_token,
       challenge,
@@ -309,7 +317,13 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
   let issued = bound
     .exchange_receipt_with_claims(&issue(&bound_cfg), "example.test", &unbound(), None)
     .unwrap();
-  assert!(issued.claims.binding.is_some());
+  let claims: rilgate_protocol::claims::AuthClaims = crypto::verify_json(
+    &issued.token,
+    bound_cfg.pow.auth_signing_key.expose().as_bytes(),
+    TokenPurpose::Auth,
+  )
+  .unwrap();
+  assert!(claims.binding.is_some());
   let mut headers = http::HeaderMap::new();
   headers.insert("user-agent", "other".parse().unwrap());
   let error = bound
@@ -326,17 +340,22 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
   let issued = plain
     .exchange_receipt_with_claims(&issue(&plain_cfg), "example.test", &unbound(), None)
     .unwrap();
-  assert!(issued.claims.binding.is_none());
+  let signed: rilgate_protocol::claims::AuthClaims = crypto::verify_json(
+    &issued.token,
+    plain_cfg.pow.auth_signing_key.expose().as_bytes(),
+    TokenPurpose::Auth,
+  )
+  .unwrap();
+  assert!(signed.binding.is_none());
 
   // A cookie carrying a digest is accepted unchanged once binding is turned off.
-  let claims = plain
+  plain
     .verify_auth_token(&issued.token, "example.test", &unbound())
     .unwrap();
-  assert!(claims.binding.is_none());
   let stored = crypto::sign_json(
     &rilgate_protocol::claims::AuthClaims {
       binding: Some("stale".into()),
-      ..claims
+      ..signed
     },
     plain_cfg.pow.auth_signing_key.expose().as_bytes(),
     TokenPurpose::Auth,

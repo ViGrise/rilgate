@@ -81,7 +81,10 @@ policy:
   );
   assert_eq!(decision.action, PolicyAction::Challenge);
   assert_eq!(decision.weight, 7);
-  assert_eq!(decision.difficulty, Some(2));
+  assert_eq!(
+    decision.steps.first().and_then(|step| step.difficulty),
+    Some(2)
+  );
   assert_eq!(
     engine.evaluate(&HeaderMap::new(), "/", 0).action,
     PolicyAction::Deny
@@ -200,7 +203,10 @@ fn preset_profiles_are_pool_independent_and_custom_is_not_merged() {
     headers.insert("user-agent", "curl".parse().unwrap());
     let decision = engine.evaluate(&headers, "/protected", 0);
     assert_eq!(decision.action, suspicious);
-    assert_eq!(decision.difficulty, difficulty);
+    assert_eq!(
+      decision.steps.first().and_then(|step| step.difficulty),
+      difficulty
+    );
     assert_eq!(
       engine.evaluate(&headers, "/robots.txt", 0).action,
       PolicyAction::Allow
@@ -377,6 +383,51 @@ fn same_as_host_ignores_port_and_case() {
         0
       ),
       expected
+    );
+  }
+}
+
+fn step_policy_error(challenge: &str) -> String {
+  let definition: PolicyDocument = serde_yaml_ng::from_str(&format!(
+    "policy:\n  rules:\n    - name: steps\n      when: {{path: {{prefix: /}}}}\n      action: challenge\n      challenge: {challenge}\n"
+  )).unwrap();
+  PolicyEngine::from_definition(&definition)
+    .and_then(|_| {
+      for (_, policy) in definition.challenge_policies()? {
+        policy.validate_steps(rilgate_protocol::PowAlgorithm::Fast)?;
+      }
+      Ok(())
+    })
+    .unwrap_err()
+    .to_string()
+}
+#[test]
+fn steps_reject_duplicate_algorithms_after_default_resolution() {
+  assert_eq!(
+    step_policy_error("{steps: [{}, {algorithm: fast}]}"),
+    "challenge.steps: each algorithm may appear only once"
+  );
+}
+#[test]
+fn steps_reject_refresh_combined_with_proof() {
+  assert_eq!(
+    step_policy_error("{steps: [{algorithm: fast}, {algorithm: refresh}]}"),
+    "challenge.steps: refresh is valid only as a one-step challenge"
+  );
+}
+#[test]
+fn steps_reject_mixed_selection_forms() {
+  assert_eq!(
+    step_policy_error("{algorithm: fast, steps: [{}]}"),
+    "policy.rules[0].challenge: use either steps or algorithm and difficulty"
+  );
+}
+#[test]
+fn steps_reject_empty_and_oversized_requirements() {
+  for challenge in ["{steps: []}", "{steps: [{}, {}, {}, {}, {}]}"] {
+    assert_eq!(
+      step_policy_error(challenge),
+      "policy.rules[0].challenge.steps: expected 1 to 4 steps"
     );
   }
 }

@@ -21,6 +21,24 @@ pub struct PresentationClaims {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresentationClaimsV2 {
+  pub v: u8,
+  pub host: String,
+  pub path: String,
+  pub rule: String,
+  pub weight: i32,
+  pub steps: Vec<crate::ChallengeStep>,
+  pub step: u8,
+  pub issued_at: i64,
+  pub expires_at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AnyPresentationClaims {
+  V2(PresentationClaimsV2),
+  V1(PresentationClaims),
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "algorithm", rename_all = "snake_case")]
 pub enum ChallengeClaims {
   Fast {
@@ -106,6 +124,25 @@ pub struct AuthClaims {
   pub binding: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub networks: Option<Vec<NetworkBinding>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthClaimsV2 {
+  pub host: String,
+  pub v: u8,
+  pub grants: Vec<crate::Grant>,
+  pub issued_at: i64,
+  pub expires_at: i64,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub binding: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub networks: Option<Vec<NetworkBinding>>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AnyAuthClaims {
+  V2(AuthClaimsV2),
+  V1(AuthClaims),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

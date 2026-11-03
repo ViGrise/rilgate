@@ -121,7 +121,11 @@ fn default_configuration_keeps_balanced_challenges_for_browsers_and_bots() {
     headers.insert("user-agent", agent.parse().unwrap());
     let decision = service.evaluate_request(&headers, "/protected");
     assert_eq!(decision.action, Challenge, "{agent}");
-    assert_eq!(decision.difficulty, Some(2), "{agent}");
+    assert_eq!(
+      decision.steps.first().and_then(|step| step.difficulty),
+      Some(2),
+      "{agent}"
+    );
     for path in [
       "/robots.txt",
       "/favicon.ico",
@@ -175,16 +179,28 @@ fn optional_rule_groups_deny_agents_before_public_allows_and_apply_client_scores
   for path in ["/protected", "/favicon.svg/private", "/private/sitemap.xml"] {
     let decision = service.evaluate_request(&headers, path);
     assert_eq!(decision.action, Challenge, "{path}");
-    assert_eq!(decision.difficulty, Some(2), "{path}");
+    assert_eq!(
+      decision.steps.first().and_then(|step| step.difficulty),
+      Some(2),
+      "{path}"
+    );
   }
   headers.insert("cf-worker", "".parse().unwrap());
   assert_eq!(
-    service.evaluate_request(&headers, "/content").difficulty,
+    service
+      .evaluate_request(&headers, "/content")
+      .steps
+      .first()
+      .and_then(|step| step.difficulty),
     Some(4)
   );
   headers.insert("x-firefox-ai", "".parse().unwrap());
   assert_eq!(
-    service.evaluate_request(&headers, "/content").difficulty,
+    service
+      .evaluate_request(&headers, "/content")
+      .steps
+      .first()
+      .and_then(|step| step.difficulty),
     Some(6)
   );
   headers.insert("sec-ch-ua", "Lightpanda".parse().unwrap());

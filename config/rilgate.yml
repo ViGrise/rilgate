@@ -1183,6 +1183,13 @@ server:
         #
         # difficulty: 2
 
+        # Ordered alternative: 1 to 4 steps, each algorithm once, refresh only
+        # alone, not together with algorithm or difficulty.
+        #
+        # steps:
+          # - {algorithm: fast, difficulty: 2}
+          # - {algorithm: hashwx, difficulty: 20}
+
   # score:
     # Starting signed 32-bit risk score, before ordered rules run.
     #

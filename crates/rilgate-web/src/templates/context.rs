@@ -48,6 +48,8 @@ pub struct PageInfo {
 pub struct PublicChallengeInfo {
   pub url: String,
   pub embedded: bool,
+  pub step: usize,
+  pub steps: usize,
   pub id: String,
   pub token: String,
   pub algorithm: String,
@@ -63,6 +65,8 @@ impl Default for PublicChallengeInfo {
     Self {
       url: String::new(),
       embedded: false,
+      step: 1,
+      steps: 1,
       id: String::new(),
       token: String::new(),
       algorithm: "fast".into(),

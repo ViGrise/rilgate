@@ -424,18 +424,45 @@
     return error;
   }
 
+  let nextStep;
+
   async function exchange(receipt) {
-    await jsonFetch(endpoint("/api/exchange"), {
+    const exchanged = await jsonFetch(endpoint("/api/exchange"), {
       method: "POST",
-      body: JSON.stringify({ receipt }),
+      body: JSON.stringify({ receipt, presentation_token: window.POW_PRESENTATION_TOKEN }),
     });
+    nextStep = exchanged.next;
+  }
+
+  function takeNext() {
+    const next = nextStep;
+    nextStep = undefined;
+    return next;
+  }
+
+  function showStep() {
+    const element = document.querySelector("#step");
+    if (!element) return;
+    element.hidden = !(window.POW_STEPS > 1);
+    if (!element.hidden) {
+      element.textContent = t("challenge.step", "Step {current} of {total}", {
+        current: window.POW_STEP,
+        total: window.POW_STEPS,
+      });
+    }
   }
 
   async function verify(challenge_token, nonce) {
     const verified = await jsonFetch(endpoint("/api/verify"), {
       method: "POST",
-      body: JSON.stringify({ challenge_token, nonce, set_cookie: true }),
+      body: JSON.stringify({
+        challenge_token,
+        nonce,
+        set_cookie: true,
+        presentation_token: window.POW_PRESENTATION_TOKEN,
+      }),
     });
+    nextStep = verified.next;
     if (verified.cookie_set !== true) await exchange(verified.receipt);
   }
 
@@ -556,6 +583,8 @@
     asset,
     jsonFetch,
     exchange,
+    takeNext,
+    showStep,
     verify,
     requestChallenge,
     progressEl,

@@ -182,7 +182,13 @@ fn unknown_sets_never_produce_a_more_permissive_outcome() {
     (decision.action, &*decision.rule, decision.unresolved),
     (PolicyAction::Challenge, "d", true)
   );
-  assert_eq!((decision.algorithm, decision.difficulty), (None, None));
+  assert_eq!(
+    (
+      decision.steps.first().and_then(|step| step.algorithm),
+      decision.steps.first().and_then(|step| step.difficulty)
+    ),
+    (None, None)
+  );
   let scores = remote(
     "    - {name: up, when: {client_ip: {in_sets: [feed]}}, action: score, score: 5}\n    - {name: down, when: {client_ip: {in_sets: [feed]}}, action: score, score: -7}\n",
   );

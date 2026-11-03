@@ -2,12 +2,13 @@ use anyhow::{Result, anyhow};
 pub(crate) use rilgate_core::time::unix_now;
 pub(crate) fn validate_lifetime(
   version: u8,
+  versions: &[u8],
   issued_at: i64,
   expires_at: i64,
   ttl: u64,
 ) -> Result<()> {
   let now = unix_now()?;
-  if version != 1
+  if !versions.contains(&version)
     || issued_at > now
     || issued_at < 0
     || expires_at <= issued_at
