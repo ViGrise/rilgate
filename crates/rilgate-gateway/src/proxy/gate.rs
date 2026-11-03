@@ -10,9 +10,10 @@ use http::{
   header::{CACHE_CONTROL, CONTENT_TYPE},
 };
 use rilgate_challenge::authorization::binding::{BindingInput, BindingMismatch};
+use rilgate_challenge::authorization::steps::first_unsatisfied;
 use rilgate_config::DecisionLog;
 use rilgate_policy::{Lookups, PolicyAction, PolicyDecision, conditions::Request};
-use rilgate_protocol::PowAlgorithm;
+use rilgate_protocol::{ChallengeStep, PowAlgorithm, PowStep};
 
 struct DecisionContext<'a> {
   request_id: &'a str,
@@ -20,6 +21,9 @@ struct DecisionContext<'a> {
   request: &'a Request<'a>,
   action: PolicyAction,
   fallback: bool,
+  required: &'a [ChallengeStep],
+  presented: Option<usize>,
+  effective: &'a [ChallengeStep],
 }
 
 fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: DecisionContext<'_>) {
@@ -40,6 +44,19 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: Decision
     PolicyAction::Challenge => "challenge",
     PolicyAction::Score => "score",
   };
+  let selection = context
+    .presented
+    .and_then(|i| context.effective.get(i))
+    .or_else(|| context.required.first());
+  let step = selection.map(|ChallengeStep::Pow(step)| step);
+  let summaries = (!context.required.is_empty()).then(|| {
+    context
+      .required
+      .iter()
+      .map(ChallengeStep::summary)
+      .collect::<Vec<_>>()
+      .join(",")
+  });
   tracing::info!(
     request_id = context.request_id,
     client_ip = %context.request.client_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "unknown".into()),
@@ -49,8 +66,13 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: Decision
     action,
     rule = &*decision.rule,
     weight = decision.weight,
-    algorithm = ?decision.algorithm,
-    difficulty = ?decision.difficulty,
+    algorithm = step.map(|step| match step.algorithm {
+      PowAlgorithm::Fast => "fast", PowAlgorithm::Hashwx => "hashwx",
+      PowAlgorithm::RandomX => "randomx", PowAlgorithm::Refresh => "refresh",
+    }),
+    difficulty = step.map(|step| step.difficulty),
+    step = context.presented.map(|i| i + 1),
+    steps = summaries.as_deref(),
     unresolved = decision.unresolved,
     fallback = context.fallback,
     "Policy decision"
@@ -160,17 +182,26 @@ pub async fn gate_with_client(
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
   }
 
-  let mut effective = decision.clone();
-  if decision.algorithm == Some(PowAlgorithm::RandomX)
-    && let Some(fallback) = &state.cfg.pow.randomx_fallback
+  let required = state
+    .pow
+    .resolve_steps(&decision)
+    .map_err(ApiError::Internal)?;
+  let mut effective = required.clone();
+  if let Some(fallback) = &state.cfg.pow.randomx_fallback
     && !state.pool.work_available()
   {
-    effective.algorithm = Some(fallback.algorithm);
-    effective.difficulty = Some(fallback.difficulty);
+    for ChallengeStep::Pow(step) in &mut effective {
+      if step.algorithm == PowAlgorithm::RandomX {
+        *step = PowStep {
+          algorithm: fallback.algorithm,
+          difficulty: fallback.difficulty,
+          verification: state.pow.verification(fallback.algorithm),
+        };
+      }
+    }
   }
-  let fallback =
-    effective.algorithm != decision.algorithm || effective.difficulty != decision.difficulty;
-  let log = |action| {
+  let fallback = effective != required;
+  let log = |action, presented| {
     log_decision(
       state.cfg.server.decision_log,
       &decision,
@@ -180,18 +211,21 @@ pub async fn gate_with_client(
         request: &request,
         action,
         fallback,
+        required: &required,
+        effective: &effective,
+        presented,
       },
     )
   };
 
   match decision.action {
     PolicyAction::Allow => {
-      log(PolicyAction::Allow);
+      log(PolicyAction::Allow, None);
       return Ok(None);
     }
 
     PolicyAction::Deny => {
-      log(PolicyAction::Deny);
+      log(PolicyAction::Deny, None);
 
       let template = if json {
         "pages/denied.json.jinja"
@@ -218,21 +252,15 @@ pub async fn gate_with_client(
     }
   }
 
-  let required_difficulty = decision.difficulty.ok_or_else(|| {
-    ApiError::Internal(anyhow::anyhow!(
-      "CHALLENGE policy has no resolved difficulty"
-    ))
-  })?;
-
   let binding = BindingInput {
     client_ip,
     headers,
     trusted_peer,
   };
-  let authenticated = cookie_value(headers, &state.cfg.pow.auth_cookie_name)
+  let grants = cookie_value(headers, &state.cfg.pow.auth_cookie_name)
     .and_then(
       |token| match state.pow.verify_auth_token(token, &host, &binding) {
-        Ok(claims) => Some(claims),
+        Ok(access) => Some(access.grants),
         Err(error) => {
           if error.downcast_ref::<BindingMismatch>().is_some() {
             state
@@ -245,33 +273,23 @@ pub async fn gate_with_client(
         }
       },
     )
-    .is_some_and(|claims| {
-      if fallback
-        && claims.verification == state.pow.verification(claims.algorithm)
-        && Some(claims.algorithm) == effective.algorithm
-        && claims.difficulty >= effective.difficulty.expect("challenge difficulty resolved")
-      {
-        return true;
-      }
-      let required = decision.algorithm.expect("challenge algorithm resolved");
-      claims.verification == state.pow.verification(claims.algorithm)
-        && match (required, claims.algorithm) {
-          // Any proof of work outranks a wait, so only a refresh cookie needs the difficulty check.
-          (PowAlgorithm::Refresh, algorithm) if algorithm != PowAlgorithm::Refresh => true,
-          (required, algorithm) => {
-            algorithm == required && claims.difficulty >= required_difficulty
-          }
-        }
-    });
-
-  if authenticated {
-    log(PolicyAction::Allow);
+    .unwrap_or_default();
+  let Some(step) = first_unsatisfied(&required, &effective, &grants) else {
+    log(PolicyAction::Allow, None);
     return Ok(None);
-  }
-
+  };
+  let ChallengeStep::Pow(presented) = &effective[step];
+  let refresh = presented.algorithm == PowAlgorithm::Refresh;
   let presentation = state
     .pow
-    .issue_presentation_with_claims(host.clone(), uri.path().to_string(), &effective)
+    .issue_presentation(
+      host.clone(),
+      uri.path().to_string(),
+      decision.rule.to_string(),
+      decision.weight,
+      effective.clone(),
+      step,
+    )
     .map_err(ApiError::Internal)?;
   let challenge_url: HeaderValue =
     crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token)
@@ -279,7 +297,6 @@ pub async fn gate_with_client(
       .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?;
 
   if json || method == Method::GET || method == Method::HEAD {
-    let refresh = decision.algorithm == Some(PowAlgorithm::Refresh);
     let open_graph = if !json && !refresh && method == Method::GET {
       state
         .open_graph
@@ -292,7 +309,7 @@ pub async fn gate_with_client(
       render_refresh_page(
         state,
         &presentation.token,
-        presentation.claims.difficulty,
+        presentation.claims.presented().difficulty,
         headers,
         uri,
       )
@@ -313,7 +330,10 @@ pub async fn gate_with_client(
       policy,
     );
     insert_challenge_notification(state, &mut out, challenge_url);
-    if decision.algorithm == Some(PowAlgorithm::RandomX) {
+    if required
+      .iter()
+      .any(|ChallengeStep::Pow(step)| step.algorithm == PowAlgorithm::RandomX)
+    {
       use std::sync::atomic::Ordering;
       let previous = state
         .randomx_fallback_active
@@ -327,11 +347,11 @@ pub async fn gate_with_client(
         tracing::info!("RandomX work is available again");
       }
     }
-    log(PolicyAction::Challenge);
+    log(PolicyAction::Challenge, Some(step));
     return Ok(Some(out));
   }
 
-  log(PolicyAction::Challenge);
+  log(PolicyAction::Challenge, Some(step));
   let mut out = response(
     StatusCode::UNAUTHORIZED,
     if method == Method::HEAD {

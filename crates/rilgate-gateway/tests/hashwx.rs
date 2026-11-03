@@ -73,8 +73,16 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
     ChallengeService::with_registry(Arc::new(config.pow.challenge()), registry).unwrap();
   let decision = service.evaluate_request(&http::HeaderMap::new(), "/protected");
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let ChallengeResponse::Hashwx {
     challenge_token,
     challenge,
@@ -190,8 +198,9 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
   let verified = service
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  assert_eq!(verified.algorithm, PowAlgorithm::Hashwx);
-  assert_eq!(verified.difficulty, difficulty);
+  let rilgate_protocol::Grant::Pow(grant) = &verified.grants[0];
+  assert_eq!(grant.algorithm, PowAlgorithm::Hashwx);
+  assert_eq!(grant.difficulty, difficulty);
   assert!(
     service
       .verify_auth_token(&auth, "other.test", &unbound())

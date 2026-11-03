@@ -65,7 +65,13 @@ async fn receipts_and_access_are_host_bound_and_exchange_preserves_proof_time() 
   let claims = service
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  assert_eq!(claims.issued_at, proof.issued_at);
+  let signed: rilgate_protocol::claims::AuthClaims = crypto::verify_json(
+    &auth,
+    cfg.pow.auth_signing_key.expose().as_bytes(),
+    TokenPurpose::Auth,
+  )
+  .unwrap();
+  assert_eq!(signed.issued_at, proof.issued_at);
   assert_eq!(
     claims.expires_at,
     proof.issued_at + cfg.pow.auth_ttl_seconds as i64
@@ -145,8 +151,16 @@ async fn signed_claims_require_supported_version_and_valid_lifetime() {
   );
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let token = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   assert!(service.verify_presentation(&token, "").is_err());
   let mut presentation: PresentationClaims = crypto::verify_json(
     &token,
@@ -247,8 +261,16 @@ async fn identical_pool_jobs_produce_distinct_local_work_with_exact_difficulty()
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
 
   let mut blobs = vec![];
   for _ in 0..2 {
@@ -305,8 +327,16 @@ async fn an_unreachable_pool_reports_the_backend_as_unavailable() {
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
 
   let error = service
     .issue_challenge(&presentation, "example.test")
@@ -350,8 +380,16 @@ async fn a_fast_challenge_keeps_gateway_verification_with_pool_share_randomx() {
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let ChallengeResponse::Fast {
     challenge_token,
     challenge,
@@ -603,8 +641,16 @@ async fn rolling_key_rotation_preserves_the_full_cross_instance_proof_flow() {
   let new = make_service(&next).unwrap();
   let decision = old.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = old
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      old.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let ChallengeResponse::Fast {
     challenge_token,
     challenge,

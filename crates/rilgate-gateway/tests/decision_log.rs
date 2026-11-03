@@ -171,11 +171,14 @@ async fn challenge_and_deny_decisions_are_logged_with_the_client_ip() {
         "action",
         "rule",
         "weight",
-        "algorithm",
-        "difficulty",
         "unresolved",
       ] {
         assert!(fields.get(name).is_some(), "Missing {name}: {event}");
+      }
+      if fields["action"] == "challenge" || fields["path"] == "/protected/cookie" {
+        for name in ["algorithm", "difficulty", "steps"] {
+          assert!(fields.get(name).is_some(), "Missing {name}: {event}");
+        }
       }
       assert_eq!(fields["client_ip"], "127.0.0.1");
       assert_eq!(fields["host"], "example.test");

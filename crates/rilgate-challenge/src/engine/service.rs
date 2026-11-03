@@ -2,7 +2,7 @@ use crate::{ChallengeConfig, authorization::binding::AuthBinding};
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use http::HeaderMap;
-use rilgate_policy::{PolicyAction, PolicyDecision, PolicyEngine, policy::schema::PolicyDocument};
+use rilgate_policy::{PolicyDecision, PolicyEngine, policy::schema::PolicyDocument};
 use rilgate_pow::{AlgorithmDescriptor, AlgorithmRegistry};
 use rilgate_protocol::{PowAlgorithm, PowVerification};
 use std::sync::Arc;
@@ -73,6 +73,11 @@ impl ChallengeService {
     previous: Option<&PolicyEngine>,
   ) -> Result<CompiledPolicy> {
     let engine = PolicyEngine::from_definition_with(definition, previous)?;
+    for (name, selection) in definition.challenge_policies()? {
+      selection
+        .validate_steps(cfg.default_algorithm)
+        .with_context(|| format!("Invalid challenge policy in {name}"))?;
+    }
     for (name, selection) in definition.challenges()? {
       let backend = algorithms
         .get(selection.algorithm.unwrap_or(cfg.default_algorithm))
@@ -187,24 +192,32 @@ impl ChallengeService {
   ) -> PolicyDecision {
     let policy = self.policy.load();
     let initial_weight = Self::initial_weight(&policy, request.headers);
-    let mut decision = policy.engine.evaluate_context(request, initial_weight);
+    policy.engine.evaluate_context(request, initial_weight)
+  }
 
-    if decision.action == PolicyAction::Challenge {
-      if decision.algorithm.is_none() {
-        decision.algorithm = Some(self.cfg.default_algorithm);
-      }
-
-      if decision.difficulty.is_none() {
-        let algorithm = decision.algorithm.unwrap_or(self.cfg.default_algorithm);
-        decision.difficulty = self
-          .algorithms
-          .get(algorithm)
-          .ok()
-          .map(|backend| backend.difficulty_for_weight(decision.weight));
-      }
-    }
-
+  pub fn resolve_steps(
+    &self,
+    decision: &PolicyDecision,
+  ) -> Result<Vec<rilgate_protocol::ChallengeStep>> {
     decision
+      .steps
+      .iter()
+      .map(|selection| {
+        let algorithm = selection.algorithm.unwrap_or(self.cfg.default_algorithm);
+        let backend = self.algorithms.get(algorithm)?;
+        let difficulty = selection
+          .difficulty
+          .unwrap_or_else(|| backend.difficulty_for_weight(decision.weight));
+        backend.validate_difficulty(difficulty)?;
+        Ok(rilgate_protocol::ChallengeStep::Pow(
+          rilgate_protocol::PowStep {
+            algorithm,
+            difficulty,
+            verification: self.cfg.verification.of(algorithm),
+          },
+        ))
+      })
+      .collect()
   }
 
   fn initial_weight(policy: &CompiledPolicy, headers: &HeaderMap) -> i32 {

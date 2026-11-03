@@ -10,19 +10,23 @@ impl ChallengeService {
     request_host: &str,
   ) -> Result<ChallengeResponse> {
     let presentation = self.verify_presentation(presentation_token, request_host)?;
-    let backend = self.algorithms.get(presentation.algorithm)?;
-    backend.validate_verification(presentation.verification)?;
+    let backend = self.algorithms.get(presentation.presented().algorithm)?;
+    backend.validate_verification(presentation.presented().verification)?;
     let prepared = backend
       .issue(WorkRequest {
-        difficulty: presentation.difficulty,
-        verification: presentation.verification,
+        difficulty: presentation.presented().difficulty,
+        verification: presentation.presented().verification,
       })
       .await?;
     ensure!(
-      prepared.algorithm() == presentation.algorithm,
+      prepared.algorithm() == presentation.presented().algorithm,
       "Work algorithm does not match presentation"
     );
-    let claims = work::claims(&prepared, presentation.host, presentation.verification);
+    let claims = work::claims(
+      &prepared,
+      presentation.host.clone(),
+      presentation.presented().verification,
+    );
     let token = self.tokens.challenge.sign_json(&claims)?;
     work::response(prepared, token)
   }
@@ -41,6 +45,7 @@ impl ChallengeService {
     let backend = self.algorithms.get(metadata.algorithm)?;
     validate_lifetime(
       metadata.version,
+      &[1],
       metadata.issued_at,
       metadata.expires_at,
       backend.challenge_ttl(),
@@ -60,6 +65,7 @@ impl ChallengeService {
       .await?;
     validate_lifetime(
       metadata.version,
+      &[1],
       metadata.issued_at,
       metadata.expires_at,
       backend.challenge_ttl(),

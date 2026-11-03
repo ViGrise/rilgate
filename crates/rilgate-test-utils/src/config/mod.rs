@@ -110,6 +110,7 @@ pub fn config() -> Config {
             action: Action::Challenge,
             score: None,
             challenge: Some(ChallengePolicy {
+              steps: None,
               algorithm: Some(PowAlgorithm::Fast),
               difficulty: Some(1),
             }),

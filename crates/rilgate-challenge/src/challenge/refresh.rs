@@ -1,6 +1,6 @@
 use crate::{
   ChallengeService,
-  authorization::{AuthGrant, binding::BindingInput},
+  authorization::{PowGrant, binding::BindingInput},
 };
 use anyhow::{Result, ensure};
 use rilgate_protocol::PowAlgorithm;
@@ -31,21 +31,23 @@ impl ChallengeService {
   ) -> Result<RefreshRedemption> {
     let claims = self.verify_presentation(token, host)?;
     ensure!(
-      claims.algorithm == PowAlgorithm::Refresh,
+      claims.presented().algorithm == PowAlgorithm::Refresh,
       "Presentation token is not a refresh challenge"
     );
-    let ready_at = claims.issued_at.saturating_add(claims.difficulty as i64);
+    let ready_at = claims
+      .issued_at
+      .saturating_add(claims.presented().difficulty as i64);
     if now < ready_at {
       return Ok(RefreshRedemption::Wait {
         seconds: (ready_at - now) as u64,
       });
     }
-    let issued = self.issue_auth_token(
-      AuthGrant {
-        host: claims.host,
-        algorithm: claims.algorithm,
-        difficulty: claims.difficulty,
-        verification: claims.verification,
+    let issued = self.issue_access(
+      claims.host.clone(),
+      PowGrant {
+        algorithm: claims.presented().algorithm,
+        difficulty: claims.presented().difficulty,
+        verification: claims.presented().verification,
         issued_at: now,
       },
       binding,

@@ -90,6 +90,8 @@ fn bootstrap_capacity(rilgate: &PublicRilgateInfo, challenge: &PublicChallengeIn
     + challenge.solver_module_url.len()
     + challenge.token.len()
     + challenge.algorithm.len()
+    + 16
+    + 16
 }
 
 fn write_bootstrap(
@@ -108,6 +110,8 @@ fn write_bootstrap(
       "presentation_token": challenge.token,
       "algorithm": challenge.algorithm,
       "embedded": challenge.embedded,
+      "step": challenge.step,
+      "steps": challenge.steps,
     }),
   )?;
   output.extend_from_slice(b"</script>");

@@ -544,3 +544,68 @@ test("a seed change keeps the attempt count and explains the setup", async () =>
     },
   });
 });
+
+test("next presentation runs the second adapter with its token and step label", async () => {
+  const requests = [];
+  const { client, context, elements } = page(
+    ["status", "step"],
+    { step: 1, steps: 2 },
+    {
+      AbortController,
+      clearTimeout,
+      setTimeout,
+      fetch: async (url, options) => {
+        const body = options.body ? JSON.parse(options.body) : null;
+        requests.push({ url, body });
+        const next =
+          requests.filter((request) => request.url.endsWith("/api/verify")).length === 1
+            ? {
+                presentation_token: "second",
+                step: 2,
+                steps: 2,
+                method: "pow",
+                algorithm: "hashwx",
+                difficulty: 1,
+                solver_module_url: "/static/js/solvers/hashwx/solver.js",
+              }
+            : undefined;
+        const response = url.endsWith("/api/client-config")
+          ? { algorithms: [{ id: "fast" }, { id: "hashwx" }] }
+          : url.endsWith("/api/session")
+            ? { authenticated: true }
+            : { cookie_set: true, next };
+        return {
+          status: 200,
+          headers: { get: () => null },
+          text: async () => JSON.stringify(response),
+        };
+      },
+    },
+  );
+  const runs = [];
+  client.algorithm = (id) => ({
+    async run() {
+      runs.push([id, context.window.POW_SOLVER_MODULE_URL]);
+      await client.verify("work", "nonce");
+    },
+  });
+  context.location = { reload() {} };
+  vm.runInContext(startup, context);
+  for (
+    let attempt = 0;
+    attempt < 100 && !requests.some(({ url }) => url.endsWith("/api/session"));
+    attempt++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(
+    runs.map(([id]) => id),
+    ["fast", "hashwx"],
+  );
+  assert.equal(runs[1][1], "/static/js/solvers/hashwx/solver.js");
+  assert.equal(
+    requests.filter(({ url }) => url.endsWith("/api/verify"))[1].body.presentation_token,
+    "second",
+  );
+  assert.equal(elements.get("#step").textContent, "Step 2 of 2");
+  assert.equal(elements.get("#step").hidden, false);
+});

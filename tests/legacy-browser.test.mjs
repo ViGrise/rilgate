@@ -270,7 +270,10 @@ test("fast page completes over XHR with Promise, workers, TextEncoder and modern
   const proof = JSON.parse(verify.body);
   assert.equal(proof.challenge_token, "signed-challenge");
   assert.match(createHash("sha256").update(`fallback-😀${proof.nonce}`).digest("hex"), /^0/);
-  assert.deepEqual(JSON.parse(state.requests[3].body), { receipt: "signed-receipt" });
+  assert.deepEqual(JSON.parse(state.requests[3].body), {
+    receipt: "signed-receipt",
+    presentation_token: "presentation",
+  });
   assert.equal(state.requests[1].timeout, 30000);
   assert.equal(state.requests[1].headers["content-type"], "application/json");
 });

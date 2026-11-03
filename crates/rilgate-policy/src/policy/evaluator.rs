@@ -4,7 +4,7 @@ use crate::geoip::GeoDatabases;
 use crate::host_load::{HOST_LOAD, HostLoad};
 use crate::lookups::{LookupPlan, Lookups};
 use crate::{AsnSets, IpSets, PolicySets};
-use crate::{ChallengePolicy, PolicyAction, PowAlgorithm};
+use crate::{ChallengePolicy, PolicyAction, StepPolicy};
 use anyhow::{Context, Result, ensure};
 use http::{HeaderMap, Method};
 use std::cell::Cell;
@@ -15,8 +15,7 @@ use std::sync::Arc;
 pub struct PolicyDecision {
   pub action: PolicyAction,
   pub weight: i32,
-  pub algorithm: Option<PowAlgorithm>,
-  pub difficulty: Option<u64>,
+  pub steps: Arc<[StepPolicy]>,
   pub rule: Arc<str>,
   pub unresolved: bool,
   /// A DNS condition had no result in the lookups, so evaluating again with the
@@ -28,6 +27,7 @@ struct CompiledRule {
   rule: Rule,
   name: Arc<str>,
   condition: Compiled,
+  steps: Arc<[StepPolicy]>,
 }
 #[derive(Debug)]
 pub struct PolicyEngine {
@@ -35,6 +35,9 @@ pub struct PolicyEngine {
   counters: Vec<crate::counters::CompiledCounter>,
   default_action: PolicyAction,
   default_rule: Arc<str>,
+  default_steps: Arc<[StepPolicy]>,
+  empty_steps: Arc<[StepPolicy]>,
+  challenge_steps: Arc<[StepPolicy]>,
   sets: PolicySets,
   geoip: GeoDatabases,
   lookup_plan: LookupPlan,
@@ -95,7 +98,29 @@ impl Definition {
   }
 }
 impl PolicyDocument {
-  pub fn challenges(&self) -> Result<Vec<(String, ChallengePolicy)>> {
+  pub fn challenges(&self) -> Result<Vec<(String, StepPolicy)>> {
+    Ok(
+      self
+        .challenge_policies()?
+        .into_iter()
+        .flat_map(|(name, policy)| {
+          let steps = policy.step_policies();
+          let multiple = steps.len() > 1;
+          steps.into_iter().enumerate().map(move |(i, step)| {
+            (
+              if multiple {
+                format!("{name} step {}", i + 1)
+              } else {
+                name.clone()
+              },
+              step,
+            )
+          })
+        })
+        .collect(),
+    )
+  }
+  pub fn challenge_policies(&self) -> Result<Vec<(String, ChallengePolicy)>> {
     let (rules, default) = self.policy.resolved_rules()?;
     let mut choices: Vec<_> = rules
       .into_iter()
@@ -187,6 +212,8 @@ impl PolicyEngine {
         .collect(),
     );
     let mut rules = Vec::new();
+    let empty_steps: Arc<[StepPolicy]> = Arc::from([]);
+    let challenge_steps: Arc<[StepPolicy]> = Arc::from([StepPolicy::default()]);
     for (index, rule) in source.into_iter().enumerate() {
       let explicit = definition.rules.as_ref().map_or(0, Vec::len);
       let path = if index < explicit {
@@ -206,6 +233,20 @@ impl PolicyEngine {
         rule.challenge.is_none() || rule.action == Action::Challenge,
         "{path}.challenge: only valid for action: challenge"
       );
+      if let Some(challenge) = &rule.challenge {
+        ensure!(
+          challenge.steps.is_none()
+            || (challenge.algorithm.is_none() && challenge.difficulty.is_none()),
+          "{path}.challenge: use either steps or algorithm and difficulty"
+        );
+        ensure!(
+          challenge
+            .steps
+            .as_ref()
+            .is_none_or(|steps| (1..=4).contains(&steps.len())),
+          "{path}.challenge.steps: expected 1 to 4 steps"
+        );
+      }
       let condition = Compiled::compile(
         &rule.when,
         &format!("{path}.when"),
@@ -214,7 +255,16 @@ impl PolicyEngine {
         &sets,
         &geoip,
       )?;
+      let steps = if rule.action == Action::Challenge {
+        Arc::from(rule.challenge.as_ref().map_or_else(
+          || vec![StepPolicy::default()],
+          ChallengePolicy::step_policies,
+        ))
+      } else {
+        empty_steps.clone()
+      };
       rules.push(CompiledRule {
+        steps,
         name: rule.name.as_str().into(),
         rule,
         condition,
@@ -235,6 +285,13 @@ impl PolicyEngine {
       }
       .into(),
       default_action: default,
+      challenge_steps: challenge_steps.clone(),
+      default_steps: if default == Action::Challenge {
+        challenge_steps
+      } else {
+        empty_steps.clone()
+      },
+      empty_steps,
       sets,
       geoip,
       lookup_plan,
@@ -345,8 +402,7 @@ impl PolicyEngine {
           return PolicyDecision {
             action: PolicyAction::Challenge,
             weight,
-            algorithm: None,
-            difficulty: None,
+            steps: self.challenge_steps.clone(),
             rule: entry.name.clone(),
             unresolved,
             needs_lookups: needs_lookups.get(),
@@ -372,8 +428,7 @@ impl PolicyEngine {
     PolicyDecision {
       action: self.default_action,
       weight,
-      algorithm: None,
-      difficulty: None,
+      steps: self.default_steps.clone(),
       rule: self.default_rule.clone(),
       unresolved,
       needs_lookups: needs_lookups.get(),
@@ -388,12 +443,14 @@ impl PolicyEngine {
     unresolved: bool,
     needs_lookups: bool,
   ) -> PolicyDecision {
-    let selection = entry.rule.challenge.as_ref();
     PolicyDecision {
       action,
       weight,
-      algorithm: selection.and_then(|c| c.algorithm),
-      difficulty: selection.and_then(|c| c.difficulty),
+      steps: if action == PolicyAction::Challenge {
+        entry.steps.clone()
+      } else {
+        self.empty_steps.clone()
+      },
       rule: entry.name.clone(),
       unresolved,
       needs_lookups,

@@ -89,8 +89,16 @@ async fn fast_proof_is_portable_between_gateway_instances() {
   let verifier = make_service(&cfg).unwrap();
   let decision = issuer.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = issuer
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      issuer.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let ChallengeResponse::Fast {
     challenge_token,
     challenge,
@@ -122,8 +130,9 @@ async fn fast_proof_is_portable_between_gateway_instances() {
   let claims = issuer
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  assert_eq!(claims.algorithm, PowAlgorithm::Fast);
-  assert_eq!(claims.difficulty, 1);
+  let rilgate_protocol::Grant::Pow(grant) = &claims.grants[0];
+  assert_eq!(grant.algorithm, PowAlgorithm::Fast);
+  assert_eq!(grant.difficulty, 1);
   let cookie = rilgate_gateway::auth::cookies::auth_cookie_header(
     &verifier,
     &common::config(),
@@ -571,8 +580,16 @@ async fn unavailable_p2pool_returns_service_unavailable_after_valid_presentation
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&HeaderMap::new(), "/protected");
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let router = app::router(cfg).await.unwrap();
   let response = router
     .oneshot(

@@ -511,8 +511,11 @@ valid authentication cookie are logged as `allow`. The equivalent overrides are
 `RILGATE_SERVER_DECISION_LOG` and `--server-decision-log`.
 
 Each decision includes `request_id`, `client_ip`, `method`, `host`, `path`, `action`,
-`rule`, `weight`, `algorithm`, `difficulty`, and `unresolved`. These logs contain client
-IP addresses and request paths. Algorithm and difficulty are optional policy values.
+`rule`, `weight`, `algorithm`, `difficulty`, `step`, `steps`, `unresolved`, and `fallback`.
+These logs contain client IP addresses and request paths. Algorithm and difficulty describe
+the presented step, or the first required step when none is presented. `step` is the 1-based
+presented step, and `steps` lists the required summaries, such as `fast:2,hashwx:20`.
+Step fields are absent for non-challenge decisions.
 
 ## Site
 
@@ -670,9 +673,10 @@ security:
   to 32 and 0 to 128. The resolved IP honors `server.trusted_proxies`, so that list must be correct.
 - `client_ip.max_networks` accepts integers from 1 to 8, with default 1 preserving the
   legacy cookie format. Set it to 4 to remember up to four proven networks. Each new
-  network still needs a solved challenge. Entries expire independently, and a merged
-  cookie uses the lower difficulty. A different bound User-Agent family or algorithm
-  starts a new cookie. With several gateway instances, deploy the same version
+  network still needs a solved challenge. Entries expire independently. A cookie with one
+  algorithm uses the lower difficulty when its proven networks merge; cookies with several
+  grants follow [challenge selection](policy.md#challenge-selection). A different bound
+  User-Agent family starts a cookie. With several gateway instances, deploy the same version
   everywhere before raising this value: older instances reject the network form and
   challenge again. `rilgate_auth_network_merges_total` counts successful merges.
 - `user_agent` is `full` for the exact header or `family` for the header

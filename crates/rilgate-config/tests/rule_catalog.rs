@@ -90,7 +90,10 @@ fn embedded_policy_resolves_relative_rules_from_string_configuration() {
   );
   let decision = engine.evaluate(&headers, "/content", 0);
   assert_eq!(decision.action, PolicyAction::Challenge);
-  assert_eq!(decision.difficulty, Some(2));
+  assert_eq!(
+    decision.steps.first().and_then(|step| step.difficulty),
+    Some(2)
+  );
 }
 
 #[test]

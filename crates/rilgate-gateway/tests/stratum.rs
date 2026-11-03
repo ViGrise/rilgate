@@ -83,8 +83,16 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&Default::default(), "/protected");
   let presentation = service
-    .issue_presentation(host.clone(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      host.clone(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let gateway = app::build(cfg.clone()).await.unwrap();
   let server = tokio::spawn(async move {
     gateway
@@ -195,7 +203,11 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     service
       .verify_auth_token(&token, &claims.host, &unbound())
       .unwrap()
-      .verification,
+      .grants
+      .iter()
+      .map(|rilgate_protocol::Grant::Pow(grant)| grant.verification)
+      .next()
+      .unwrap(),
     PowVerification::PoolShare
   );
   ws.close(None).await.unwrap();
@@ -389,8 +401,16 @@ async fn fast_proofs_pass_the_gate_while_gateway_randomx_cookies_are_rejected() 
   let service = make_service(&cfg).unwrap();
   let decision = service.evaluate_request(&Default::default(), "/protected");
   let presentation = service
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   let ChallengeResponse::Fast {
     challenge_token,
     challenge,
@@ -418,7 +438,14 @@ async fn fast_proofs_pass_the_gate_while_gateway_randomx_cookies_are_rejected() 
   let claims = service
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  assert_eq!(claims.verification, PowVerification::Gateway);
+  let rilgate_protocol::Grant::Pow(grant) = &claims.grants[0];
+  assert_eq!(grant.verification, PowVerification::Gateway);
+  let signed: AuthClaims = rilgate_crypto::token::verify_json(
+    &auth,
+    cfg.pow.auth_signing_key.expose().as_bytes(),
+    TokenPurpose::Auth,
+  )
+  .unwrap();
   let router = app::router(cfg.clone()).await.unwrap();
   let response = router
     .clone()
@@ -443,7 +470,7 @@ async fn fast_proofs_pass_the_gate_while_gateway_randomx_cookies_are_rejected() 
     &AuthClaims {
       algorithm: PowAlgorithm::RandomX,
       difficulty: 1000,
-      ..claims
+      ..signed
     },
     cfg.pow.auth_signing_key.expose().as_bytes(),
     TokenPurpose::Auth,

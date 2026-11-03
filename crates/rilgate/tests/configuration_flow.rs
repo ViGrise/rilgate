@@ -114,8 +114,16 @@ async fn hkdf_secret_supports_portable_proofs_and_rejects_different_instances_se
   .unwrap();
   let decision = a.evaluate_request(&http::HeaderMap::new(), "/protected");
   let presentation = a
-    .issue_presentation("example.test".into(), "/protected".into(), &decision)
-    .unwrap();
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      a.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
   assert!(
     c.verify_presentation(&presentation, "example.test")
       .is_err()

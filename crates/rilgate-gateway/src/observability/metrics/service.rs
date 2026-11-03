@@ -8,6 +8,15 @@ use std::sync::atomic::Ordering;
 
 pub fn exposition(state: &AppState) -> Response {
   let mut text = state.metrics.render();
+  text.push_str("# TYPE rilgate_challenge_steps_completed_total counter\n");
+  for (i, count) in state.metrics.challenge_steps_completed.iter().enumerate() {
+    let _ = writeln!(
+      text,
+      "rilgate_challenge_steps_completed_total{{step=\"{}\",method=\"pow\"}} {}",
+      i + 1,
+      count.load(Ordering::Relaxed)
+    );
+  }
   if let Some(fallback) = &state.cfg.pow.randomx_fallback {
     let _ = writeln!(
       text,

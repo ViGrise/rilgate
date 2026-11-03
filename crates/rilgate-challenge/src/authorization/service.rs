@@ -4,19 +4,26 @@ use crate::{
   tokens::validation::{unix_now, validate_lifetime},
 };
 use anyhow::{Context, Result, anyhow};
-use rilgate_protocol::{PowAlgorithm, PowVerification, claims::*};
+use rilgate_protocol::{
+  Grant, PowAlgorithm, PowGrant as StoredPowGrant, PowVerification, claims::*,
+};
 use uuid::Uuid;
-/// The grant that an authentication token records.
-pub(crate) struct AuthGrant {
-  pub host: String,
+pub(crate) struct PowGrant {
   pub algorithm: PowAlgorithm,
   pub difficulty: u64,
   pub verification: PowVerification,
   pub issued_at: i64,
 }
+#[derive(Debug)]
+pub struct Access {
+  pub version: u8,
+  pub grants: Vec<Grant>,
+  pub expires_at: i64,
+}
 pub struct IssuedAuthToken {
   pub token: String,
-  pub claims: AuthClaims,
+  pub expires_at: i64,
+  pub grants: Vec<Grant>,
   pub network_merged: bool,
 }
 
@@ -82,6 +89,7 @@ impl ChallengeService {
 
     validate_lifetime(
       receipt.v,
+      &[1],
       receipt.issued_at,
       receipt.expires_at,
       self.cfg.receipt_ttl_seconds,
@@ -99,9 +107,9 @@ impl ChallengeService {
       .get(receipt.algorithm)?
       .validate_difficulty(receipt.difficulty)?;
 
-    self.issue_auth_token(
-      AuthGrant {
-        host: receipt.host,
+    self.issue_access(
+      receipt.host,
+      PowGrant {
         algorithm: receipt.algorithm,
         difficulty: receipt.difficulty,
         verification: receipt.verification,
@@ -112,31 +120,119 @@ impl ChallengeService {
     )
   }
 
-  pub(crate) fn issue_auth_token(
+  pub(crate) fn issue_access(
     &self,
-    grant: AuthGrant,
+    host: String,
+    grant: PowGrant,
     binding: &BindingInput<'_>,
     previous: Option<&str>,
   ) -> Result<IssuedAuthToken> {
-    let AuthGrant {
-      host,
-      algorithm,
-      difficulty,
-      verification,
-      issued_at,
-    } = grant;
+    let now = unix_now()?;
     let mut claims = AuthClaims {
       host,
       v: 1,
-      algorithm,
-      difficulty,
-      verification,
-      issued_at,
-      expires_at: issued_at + self.cfg.auth_ttl_seconds as i64,
+      algorithm: grant.algorithm,
+      difficulty: grant.difficulty,
+      verification: grant.verification,
+      issued_at: grant.issued_at,
+      expires_at: grant.issued_at + self.cfg.auth_ttl_seconds as i64,
       binding: self.cfg.auth_binding.digest(&self.binding_key, binding),
       networks: None,
     };
+    let old = previous.and_then(|token| self.parse_auth_token(token, &claims.host).ok());
+    let mut grants = old
+      .as_ref()
+      .filter(|old| {
+        previous.is_some_and(|token| self.verify_auth_token(token, &claims.host, binding).is_ok())
+          || (self
+            .cfg
+            .auth_binding
+            .client_ip
+            .is_some_and(|ip| ip.max_networks > 1)
+            && old.networks.is_some()
+            && (old.v == 2
+              || old.grants.iter().all(|Grant::Pow(grant)| {
+                grant.verification == self.cfg.verification.of(grant.algorithm)
+              }))
+            && old.binding
+              == self
+                .cfg
+                .auth_binding
+                .client_digest(&self.binding_key, binding))
+      })
+      .map(|old| old.grants.clone())
+      .unwrap_or_default();
+    let method = Grant::Pow(StoredPowGrant {
+      algorithm: grant.algorithm,
+      difficulty: grant.difficulty,
+      verification: grant.verification,
+      expires_at: claims.expires_at,
+    })
+    .method_key();
+    let old_expiry = old.as_ref().map_or(now, |claims| claims.expires_at);
+    grants.retain(|old| {
+      let Grant::Pow(grant) = old;
+      grant.expires_at > now
+        && grant.expires_at <= old_expiry
+        && old.method_key() != method
+        && grant.verification == self.cfg.verification.of(grant.algorithm)
+        && self
+          .algorithms
+          .get(grant.algorithm)
+          .is_ok_and(|backend| backend.validate_difficulty(grant.difficulty).is_ok())
+    });
+    let multiple = !grants.is_empty();
+    let network_merged = self.merge_networks(&mut claims, binding, old.as_ref(), multiple)?;
+    let fresh = Grant::Pow(StoredPowGrant {
+      algorithm: claims.algorithm,
+      difficulty: claims.difficulty,
+      verification: claims.verification,
+      expires_at: claims.expires_at,
+    });
+    grants.push(fresh);
+    let (token, expires_at) = if multiple {
+      grants.sort_by_key(Grant::method_key);
+      let expires_at = grants
+        .iter()
+        .map(|Grant::Pow(g)| g.expires_at)
+        .max()
+        .expect("access grant exists");
+      let claims = AuthClaimsV2 {
+        v: 2,
+        host: claims.host,
+        grants: grants.clone(),
+        issued_at: now,
+        expires_at,
+        binding: claims.binding,
+        networks: claims.networks,
+      };
+      validate_lifetime(2, &[1, 2], now, expires_at, self.cfg.auth_ttl_seconds)?;
+      (self.tokens.auth.sign_json(&claims)?, expires_at)
+    } else {
+      validate_lifetime(
+        1,
+        &[1, 2],
+        claims.issued_at,
+        claims.expires_at,
+        self.cfg.auth_ttl_seconds,
+      )?;
+      (self.tokens.auth.sign_json(&claims)?, claims.expires_at)
+    };
+    Ok(IssuedAuthToken {
+      token,
+      expires_at,
+      grants,
+      network_merged,
+    })
+  }
 
+  fn merge_networks(
+    &self,
+    claims: &mut AuthClaims,
+    binding: &BindingInput<'_>,
+    previous: Option<&AuthClaimsV2>,
+    multiple: bool,
+  ) -> Result<bool> {
     let mut network_merged = false;
     if let Some(ip) = self
       .cfg
@@ -158,30 +254,35 @@ impl ChallengeService {
         expires_at: claims.expires_at,
       };
       let mut networks = Vec::new();
-      if let Some(previous) = previous
-        .and_then(|token| self.tokens.auth.verify_json::<AuthClaims>(token).ok())
-        .filter(|old| {
-          validate_lifetime(
-            old.v,
-            old.issued_at,
-            old.expires_at,
-            self.cfg.auth_ttl_seconds,
-          )
-          .is_ok()
-            && old.host == claims.host
-            && old.verification == self.cfg.verification.of(old.algorithm)
-            && old.binding == claims.binding
-            && old.algorithm == claims.algorithm
-            && old.networks.is_some()
-        })
-      {
+      if let Some(previous) = previous.filter(|old| {
+        old.binding == claims.binding
+          && old.networks.is_some()
+          && (old.v == 2
+            || old.grants.iter().all(|Grant::Pow(grant)| {
+              grant.verification == self.cfg.verification.of(grant.algorithm)
+            }))
+          && (multiple
+            || old
+              .grants
+              .iter()
+              .any(|Grant::Pow(g)| g.algorithm == claims.algorithm))
+      }) {
         networks = previous
           .networks
+          .as_ref()
           .unwrap()
-          .into_iter()
+          .iter()
           .filter(|entry| entry.expires_at > now && entry.digest != network.digest)
+          .cloned()
           .collect();
-        claims.difficulty = claims.difficulty.min(previous.difficulty);
+        if !multiple
+          && let Some(Grant::Pow(old)) = previous
+            .grants
+            .iter()
+            .find(|Grant::Pow(g)| g.algorithm == claims.algorithm)
+        {
+          claims.difficulty = claims.difficulty.min(old.difficulty);
+        }
         network_merged = true;
       }
       networks.push(network);
@@ -189,19 +290,52 @@ impl ChallengeService {
       networks.truncate(ip.max_networks as usize);
       claims.networks = Some(networks);
     }
+    Ok(network_merged)
+  }
 
+  fn parse_auth_token(&self, token: &str, request_host: &str) -> Result<AuthClaimsV2> {
+    let claims: AnyAuthClaims = self.tokens.auth.verify_json(token)?;
+    let claims = match claims {
+      AnyAuthClaims::V1(c) => {
+        anyhow::ensure!(c.v == 1, "Token version or lifetime is invalid or expired");
+        validate_lifetime(
+          c.v,
+          &[1, 2],
+          c.issued_at,
+          c.expires_at,
+          self.cfg.auth_ttl_seconds,
+        )?;
+        AuthClaimsV2 {
+          host: c.host,
+          v: c.v,
+          grants: vec![Grant::Pow(StoredPowGrant {
+            algorithm: c.algorithm,
+            difficulty: c.difficulty,
+            verification: c.verification,
+            expires_at: c.expires_at,
+          })],
+          issued_at: c.issued_at,
+          expires_at: c.expires_at,
+          binding: c.binding,
+          networks: c.networks,
+        }
+      }
+      AnyAuthClaims::V2(c) => {
+        anyhow::ensure!(c.v == 2, "Token version or lifetime is invalid or expired");
+        c
+      }
+    };
     validate_lifetime(
       claims.v,
+      &[1, 2],
       claims.issued_at,
       claims.expires_at,
       self.cfg.auth_ttl_seconds,
     )?;
-    let token = self.tokens.auth.sign_json(&claims)?;
-    Ok(IssuedAuthToken {
-      token,
-      claims,
-      network_merged,
-    })
+    if claims.host != request_host {
+      return Err(anyhow!("Access token scope does not match request"));
+    }
+    Ok(claims)
   }
 
   pub fn verify_auth_token(
@@ -209,24 +343,32 @@ impl ChallengeService {
     token: &str,
     request_host: &str,
     binding: &BindingInput<'_>,
-  ) -> Result<AuthClaims> {
-    let claims: AuthClaims = self.tokens.auth.verify_json(token)?;
-
-    validate_lifetime(
-      claims.v,
-      claims.issued_at,
-      claims.expires_at,
-      self.cfg.auth_ttl_seconds,
-    )?;
-    if claims.host != request_host
-      || claims.verification != self.cfg.verification.of(claims.algorithm)
-    {
-      return Err(anyhow!("Access token scope does not match request"));
+  ) -> Result<Access> {
+    let mut claims = self.parse_auth_token(token, request_host)?;
+    if claims.v == 1 {
+      let Grant::Pow(grant) = &claims.grants[0];
+      if grant.verification != self.cfg.verification.of(grant.algorithm) {
+        return Err(anyhow!("Access token scope does not match request"));
+      }
+      self
+        .algorithms
+        .get(grant.algorithm)?
+        .validate_difficulty(grant.difficulty)?;
     }
-    self
-      .algorithms
-      .get(claims.algorithm)?
-      .validate_difficulty(claims.difficulty)?;
+    let now = unix_now()?;
+    claims.grants.retain(|Grant::Pow(g)| {
+      g.expires_at > now
+        && g.expires_at <= claims.expires_at
+        && g.verification == self.cfg.verification.of(g.algorithm)
+        && self
+          .algorithms
+          .get(g.algorithm)
+          .is_ok_and(|backend| backend.validate_difficulty(g.difficulty).is_ok())
+    });
+    if claims.grants.is_empty() {
+      return Err(anyhow!("Access token has no valid grant"));
+    }
+
     if let Some(networks) = &claims.networks {
       let now = unix_now()?;
       let expected_network = self
@@ -255,7 +397,11 @@ impl ChallengeService {
       return Err(BindingMismatch.into());
     }
 
-    Ok(claims)
+    Ok(Access {
+      version: claims.v,
+      grants: claims.grants,
+      expires_at: claims.expires_at,
+    })
   }
 }
 
@@ -319,17 +465,22 @@ mod tests {
     headers
   }
 
+  struct Issued {
+    token: String,
+    claims: AuthClaims,
+    network_merged: bool,
+  }
   fn issue(
     service: &ChallengeService,
     ip: &str,
     at: i64,
     difficulty: u64,
     previous: Option<&str>,
-  ) -> IssuedAuthToken {
-    service
-      .issue_auth_token(
-        AuthGrant {
-          host: "example.test".into(),
+  ) -> Issued {
+    let issued = service
+      .issue_access(
+        "example.test".into(),
+        PowGrant {
           algorithm: PowAlgorithm::Refresh,
           difficulty,
           verification: PowVerification::Gateway,
@@ -338,7 +489,13 @@ mod tests {
         &input(ip, &browser("Chrome/130")),
         previous,
       )
-      .unwrap()
+      .unwrap();
+    let claims: AuthClaims = service.tokens.auth.verify_json(&issued.token).unwrap();
+    Issued {
+      token: issued.token,
+      claims,
+      network_merged: issued.network_merged,
+    }
   }
 
   #[test]
@@ -465,5 +622,95 @@ mod tests {
       .unwrap();
     let single = ChallengeService::with_registry(Arc::new(single), registry).unwrap();
     mismatch(&single, &b.token, "198.51.100.10", &headers);
+  }
+  #[test]
+  fn receipt_merge_keeps_both_algorithms_and_single_receipt_keeps_v1() {
+    struct ReceiptAlgorithm(PowAlgorithm);
+    impl rilgate_pow::Algorithm for ReceiptAlgorithm {
+      fn descriptor(&self) -> rilgate_pow::AlgorithmDescriptor {
+        rilgate_pow::AlgorithmDescriptor {
+          id: self.0,
+          version: 1,
+          display_name: "Receipt test",
+          solver_module_path: String::new(),
+          requires_consent: false,
+          memory_bytes: 0,
+          browser: None,
+        }
+      }
+      fn difficulty_for_weight(&self, _: i32) -> u64 {
+        1
+      }
+      fn validate_difficulty(&self, difficulty: u64) -> Result<()> {
+        anyhow::ensure!(difficulty > 0, "Expected positive difficulty");
+        Ok(())
+      }
+      fn challenge_ttl(&self) -> u64 {
+        60
+      }
+      fn issue(
+        &self,
+        _: rilgate_pow::WorkRequest,
+      ) -> rilgate_pow::AlgorithmFuture<'_, rilgate_pow::PreparedWork> {
+        unreachable!()
+      }
+      fn verify<'a>(
+        &'a self,
+        _: &'a rilgate_pow::PreparedWork,
+        _: rilgate_pow::Proof<'a>,
+      ) -> rilgate_pow::AlgorithmFuture<'a, ()> {
+        unreachable!()
+      }
+    }
+    let mut service = service(1);
+    for algorithm in [PowAlgorithm::Fast, PowAlgorithm::Hashwx] {
+      service
+        .algorithms
+        .register(Arc::new(ReceiptAlgorithm(algorithm)))
+        .unwrap();
+    }
+    let headers = browser("Chrome/130");
+    let binding = input("192.0.2.10", &headers);
+    let receipt = |algorithm| {
+      service
+        .issue_receipt(
+          "example.test".into(),
+          Uuid::now_v7().to_string(),
+          algorithm,
+          1,
+          PowVerification::Gateway,
+        )
+        .unwrap()
+    };
+    let first = service
+      .exchange_receipt_with_claims(&receipt(PowAlgorithm::Fast), "example.test", &binding, None)
+      .unwrap();
+    assert!(matches!(
+      service
+        .tokens
+        .auth
+        .verify_json::<AnyAuthClaims>(&first.token)
+        .unwrap(),
+      AnyAuthClaims::V1(_)
+    ));
+    let second = service
+      .exchange_receipt_with_claims(
+        &receipt(PowAlgorithm::Hashwx),
+        "example.test",
+        &binding,
+        Some(&first.token),
+      )
+      .unwrap();
+    let access = service
+      .verify_auth_token(&second.token, "example.test", &binding)
+      .unwrap();
+    assert_eq!(
+      access
+        .grants
+        .iter()
+        .map(Grant::method_key)
+        .collect::<Vec<_>>(),
+      ["pow:fast", "pow:hashwx"]
+    );
   }
 }

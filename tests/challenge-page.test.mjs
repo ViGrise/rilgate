@@ -166,11 +166,16 @@ test("completed fast proofs fall back to exchange when cookie_set is missing", a
   assert.equal(state.requests.length, 5);
   assert.deepEqual(
     JSON.parse(state.requests.find(({ url }) => url.endsWith("exchange")).options.body),
-    { receipt: "receipt" },
+    { receipt: "receipt", presentation_token: "presentation" },
   );
   assert.deepEqual(
     JSON.parse(state.requests.find(({ url }) => url.endsWith("verify")).options.body),
-    { challenge_token: "challenge", nonce: "153", set_cookie: true },
+    {
+      challenge_token: "challenge",
+      nonce: "153",
+      set_cookie: true,
+      presentation_token: "presentation",
+    },
   );
 });
 

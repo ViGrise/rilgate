@@ -303,9 +303,9 @@ policy:
       - {action: challenge, challenge: {algorithm: fast, difficulty: 2}}
 ```
 
-A client with a higher-difficulty cookie keeps it when its rate falls. Rilgate challenges
-a client once when its rate enters a higher difficulty. The cookie then passes requests
-in that tier.
+The access cookie keeps one grant per algorithm. A higher-difficulty grant passes requests
+when the rate falls; a higher requirement asks the client for another proof of that algorithm.
+A client that already has a sufficient Fast grant is asked only for the step it lacks.
 
 ## Challenge selection
 
@@ -313,10 +313,32 @@ A challenge without an algorithm uses `pow.default_algorithm`. An explicit diffi
 rule takes precedence over the score mapping of the algorithm. Each algorithm below
 states its difficulty unit and range.
 
-A challenge action accepts an existing cookie only when algorithm and verification mode match
-and cookie difficulty meets the current requirement. A Fast cookie therefore cannot
-satisfy a HashWX rule. Host and optional client bindings still apply. A DENY rule still
-rejects a valid cookie.
+A challenge action requires a grant for each ordered step. A grant satisfies a step when its
+algorithm and verification mode match and its difficulty meets the requirement. The gate
+presents the first step that has no such grant. While a RandomX fallback is active, a grant for
+either the required step or its effective fallback satisfies that step. Any proof-of-work
+grant satisfies a refresh wait; a refresh grant must meet the wait difficulty. Host and
+optional client bindings still apply. A DENY rule rejects a valid cookie.
+
+A rule or score threshold can use the one-step `challenge: {algorithm: fast, difficulty: 2}`
+form, omit either field to use its default, or specify `steps`. The list must have 1 to 4
+entries, each algorithm may appear only once after default resolution, and `refresh` is
+valid only alone. A `steps` list cannot appear together with `algorithm` or `difficulty`.
+Policy compilation validates each step against its registered algorithm and difficulty range.
+The access cookie retains one grant per algorithm, each with its own expiry; the gate accepts
+only live grants with the configured verification mode and a valid backend difficulty.
+
+```yaml
+policy:
+  rules:
+    - name: protected-endpoint
+      when: {path: {prefix: /protected/}}
+      action: challenge
+      challenge:
+        steps:
+          - {algorithm: fast, difficulty: 2}
+          - {algorithm: hashwx, difficulty: 20}
+```
 
 ### Fast
 

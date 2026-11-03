@@ -1,4 +1,5 @@
 use super::PowConfig;
+use anyhow::Context;
 
 impl PowConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
@@ -239,6 +240,11 @@ fn validate_signing_keys(config: &PowConfig) -> anyhow::Result<()> {
 fn validate_policy(config: &PowConfig) -> anyhow::Result<()> {
   use anyhow::ensure;
   rilgate_policy::PolicyEngine::from_definition(&config.policy)?;
+  for (name, selection) in config.policy.challenge_policies()? {
+    selection
+      .validate_steps(config.default_algorithm)
+      .with_context(|| format!("policy ({name})"))?;
+  }
   for (name, selection) in config.policy.challenges()? {
     let algorithm = selection.algorithm.unwrap_or(config.default_algorithm);
     if let Some(difficulty) = selection.difficulty {
