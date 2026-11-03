@@ -17,6 +17,7 @@ arbitrary = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
 http = "1"
+hex = "0.4"
 rilgate-pow-hash = { path = "../crates/rilgate-pow-hash" }
 rilgate-pow-hashwx = { path = "../crates/rilgate-pow-hashwx", features = ["fuzzing"] }
 hashwx-core = { path = "../crates/hashwx-core" }

@@ -20,6 +20,9 @@ fuzz_target!(|input: Input| {
   {
     assert_eq!(blob.len(), before.len());
     let end = input.offset.checked_add(4).unwrap();
+    let mut written = blob[input.offset..end].to_vec();
+    written.reverse();
+    assert_eq!(written, hex::decode(&input.nonce_hex).unwrap());
     for (index, (a, b)) in blob.iter().zip(&before).enumerate() {
       if !(input.offset..end).contains(&index) {
         assert_eq!(a, b);
