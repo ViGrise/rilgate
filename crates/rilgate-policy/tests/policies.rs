@@ -394,7 +394,7 @@ fn step_policy_error(challenge: &str) -> String {
   PolicyEngine::from_definition(&definition)
     .and_then(|_| {
       for (_, policy) in definition.challenge_policies()? {
-        policy.validate_steps(rilgate_protocol::PowAlgorithm::Fast)?;
+        policy.validate_steps(rilgate_protocol::PowAlgorithm::Fast, &Default::default())?;
       }
       Ok(())
     })
@@ -405,7 +405,7 @@ fn step_policy_error(challenge: &str) -> String {
 fn steps_reject_duplicate_algorithms_after_default_resolution() {
   assert_eq!(
     step_policy_error("{steps: [{}, {algorithm: fast}]}"),
-    "challenge.steps: each algorithm may appear only once"
+    "challenge.steps: each algorithm and hook may appear only once"
   );
 }
 #[test]
@@ -419,7 +419,7 @@ fn steps_reject_refresh_combined_with_proof() {
 fn steps_reject_mixed_selection_forms() {
   assert_eq!(
     step_policy_error("{algorithm: fast, steps: [{}]}"),
-    "policy.rules[0].challenge: use either steps or algorithm and difficulty"
+    "policy.rules[0].challenge: use exactly one of steps, hook, or algorithm and difficulty"
   );
 }
 #[test]

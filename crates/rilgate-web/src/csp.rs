@@ -49,7 +49,12 @@ impl ContentSecurityPolicy {
     Ok(())
   }
 
-  pub fn header(&self, hashes: &InlineHashes, stylesheet: &str) -> Option<String> {
+  pub fn header(
+    &self,
+    hashes: &InlineHashes,
+    stylesheet: &str,
+    hook: &BTreeMap<String, Vec<String>>,
+  ) -> Option<String> {
     if !self.enabled {
       return None;
     }
@@ -79,6 +84,12 @@ impl ContentSecurityPolicy {
       if let Some(extra) = self.extra_sources.get(*name) {
         sources.extend(extra.iter().cloned());
       }
+      if let Some(extra) = hook.get(*name) {
+        sources.extend(extra.iter().cloned());
+      }
+    }
+    if let Some(sources) = hook.get("frame-src").filter(|sources| !sources.is_empty()) {
+      directives.push(("frame-src", sources.clone()));
     }
     Some(
       directives
@@ -211,6 +222,38 @@ fn attributes(mut text: &str) -> BTreeMap<String, String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn hook_sources_allow_widgets_only_on_hook_pages() {
+    let policy = ContentSecurityPolicy::default();
+    let hook = [
+      (
+        "script-src".into(),
+        vec!["https://challenges.cloudflare.com".into()],
+      ),
+      (
+        "frame-src".into(),
+        vec!["https://challenges.cloudflare.com".into()],
+      ),
+    ]
+    .into();
+    let header = policy.header(&InlineHashes::default(), "", &hook).unwrap();
+    assert!(
+      header
+        .split("; ")
+        .any(|directive| directive == "frame-src https://challenges.cloudflare.com")
+    );
+    assert!(
+      header
+        .split("; ")
+        .any(|directive| directive.starts_with("script-src ")
+          && directive.contains("https://challenges.cloudflare.com"))
+    );
+    let header = policy
+      .header(&InlineHashes::default(), "", &BTreeMap::new())
+      .unwrap();
+    assert!(!header.contains("frame-src"));
+  }
 
   #[test]
   fn hashes_exact_executable_text_and_noscript_styles_once() {

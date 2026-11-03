@@ -7,6 +7,10 @@ pub use rilgate_core::error::{CapacityExceeded, PowBackendUnavailable};
 
 #[derive(Error, Debug)]
 pub enum ApiError {
+  #[error("Challenge hook rejected")]
+  HookRejected,
+  #[error("Challenge hook unavailable")]
+  HookUnavailable(Option<crate::proof::dto::NextStep>),
   #[error("All Stratum pools are unavailable")]
   WorkUnavailable,
 
@@ -43,6 +47,30 @@ struct ApiErrorResponse {
 
 impl ApiError {
   pub fn into_response(self) -> Response {
+    if matches!(self, Self::HookRejected | Self::HookUnavailable(_)) {
+      let mut body = serde_json::json!({"code":if matches!(self,Self::HookRejected) {"hook_rejected"} else {"hook_unavailable"}});
+      let unavailable = matches!(self, Self::HookUnavailable(_));
+      if let Self::HookUnavailable(Some(next)) = self {
+        body["next"] = serde_json::to_value(next).expect("Next step JSON");
+      }
+      let mut response = json(
+        if unavailable {
+          StatusCode::SERVICE_UNAVAILABLE
+        } else {
+          StatusCode::UNAUTHORIZED
+        },
+        &body,
+      );
+      if unavailable {
+        response
+          .headers_mut()
+          .insert(http::header::RETRY_AFTER, "1".parse().unwrap());
+      }
+      response
+        .headers_mut()
+        .insert(http::header::CACHE_CONTROL, super::headers::NO_STORE);
+      return response;
+    }
     if matches!(self, Self::WorkUnavailable) {
       let mut response = json(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -57,7 +85,8 @@ impl ApiError {
       return response;
     }
     let status = match self {
-      Self::WorkUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+      Self::WorkUnavailable | Self::HookUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+      Self::HookRejected => StatusCode::UNAUTHORIZED,
       Self::InvalidRequest(_) => StatusCode::BAD_REQUEST,
       Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
       Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,

@@ -8,11 +8,18 @@ use rilgate_protocol::{
   Grant, PowAlgorithm, PowGrant as StoredPowGrant, PowVerification, claims::*,
 };
 use uuid::Uuid;
-pub(crate) struct PowGrant {
-  pub algorithm: PowAlgorithm,
-  pub difficulty: u64,
-  pub verification: PowVerification,
-  pub issued_at: i64,
+pub enum NewGrant {
+  Pow {
+    algorithm: PowAlgorithm,
+    difficulty: u64,
+    verification: PowVerification,
+    issued_at: i64,
+    fallback_for: Option<String>,
+  },
+  Hook {
+    name: String,
+    issued_at: i64,
+  },
 }
 #[derive(Debug)]
 pub struct Access {
@@ -69,7 +76,7 @@ impl ChallengeService {
   ) -> Result<String> {
     Ok(
       self
-        .exchange_receipt_with_claims(receipt, request_host, binding, None)?
+        .exchange_receipt_with_claims(receipt, request_host, binding, None, None)?
         .token,
     )
   }
@@ -80,6 +87,7 @@ impl ChallengeService {
     request_host: &str,
     binding: &BindingInput<'_>,
     previous: Option<&str>,
+    fallback_for: Option<String>,
   ) -> Result<IssuedAuthToken> {
     let receipt: ReceiptClaims = self
       .tokens
@@ -109,7 +117,8 @@ impl ChallengeService {
 
     self.issue_access(
       receipt.host,
-      PowGrant {
+      NewGrant::Pow {
+        fallback_for,
         algorithm: receipt.algorithm,
         difficulty: receipt.difficulty,
         verification: receipt.verification,
@@ -120,22 +129,63 @@ impl ChallengeService {
     )
   }
 
-  pub(crate) fn issue_access(
+  pub fn issue_access(
     &self,
     host: String,
-    grant: PowGrant,
+    grant: NewGrant,
     binding: &BindingInput<'_>,
     previous: Option<&str>,
   ) -> Result<IssuedAuthToken> {
     let now = unix_now()?;
+    let (fresh, issued_at) = match grant {
+      NewGrant::Pow {
+        algorithm,
+        difficulty,
+        verification,
+        issued_at,
+        fallback_for,
+      } => (
+        Grant::Pow(StoredPowGrant {
+          algorithm,
+          difficulty,
+          verification,
+          fallback_for,
+          expires_at: issued_at + self.cfg.auth_ttl_seconds as i64,
+        }),
+        issued_at,
+      ),
+      NewGrant::Hook { name, issued_at } => {
+        let hook = self
+          .cfg
+          .hooks
+          .get(&name)
+          .ok_or_else(|| anyhow!("Unknown challenge hook"))?;
+        (
+          Grant::Hook(rilgate_protocol::HookGrant {
+            name,
+            expires_at: issued_at + hook.grant_ttl_seconds as i64,
+          }),
+          issued_at,
+        )
+      }
+    };
     let mut claims = AuthClaims {
       host,
       v: 1,
-      algorithm: grant.algorithm,
-      difficulty: grant.difficulty,
-      verification: grant.verification,
-      issued_at: grant.issued_at,
-      expires_at: grant.issued_at + self.cfg.auth_ttl_seconds as i64,
+      algorithm: match &fresh {
+        Grant::Pow(g) => g.algorithm,
+        Grant::Hook(_) => self.cfg.default_algorithm,
+      },
+      difficulty: match &fresh {
+        Grant::Pow(g) => g.difficulty,
+        Grant::Hook(_) => 0,
+      },
+      verification: match &fresh {
+        Grant::Pow(g) => g.verification,
+        Grant::Hook(_) => self.cfg.verification.of(self.cfg.default_algorithm),
+      },
+      issued_at,
+      expires_at: fresh.expires_at(),
       binding: self.cfg.auth_binding.digest(&self.binding_key, binding),
       networks: None,
     };
@@ -151,9 +201,10 @@ impl ChallengeService {
             .is_some_and(|ip| ip.max_networks > 1)
             && old.networks.is_some()
             && (old.v == 2
-              || old.grants.iter().all(|Grant::Pow(grant)| {
-                grant.verification == self.cfg.verification.of(grant.algorithm)
-              }))
+              || old
+                .grants
+                .iter()
+                .all(|g| self.valid_grant(g, now, old.expires_at)))
             && old.binding
               == self
                 .cfg
@@ -162,41 +213,31 @@ impl ChallengeService {
       })
       .map(|old| old.grants.clone())
       .unwrap_or_default();
-    let method = Grant::Pow(StoredPowGrant {
-      algorithm: grant.algorithm,
-      difficulty: grant.difficulty,
-      verification: grant.verification,
-      expires_at: claims.expires_at,
-    })
-    .method_key();
-    let old_expiry = old.as_ref().map_or(now, |claims| claims.expires_at);
-    grants.retain(|old| {
-      let Grant::Pow(grant) = old;
-      grant.expires_at > now
-        && grant.expires_at <= old_expiry
-        && old.method_key() != method
-        && grant.verification == self.cfg.verification.of(grant.algorithm)
-        && self
-          .algorithms
-          .get(grant.algorithm)
-          .is_ok_and(|backend| backend.validate_difficulty(grant.difficulty).is_ok())
-    });
-    let multiple = !grants.is_empty();
-    let network_merged = self.merge_networks(&mut claims, binding, old.as_ref(), multiple)?;
-    let fresh = Grant::Pow(StoredPowGrant {
-      algorithm: claims.algorithm,
-      difficulty: claims.difficulty,
-      verification: claims.verification,
-      expires_at: claims.expires_at,
-    });
+    let old_expiry = old.as_ref().map_or(now, |c| c.expires_at);
+    grants.retain(|g| g.method_key() != fresh.method_key() && self.valid_grant(g, now, old_expiry));
+    let v1 = grants.is_empty() && matches!(&fresh,Grant::Pow(g) if g.fallback_for.is_none());
+    let network_merged = self.merge_networks(&mut claims, binding, old.as_ref(), !v1)?;
+    let mut fresh = fresh;
+    if let Grant::Pow(g) = &mut fresh {
+      g.difficulty = claims.difficulty;
+    }
     grants.push(fresh);
-    let (token, expires_at) = if multiple {
+    let (token, expires_at) = if v1 {
+      validate_lifetime(
+        1,
+        &[1, 2],
+        claims.issued_at,
+        claims.expires_at,
+        self.cfg.auth_ttl_seconds,
+      )?;
+      (self.tokens.auth.sign_json(&claims)?, claims.expires_at)
+    } else {
       grants.sort_by_key(Grant::method_key);
       let expires_at = grants
         .iter()
-        .map(|Grant::Pow(g)| g.expires_at)
+        .map(Grant::expires_at)
         .max()
-        .expect("access grant exists");
+        .expect("Access grant exists");
       let claims = AuthClaimsV2 {
         v: 2,
         host: claims.host,
@@ -208,15 +249,6 @@ impl ChallengeService {
       };
       validate_lifetime(2, &[1, 2], now, expires_at, self.cfg.auth_ttl_seconds)?;
       (self.tokens.auth.sign_json(&claims)?, expires_at)
-    } else {
-      validate_lifetime(
-        1,
-        &[1, 2],
-        claims.issued_at,
-        claims.expires_at,
-        self.cfg.auth_ttl_seconds,
-      )?;
-      (self.tokens.auth.sign_json(&claims)?, claims.expires_at)
     };
     Ok(IssuedAuthToken {
       token,
@@ -224,6 +256,21 @@ impl ChallengeService {
       grants,
       network_merged,
     })
+  }
+
+  fn valid_grant(&self, grant: &Grant, now: i64, expires_at: i64) -> bool {
+    grant.expires_at() > now
+      && grant.expires_at() <= expires_at
+      && match grant {
+        Grant::Hook(g) => self.cfg.hooks.contains_key(&g.name),
+        Grant::Pow(g) => {
+          g.verification == self.cfg.verification.of(g.algorithm)
+            && self
+              .algorithms
+              .get(g.algorithm)
+              .is_ok_and(|backend| backend.validate_difficulty(g.difficulty).is_ok())
+        }
+      }
   }
 
   fn merge_networks(
@@ -258,14 +305,15 @@ impl ChallengeService {
         old.binding == claims.binding
           && old.networks.is_some()
           && (old.v == 2
-            || old.grants.iter().all(|Grant::Pow(grant)| {
-              grant.verification == self.cfg.verification.of(grant.algorithm)
-            }))
+            || old
+              .grants
+              .iter()
+              .all(|grant| self.valid_grant(grant, now, old.expires_at)))
           && (multiple
             || old
               .grants
               .iter()
-              .any(|Grant::Pow(g)| g.algorithm == claims.algorithm))
+              .any(|g| matches!(g, Grant::Pow(g) if g.algorithm == claims.algorithm)))
       }) {
         networks = previous
           .networks
@@ -279,7 +327,7 @@ impl ChallengeService {
           && let Some(Grant::Pow(old)) = previous
             .grants
             .iter()
-            .find(|Grant::Pow(g)| g.algorithm == claims.algorithm)
+            .find(|g| matches!(g, Grant::Pow(g) if g.algorithm == claims.algorithm))
         {
           claims.difficulty = claims.difficulty.min(old.difficulty);
         }
@@ -309,6 +357,7 @@ impl ChallengeService {
           host: c.host,
           v: c.v,
           grants: vec![Grant::Pow(StoredPowGrant {
+            fallback_for: None,
             algorithm: c.algorithm,
             difficulty: c.difficulty,
             verification: c.verification,
@@ -346,7 +395,9 @@ impl ChallengeService {
   ) -> Result<Access> {
     let mut claims = self.parse_auth_token(token, request_host)?;
     if claims.v == 1 {
-      let Grant::Pow(grant) = &claims.grants[0];
+      let Grant::Pow(grant) = &claims.grants[0] else {
+        return Err(anyhow!("Invalid v1 grant"));
+      };
       if grant.verification != self.cfg.verification.of(grant.algorithm) {
         return Err(anyhow!("Access token scope does not match request"));
       }
@@ -356,15 +407,9 @@ impl ChallengeService {
         .validate_difficulty(grant.difficulty)?;
     }
     let now = unix_now()?;
-    claims.grants.retain(|Grant::Pow(g)| {
-      g.expires_at > now
-        && g.expires_at <= claims.expires_at
-        && g.verification == self.cfg.verification.of(g.algorithm)
-        && self
-          .algorithms
-          .get(g.algorithm)
-          .is_ok_and(|backend| backend.validate_difficulty(g.difficulty).is_ok())
-    });
+    claims
+      .grants
+      .retain(|g| self.valid_grant(g, now, claims.expires_at));
     if claims.grants.is_empty() {
       return Err(anyhow!("Access token has no valid grant"));
     }
@@ -418,6 +463,7 @@ mod tests {
 
   fn service(max_networks: u8) -> ChallengeService {
     let cfg = ChallengeConfig {
+      hooks: Default::default(),
       verification: rilgate_protocol::VerificationModes::default(),
       default_algorithm: PowAlgorithm::Refresh,
       signing_key: rilgate_crypto::Secret("test-signing-key".into()),
@@ -480,7 +526,8 @@ mod tests {
     let issued = service
       .issue_access(
         "example.test".into(),
-        PowGrant {
+        NewGrant::Pow {
+          fallback_for: None,
           algorithm: PowAlgorithm::Refresh,
           difficulty,
           verification: PowVerification::Gateway,
@@ -683,7 +730,13 @@ mod tests {
         .unwrap()
     };
     let first = service
-      .exchange_receipt_with_claims(&receipt(PowAlgorithm::Fast), "example.test", &binding, None)
+      .exchange_receipt_with_claims(
+        &receipt(PowAlgorithm::Fast),
+        "example.test",
+        &binding,
+        None,
+        None,
+      )
       .unwrap();
     assert!(matches!(
       service
@@ -699,6 +752,7 @@ mod tests {
         "example.test",
         &binding,
         Some(&first.token),
+        None,
       )
       .unwrap();
     let access = service

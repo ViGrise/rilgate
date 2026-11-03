@@ -315,7 +315,7 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
   };
   let bound = app::service(&bound_cfg).unwrap();
   let issued = bound
-    .exchange_receipt_with_claims(&issue(&bound_cfg), "example.test", &unbound(), None)
+    .exchange_receipt_with_claims(&issue(&bound_cfg), "example.test", &unbound(), None, None)
     .unwrap();
   let claims: rilgate_protocol::claims::AuthClaims = crypto::verify_json(
     &issued.token,
@@ -338,7 +338,7 @@ async fn service_stores_a_digest_only_when_binding_is_enabled() {
   let plain_cfg = common::config();
   let plain = app::service(&plain_cfg).unwrap();
   let issued = plain
-    .exchange_receipt_with_claims(&issue(&plain_cfg), "example.test", &unbound(), None)
+    .exchange_receipt_with_claims(&issue(&plain_cfg), "example.test", &unbound(), None, None)
     .unwrap();
   let signed: rilgate_protocol::claims::AuthClaims = crypto::verify_json(
     &issued.token,

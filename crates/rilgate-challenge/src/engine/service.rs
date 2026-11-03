@@ -75,7 +75,7 @@ impl ChallengeService {
     let engine = PolicyEngine::from_definition_with(definition, previous)?;
     for (name, selection) in definition.challenge_policies()? {
       selection
-        .validate_steps(cfg.default_algorithm)
+        .validate_steps(cfg.default_algorithm, &cfg.hooks.keys().cloned().collect())
         .with_context(|| format!("Invalid challenge policy in {name}"))?;
     }
     for (name, selection) in definition.challenges()? {
@@ -203,6 +203,11 @@ impl ChallengeService {
       .steps
       .iter()
       .map(|selection| {
+        if let Some(name) = &selection.hook {
+          return Ok(rilgate_protocol::ChallengeStep::Hook(
+            rilgate_protocol::HookStep { name: name.clone() },
+          ));
+        }
         let algorithm = selection.algorithm.unwrap_or(self.cfg.default_algorithm);
         let backend = self.algorithms.get(algorithm)?;
         let difficulty = selection
@@ -211,6 +216,7 @@ impl ChallengeService {
         backend.validate_difficulty(difficulty)?;
         Ok(rilgate_protocol::ChallengeStep::Pow(
           rilgate_protocol::PowStep {
+            fallback_for: None,
             algorithm,
             difficulty,
             verification: self.cfg.verification.of(algorithm),

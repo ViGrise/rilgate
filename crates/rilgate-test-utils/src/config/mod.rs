@@ -10,6 +10,7 @@ use rilgate_config::{
 
 pub fn config() -> Config {
   Arc::new(Configuration {
+    challenge_hooks: Arc::new(Default::default()),
     env: Environment::Development,
     operations_listen_addresses: vec![],
     secret_generated: false,
@@ -34,6 +35,7 @@ pub fn config() -> Config {
       ..Default::default()
     },
     pow: PowConfig {
+      hooks: Default::default(),
       randomx_fallback: None,
       hashwx_enabled: false,
       refresh_max_seconds: 10,
@@ -110,6 +112,7 @@ pub fn config() -> Config {
             action: Action::Challenge,
             score: None,
             challenge: Some(ChallengePolicy {
+              hook: None,
               steps: None,
               algorithm: Some(PowAlgorithm::Fast),
               difficulty: Some(1),

@@ -142,6 +142,11 @@ stop the shimmer and success transition. No environment provides a state preview
 Statistics occupy a separate line and use the page locale with no fraction digits.
 They remain visible through verifying, pool and success when attempts exceed zero.
 RandomX asks for consent before starting; details explain the check and permission.
+Embedded hooks use `#hook-container` and the `pow-hook` class to hide proof progress,
+statistics, job details and the details disclosure. The runtime creates the container
+in `main` when an operator template has none. The `hook` state waits for a result;
+the `rejected` state asks the visitor to complete the check again. See
+[hook presentation](configuration.md#hook-presentation) for widget and adapter settings.
 
 `window.PowClient.state(name, values)` updates translated title, description and
 status using `challenge.state.<name>.{title,description,status}`. Placeholder values
@@ -159,7 +164,9 @@ the `load-error` message that the page shows when its script could not start.
 | `initializing` | `run` | RandomX module and cache setup. |
 | `randomx` | `run` | RandomX hashing. |
 | `pool` | `run` | Pool acceptance wait after the browser sends a share. |
-| `verifying` | `run` | Proof verification. |
+| `hook` | `run` | Wait for the embedded check. |
+| `rejected` | `run` | Hook verification did not accept the result. |
+| `verifying` | `run` | Proof or hook verification. |
 | `cookies` | `retry` | Cookies disabled, or the access cookie did not reach the gateway after verification. |
 | `success` | `done` | Verification completed. |
 | `expired` | `retry` | Local solver deadline exceeded. |
@@ -183,6 +190,7 @@ The catch handler keeps diagnostic error messages in the console only.
 | `bar-complete` | Success fill. |
 | `progress` | Visually hidden progress. |
 | `status` | Live state status. |
+| `hook-container` | Embedded hook widget or adapter container. |
 | `stats` | Attempt and hash rate line. |
 | `attempts` | Localized attempt count. |
 | `hashrate` | Localized hashes per second. |

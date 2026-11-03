@@ -1,3 +1,4 @@
+mod challenge_hooks;
 mod keys;
 mod pow;
 mod server;
@@ -36,7 +37,34 @@ impl Document {
     let upstream = self.resolve_upstream()?;
     let open_graph = self.site.open_graph.resolve()?;
     let web = self.resolve_web();
-    let pow = self.resolve_pow(keys, policy_document, stratum_pool, needs_pool)?;
+    let mut pow = self.resolve_pow(keys, policy_document, stratum_pool, needs_pool)?;
+    let challenge_hooks = Arc::new(self.resolve_challenge_hooks()?);
+    pow.hooks = challenge_hooks
+      .hooks
+      .iter()
+      .map(|(name, hook)| {
+        (
+          name.clone(),
+          rilgate_challenge::HookPolicy {
+            grant_ttl_seconds: hook.grant_ttl.as_secs(),
+            fallback: hook.unavailable.fallback.as_ref().map(|f| {
+              (
+                f.algorithm.parse().expect("Validated fallback algorithm"),
+                f.difficulty,
+              )
+            }),
+            fallback_grant: match hook.unavailable.grant {
+              rilgate_challenge_hooks::definition::FallbackGrant::WhileUnavailable => {
+                rilgate_challenge::FallbackGrant::WhileUnavailable
+              }
+              rilgate_challenge_hooks::definition::FallbackGrant::UntilExpiry => {
+                rilgate_challenge::FallbackGrant::UntilExpiry
+              }
+            },
+          },
+        )
+      })
+      .collect();
     let config = Arc::new(Configuration {
       env: self.environment,
       app_port: listen_addresses[0].port(),
@@ -48,6 +76,7 @@ impl Document {
       open_graph,
       web,
       pow,
+      challenge_hooks,
     });
     config.validate()?;
     Ok(config)

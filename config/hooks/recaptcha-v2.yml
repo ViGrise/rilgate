@@ -1,0 +1,28 @@
+presentation:
+  mode: embed
+  widget:
+    script: https://www.google.com/recaptcha/api.js?render=explicit
+    onload: onload
+    call: grecaptcha.render
+    args:
+      - $container
+      - sitekey: "{params.site_key}"
+        callback: $result
+        error-callback: $error
+        expired-callback: $expired
+    returns: callback
+  csp:
+    script-src: [https://www.google.com/recaptcha/, https://www.gstatic.com/recaptcha/]
+    frame-src: [https://www.google.com/recaptcha/, https://recaptcha.google.com/recaptcha/]
+    connect-src: [https://www.google.com/recaptcha/]
+verify:
+  request:
+    url: https://www.google.com/recaptcha/api/siteverify
+    encoding: form
+    fields:
+      secret: "{secrets.secret_key}"
+      response: "{result}"
+      remoteip: "{client_ip}"
+  accept:
+    - {field: /success, equals: true}
+    - {field: /hostname, equals: "{host}"}

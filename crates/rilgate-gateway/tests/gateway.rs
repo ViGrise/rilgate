@@ -130,7 +130,9 @@ async fn fast_proof_is_portable_between_gateway_instances() {
   let claims = issuer
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  let rilgate_protocol::Grant::Pow(grant) = &claims.grants[0];
+  let rilgate_protocol::Grant::Pow(grant) = &claims.grants[0] else {
+    panic!("Expected PoW grant");
+  };
   assert_eq!(grant.algorithm, PowAlgorithm::Fast);
   assert_eq!(grant.difficulty, 1);
   let cookie = rilgate_gateway::auth::cookies::auth_cookie_header(

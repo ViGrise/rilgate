@@ -97,6 +97,7 @@ impl Document {
     let mut verify = randomx.verify.clone();
     verify.remote.server_name = verify.remote.effective_server_name();
     Ok(PowConfig {
+      hooks: Default::default(),
       randomx_fallback: randomx
         .fallback
         .as_ref()

@@ -1,0 +1,30 @@
+params:
+  action: rilgate
+  min_score: 0.5
+presentation:
+  mode: embed
+  widget:
+    script: "https://www.google.com/recaptcha/api.js?render={params.site_key}"
+    onload: onload
+    call: grecaptcha.execute
+    args:
+      - "{params.site_key}"
+      - action: "{params.action}"
+    returns: promise
+  csp:
+    script-src: [https://www.google.com/recaptcha/, https://www.gstatic.com/recaptcha/]
+    frame-src: [https://www.google.com/recaptcha/, https://recaptcha.google.com/recaptcha/]
+    connect-src: [https://www.google.com/recaptcha/]
+verify:
+  request:
+    url: https://www.google.com/recaptcha/api/siteverify
+    encoding: form
+    fields:
+      secret: "{secrets.secret_key}"
+      response: "{result}"
+      remoteip: "{client_ip}"
+  accept:
+    - {field: /success, equals: true}
+    - {field: /hostname, equals: "{host}"}
+    - {field: /action, equals: "{params.action}"}
+    - {field: /score, min: "{params.min_score}"}

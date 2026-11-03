@@ -22,7 +22,19 @@ pub async fn build(
     &cfg.pow.policy,
     &pow.lookup_plan(),
   )?));
+  let hooks = Arc::new(rilgate_challenge_hooks::ChallengeHooks::new(
+    cfg.challenge_hooks.clone(),
+  )?);
+  let until_expiry = cfg
+    .pow
+    .hooks
+    .iter()
+    .filter(|(_, h)| h.fallback_grant == rilgate_challenge::FallbackGrant::UntilExpiry)
+    .map(|(name, _)| name.clone())
+    .collect();
   Ok(Gateway::new(AppState {
+    hooks,
+    until_expiry,
     challenge_header: format!("{}-challenge", cfg.web.brand_id).parse()?,
     challenge_url_header: format!("{}-challenge-url", cfg.web.brand_id).parse()?,
     randomx_fallback_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),

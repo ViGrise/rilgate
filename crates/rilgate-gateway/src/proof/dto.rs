@@ -64,7 +64,12 @@ pub struct NextStep {
   pub step: usize,
   pub steps: usize,
   pub method: &'static str,
-  pub algorithm: PowAlgorithm,
-  pub difficulty: u64,
-  pub solver_module_url: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub algorithm: Option<PowAlgorithm>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub difficulty: Option<u64>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub solver_module_url: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub hook: Option<serde_json::Value>,
 }

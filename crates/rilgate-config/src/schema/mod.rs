@@ -1,4 +1,5 @@
 pub use rilgate_policy::policy::schema as policy;
+pub mod challenge_hooks;
 pub mod pow;
 pub mod security;
 pub mod server;
@@ -20,6 +21,7 @@ pub struct Document {
   pub site: site::Site,
   pub security: security::Security,
   pub pow: pow::Pow,
+  pub challenge_hooks: std::collections::BTreeMap<String, challenge_hooks::HookDefinition>,
   pub signals: rilgate_policy::policy::schema::Signals,
   pub policy: rilgate_policy::policy::schema::Definition,
 }

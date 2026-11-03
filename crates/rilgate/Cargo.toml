@@ -15,6 +15,7 @@ path = "src/main.rs"
 vendored-openssl = ["dep:openssl"]
 
 [dependencies]
+rilgate-challenge-hooks.workspace = true
 rilgate-pow-hashwx.workspace = true
 rilgate-policy.workspace = true
 notify.workspace = true

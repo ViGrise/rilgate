@@ -5,6 +5,7 @@ members = [
   "crates/rilgate-core",
   "crates/rilgate-gateway",
   "crates/rilgate-challenge",
+  "crates/rilgate-challenge-hooks",
   "crates/rilgate-dns",
   "crates/rilgate-ip-feeds",
   "crates/rilgate-pow-randomx",
@@ -38,6 +39,7 @@ license = "Apache-2.0"
 rilgate-core = { path = "crates/rilgate-core" }
 rilgate-gateway = { path = "crates/rilgate-gateway" }
 rilgate-challenge = { path = "crates/rilgate-challenge" }
+rilgate-challenge-hooks = { path = "crates/rilgate-challenge-hooks" }
 rilgate-dns = { path = "crates/rilgate-dns" }
 rilgate-ip-feeds = { path = "crates/rilgate-ip-feeds" }
 rilgate-pow-randomx = { path = "crates/rilgate-pow-randomx" }

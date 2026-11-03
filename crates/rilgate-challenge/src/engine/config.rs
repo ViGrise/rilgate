@@ -4,6 +4,7 @@ use rilgate_policy::policy::schema::PolicyDocument;
 use rilgate_protocol::{PowAlgorithm, VerificationModes};
 #[derive(Debug, Clone)]
 pub struct ChallengeConfig {
+  pub hooks: std::collections::BTreeMap<String, HookPolicy>,
   pub verification: VerificationModes,
   pub default_algorithm: PowAlgorithm,
   pub signing_key: Secret,
@@ -37,4 +38,16 @@ impl ChallengeConfig {
     rilgate_policy::PolicyEngine::from_definition(&self.policy)?;
     Ok(())
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct HookPolicy {
+  pub grant_ttl_seconds: u64,
+  pub fallback: Option<(PowAlgorithm, u64)>,
+  pub fallback_grant: FallbackGrant,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FallbackGrant {
+  WhileUnavailable,
+  UntilExpiry,
 }

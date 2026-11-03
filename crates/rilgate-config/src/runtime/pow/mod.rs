@@ -24,6 +24,7 @@ pub struct RandomXFallback {
 
 #[derive(Debug, Clone)]
 pub struct PowConfig {
+  pub hooks: std::collections::BTreeMap<String, rilgate_challenge::HookPolicy>,
   pub randomx_fallback: Option<RandomXFallback>,
   pub hashwx_enabled: bool,
   pub hashwx: rilgate_pow_hashwx::HashWxConfig,
@@ -55,6 +56,7 @@ pub struct PowConfig {
 impl PowConfig {
   pub fn challenge(&self) -> rilgate_challenge::ChallengeConfig {
     rilgate_challenge::ChallengeConfig {
+      hooks: self.hooks.clone(),
       verification: self.verification,
       default_algorithm: self.default_algorithm,
       signing_key: self.signing_key.clone(),

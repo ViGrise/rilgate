@@ -198,7 +198,9 @@ async fn hashwx_lifecycle_binds_signed_work_and_checks_tokens_before_dispatch() 
   let verified = service
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  let rilgate_protocol::Grant::Pow(grant) = &verified.grants[0];
+  let rilgate_protocol::Grant::Pow(grant) = &verified.grants[0] else {
+    panic!("Expected PoW grant");
+  };
   assert_eq!(grant.algorithm, PowAlgorithm::Hashwx);
   assert_eq!(grant.difficulty, difficulty);
   assert!(

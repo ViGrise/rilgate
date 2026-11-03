@@ -46,6 +46,7 @@ async fn fixture_with(
   let rule = &mut config.pow.policy.policy.rules.as_mut().unwrap()[0];
   rule.when.path.as_mut().unwrap().prefix = Some("/".into());
   rule.challenge = Some(ChallengePolicy {
+    hook: None,
     steps: None,
     algorithm: Some(PowAlgorithm::Refresh),
     difficulty: Some(delay),

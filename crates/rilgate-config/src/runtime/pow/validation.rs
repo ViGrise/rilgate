@@ -242,7 +242,10 @@ fn validate_policy(config: &PowConfig) -> anyhow::Result<()> {
   rilgate_policy::PolicyEngine::from_definition(&config.policy)?;
   for (name, selection) in config.policy.challenge_policies()? {
     selection
-      .validate_steps(config.default_algorithm)
+      .validate_steps(
+        config.default_algorithm,
+        &config.hooks.keys().cloned().collect(),
+      )
       .with_context(|| format!("policy ({name})"))?;
   }
   for (name, selection) in config.policy.challenges()? {

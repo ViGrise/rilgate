@@ -16,18 +16,38 @@ async function main() {
   state("preparing");
   const config = await jsonFetch(endpoint("/api/client-config"), { retries: 2 });
   let algorithm;
+  let hookRan = false;
   for (;;) {
-    algorithm = window.POW_ALGORITHM;
-    if (config.algorithms && !config.algorithms.some((entry) => entry.id === algorithm)) {
-      throw new Error(`PoW algorithm is not enabled: ${algorithm}`);
-    }
     window.PowClient.showStep();
-    await window.PowClient.algorithm(algorithm).run(config);
+    if (window.POW_METHOD === "hook") {
+      hookRan = true;
+      await window.PowClient.runHook(window.POW_HOOK);
+    } else {
+      if (hookRan) {
+        document.documentElement.classList.remove("pow-hook");
+        const container = document.querySelector("#hook-container");
+        if (container) container.hidden = true;
+        hookRan = false;
+      }
+      algorithm = window.POW_ALGORITHM;
+      if (config.algorithms && !config.algorithms.some((entry) => entry.id === algorithm)) {
+        throw new Error(`PoW algorithm is not enabled: ${algorithm}`);
+      }
+      await window.PowClient.algorithm(algorithm).run(config);
+    }
     const next = window.PowClient.takeNext();
     if (!next) break;
     window.POW_PRESENTATION_TOKEN = next.presentation_token;
-    window.POW_ALGORITHM = next.algorithm;
-    window.POW_SOLVER_MODULE_URL = next.solver_module_url;
+    window.POW_METHOD = next.method;
+    window.POW_HOOK = next.hook || null;
+    if (next.method === "pow") {
+      window.POW_ALGORITHM = next.algorithm;
+      window.POW_SOLVER_MODULE_URL = next.solver_module_url;
+    }
+    if (next.method === "hook" && next.hook.mode === "redirect") {
+      location.assign(next.hook.url);
+      return;
+    }
     window.POW_STEP = next.step;
     window.POW_STEPS = next.steps;
     state("preparing");

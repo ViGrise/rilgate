@@ -205,7 +205,10 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
       .unwrap()
       .grants
       .iter()
-      .map(|rilgate_protocol::Grant::Pow(grant)| grant.verification)
+      .map(|grant| match grant {
+        rilgate_protocol::Grant::Pow(grant) => grant.verification,
+        _ => panic!("Expected PoW grant"),
+      })
       .next()
       .unwrap(),
     PowVerification::PoolShare
@@ -438,7 +441,9 @@ async fn fast_proofs_pass_the_gate_while_gateway_randomx_cookies_are_rejected() 
   let claims = service
     .verify_auth_token(&auth, "example.test", &unbound())
     .unwrap();
-  let rilgate_protocol::Grant::Pow(grant) = &claims.grants[0];
+  let rilgate_protocol::Grant::Pow(grant) = &claims.grants[0] else {
+    panic!("Expected PoW grant");
+  };
   assert_eq!(grant.verification, PowVerification::Gateway);
   let signed: AuthClaims = rilgate_crypto::token::verify_json(
     &auth,

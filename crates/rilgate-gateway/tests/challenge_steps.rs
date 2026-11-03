@@ -91,10 +91,12 @@ async fn completed_step_survives_cookie_merge_and_gate_forwards_after_both_proof
   cfg.pow.policy.policy.rules.as_mut().unwrap()[0].challenge = Some(ChallengePolicy {
     steps: Some(vec![
       StepPolicy {
+        hook: None,
         algorithm: Some(PowAlgorithm::Fast),
         difficulty: Some(1),
       },
       StepPolicy {
+        hook: None,
         algorithm: Some(PowAlgorithm::Hashwx),
         difficulty: None,
       },

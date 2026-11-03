@@ -79,6 +79,7 @@ async fn registered_backend_controls_policy_and_proof_while_common_checks_run_fi
   assert_eq!(
     service.resolve_steps(&decision).unwrap()[0],
     rilgate_protocol::ChallengeStep::Pow(rilgate_protocol::PowStep {
+      fallback_for: None,
       algorithm: PowAlgorithm::Fast,
       difficulty: 2,
       verification: service.verification(PowAlgorithm::Fast)
@@ -153,7 +154,10 @@ async fn registered_backend_controls_policy_and_proof_while_common_checks_run_fi
       .unwrap()
       .grants
       .iter()
-      .map(|rilgate_protocol::Grant::Pow(grant)| grant.algorithm)
+      .map(|grant| match grant {
+        rilgate_protocol::Grant::Pow(grant) => grant.algorithm,
+        _ => panic!("Expected PoW grant"),
+      })
       .next()
       .unwrap(),
     PowAlgorithm::Fast
@@ -307,6 +311,10 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
     let pool = Arc::new(rilgate_pool::StratumPoolProvider::new(cfg.stratum_pool.clone()).unwrap());
     let web = rilgate_web::WebManager::new(config.web.clone()).unwrap();
     let state = AppState {
+      hooks: Arc::new(
+        rilgate_challenge_hooks::ChallengeHooks::new(Arc::new(Default::default())).unwrap(),
+      ),
+      until_expiry: Default::default(),
       challenge_header: format!("{}-challenge", config.web.brand_id)
         .parse()
         .unwrap(),
