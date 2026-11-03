@@ -16,35 +16,55 @@ pub fn render_challenge_page(
     .duration_since(std::time::UNIX_EPOCH)
     .unwrap_or_default()
     .as_secs() as i64;
-  let solver_module_path = solver_module_path(state, issued.claims.presented().algorithm)
-    .expect("Registered challenge algorithm");
+  let pow = issued.claims.presented_pow().ok();
+  let hook = match issued.claims.presented() {
+    rilgate_protocol::ChallengeStep::Hook(_) => Some(
+      public_hook(state, &issued.claims, &issued.token, &locale).expect("Validated hook templates"),
+    ),
+    _ => None,
+  };
+  let solver_module_path = solver_module_path(
+    state,
+    pow.map_or(rilgate_protocol::PowAlgorithm::Fast, |p| p.algorithm),
+  )
+  .expect("Registered challenge algorithm");
   let challenge = PublicChallengeInfo {
     url: challenge_url(&snapshot.config.base_path, &issued.token),
     embedded,
     step: issued.claims.step + 1,
     steps: issued.claims.steps.len(),
-    token: issued.token,
-    algorithm: match issued.claims.presented().algorithm {
+    method: if hook.is_some() { "hook" } else { "pow" }.into(),
+    hook,
+    token: issued.token.clone(),
+    algorithm: match pow.map_or(rilgate_protocol::PowAlgorithm::Fast, |p| p.algorithm) {
       rilgate_protocol::PowAlgorithm::Fast => "fast",
       rilgate_protocol::PowAlgorithm::Hashwx => "hashwx",
       rilgate_protocol::PowAlgorithm::RandomX => "randomx",
       rilgate_protocol::PowAlgorithm::Refresh => "refresh",
     }
     .into(),
-    difficulty: Some(issued.claims.presented().difficulty),
+    difficulty: pow.map(|p| p.difficulty),
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
     solver_module_url: snapshot.asset_url(&solver_module_path),
     honeypot_url: honeypot_url(state, &snapshot.config.base_path),
     ..Default::default()
   };
+  // The page runs later steps in place, so it allows the sources of every hook in its step list.
+  let hook_csp = state
+    .hooks
+    .set
+    .csp(issued.claims.steps.iter().filter_map(|step| match step {
+      rilgate_protocol::ChallengeStep::Hook(hook) => Some(hook.name.as_str()),
+      _ => None,
+    }));
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
     if json {
       snapshot
         .render_challenge_json(&challenge, &locale)
         .map(|html| (html, None))
     } else {
-      snapshot.render_challenge_with_policy(&challenge, &locale, open_graph)
+      snapshot.render_challenge_with_policy(&challenge, &locale, open_graph, &hook_csp)
     }
   };
   let (html, policy) = render(&snapshot).unwrap_or_else(|error| {
@@ -110,7 +130,7 @@ pub(crate) fn challenge_page(
   Ok(out)
 }
 
-fn negotiate_locale(
+pub(crate) fn negotiate_locale(
   snapshot: &rilgate_web::runtime::snapshot::WebSnapshot,
   headers: &HeaderMap,
   uri: &Uri,
@@ -181,7 +201,7 @@ pub fn render_page(
       algorithm: algorithm.into(),
       difficulty: presentation
         .as_ref()
-        .map(|claims| claims.presented().difficulty),
+        .and_then(|claims| claims.presented_pow().ok().map(|p| p.difficulty)),
       expires_at: presentation.as_ref().map(|claims| claims.expires_at),
       expires_in: presentation.as_ref().map(|claims| {
         let now = std::time::SystemTime::now()
@@ -197,7 +217,7 @@ pub fn render_page(
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
     snapshot.render(template, &public, &locale).map(|html| {
       let policy = if template.ends_with(".html.jinja") {
-        snapshot.page_policy(&html)
+        snapshot.page_policy(&html, &Default::default())
       } else {
         None
       };
@@ -250,7 +270,7 @@ pub fn render_refresh_page(
   let render = |snapshot: &rilgate_web::runtime::snapshot::WebSnapshot| {
     snapshot.render(template, &public, &locale).map(|html| {
       let policy = if template.ends_with(".html.jinja") {
-        snapshot.page_policy(&html)
+        snapshot.page_policy(&html, &Default::default())
       } else {
         None
       };
@@ -281,4 +301,34 @@ pub(crate) fn solver_module_path(
 ) -> anyhow::Result<String> {
   let descriptor = state.pow.algorithm_descriptor(algorithm)?;
   Ok(descriptor.solver_module_path)
+}
+
+pub(crate) fn public_hook(
+  state: &AppState,
+  presentation: &rilgate_challenge::challenge::Presentation,
+  token: &str,
+  locale: &str,
+) -> anyhow::Result<serde_json::Value> {
+  let rilgate_protocol::ChallengeStep::Hook(hook) = presentation.presented() else {
+    anyhow::bail!("Presentation step is not a challenge hook");
+  };
+  let scheme = if matches!(state.cfg.env, rilgate_config::Environment::Development) {
+    "http"
+  } else {
+    "https"
+  };
+  let callback = format!(
+    "{scheme}://{}{}{}",
+    presentation.host, state.cfg.web.base_path, "/api/hook/callback"
+  );
+  state.hooks.set.public(
+    &hook.name,
+    &rilgate_challenge_hooks::BrowserValues {
+      challenge_id: presentation.challenge_id.as_deref().unwrap_or_default(),
+      host: &presentation.host,
+      locale,
+      state: token,
+      callback: &callback,
+    },
+  )
 }

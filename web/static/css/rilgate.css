@@ -38,6 +38,8 @@ dialog form button{padding:6px 16px;background:transparent;border:1px solid var(
 html:not(.pow-script) .load-error{display:block;visibility:hidden;animation:load-error-show 0s linear 30s forwards}
 html.pow-load-failed .load-error{display:block;visibility:visible;animation:none}
 .pow-load-failed .bar,.pow-load-failed #progress,.pow-load-failed #status,.pow-load-failed #stats,.pow-load-failed #job{display:none}
+.pow-hook .bar,.pow-hook #progress,.pow-hook #stats,.pow-hook #job,.pow-hook details{display:none}
+.pow-hook #hook-container{margin:1rem 0;min-height:65px}
 @keyframes load-error-show{to{visibility:visible}}
 @media(prefers-reduced-motion:reduce){.bar-shimmer{animation:none;transform:translateX(150%)}.bar-complete,summary::before{transition:none!important}}
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

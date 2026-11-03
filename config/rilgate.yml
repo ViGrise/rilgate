@@ -23,7 +23,7 @@
 # empty variables fail validation. Expansion is single-pass, without shell syntax.
 # YAML types remain strict and unknown keys are rejected, including in development.
 
-# Every scalar setting also has a RILGATE_* variable and a flag named after its
+# Shared scalar settings have a RILGATE_* variable and a flag named after their
 # path: server.upstream.url is RILGATE_SERVER_UPSTREAM_URL or
 # --server-upstream-url. Flags override variables, which override this file.
 # .env.example lists every variable; rilgate --help lists every flag.
@@ -864,6 +864,143 @@ server:
       #
       # idle: 1m
 
+############################### CHALLENGE HOOKS ###############################
+
+# External checks selected by policy hook steps. Changes need a restart.
+# This map has no RILGATE_* variable or flag. Secrets use ${VARIABLE} references.
+# Guide: docs/configuration.md#challenge-hooks.
+#
+# challenge_hooks:
+  # Preset example. Each provider needs params.site_key and secrets.secret_key.
+  # Presets: turnstile.yml, hcaptcha.yml, recaptcha-v2.yml, recaptcha-v3.yml.
+  #
+  # captcha:
+    # <<: !include builtin:hooks/turnstile.yml
+    # params:
+      # site_key: ...
+    # secrets:
+      # secret_key: ${RILGATE_TURNSTILE_SECRET_KEY}
+
+  # Example hook name, not a default. At most 16 hooks. Names: 1 to 32 lowercase
+  # letters, digits or hyphens, starting with a letter or digit.
+  #
+  # external-check:
+    # Public string, integer, number or boolean values for templates.
+    # Keys: 1 to 32 lowercase letters, digits or underscores.
+    #
+    # params: {}
+
+    # Private verification strings, redacted by config show. Same key rules as params.
+    # Example: {token: "${EXTERNAL_CHECK_TOKEN}"}.
+    #
+    # secrets: {}
+
+    # Hook grant lifetime, default security.auth.ttl. Whole seconds from 1m to
+    # security.auth.ttl. The displayed value follows the default auth lifetime.
+    #
+    # grant_ttl: 6h
+
+    # Required presentation. redirect navigates to a service; embed loads a widget.
+    # Example mode and URL, not defaults. Browser templates accept challenge_id,
+    # host, locale and params.<key>. Only redirect URLs accept state and callback.
+    #
+    # presentation:
+      # mode: redirect
+
+      # Absolute https URL template; http is accepted in development.
+      #
+      # url: "https://example.com/start?state={state}&return={callback}"
+
+      # Query parameter for the result: 1 to 64 letters, digits, dots, hyphens
+      # or underscores, other than state.
+      #
+      # result_param: result
+
+    # Required verification request and acceptance conditions.
+    #
+    # verify:
+      # Request templates also accept client_ip, user_agent, result,
+      # verification_id and secrets.<key>. They cannot use state or callback.
+      #
+      # request:
+        # post or get, case-insensitive. GET puts fields in the query.
+        #
+        # method: post
+
+        # Example required absolute https URL; http is accepted in development.
+        #
+        # url: https://example.com/verify
+
+        # POST encoding: form or json. JSON preserves scalar parameter types.
+        #
+        # encoding: form
+
+        # At most 16 valid HTTP header names with string templates.
+        #
+        # headers: {}
+
+        # At most 32 string, number or boolean fields. Empty strings are omitted.
+        # Example: {token: "{secrets.token}", response: "{result}", ip: "{client_ip}"}.
+        #
+        # fields: {}
+
+      # Example required conditions: 1 to 16, all must hold. field is a JSON Pointer.
+      # Each condition has exactly one of equals, in, min or max. min/max need a
+      # number or a single placeholder. Missing fields fail.
+      #
+      # accept:
+        # - {field: /success, equals: true}
+
+      # Deadline for all attempts. Range: 100ms..30s.
+      #
+      # timeout: 5s
+
+      # Per-attempt timeout. Range: 100ms..verify.timeout.
+      #
+      # attempt_timeout: 2s
+
+      # Retries for connection errors and HTTP 429, 502, 503 and 504.
+      #
+      # retry:
+        # Total attempts. Range: 1..5.
+        #
+        # attempts: 3
+
+        # Initial full-jitter backoff, doubled per retry. Range: 10ms..5s.
+        # Integer Retry-After seconds take precedence when within the deadline.
+        #
+        # backoff: 200ms
+
+        # Retry attempt timeouts only with an idempotency field such as
+        # {verification_id}; a provider may consume a result before timing out.
+        #
+        # on_timeout: false
+
+    # Instance-local availability and fallback handling.
+    #
+    # unavailable:
+      # deny or fallback. Unavailable verification returns 503 hook_unavailable.
+      #
+      # action: deny
+
+      # Required only for action: fallback. Enabled fast or hashwx with valid
+      # difficulty: fast 1..64, hashwx 1..2^40. Example: {algorithm: fast, difficulty: 4}.
+      #
+      # fallback: null
+
+      # while_unavailable accepts fallback grants only during the outage.
+      # until_expiry accepts grants tagged with this hook until their own expiry.
+      #
+      # grant: while_unavailable
+
+      # Consecutive unavailable outcomes before using the fallback. Range: 1..100.
+      #
+      # after: 3
+
+      # Time until presenting the hook again. Range: 1s..1h.
+      #
+      # recheck: 30s
+
 ################################### SIGNALS ###################################
 
 # signals:
@@ -1169,8 +1306,8 @@ server:
         # path: {prefix: /protected/}
       # action: challenge
 
-      # Allowed only with action: challenge. Omit this mapping or either field
-      # to use the default algorithm or score-derived difficulty, respectively.
+      # Allowed only with action: challenge. Choose steps, hook, or algorithm
+      # and difficulty. Omitted PoW fields use their configured defaults.
       #
       # challenge:
         # fast, hashwx, randomx or refresh. RandomX also requires pow.stratum_pool.
@@ -1183,8 +1320,13 @@ server:
         #
         # difficulty: 2
 
-        # Ordered alternative: 1 to 4 steps, each algorithm once, refresh only
-        # alone, not together with algorithm or difficulty.
+        # Example hook alternative, not a default. Select a challenge_hooks name.
+        #
+        # hook: external-check
+
+        # Ordered alternative: 1 to 4 steps, each algorithm and hook once.
+        # refresh is valid alone. Each step is PoW or {hook: <name>}.
+        # Use steps independently of top-level hook, algorithm and difficulty.
         #
         # steps:
           # - {algorithm: fast, difficulty: 2}

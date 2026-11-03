@@ -48,7 +48,14 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: Decision
     .presented
     .and_then(|i| context.effective.get(i))
     .or_else(|| context.required.first());
-  let step = selection.map(|ChallengeStep::Pow(step)| step);
+  let step = selection.and_then(|s| match s {
+    ChallengeStep::Pow(step) => Some(step),
+    _ => None,
+  });
+  let hook = selection.and_then(|s| match s {
+    ChallengeStep::Hook(step) => Some(step.name.as_str()),
+    _ => None,
+  });
   let summaries = (!context.required.is_empty()).then(|| {
     context
       .required
@@ -71,6 +78,7 @@ fn log_decision(level: DecisionLog, decision: &PolicyDecision, context: Decision
       PowAlgorithm::RandomX => "randomx", PowAlgorithm::Refresh => "refresh",
     }),
     difficulty = step.map(|step| step.difficulty),
+    hook,
     step = context.presented.map(|i| i + 1),
     steps = summaries.as_deref(),
     unresolved = decision.unresolved,
@@ -190,16 +198,21 @@ pub async fn gate_with_client(
   if let Some(fallback) = &state.cfg.pow.randomx_fallback
     && !state.pool.work_available()
   {
-    for ChallengeStep::Pow(step) in &mut effective {
+    for step in &mut effective {
+      let ChallengeStep::Pow(step) = step else {
+        continue;
+      };
       if step.algorithm == PowAlgorithm::RandomX {
         *step = PowStep {
           algorithm: fallback.algorithm,
           difficulty: fallback.difficulty,
           verification: state.pow.verification(fallback.algorithm),
+          fallback_for: None,
         };
       }
     }
   }
+  effective = effective_steps(state, &effective);
   let fallback = effective != required;
   let log = |action, presented| {
     log_decision(
@@ -274,12 +287,17 @@ pub async fn gate_with_client(
       },
     )
     .unwrap_or_default();
-  let Some(step) = first_unsatisfied(&required, &effective, &grants) else {
+  let Some(step) = first_unsatisfied(&required, &effective, &grants, &state.until_expiry) else {
     log(PolicyAction::Allow, None);
     return Ok(None);
   };
-  let ChallengeStep::Pow(presented) = &effective[step];
-  let refresh = presented.algorithm == PowAlgorithm::Refresh;
+  let refresh =
+    matches!(&effective[step],ChallengeStep::Pow(p) if p.algorithm == PowAlgorithm::Refresh);
+  if let ChallengeStep::Pow(p) = &effective[step]
+    && let Some(name) = &p.fallback_for
+  {
+    state.hooks.fallback(name);
+  }
   let presentation = state
     .pow
     .issue_presentation(
@@ -291,11 +309,34 @@ pub async fn gate_with_client(
       step,
     )
     .map_err(ApiError::Internal)?;
-  let challenge_url: HeaderValue =
+  let mut challenge_url: HeaderValue =
     crate::web::pages::challenge_url(&state.cfg.web.base_path, &presentation.token)
       .parse()
       .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?;
 
+  if matches!(presentation.claims.presented(), ChallengeStep::Hook(_)) {
+    let locale = crate::web::pages::negotiate_locale(&state.web.current(), headers, uri);
+    let public =
+      crate::web::pages::public_hook(state, &presentation.claims, &presentation.token, &locale)
+        .map_err(ApiError::Internal)?;
+    if public["mode"] == "redirect" {
+      challenge_url = public["url"]
+        .as_str()
+        .expect("Redirect hook URL")
+        .parse()
+        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?;
+      if !json && (method == Method::GET || method == Method::HEAD) {
+        let mut out = response(StatusCode::FOUND, "");
+        out
+          .headers_mut()
+          .insert(http::header::LOCATION, challenge_url.clone());
+        out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
+        insert_challenge_notification(state, &mut out, challenge_url);
+        log(PolicyAction::Challenge, Some(step));
+        return Ok(Some(out));
+      }
+    }
+  }
   if json || method == Method::GET || method == Method::HEAD {
     let open_graph = if !json && !refresh && method == Method::GET {
       state
@@ -309,7 +350,11 @@ pub async fn gate_with_client(
       render_refresh_page(
         state,
         &presentation.token,
-        presentation.claims.presented().difficulty,
+        presentation
+          .claims
+          .presented_pow()
+          .map_err(ApiError::proof)?
+          .difficulty,
         headers,
         uri,
       )
@@ -330,10 +375,9 @@ pub async fn gate_with_client(
       policy,
     );
     insert_challenge_notification(state, &mut out, challenge_url);
-    if required
-      .iter()
-      .any(|ChallengeStep::Pow(step)| step.algorithm == PowAlgorithm::RandomX)
-    {
+    if required.iter().any(
+      |step| matches!(step,ChallengeStep::Pow(step) if step.algorithm == PowAlgorithm::RandomX),
+    ) {
       use std::sync::atomic::Ordering;
       let previous = state
         .randomx_fallback_active
@@ -424,4 +468,25 @@ fn formatted_response(
     locale.parse().expect("Validated locale"),
   );
   out
+}
+
+pub(crate) fn effective_steps(state: &AppState, required: &[ChallengeStep]) -> Vec<ChallengeStep> {
+  required
+    .iter()
+    .map(|step| {
+      if let ChallengeStep::Hook(hook) = step
+        && state.hooks.is_unavailable(&hook.name)
+        && let Some((algorithm, difficulty)) =
+          state.cfg.pow.hooks.get(&hook.name).and_then(|h| h.fallback)
+      {
+        return ChallengeStep::Pow(PowStep {
+          algorithm,
+          difficulty,
+          verification: state.pow.verification(algorithm),
+          fallback_for: Some(hook.name.clone()),
+        });
+      }
+      step.clone()
+    })
+    .collect()
 }

@@ -10,22 +10,24 @@ impl ChallengeService {
     request_host: &str,
   ) -> Result<ChallengeResponse> {
     let presentation = self.verify_presentation(presentation_token, request_host)?;
-    let backend = self.algorithms.get(presentation.presented().algorithm)?;
-    backend.validate_verification(presentation.presented().verification)?;
+    let backend = self
+      .algorithms
+      .get(presentation.presented_pow()?.algorithm)?;
+    backend.validate_verification(presentation.presented_pow()?.verification)?;
     let prepared = backend
       .issue(WorkRequest {
-        difficulty: presentation.presented().difficulty,
-        verification: presentation.presented().verification,
+        difficulty: presentation.presented_pow()?.difficulty,
+        verification: presentation.presented_pow()?.verification,
       })
       .await?;
     ensure!(
-      prepared.algorithm() == presentation.presented().algorithm,
+      prepared.algorithm() == presentation.presented_pow()?.algorithm,
       "Work algorithm does not match presentation"
     );
     let claims = work::claims(
       &prepared,
       presentation.host.clone(),
-      presentation.presented().verification,
+      presentation.presented_pow()?.verification,
     );
     let token = self.tokens.challenge.sign_json(&claims)?;
     work::response(prepared, token)

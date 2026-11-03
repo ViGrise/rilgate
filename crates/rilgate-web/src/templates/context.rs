@@ -46,6 +46,8 @@ pub struct PageInfo {
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicChallengeInfo {
+  pub method: String,
+  pub hook: Option<serde_json::Value>,
   pub url: String,
   pub embedded: bool,
   pub step: usize,
@@ -65,6 +67,8 @@ impl Default for PublicChallengeInfo {
     Self {
       url: String::new(),
       embedded: false,
+      method: "pow".into(),
+      hook: None,
       step: 1,
       steps: 1,
       id: String::new(),

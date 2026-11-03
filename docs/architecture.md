@@ -7,10 +7,11 @@ grouped by responsibility. They do not collect every subsystem in `src/`.
 ## Dependency direction
 
 ```text
-rilgate -> config, gateway, challenge, pow implementations, pool, web, telemetry, ip-feeds
-config -> domain configuration types (challenge, policy, pool, pow, web), protocol, crypto
-gateway -> config, challenge, policy, pool, pow API, protocol, crypto, web, core
+rilgate -> config, gateway, challenge, challenge-hooks, pow implementations, pool, web, telemetry, ip-feeds
+config -> domain configuration types (challenge, policy, pool, pow, web), challenge-hooks, protocol, crypto
+gateway -> config, challenge, challenge-hooks, policy, pool, pow API, protocol, crypto, web, core
 challenge -> pow API, policy, protocol, crypto, core
+challenge-hooks -> crypto
 ip-feeds -> policy
 pow-randomx -> pow API, pool provider contract, protocol, core, randomx-core
 pow-hash -> pow API, core
@@ -51,6 +52,7 @@ crates/rilgate-ip-feeds/src/
   parse.rs          Feed value parsing for IP and ASN sets
   fetch.rs          Conditional, bounded and redirect-checked HTTP requests
   refresh.rs        Background refresh loop with backoff and jitter
+crates/rilgate-challenge-hooks/src/ Templates, verification requests and availability of challenge hooks
 crates/rilgate-crypto/src/
   derivation.rs     Purpose-specific HKDF signing keys
   secret/           Redacted secret representation
@@ -103,9 +105,10 @@ by default.
 
 ## Runtime invariants
 
-Challenge pages stay at the requested application URL. Their APIs and assets resolve
-beneath the configured `site.base_path`. Policy rules choose algorithms and difficulty
-independently of the global default.
+PoW and embed challenge pages stay at the requested application URL. Redirect hooks
+navigate through an external check; see [challenge hooks](configuration.md#challenge-hooks).
+Challenge APIs and assets resolve beneath `site.base_path`. Policy rules select
+steps independently of the global default.
 
 Fast and RandomX local proofs can cross gateway instances that share signing keys and
 compatible configuration. Stratum pool acceptance remains attached to one browser WebSocket

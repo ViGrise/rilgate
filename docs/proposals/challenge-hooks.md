@@ -91,8 +91,8 @@ AuthClaims v2 {
 | `hook:<name>` with `unavailable.grant: until_expiry` | Also a proof-of-work grant with `fallback_for: <name>` |
 | RandomX step while `pow.algorithms.randomx.fallback` is active | A grant that satisfies the RandomX fallback step, as today |
 
-The gate computes `first_unsatisfied(steps, grants)`. When every step has a
-grant, the request is allowed. Otherwise the gate presents that step.
+When every step has a grant, the gate allows the request. Otherwise it presents
+the first step that has no grant.
 
 - A grant is valid while `now < expires_at`. A proof-of-work grant expires after
   `security.auth.ttl`. A hook grant expires after its `grant_ttl`.
@@ -202,10 +202,19 @@ challenge_hooks:
 | `verify` | | Required. See 3.4 |
 | `unavailable` | `action: deny` | See 3.5 |
 
-`builtin:hooks/` is a fourth built-in catalog in `config/hooks/`. It contains
-`turnstile.yml`, `hcaptcha.yml`, `recaptcha-v2.yml` and `recaptcha-v3.yml`. Each
-preset uses only the generic settings in this section and documents the
-`params` and `secrets` keys it needs.
+`builtin:hooks/` is a fourth built-in catalog in `config/hooks/`. Each preset uses
+only the generic settings in this section. Every preset needs `params.site_key`
+and `secrets.secret_key`.
+
+| Preset | Widget | Verification checks |
+| --- | --- | --- |
+| `turnstile.yml` | `turnstile.render`, `cData` set to `{challenge_id}` | `success`, `hostname` equals `{host}`, `cdata` equals `{challenge_id}`. Sends `idempotency_key: {verification_id}` and retries attempt timeouts |
+| `hcaptcha.yml` | `hcaptcha.render` with `recaptchacompat=off` | `success`. Sends `sitekey`. hCaptcha documents that `hostname` is not for authentication |
+| `recaptcha-v2.yml` | `grecaptcha.render` | `success`, `hostname` equals `{host}` |
+| `recaptcha-v3.yml` | `grecaptcha.execute`, `returns: promise` | `success`, `hostname` equals `{host}`, `action` equals `{params.action}`, `score` at least `{params.min_score}`. Defaults `action: rilgate`, `min_score: 0.5` |
+
+The provider test keys return fixed `hostname` and `cdata` values, so the
+`hostname` and `cdata` checks reject them on other hosts.
 
 ### 3.2 Templates
 
@@ -218,6 +227,7 @@ A template is a string with placeholders in single braces, the same syntax as
 | `{params.<key>}` | yes | yes |
 | `{state}`, `{callback}` | redirect `url` only | no |
 | `{client_ip}`, `{user_agent}` | no | yes |
+| `{verification_id}` | no | yes |
 | `{result}` | no | yes |
 | `{secrets.<key>}` | no | yes |
 
@@ -229,6 +239,9 @@ A template is a string with placeholders in single braces, the same syntax as
   in `form` bodies, JSON strings in `json` bodies and widget arguments. A header
   value that is not a valid HTTP header value makes the verification fail.
 - `{client_ip}` is an empty string when the client address is unknown.
+- `{verification_id}` is a UUID that one verification keeps for all its attempts.
+  Use it as an idempotency key.
+- A `form` or `json` field whose value is an empty string is not sent.
 - `{callback}` is `https://<host><base_path>/api/hook/callback`, with `http` in
   the development environment.
 - `{state}` is the presentation token of the hook step.
@@ -277,6 +290,10 @@ presentation:
     frame-src: [https://challenges.cloudflare.com]
 ```
 
+- `onload` is the name of the script query parameter that takes a load callback.
+  When it is set, the page adds a generated global function name to the script
+  URL and calls `call` only after that function runs. When it is not set, the
+  page waits until `call` resolves to a function.
 - `call` is a dotted path of 1 to 4 JavaScript identifiers. The page resolves
   it through own properties of `window` and never evaluates code.
 - `args` is a JSON list. The exact strings `$container`, `$result`, `$error` and
@@ -298,11 +315,13 @@ window.PowClient.registerHook("sso-check", {
 });
 ```
 
-`presentation.csp` adds sources to the challenge page CSP only while that hook is
-presented. It accepts `script-src`, `style-src`, `img-src`, `font-src`,
-`connect-src` and `frame-src`, with at most 16 origins each. Each source is an
-`https` origin without a path (`http` in development). The origin of
-`widget.script` or `script.src` must be in `script-src`.
+`presentation.csp` adds sources to the CSP of a challenge page whose step list
+contains that hook. It accepts `script-src`, `style-src`, `img-src`, `font-src`,
+`connect-src` and `frame-src`, with at most 16 sources each. Each source is an `https` URL (`http` in
+development) with a host, an optional `*.` prefix on the host, an optional port
+and an optional path that ends with `/`. It has no query or fragment. The URL of
+`widget.script` or `script.src` must match a `script-src` source by the CSP
+matching rules.
 
 ### 3.4 Verification
 
@@ -340,6 +359,7 @@ verify:
 | `attempt_timeout` | `2s` | `100ms` to `timeout` |
 | `retry.attempts` | `3` | `1` to `5` attempts in total |
 | `retry.backoff` | `200ms` | `10ms` to `5s`. Doubles after each attempt, with full jitter |
+| `retry.on_timeout` | `false` | `true` also retries an attempt timeout. Set it only when the request sends an idempotency key, such as `{verification_id}` |
 
 An `accept` condition has a `field` (JSON Pointer) and one operator: `equals`
 (scalar or template), `in` (list of scalars), `min` or `max` (number or a
@@ -358,8 +378,9 @@ at most 8192 bytes.
 
 Retryable errors are a connection or TLS failure before the request is sent and
 the statuses 429, 502, 503 and 504. A `Retry-After` value is used when it fits in
-the deadline. An attempt timeout is not retried, because the provider may already
-have consumed a single-use result, and the outcome is `unavailable`.
+the deadline. Without `retry.on_timeout`, an attempt timeout is not retried,
+because the provider may already have consumed a single-use result, and the
+outcome is `unavailable`.
 
 ### 3.5 Unavailable hooks
 
@@ -398,15 +419,15 @@ unavailable:
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `{base_path}/api/hook/verify` | POST | Body `{presentation_token, result, set_cookie}`. Returns the same shape as `/api/verify`, with `next` when a step remains |
-| `{base_path}/api/hook/callback` | GET | Query `state` and `result_param`. Verifies, sets the cookie and redirects to `next.hook.url`, or to the challenge page for a remaining embed or proof step, or to the original path |
+| `{base_path}/api/hook/verify` | POST | Body `{presentation_token, result}`. A `pass` sets the access cookie and returns `{cookie_set: true}`, with `next` when a step remains |
+| `{base_path}/api/hook/callback` | GET | Query `state` and `result_param`. Verifies, sets the access cookie on `pass` and redirects to the original path, where the gate presents any remaining step |
 
 Both are proof endpoints: they need a resolved client address and use the proof
 rate limit. The hook name comes from the signed presentation token. A token whose
 presented step is not a hook step is rejected with `401`.
 
-A hook `pass` issues a receipt v2 with a hook grant. The receipt exchange and the
-cookie merge in 2.4 apply.
+A hook `pass` adds a hook grant with the cookie merge in 2.4. A `fail` returns
+`401` with `{"code": "hook_rejected"}`.
 
 ## 4. Web runtime
 
@@ -430,8 +451,9 @@ cookie merge in 2.4 apply.
   "Step N of M" when `steps > 1`. The `pow-hook` class on `<html>` hides the
   proof progress and statistics. When an operator template has no container, the
   runtime creates one in `<main>`.
-- The CSP of a hook page adds the sources of that hook. A page without a hook
-  adds no source.
+- The CSP of a challenge page adds the sources of every embed hook in its step
+  list, because the page runs later steps without a reload. A page without a
+  hook step adds no source.
 - The JSON challenge body gets `challenge.method`, `challenge.step`,
   `challenge.steps` and `challenge.hook`.
 
@@ -471,11 +493,12 @@ provider outage must not take the gateway out of a load balancer.
 ## 7. Delivery
 
 1. **Challenge steps.** Policy `steps`, `PolicyDecision.steps`, presentation and
-   cookie v2, grant merge, `first_unsatisfied` in the gate, `next` in the proof
-   API and the step loop in the browser. Proof-of-work steps only.
+   cookie v2, grant merge, the first step without a grant in the gate, `next` in
+   the proof API and the step loop in the browser. Proof-of-work steps only.
 2. **Challenge hooks.** The `challenge_hooks` group, the
    `rilgate-challenge-hooks` crate (templates, request, retry, accept,
-   availability), the built-in hook presets, the hook endpoints, the hook
-   runtime, CSP sources and metrics.
+   availability), hook steps and grants, the hook endpoints, redirect
+   presentation, the embed runtime, CSP sources, the built-in hook presets and
+   metrics.
 
 Each part is one pull request with its tests and documentation.

@@ -1,3 +1,8 @@
+#![expect(
+  clippy::result_large_err,
+  reason = "Hook outage errors include the next challenge step."
+)]
+
 pub mod auth;
 pub mod observability;
 pub mod open_graph;

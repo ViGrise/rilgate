@@ -106,16 +106,20 @@ impl PolicyDocument {
         .flat_map(|(name, policy)| {
           let steps = policy.step_policies();
           let multiple = steps.len() > 1;
-          steps.into_iter().enumerate().map(move |(i, step)| {
-            (
-              if multiple {
-                format!("{name} step {}", i + 1)
-              } else {
-                name.clone()
-              },
-              step,
-            )
-          })
+          steps
+            .into_iter()
+            .enumerate()
+            .filter(|(_, step)| step.hook.is_none())
+            .map(move |(i, step)| {
+              (
+                if multiple {
+                  format!("{name} step {}", i + 1)
+                } else {
+                  name.clone()
+                },
+                step,
+              )
+            })
         })
         .collect(),
     )
@@ -234,10 +238,22 @@ impl PolicyEngine {
         "{path}.challenge: only valid for action: challenge"
       );
       if let Some(challenge) = &rule.challenge {
+        if let Some(steps) = &challenge.steps {
+          for (i, step) in steps.iter().enumerate() {
+            ensure!(
+              step.hook.is_none() || (step.algorithm.is_none() && step.difficulty.is_none()),
+              "{path}.challenge.steps[{i}]: use either hook or algorithm and difficulty"
+            );
+          }
+        }
         ensure!(
-          challenge.steps.is_none()
-            || (challenge.algorithm.is_none() && challenge.difficulty.is_none()),
-          "{path}.challenge: use either steps or algorithm and difficulty"
+          (challenge.steps.is_none()
+            || (challenge.hook.is_none()
+              && challenge.algorithm.is_none()
+              && challenge.difficulty.is_none()))
+            && (challenge.hook.is_none()
+              || (challenge.algorithm.is_none() && challenge.difficulty.is_none())),
+          "{path}.challenge: use exactly one of steps, hook, or algorithm and difficulty"
         );
         ensure!(
           challenge

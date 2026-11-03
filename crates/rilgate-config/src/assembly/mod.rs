@@ -21,6 +21,7 @@ pub struct Configuration {
   pub server: ServerConfig,
   pub upstream: UpstreamConfig,
   pub pow: PowConfig,
+  pub challenge_hooks: Arc<rilgate_challenge_hooks::HookSet>,
   pub web: WebConfig,
   pub open_graph: crate::OpenGraphConfig,
 }

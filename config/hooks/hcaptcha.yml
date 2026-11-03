@@ -1,0 +1,30 @@
+presentation:
+  mode: embed
+  widget:
+    script: https://js.hcaptcha.com/1/api.js?render=explicit&recaptchacompat=off
+    onload: onload
+    call: hcaptcha.render
+    args:
+      - $container
+      - sitekey: "{params.site_key}"
+        callback: $result
+        error-callback: $error
+        expired-callback: $expired
+        chalexpired-callback: $expired
+    returns: callback
+  csp:
+    script-src: [https://hcaptcha.com, https://*.hcaptcha.com]
+    frame-src: [https://hcaptcha.com, https://*.hcaptcha.com]
+    style-src: [https://hcaptcha.com, https://*.hcaptcha.com]
+    connect-src: [https://hcaptcha.com, https://*.hcaptcha.com]
+verify:
+  request:
+    url: https://api.hcaptcha.com/siteverify
+    encoding: form
+    fields:
+      secret: "{secrets.secret_key}"
+      response: "{result}"
+      remoteip: "{client_ip}"
+      sitekey: "{params.site_key}"
+  accept:
+    - {field: /success, equals: true}

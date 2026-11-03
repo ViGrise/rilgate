@@ -271,6 +271,7 @@ impl WebSnapshot {
       "js/challenge.js",
       "js/challenge/runtime.js",
       "js/challenge/registry.js",
+      "js/challenge/hook.js",
       "js/challenge/stratum-pool.js",
       "js/solvers/fast/solver.js",
       "js/solvers/fast/adapter.js",
@@ -346,6 +347,7 @@ impl WebSnapshot {
     challenge: &PublicChallengeInfo,
     locale: &str,
     tags: &[crate::templates::context::OpenGraphTag],
+    hook: &BTreeMap<String, Vec<String>>,
   ) -> Result<(String, Option<String>)> {
     let html = self.render_challenge_with_open_graph(challenge, locale, tags)?;
     let hashes = if challenge.honeypot_url.is_empty() && tags.is_empty() {
@@ -354,19 +356,22 @@ impl WebSnapshot {
       None
     };
     let policy = match hashes {
-      Some(hashes) => self
-        .config
-        .content_security_policy
-        .header(hashes, &self.config.stylesheet_path),
-      None => self.page_policy(&html),
+      Some(hashes) => {
+        self
+          .config
+          .content_security_policy
+          .header(hashes, &self.config.stylesheet_path, hook)
+      }
+      None => self.page_policy(&html, hook),
     };
     Ok((html, policy))
   }
 
-  pub fn page_policy(&self, html: &str) -> Option<String> {
+  pub fn page_policy(&self, html: &str, hook: &BTreeMap<String, Vec<String>>) -> Option<String> {
     self.config.content_security_policy.header(
       &crate::csp::inline_hashes(html),
       &self.config.stylesheet_path,
+      hook,
     )
   }
 

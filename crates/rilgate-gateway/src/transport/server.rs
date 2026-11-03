@@ -416,10 +416,11 @@ impl Handler {
       return Ok(Some(self.reload(&headers, &method).await));
     }
     // A browser that opens a gateway API URL as a page goes back to the application, where
-    // the gateway serves a challenge when one is needed. A refresh URL with a token handles
-    // its own navigations because the token names the protected page.
+    // the gateway serves a challenge when one is needed. Token-bearing refresh and hook
+    // callback URLs handle navigation with their signed protected path.
     if self.role == ListenerRole::Public
       && path.starts_with("/api/")
+      && endpoint != Some(Endpoint::HookCallback)
       && (endpoint != Some(Endpoint::Refresh) || handlers::refresh_token(&uri).is_none())
       && crate::transport::context::is_navigation(&method, &headers)
     {
@@ -463,9 +464,9 @@ impl Handler {
       let peer = match resolved_client_ip {
         Ok(peer) => peer,
         Err(message) => {
-          return Ok(Some(
-            ApiError::InvalidRequest(message.into()).into_response(),
-          ));
+          let mut out = ApiError::InvalidRequest(message.into()).into_response();
+          out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
+          return Ok(Some(out));
         }
       };
       client_ip = peer;
@@ -524,6 +525,15 @@ impl Handler {
             Ok(value) => handlers::challenge(&self.state, &headers, &uri, value).await,
             Err(out) => Ok(*out),
           },
+          Endpoint::HookVerify => match read_json(session).await {
+            Ok(value) => {
+              crate::proof::hooks::verify(&self.state, &headers, &uri, value, &binding).await
+            }
+            Err(out) => Ok(*out),
+          },
+          Endpoint::HookCallback => {
+            crate::proof::hooks::callback(&self.state, &headers, &uri, &binding).await
+          }
           Endpoint::Verify => match read_json(session).await {
             Ok(value) => handlers::verify(&self.state, &headers, &uri, value, &binding).await,
             Err(out) => Ok(*out),
@@ -597,7 +607,10 @@ impl Handler {
     let handle = crate::proof::websocket::handle(
       socket,
       self.state.clone(),
-      presentation.presented().difficulty,
+      presentation
+        .presented_pow()
+        .expect("Admitted RandomX presentation")
+        .difficulty,
       presentation.host,
     );
     session.set_keepalive(None);

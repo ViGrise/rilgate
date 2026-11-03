@@ -41,6 +41,8 @@
     randomx: "run",
     pool: "run",
     verifying: "run",
+    hook: "run",
+    rejected: "run",
     success: "done",
     expired: "retry",
     failed: "retry",
@@ -236,6 +238,7 @@
       const error = new Error((body?.message || `HTTP ${code}`) + retry);
       error.status = code;
       error.code = body?.code;
+      error.body = body;
       error.retryAfter = retry;
       error.retryAfterSeconds =
         retryHeader !== null && retryHeader !== undefined && retryHeader !== ""
@@ -434,6 +437,10 @@
     nextStep = exchanged.next;
   }
 
+  function setNext(next) {
+    nextStep = next;
+  }
+
   function takeNext() {
     const next = nextStep;
     nextStep = undefined;
@@ -584,6 +591,7 @@
     jsonFetch,
     exchange,
     takeNext,
+    setNext,
     showStep,
     verify,
     requestChallenge,

@@ -1,0 +1,32 @@
+presentation:
+  mode: embed
+  widget:
+    script: https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit
+    onload: onload
+    call: turnstile.render
+    args:
+      - $container
+      - sitekey: "{params.site_key}"
+        cData: "{challenge_id}"
+        callback: $result
+        error-callback: $error
+        expired-callback: $expired
+        timeout-callback: $expired
+    returns: callback
+  csp:
+    script-src: [https://challenges.cloudflare.com]
+    frame-src: [https://challenges.cloudflare.com]
+verify:
+  request:
+    url: https://challenges.cloudflare.com/turnstile/v0/siteverify
+    encoding: form
+    fields:
+      secret: "{secrets.secret_key}"
+      response: "{result}"
+      remoteip: "{client_ip}"
+      idempotency_key: "{verification_id}"
+  accept:
+    - {field: /success, equals: true}
+    - {field: /hostname, equals: "{host}"}
+    - {field: /cdata, equals: "{challenge_id}"}
+  retry: {on_timeout: true}

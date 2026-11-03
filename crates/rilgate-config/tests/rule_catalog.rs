@@ -170,7 +170,7 @@ fn embedded_lookup_errors_preserve_resource_identity_and_include_context() {
     ("builtin:rules/missing.yml", "resource does not exist"),
     (
       "builtin:examples/custom.yml",
-      "must select rules/, policies/ or signals/",
+      "must select rules/, policies/, signals/ or hooks/",
     ),
     ("builtin:../rules/googlebot.yml", "escapes the catalog root"),
   ] {

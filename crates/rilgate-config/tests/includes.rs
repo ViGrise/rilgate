@@ -541,3 +541,18 @@ fn merged_schema_and_semantic_errors_retain_the_winning_origin() {
   );
   assert!(!error.contains("base.yml at"), "{error}");
 }
+
+#[test]
+fn builtin_hook_presets_resolve_with_provider_keys() {
+  let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/hooks");
+  for entry in fs::read_dir(directory).unwrap() {
+    let name = entry.unwrap().file_name().into_string().unwrap();
+    let text = format!(
+      "{BASE}\nchallenge_hooks:\n  captcha:\n    <<: !include builtin:hooks/{name}\n    params: {{site_key: x}}\n    secrets: {{secret_key: y}}\n"
+    );
+    parse(&text)
+      .unwrap()
+      .resolve()
+      .unwrap_or_else(|error| panic!("{name}: {error:#}"));
+  }
+}

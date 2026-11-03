@@ -10,12 +10,43 @@ pub fn exposition(state: &AppState) -> Response {
   let mut text = state.metrics.render();
   text.push_str("# TYPE rilgate_challenge_steps_completed_total counter\n");
   for (i, count) in state.metrics.challenge_steps_completed.iter().enumerate() {
-    let _ = writeln!(
-      text,
-      "rilgate_challenge_steps_completed_total{{step=\"{}\",method=\"pow\"}} {}",
-      i + 1,
-      count.load(Ordering::Relaxed)
-    );
+    for (method, count) in ["pow", "hook"].into_iter().zip(count) {
+      let _ = writeln!(
+        text,
+        "rilgate_challenge_steps_completed_total{{step=\"{}\",method=\"{method}\"}} {}",
+        i + 1,
+        count.load(Ordering::Relaxed)
+      );
+    }
+  }
+  for (name, kind) in [
+    ("verifications_total", "counter"),
+    ("retries_total", "counter"),
+    ("available", "gauge"),
+    ("fallbacks_total", "counter"),
+  ] {
+    let _ = writeln!(text, "# TYPE rilgate_challenge_hook_{name} {kind}");
+  }
+  for (hook, metrics) in state.hooks.metrics() {
+    for (outcome, count) in ["pass", "fail", "unavailable"]
+      .into_iter()
+      .zip(metrics.verifications)
+    {
+      let _ = writeln!(
+        text,
+        "rilgate_challenge_hook_verifications_total{{hook=\"{hook}\",outcome=\"{outcome}\"}} {count}"
+      );
+    }
+    for (name, value) in [
+      ("retries_total", metrics.retries),
+      ("fallbacks_total", metrics.fallbacks),
+      ("available", u64::from(metrics.available)),
+    ] {
+      let _ = writeln!(
+        text,
+        "rilgate_challenge_hook_{name}{{hook=\"{hook}\"}} {value}"
+      );
+    }
   }
   if let Some(fallback) = &state.cfg.pow.randomx_fallback {
     let _ = writeln!(

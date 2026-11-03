@@ -303,30 +303,33 @@ policy:
       - {action: challenge, challenge: {algorithm: fast, difficulty: 2}}
 ```
 
-The access cookie keeps one grant per algorithm. A higher-difficulty grant passes requests
+The access cookie keeps one PoW grant per algorithm. A higher-difficulty grant passes requests
 when the rate falls; a higher requirement asks the client for another proof of that algorithm.
 A client that already has a sufficient Fast grant is asked only for the step it lacks.
 
 ## Challenge selection
 
-A challenge without an algorithm uses `pow.default_algorithm`. An explicit difficulty in a
-rule takes precedence over the score mapping of the algorithm. Each algorithm below
-states its difficulty unit and range.
+A proof-of-work challenge without an algorithm uses `pow.default_algorithm`. An explicit
+difficulty takes precedence over the score mapping. Each algorithm below states its unit
+and range. A rule or score threshold can select `challenge: {algorithm: fast, difficulty: 2}`,
+`challenge: {hook: captcha}`, or an ordered `steps` list. Omitted PoW fields use their defaults.
+[Challenge hooks](configuration.md#challenge-hooks) defines external checks and their configuration.
 
-A challenge action requires a grant for each ordered step. A grant satisfies a step when its
-algorithm and verification mode match and its difficulty meets the requirement. The gate
-presents the first step that has no such grant. While a RandomX fallback is active, a grant for
-either the required step or its effective fallback satisfies that step. Any proof-of-work
-grant satisfies a refresh wait; a refresh grant must meet the wait difficulty. Host and
-optional client bindings still apply. A DENY rule rejects a valid cookie.
+A challenge action requires a grant for every step and presents the first step with no grant.
+A PoW grant must match the algorithm and configured verification mode and meet the difficulty.
+Any PoW grant satisfies a refresh wait; a refresh grant must meet the wait difficulty. A hook
+grant satisfies the hook with the same name. While a fallback is active, a grant for the
+required step or its effective fallback satisfies that step. A hook with `grant: until_expiry`
+also accepts a PoW grant tagged with `fallback_for` matching its name until that grant expires.
+Host and optional client bindings apply, and a DENY rule rejects a valid cookie.
 
-A rule or score threshold can use the one-step `challenge: {algorithm: fast, difficulty: 2}`
-form, omit either field to use its default, or specify `steps`. The list must have 1 to 4
-entries, each algorithm may appear only once after default resolution, and `refresh` is
-valid only alone. A `steps` list cannot appear together with `algorithm` or `difficulty`.
-Policy compilation validates each step against its registered algorithm and difficulty range.
-The access cookie retains one grant per algorithm, each with its own expiry; the gate accepts
-only live grants with the configured verification mode and a valid backend difficulty.
+A `steps` list has 1 to 4 entries, each algorithm and hook appears at most once, and `refresh`
+is valid alone. Each entry uses either `{algorithm, difficulty}` or `{hook}`. Top-level `steps`,
+`hook`, and `algorithm` with `difficulty` are mutually exclusive. Compilation validates PoW
+steps against registered algorithms and difficulty ranges and hook names against the running
+hook set, including on policy reload. The cookie retains one grant per method with its own
+expiry, drops expired or unconfigured grants, and expires when its latest grant expires.
+PoW grants use `security.auth.ttl`; hook grants use their configured `grant_ttl`.
 
 ```yaml
 policy:
@@ -337,7 +340,7 @@ policy:
       challenge:
         steps:
           - {algorithm: fast, difficulty: 2}
-          - {algorithm: hashwx, difficulty: 20}
+          - {hook: captcha}
 ```
 
 ### Fast

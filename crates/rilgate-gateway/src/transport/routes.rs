@@ -13,6 +13,8 @@ pub(crate) enum Endpoint {
   ClientConfig,
   Challenge,
   Verify,
+  HookVerify,
+  HookCallback,
   Exchange,
   Refresh,
   Session,
@@ -40,6 +42,8 @@ impl Endpoint {
       "/api/client-config" => Self::ClientConfig,
       "/api/challenge" => Self::Challenge,
       "/api/verify" => Self::Verify,
+      "/api/hook/verify" => Self::HookVerify,
+      "/api/hook/callback" => Self::HookCallback,
       "/api/exchange" => Self::Exchange,
       "/api/refresh" => Self::Refresh,
       "/api/session" => Self::Session,
@@ -66,6 +70,8 @@ impl Endpoint {
       Self::ChallengePage
         | Self::Challenge
         | Self::Verify
+        | Self::HookVerify
+        | Self::HookCallback
         | Self::Exchange
         | Self::WebSocket
         | Self::Refresh
@@ -76,24 +82,26 @@ impl Endpoint {
   fn accepts_post(self) -> bool {
     matches!(
       self,
-      Self::Reload | Self::Challenge | Self::Verify | Self::Exchange
+      Self::Reload | Self::Challenge | Self::Verify | Self::Exchange | Self::HookVerify
     )
   }
 
-  /// Reload, Challenge, Verify and Exchange accept POST. The others accept GET, and HEAD
-  /// except WebSocket.
+  /// Checks the HTTP methods supported by the endpoint.
   pub(crate) fn accepts(self, method: &Method) -> bool {
     if self.accepts_post() {
       method == Method::POST
     } else {
-      method == Method::GET || (method == Method::HEAD && self != Self::WebSocket)
+      method == Method::GET
+        || (method == Method::HEAD && !matches!(self, Self::WebSocket | Self::HookCallback))
     }
   }
 
-  /// The `Allow` header value for a 405 answer: "POST" or "GET, HEAD".
+  /// The supported HTTP methods for a 405 response.
   pub(crate) fn allow(self) -> HeaderValue {
     HeaderValue::from_static(if self.accepts_post() {
       "POST"
+    } else if self == Self::HookCallback {
+      "GET"
     } else {
       "GET, HEAD"
     })

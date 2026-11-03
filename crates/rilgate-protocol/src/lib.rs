@@ -7,4 +7,4 @@ pub mod steps;
 pub use algorithm::{PowAlgorithm, PowVerification, VerificationModes};
 pub use challenge::ChallengeResponse;
 pub use mining::StratumJob;
-pub use steps::{ChallengeStep, Grant, PowGrant, PowStep};
+pub use steps::{ChallengeStep, Grant, HookGrant, HookStep, PowGrant, PowStep};

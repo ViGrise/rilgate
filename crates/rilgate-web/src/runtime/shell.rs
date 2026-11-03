@@ -112,6 +112,8 @@ fn write_bootstrap(
       "embedded": challenge.embedded,
       "step": challenge.step,
       "steps": challenge.steps,
+      "method": challenge.method,
+      "hook": challenge.hook,
     }),
   )?;
   output.extend_from_slice(b"</script>");

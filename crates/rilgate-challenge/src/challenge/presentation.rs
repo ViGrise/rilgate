@@ -12,18 +12,27 @@ pub struct Presentation {
   pub path: String,
   pub rule: String,
   pub weight: i32,
+  pub challenge_id: Option<String>,
   pub steps: Vec<ChallengeStep>,
   pub step: usize,
   pub issued_at: i64,
   pub expires_at: i64,
 }
 impl Presentation {
-  pub fn presented(&self) -> &PowStep {
-    let ChallengeStep::Pow(step) = &self.steps[self.step];
-    step
+  pub fn presented(&self) -> &ChallengeStep {
+    &self.steps[self.step]
+  }
+  pub fn presented_pow(&self) -> Result<&PowStep> {
+    match self.presented() {
+      ChallengeStep::Pow(step) => Ok(step),
+      _ => anyhow::bail!("Presented step is not a proof-of-work step"),
+    }
   }
 }
 impl ChallengeService {
+  pub fn return_path(&self, presentation: &Presentation) -> String {
+    super::refresh::same_site_path(presentation.path.clone())
+  }
   #[allow(clippy::too_many_arguments)]
   pub fn issue_presentation(
     &self,
@@ -38,15 +47,30 @@ impl ChallengeService {
       (1..=4).contains(&steps.len()) && step < steps.len(),
       "Presentation steps are invalid"
     );
-    for ChallengeStep::Pow(step) in &steps {
+    for step in &steps {
+      let ChallengeStep::Pow(step) = step else {
+        if let ChallengeStep::Hook(hook) = step {
+          ensure!(
+            self.cfg.hooks.contains_key(&hook.name),
+            "Unknown challenge hook"
+          );
+        }
+        continue;
+      };
       self
         .algorithms
         .get(step.algorithm)?
         .validate_difficulty(step.difficulty)?;
     }
     let now = unix_now()?;
+    let v1 = matches!(steps.as_slice(), [ChallengeStep::Pow(step)] if step.fallback_for.is_none());
     let claims = Presentation {
-      version: if steps.len() == 1 { 1 } else { 2 },
+      version: if v1 { 1 } else { 2 },
+      challenge_id: if v1 {
+        None
+      } else {
+        Some(uuid::Uuid::now_v7().to_string())
+      },
       host,
       path,
       rule,
@@ -57,7 +81,7 @@ impl ChallengeService {
       expires_at: now + self.cfg.challenge_ttl_seconds as i64,
     };
     let token = if claims.version == 1 {
-      let step = claims.presented();
+      let step = claims.presented_pow()?;
       self.tokens.presentation.sign_json(&PresentationClaims {
         v: 1,
         host: claims.host.clone(),
@@ -77,6 +101,7 @@ impl ChallengeService {
         path: claims.path.clone(),
         rule: claims.rule.clone(),
         weight,
+        challenge_id: claims.challenge_id.clone().expect("V2 challenge ID"),
         steps: claims.steps.clone(),
         step: step as u8,
         issued_at: now,
@@ -96,11 +121,13 @@ impl ChallengeService {
         ensure!(c.v == 1, "Token version or lifetime is invalid or expired");
         Presentation {
           version: c.v,
+          challenge_id: None,
           host: c.host,
           path: c.path,
           rule: c.rule,
           weight: c.weight,
           steps: vec![ChallengeStep::Pow(PowStep {
+            fallback_for: None,
             algorithm: c.algorithm,
             difficulty: c.difficulty,
             verification: c.verification,
@@ -112,7 +139,12 @@ impl ChallengeService {
       }
       AnyPresentationClaims::V2(c) => {
         ensure!(c.v == 2, "Token version or lifetime is invalid or expired");
+        ensure!(
+          !c.challenge_id.is_empty(),
+          "Presentation challenge ID is empty"
+        );
         Presentation {
+          challenge_id: Some(c.challenge_id),
           version: c.v,
           host: c.host,
           path: c.path,
@@ -140,7 +172,16 @@ impl ChallengeService {
       (1..=4).contains(&claims.steps.len()) && claims.step < claims.steps.len(),
       "Presentation steps are invalid"
     );
-    for ChallengeStep::Pow(step) in &claims.steps {
+    for step in &claims.steps {
+      let ChallengeStep::Pow(step) = step else {
+        if let ChallengeStep::Hook(hook) = step {
+          ensure!(
+            self.cfg.hooks.contains_key(&hook.name),
+            "Unknown challenge hook"
+          );
+        }
+        continue;
+      };
       ensure!(
         step.verification == self.cfg.verification.of(step.algorithm),
         "Presentation token uses a different verification mode"

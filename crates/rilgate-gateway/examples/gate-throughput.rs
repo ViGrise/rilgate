@@ -55,6 +55,10 @@ async fn main() -> anyhow::Result<()> {
   let (pow, pool) = rilgate_test_utils::gateway::services(&cfg)?;
   let web = rilgate_web::WebManager::new(cfg.web.clone())?;
   let state = AppState {
+    hooks: Arc::new(rilgate_challenge_hooks::ChallengeHooks::new(
+      cfg.challenge_hooks.clone(),
+    )?),
+    until_expiry: Default::default(),
     challenge_header: format!("{}-challenge", cfg.web.brand_id).parse().unwrap(),
     challenge_url_header: format!("{}-challenge-url", cfg.web.brand_id)
       .parse()

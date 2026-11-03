@@ -8,6 +8,7 @@
   <div id="bar" class="bar" aria-hidden="true"><span id="bar-shimmer" class="bar-shimmer"></span><span id="bar-complete" class="bar-complete"></span></div>
   <progress id="progress" aria-label="{{ t('pow.progress_label') }}"></progress>
   <p id="status" role="status" aria-live="polite">{{ t("challenge.state.preparing.status") }}</p>
+  <div id="hook-container" hidden></div>
   <p id="load-error" class="load-error" role="alert">{{ t("challenge.load_error") }} <a href="">{{ t("common.retry") }}</a></p>
   <p id="stats" aria-label="{{ t('challenge.stats.label') }}" hidden><span id="attempts">0</span> {{ t("challenge.stats.attempts") }} · <span id="hashrate">0</span> {{ t("challenge.stats.rate") }}</p>
   <p id="job" hidden></p>

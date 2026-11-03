@@ -1,7 +1,7 @@
 # Configuration
 
-The YAML contract has seven groups: `environment`, `server`, `site`,
-`security`, `pow`, `signals`, and `policy`. The `signals` group holds data sources
+The YAML contract has eight groups: `environment`, `server`, `site`,
+`security`, `pow`, `challenge_hooks`, `signals`, and `policy`. The `signals` group holds data sources
 and the `policy` group holds rules; see [signals](signals.md).
 Configuration has no schema version.
 Unknown fields, unsupported values and conflicting settings are errors in every
@@ -43,7 +43,7 @@ in comments. [Feature examples](../config/examples/) live under
 `config/examples/`: [custom policy](../config/examples/custom.yml),
 [HashWX](../config/examples/hashwx.yml), [RandomX](../config/examples/randomx.yml)
 and [multiple files](../config/examples/includes.yml). The source catalogs in
-`config/rules/`, `config/policies/` and `config/signals/` are embedded into the binary; see
+`config/rules/`, `config/policies/`, `config/signals/` and `config/hooks/` are embedded into the binary; see
 [built-in policies and rules](policy.md#built-in-policies-and-rules).
 
 ## Loading and validation
@@ -64,7 +64,8 @@ Booleans need `true` or `false`. Numbers must fit their numeric type. Literal
 YAML values retain strict typing. `${VARIABLE_NAME}` requires a present, nonempty UTF-8
 variable. Shell substitution and default-value syntax are unsupported.
 
-Every scalar and list setting also has a flag and an environment variable. Precedence is
+Shared scalar and list settings have a flag and an environment variable. Named maps,
+including [challenge hooks](#challenge-hooks), use YAML and scalar interpolation. Precedence is
 flag, then variable, then YAML, then the default. The flag is the YAML path with
 `.` and `_` replaced by `-`. The variable is `RILGATE_`
 followed by the flag in upper snake case. Indexed pool and proxy entries use variables without flags.
@@ -139,7 +140,7 @@ rilgate reload
 
 `check` validates fields, cross-field constraints, policy expressions, and
 algorithm selection. It does not open a listener or contact dependencies. `show`
-produces resolved YAML with every signing key and pool password redacted.
+produces resolved YAML with every signing key, pool password and hook secret redacted.
 
 By default it omits unchanged defaults. `--defaults` includes the whole schema. A
 redacted result is for inspection and cannot be used as a secret-bearing configuration.
@@ -201,7 +202,7 @@ policy:
     - !include builtin:rules/challenge-all.yml
 ```
 
-The built-in catalogs are `rules/`, `policies/` and `signals/`. Example configurations are
+The built-in catalogs are `rules/`, `policies/`, `signals/` and `hooks/`. Example configurations are
 local files. A built-in reference always selects embedded content, with no
 filesystem fallback or shadowing. Relative includes inside a built-in document
 stay inside the catalogs; `../rules/...` resolves from a built-in policy to a
@@ -511,9 +512,10 @@ valid authentication cookie are logged as `allow`. The equivalent overrides are
 `RILGATE_SERVER_DECISION_LOG` and `--server-decision-log`.
 
 Each decision includes `request_id`, `client_ip`, `method`, `host`, `path`, `action`,
-`rule`, `weight`, `algorithm`, `difficulty`, `step`, `steps`, `unresolved`, and `fallback`.
+`rule`, `weight`, `algorithm`, `difficulty`, `hook`, `step`, `steps`, `unresolved`, and `fallback`.
 These logs contain client IP addresses and request paths. Algorithm and difficulty describe
-the presented step, or the first required step when none is presented. `step` is the 1-based
+the presented PoW step, or the first required PoW step when none is presented. A hook step
+has `hook` with its name and omits algorithm and difficulty. `step` is the 1-based
 presented step, and `steps` lists the required summaries, such as `fast:2,hashwx:20`.
 Step fields are absent for non-challenge decisions.
 
@@ -918,6 +920,253 @@ Production rejects a missing client CA with
 `verifier-serve-public` warning. Public operations addresses also produce a
 warning. A gateway configuration with `serve` is rejected. Run a dedicated
 verifier process; combined mode is reserved for phase 2.
+
+## Challenge hooks
+
+A policy step can select an external check by name. Rilgate presents a redirect or
+an embedded widget and verifies its result with a declarative HTTP request.
+`challenge_hooks` is a top-level map after `pow`. Changes require a restart.
+The map has no `RILGATE_*` variable or flag. Scalar values support `${VARIABLE}`
+expansion; use these references for secrets. `config show` redacts secrets.
+
+```yaml
+challenge_hooks:
+  sso-check:
+    presentation:
+      mode: redirect
+      url: "https://sso.example.com/rilgate/start?state={state}&return={callback}"
+      result_param: code
+    verify:
+      request:
+        url: https://sso.internal/rilgate/introspect
+        encoding: json
+        headers: {authorization: "Bearer {secrets.token}"}
+        fields: {code: "{result}", ip: "{client_ip}"}
+      accept:
+        - {field: /active, equals: true}
+    secrets: {token: ${RILGATE_SSO_TOKEN}}
+```
+
+| Setting | Default | Range and rules |
+| --- | --- | --- |
+| hook name | | `[a-z0-9][a-z0-9-]{0,31}`, at most 16 hooks |
+| `params` | `{}` | Map of string, number or boolean. Keys match `[a-z0-9_]{1,32}`. Public: browser templates can use it |
+| `secrets` | `{}` | Map of secret strings. Redacted by `config show`. Keys match `[a-z0-9_]{1,32}`. Only verification templates can use it |
+| `grant_ttl` | `security.auth.ttl` | Whole seconds from `1m` to `security.auth.ttl` |
+| `presentation` | | Required. See [presentation](#hook-presentation) |
+| `verify` | | Required. See [verification](#hook-verification) |
+| `unavailable` | `action: deny` | See [unavailable hooks](#unavailable-hooks) |
+
+### Hook templates
+
+A template is a string with placeholders in single braces. `{{` writes `{` and `}}` writes `}`.
+
+| Placeholder | Browser templates | Verification templates |
+| --- | --- | --- |
+| `{challenge_id}`, `{host}`, `{locale}` | yes | yes |
+| `{params.<key>}` | yes | yes |
+| `{state}`, `{callback}` | redirect `url` only | no |
+| `{client_ip}`, `{user_agent}` | no | yes |
+| `{verification_id}` | no | yes |
+| `{result}` | no | yes |
+| `{secrets.<key>}` | no | yes |
+
+- A placeholder that is not allowed in its context, or an unknown `params` or
+  `secrets` key, is a configuration error.
+- A template that is exactly one placeholder keeps the type of its value, so
+  `"{params.min_score}"` stays a number. Other templates produce strings.
+- The value is escaped for its context: percent-encoding in URLs, form encoding
+  in `form` bodies, JSON strings in `json` bodies and widget arguments. A header
+  value that is not a valid HTTP header value makes the verification fail.
+- `{client_ip}` is an empty string when the client address is unknown.
+- `{verification_id}` is a UUID that one verification keeps for all its attempts.
+  Use it as an idempotency key.
+- A `form` or `json` field whose value is an empty string is not sent.
+- `{callback}` is `https://<host><base_path>/api/hook/callback`, with `http` in
+  the development environment.
+- `{state}` is the presentation token of the hook step.
+
+### Hook presentation
+
+`presentation.mode` selects how the browser produces a result. Both modes use
+absolute `https` URL templates; `http` is accepted in development.
+
+A redirect hook requires `url` and accepts `result_param`, which defaults to
+`result`. The parameter name has 1 to 64 letters, digits, dots, hyphens or
+underscores and must differ from `state`. The service returns the browser to
+`{callback}` with `state` and the result parameter. GET and HEAD HTML requests
+receive `302`, `Location` and `Cache-Control: no-store`. Other requests use the
+configured challenge response with the hook URL in the challenge URL header.
+A redirect after another step appears in `next.hook.url`.
+
+An embed hook sets exactly one of `widget` and `script`. The challenge page loads
+its script and gets a result in the page. The public bootstrap contains the
+rendered settings for the current hook and negotiated locale.
+
+| Widget setting | Rules |
+| --- | --- |
+| `script` | Required absolute script URL template |
+| `onload` | Optional load callback query parameter, 1 to 32 letters, digits or underscores. The page adds a generated global function name and waits for that function to run |
+| `call` | Required dotted path of 1 to 4 JavaScript identifiers, each matching `[A-Za-z_$][A-Za-z0-9_$]*`. Resolved through own properties of `window`, with the owning object as `this` |
+| `args` | Required JSON list, at most 8 entries and nesting depth 4. Strings are browser templates |
+| `returns` | `callback` (default) requires the exact string `$result` in `args`; `promise` forbids it and resolves to a nonempty string |
+| `integrity` | Optional Subresource Integrity value, applied with anonymous cross-origin loading |
+
+Without `onload`, the page waits until `call` resolves to a function. The exact
+argument strings `$container`, `$result`, `$error` and `$expired` become a child
+container, a result callback, and callbacks that render the widget again.
+Arguments are copied deeply for each render. A rejected promise or an empty
+result renders again, with at most five renders for one result.
+
+`script` has a required `src` URL template and optional `integrity`. It registers
+an adapter with `window.PowClient.registerHook(name, adapter)`; registering the
+same name twice throws an error. The runtime calls the adapter as follows:
+
+```js
+window.PowClient.registerHook("sso-check", {
+  mount({ container, params, challengeId, locale, signal }) {
+    return Promise.resolve(result);
+  },
+});
+```
+
+`mount` receives a child container, all public `params`, the presentation
+`challengeId`, the document locale and an `AbortController` signal that aborts
+when the page leaves. It returns a nonempty string or a promise of that result.
+Browser templates cannot read secrets, client IP, user agent or verification results.
+
+`presentation.csp` adds sources to the CSP of a challenge page whose step list
+contains that hook. The page runs later steps without a reload, so a page that
+starts with a proof-of-work step already allows the widget of a later hook step.
+It permits `script-src`, `style-src`, `img-src`, `font-src`,
+`connect-src` and `frame-src`, with at most 16 sources each. A source has an
+`https` scheme (`http` in development), a host with an optional `*.` prefix,
+an optional port, and an optional path ending in `/`. Credentials, queries,
+fragments, whitespace, semicolons and commas are invalid. The script URL must
+match a `script-src` source: equal schemes and ports, equal hosts or a subdomain
+matching `*.host`, and a URL path with the source path as its prefix. Hook
+sources follow `site.content_security_policy.extra_sources`; `frame-src` is
+present only when the hook supplies frame sources.
+
+Built-in presets use these generic settings. Each needs `params.site_key` and
+`secrets.secret_key`. Merge a preset into a hook definition:
+
+```yaml
+challenge_hooks:
+  captcha:
+    <<: !include builtin:hooks/turnstile.yml
+    params: {site_key: ...}
+    secrets: {secret_key: "${RILGATE_TURNSTILE_SECRET_KEY}"}
+```
+
+| Preset | Widget | Verification checks |
+| --- | --- | --- |
+| `turnstile.yml` | `turnstile.render`, `cData` set to `{challenge_id}` | `success`, `hostname` equals `{host}`, `cdata` equals `{challenge_id}`. Sends `idempotency_key: {verification_id}` and retries attempt timeouts |
+| `hcaptcha.yml` | `hcaptcha.render` with `recaptchacompat=off` | `success`. Sends `sitekey`. hCaptcha documents that `hostname` is not for authentication |
+| `recaptcha-v2.yml` | `grecaptcha.render` | `success`, `hostname` equals `{host}` |
+| `recaptcha-v3.yml` | `grecaptcha.execute`, `returns: promise` | `success`, `hostname` equals `{host}`, `action` equals `{params.action}`, `score` at least `{params.min_score}`. Defaults `action: rilgate`, `min_score: 0.5` |
+
+Use `!include builtin:hooks/<name>.yml` for the selected preset. Provider test keys
+return fixed `hostname` and `cdata` values, so the corresponding checks reject
+them on other hosts.
+
+The challenge page is served on the application host. An embedded hook script
+runs with the origin of the application. The access cookie is `HttpOnly`, so the
+script cannot read it, but it can call the application on that page. Use only
+providers that you trust with that access.
+
+### Hook verification
+
+Rilgate sends one declarative HTTP request to check the result.
+
+```yaml
+verify:
+  request:
+    method: POST
+    url: https://challenges.cloudflare.com/turnstile/v0/siteverify
+    encoding: form
+    headers: {}
+    fields:
+      secret: "{secrets.secret}"
+      response: "{result}"
+      remoteip: "{client_ip}"
+  accept:
+    - {field: /success, equals: true}
+    - {field: /hostname, equals: "{host}"}
+    - {field: /cdata, equals: "{challenge_id}"}
+  timeout: 5s
+  attempt_timeout: 2s
+  retry: {attempts: 3, backoff: 200ms}
+```
+
+| Setting | Default | Range and rules |
+| --- | --- | --- |
+| `request.method` | `POST` | `POST` or `GET`. `GET` sends `fields` in the query |
+| `request.url` | | Absolute `https` URL template (`http` in development) |
+| `request.encoding` | `form` | `form` or `json` |
+| `request.headers` | `{}` | At most 16 headers, templates allowed |
+| `request.fields` | `{}` | At most 32 string, number or boolean fields, templates allowed |
+| `accept` | | 1 to 16 conditions. Every condition must hold |
+| `timeout` | `5s` | `100ms` to `30s`. Deadline for all attempts |
+| `attempt_timeout` | `2s` | `100ms` to `timeout` |
+| `retry.attempts` | `3` | `1` to `5` attempts in total |
+| `retry.backoff` | `200ms` | `10ms` to `5s`. Doubles after each attempt, with full jitter |
+| `retry.on_timeout` | `false` | `true` also retries an attempt timeout. Set it only when the request sends an idempotency key, such as `{verification_id}` |
+
+An `accept` condition has a `field` (JSON Pointer) and one operator: `equals`
+(scalar or template), `in` (list of scalars), `min` or `max` (number or a
+one-placeholder template that resolves to a number). A missing field fails the
+condition.
+
+Verification request URLs, headers, fields and acceptance operands use verification
+templates. The HTTP client uses rustls, sends no cookies, follows no redirects and reads at
+most 16 KiB of JSON with a nesting depth of at most 32. The browser `result` has
+at most 8192 bytes.
+
+| Outcome | Condition |
+| --- | --- |
+| `pass` | 2xx response, valid JSON and every `accept` condition holds |
+| `fail` | 2xx response with valid JSON where a condition fails, or a 4xx status other than 429 |
+| `unavailable` | All attempts end in a retryable error, an attempt timeout, the deadline, invalid JSON or a body over the limit |
+
+Retryable errors are a connection or TLS failure before a response and
+the statuses 429, 502, 503 and 504. A `Retry-After` value is used when it fits in
+the deadline. Without `retry.on_timeout`, an attempt timeout is not retried,
+because the provider may already have consumed a single-use result, and the
+outcome is `unavailable`.
+
+### Unavailable hooks
+
+```yaml
+unavailable:
+  action: fallback      # deny (default) | fallback
+  fallback: {algorithm: fast, difficulty: 4}
+  grant: while_unavailable   # while_unavailable | until_expiry
+  after: 3
+  recheck: 30s
+```
+
+| Setting | Default | Rules |
+| --- | --- | --- |
+| `action` | `deny` | `fallback` requires `fallback` |
+| `fallback` | | An enabled `fast` or `hashwx` step. Fast difficulty is `1..64`; HashWX difficulty is `1..2^40` |
+| `grant` | `while_unavailable` | See below |
+| `after` | `3` | `1` to `100` consecutive `unavailable` outcomes mark the hook unavailable on this instance |
+| `recheck` | `30s` | `1s` to `1h`. Time before the gate presents the hook again |
+
+- With `action: deny`, a verification with the outcome `unavailable` returns
+  `503` with `{"code": "hook_unavailable"}` and `Retry-After: 1`. The page shows
+  the `unavailable` state and its retry control.
+- With `action: fallback`, the same response contains `next` with the fallback
+  step, so the page starts the fallback proof without a reload. While the hook is
+  marked unavailable, the gate presents the fallback step directly. After
+  `recheck`, the gate presents the hook again. A `pass` or `fail` outcome marks
+  the hook available. An `unavailable` outcome restarts `recheck`.
+- `grant: while_unavailable` accepts the fallback grant for the hook step only
+  while the hook is marked unavailable. When the hook works again, the client
+  gets the hook step on its next request.
+- `grant: until_expiry` accepts the fallback grant until it expires.
+- The availability state belongs to each instance and is not shared.
 
 ## Signals and policy
 

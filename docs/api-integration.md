@@ -44,14 +44,17 @@ Rilgate-Challenge-Url: /.well-known/rilgate/challenge?presentation_token=...
 ```
 
 The `Rilgate` part of each name follows [`site.brand_id`](configuration.md#site).
-An HTML challenge page keeps `site.responses.challenge_status`, and other methods in HTML mode keep `401`.
+An HTML challenge page keeps `site.responses.challenge_status`; a redirect hook answers
+GET and HEAD HTML requests with `302` and its rendered hook URL in both `Location` and
+the challenge URL header. Other methods in HTML mode keep `401`.
 A client, script or service worker therefore identifies a challenge by the header.
 A JSON challenge returns HTTP 403, `Content-Type: application/json` and `Cache-Control: no-store`.
 
 The bundled body includes `code: proof_required`, a localized `message`, `challenge_url`, signed
 challenge presentation metadata and proof API endpoints. `challenge.token` is a presentation
-token. Clients that implement a native solver first exchange it at the advertised
-challenge endpoint to get actual work.
+token. `challenge.method` is `pow` or `hook`, with 1-based `challenge.step`, total
+`challenge.steps` and a public `challenge.hook` object for hooks. Clients that implement
+a native PoW solver exchange the token at the advertised challenge endpoint to get work.
 
 Native solvers and JSON clients can POST `challenge_token`, `nonce`, optional boolean
 `set_cookie` and optional `presentation_token` to the advertised verify endpoint.
@@ -61,10 +64,32 @@ and sets the access cookie with the host and client binding rules of receipt exc
 If `cookie_set: true` is absent, POST the receipt and optional `presentation_token` to
 the advertised exchange endpoint first. After setting a cookie, either endpoint can return
 `next` when a valid presentation token has an unsatisfied [challenge step](policy.md#challenge-selection).
-Its fields are `presentation_token`, 1-based `step`, total `steps`, `method` (`"pow"`),
-`algorithm`, `difficulty` and `solver_module_url`. Solve that presentation before retrying the protected request;
-when `next` is absent, retry with the cookie. Invalid presentation tokens are ignored.
-Proof and exchange failures retain their existing errors and set no cookie.
+Its fields are `presentation_token`, 1-based `step`, total `steps` and `method`. A `pow`
+step includes `algorithm`, `difficulty` and `solver_module_url`. A `hook` step includes
+`hook`: `{name, mode, url}` for redirects, `{name, mode, widget}` for widgets, or
+`{name, mode, script, params}` for script adapters. The public settings follow
+[challenge hook configuration](configuration.md#challenge-hooks). Complete that
+presentation before retrying the protected request; when `next` is absent, retry with
+the cookie. Invalid optional presentation tokens are ignored by PoW verification and
+exchange. Their failures set no cookie.
+
+POST `{base_path}/api/hook/verify` with `{presentation_token, result}` to verify a hook.
+The signed presentation selects the hook; `result` must contain 1 to 8192 bytes. A pass
+returns `200` with `{cookie_set: true, next: ...}` and sets a merged access cookie.
+A rejected result returns `401` with `{code: "hook_rejected"}`. An unavailable provider
+returns `503` with `{code: "hook_unavailable"}`, `Retry-After: 1`, and `next` for a configured
+PoW fallback. These responses have `Cache-Control: no-store`. Invalid presentations or a
+presented PoW step return `401`; an invalid result length returns `400`.
+
+GET `{base_path}/api/hook/callback?state=<token>&<result_param>=<result>` completes a
+redirect hook. The parameter name defaults to `result`. Missing or oversized state
+(over 16384 bytes), a non-redirect step, and missing or oversized results return `400`;
+invalid presentation tokens return `401`. A pass sets the merged cookie and returns
+`302` to the original same-site path. A fail, or an unavailable provider with a fallback,
+returns `302` to that path without setting a cookie. An unavailable provider without a
+fallback returns an HTML `503` error page with `Retry-After: 1`. Every callback response
+has `Cache-Control: no-store`. HEAD returns `405` with `Allow: GET`. Both hook endpoints
+require a resolved client address and use the proof rate limit.
 
 RandomX with Stratum pool acceptance uses the advertised WebSocket endpoint. It does not use
 HTTP proof issuance and verification. A policy denial returns 403 with `code: access_denied` and
@@ -110,8 +135,10 @@ envelope and fields.
 
 ## Same-origin iframe or popup
 
-The notification URL always serves the HTML solver, even when API paths or `format: json`
-select JSON elsewhere. Its presentation token is checked for signature, expiration and
+For PoW and embed hooks, the notification URL serves the HTML solver, even when API paths
+or `format: json` select JSON elsewhere. A redirect hook uses its external URL and returns
+the browser to the protected path through the callback; it finishes with a top-level
+redirect without an embedded `postMessage`. Its presentation token is checked for signature, expiration and
 the request host. The page supports same-origin framing and sets `frame-ancestors 'self'`,
 `X-Frame-Options: SAMEORIGIN` and `Referrer-Policy: no-referrer`. Exclude the short-lived token URL from application analytics.
 Redact query strings on this route in access logs.

@@ -65,6 +65,10 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
   let (service, pool) = gateway::services(&cfg).unwrap();
   let web = rilgate_web::WebManager::new(cfg.web.clone()).unwrap();
   let state = AppState {
+    hooks: Arc::new(
+      rilgate_challenge_hooks::ChallengeHooks::new(Arc::new(Default::default())).unwrap(),
+    ),
+    until_expiry: Default::default(),
     challenge_header: format!("{}-challenge", cfg.web.brand_id).parse().unwrap(),
     challenge_url_header: format!("{}-challenge-url", cfg.web.brand_id)
       .parse()

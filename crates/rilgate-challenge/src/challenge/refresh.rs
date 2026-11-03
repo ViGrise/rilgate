@@ -1,6 +1,6 @@
 use crate::{
   ChallengeService,
-  authorization::{PowGrant, binding::BindingInput},
+  authorization::{NewGrant, binding::BindingInput},
 };
 use anyhow::{Result, ensure};
 use rilgate_protocol::PowAlgorithm;
@@ -31,12 +31,12 @@ impl ChallengeService {
   ) -> Result<RefreshRedemption> {
     let claims = self.verify_presentation(token, host)?;
     ensure!(
-      claims.presented().algorithm == PowAlgorithm::Refresh,
+      claims.presented_pow()?.algorithm == PowAlgorithm::Refresh,
       "Presentation token is not a refresh challenge"
     );
     let ready_at = claims
       .issued_at
-      .saturating_add(claims.presented().difficulty as i64);
+      .saturating_add(claims.presented_pow()?.difficulty as i64);
     if now < ready_at {
       return Ok(RefreshRedemption::Wait {
         seconds: (ready_at - now) as u64,
@@ -44,10 +44,11 @@ impl ChallengeService {
     }
     let issued = self.issue_access(
       claims.host.clone(),
-      PowGrant {
-        algorithm: claims.presented().algorithm,
-        difficulty: claims.presented().difficulty,
-        verification: claims.presented().verification,
+      NewGrant::Pow {
+        fallback_for: None,
+        algorithm: claims.presented_pow()?.algorithm,
+        difficulty: claims.presented_pow()?.difficulty,
+        verification: claims.presented_pow()?.verification,
         issued_at: now,
       },
       binding,
@@ -74,7 +75,7 @@ impl ChallengeService {
 }
 
 /// Keeps a redirect target on the current host: it must start with exactly one `/`.
-fn same_site_path(path: String) -> String {
+pub(crate) fn same_site_path(path: String) -> String {
   if path.starts_with('/') && !path.starts_with("//") && !path.contains(['\\', '\r', '\n']) {
     path
   } else {

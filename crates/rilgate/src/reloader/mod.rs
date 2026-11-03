@@ -178,9 +178,23 @@ pub fn changed_sections(running: &Configuration, loaded: &Configuration) -> Vec<
   fn pow_without_policy(config: &Configuration) -> String {
     let mut pow = config.pow.clone();
     pow.policy = Default::default();
+    pow.hooks.clear();
     format!("{pow:?}")
   }
-  let sections: [(&'static str, bool); 5] = [
+  fn hook_secrets(config: &Configuration) -> Vec<(&str, &str, &str)> {
+    config
+      .challenge_hooks
+      .hooks
+      .iter()
+      .flat_map(|(name, hook)| {
+        hook
+          .secrets
+          .iter()
+          .map(move |(key, secret)| (name.as_str(), key.as_str(), secret.expose()))
+      })
+      .collect()
+  }
+  let sections: [(&'static str, bool); 6] = [
     (
       "server",
       format!(
@@ -212,6 +226,11 @@ pub fn changed_sections(running: &Configuration, loaded: &Configuration) -> Vec<
     (
       "pow",
       pow_without_policy(running) != pow_without_policy(loaded),
+    ),
+    (
+      "challenge_hooks",
+      format!("{:?}", running.challenge_hooks) != format!("{:?}", loaded.challenge_hooks)
+        || hook_secrets(running) != hook_secrets(loaded),
     ),
     (
       "site",

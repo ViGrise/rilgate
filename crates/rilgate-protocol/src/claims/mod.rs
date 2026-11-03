@@ -27,6 +27,7 @@ pub struct PresentationClaimsV2 {
   pub path: String,
   pub rule: String,
   pub weight: i32,
+  pub challenge_id: String,
   pub steps: Vec<crate::ChallengeStep>,
   pub step: u8,
   pub issued_at: i64,
