@@ -23,6 +23,14 @@ impl HashWxConfig {
   }
 }
 
+pub(crate) fn validate_difficulty(difficulty: u64) -> Result<()> {
+  ensure!(
+    (1..=MAX_DIFFICULTY).contains(&difficulty),
+    "HashWX difficulty must be between 1 and 2^40"
+  );
+  Ok(())
+}
+
 pub(crate) fn validate_nonces_per_seed(value: u32) -> Result<()> {
   ensure!(
     (463..=1_048_576).contains(&value),

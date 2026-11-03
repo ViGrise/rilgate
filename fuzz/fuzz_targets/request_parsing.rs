@@ -7,6 +7,7 @@ struct Input {
   accept: Option<String>,
   content_type: Option<String>,
   requested_with: Option<String>,
+  cookie: Option<String>,
 }
 fuzz_target!(|input: Input| {
   if let Ok(path) = rilgate_gateway::fuzzing::policy_path(&input.path) {
@@ -20,7 +21,7 @@ fuzz_target!(|input: Input| {
   );
   let mut headers = http::HeaderMap::new();
   if let Some(value) = input
-    .accept
+    .cookie
     .and_then(|value| http::HeaderValue::from_str(&value).ok())
   {
     headers.insert(http::header::COOKIE, value);

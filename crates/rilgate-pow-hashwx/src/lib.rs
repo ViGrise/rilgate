@@ -3,7 +3,6 @@ pub mod proof;
 
 use anyhow::{Context, Result, anyhow, ensure};
 pub use config::{HashWxConfig, MAX_DIFFICULTY};
-use hashwx_core::HashWx;
 use rilgate_core::time::unix_now;
 use rilgate_pow::{
   Algorithm, AlgorithmDescriptor, AlgorithmFuture, PowAlgorithm, PreparedWork, Proof, Work,
@@ -52,11 +51,7 @@ impl Algorithm for HashWxAlgorithm {
   }
 
   fn validate_difficulty(&self, difficulty: u64) -> Result<()> {
-    ensure!(
-      (1..=MAX_DIFFICULTY).contains(&difficulty),
-      "HashWX difficulty must be between 1 and 2^40"
-    );
-    Ok(())
+    config::validate_difficulty(difficulty)
   }
 
   fn validate_verification(&self, verification: PowVerification) -> Result<()> {
@@ -102,12 +97,8 @@ impl Algorithm for HashWxAlgorithm {
       else {
         return Err(anyhow!("Expected HashWX work"));
       };
-      self.validate_difficulty(*difficulty)?;
-      config::validate_nonces_per_seed(*nonces_per_seed)?;
-      let challenge = proof::challenge_bytes(challenge)?;
-      let nonce = proof::nonce(proof.nonce)?;
-      let seed = proof::seed(&challenge, nonce / u64::from(*nonces_per_seed));
-      let target = u64::MAX / difficulty;
+      let parsed =
+        proof::ParsedProof::parse(challenge, proof.nonce, *difficulty, *nonces_per_seed)?;
       let permit = self
         .verification_slots
         .clone()
@@ -115,12 +106,7 @@ impl Algorithm for HashWxAlgorithm {
         .map_err(|_| anyhow::Error::new(rilgate_core::error::CapacityExceeded))?;
       tokio::task::spawn_blocking(move || -> Result<()> {
         let _permit = permit;
-        let hash = HashWx::new(&seed).hash(nonce);
-        ensure!(
-          hash < target,
-          "HashWX proof does not meet the required difficulty"
-        );
-        Ok(())
+        parsed.check()
       })
       .await
       .context("HashWX verification task failed")?
@@ -176,10 +162,12 @@ mod tests {
 #[cfg(feature = "fuzzing")]
 #[doc(hidden)]
 pub mod fuzzing {
-  pub fn challenge_bytes(value: &str) -> anyhow::Result<[u8; 32]> {
-    crate::proof::challenge_bytes(value)
-  }
-  pub fn nonce(value: &str) -> anyhow::Result<u64> {
-    crate::proof::nonce(value)
+  pub fn verify(
+    challenge: &str,
+    nonce: &str,
+    difficulty: u64,
+    nonces_per_seed: u32,
+  ) -> anyhow::Result<()> {
+    crate::proof::ParsedProof::parse(challenge, nonce, difficulty, nonces_per_seed)?.check()
   }
 }
