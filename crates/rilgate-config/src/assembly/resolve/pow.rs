@@ -157,6 +157,7 @@ impl Document {
         max_clients: self.pow.rate_limit.max_clients,
         client_burst: self.pow.rate_limit.client.burst,
         client_refill_per_second: self.pow.rate_limit.client.refill_per_second,
+        client_ipv6_prefix: self.pow.rate_limit.client.ipv6_prefix,
         global_burst: self.pow.rate_limit.global.burst,
         global_refill_per_second: self.pow.rate_limit.global.refill_per_second,
       },

@@ -425,7 +425,7 @@ or overflow.
 | `pow.default_algorithm` | `fast` |
 | `pow.challenge.ttl`, `.receipt_ttl` | `1m`, `30s` |
 | `pow.rate_limit.enabled`, `.max_clients` | `true`, `4096` |
-| `pow.rate_limit.client.burst`, `.refill_per_second` | `10`, `0.1` |
+| `pow.rate_limit.client.burst`, `.refill_per_second`, `.ipv6_prefix` | `10`, `0.1`, `64` |
 | `pow.rate_limit.global.burst`, `.refill_per_second` | `64`, `16` |
 | `pow.algorithms.randomx.challenge_ttl`, `.nonce_offset`, `.verifier_queue` | `1h`, `39`, `8` |
 | `pow.algorithms.randomx.cache.idle_timeout` | `30m` (0s disables release, at most 7d) |

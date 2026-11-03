@@ -276,6 +276,7 @@ pow:
     client:
       burst: 10
       refill_per_second: 0.1
+      ipv6_prefix: 64
     global:
       burst: 64
       refill_per_second: 16
@@ -289,9 +290,11 @@ quotas. They do not replace the verifier's queue or Stratum pool connection limi
 
 Client identity is the resolved client address; see
 [client address and forwarding](configuration.md#client-address-and-forwarding).
-IPv4-mapped IPv6 addresses share the same
-bucket as their IPv4 address. Clients behind an untrusted reverse proxy or NAT share
-that peer's quota. Configure trusted proxies or enforce client quotas at the edge.
+An IPv4 client gets the bucket of its full address, and IPv4-mapped IPv6 addresses share
+that bucket. An IPv6 client gets the bucket of its network of `client.ipv6_prefix` bits.
+One host usually holds a whole `/64`, so a quota per IPv6 address lets that host rotate
+addresses and drain the global bucket. Clients behind an untrusted reverse proxy or NAT
+share that peer's quota. Configure trusted proxies or enforce client quotas at the edge.
 `Gateway::serve` gets peer addresses from accepted TCP sockets. Requests without connection
 information share an anonymous bucket.
 

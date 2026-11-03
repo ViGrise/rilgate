@@ -50,37 +50,41 @@ impl Default for RateLimit {
     Self {
       enabled: true,
       max_clients: 4096,
-      client: ClientQuota {
-        burst: 10,
-        refill_per_second: 0.1,
-      },
-      global: GlobalQuota {
-        burst: 64,
-        refill_per_second: 16.0,
-      },
+      client: ClientQuota::default(),
+      global: GlobalQuota::default(),
     }
   }
 }
-macro_rules! quota {
-  ($name:ident, $burst:expr, $refill:expr) => {
-    #[derive(Debug, Clone, Deserialize, Serialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub struct $name {
-      pub burst: u32,
-      pub refill_per_second: f64,
-    }
-    impl Default for $name {
-      fn default() -> Self {
-        Self {
-          burst: $burst,
-          refill_per_second: $refill,
-        }
-      }
-    }
-  };
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClientQuota {
+  pub burst: u32,
+  pub refill_per_second: f64,
+  pub ipv6_prefix: u8,
 }
-quota!(ClientQuota, 10, 0.1);
-quota!(GlobalQuota, 64, 16.0);
+impl Default for ClientQuota {
+  fn default() -> Self {
+    Self {
+      burst: 10,
+      refill_per_second: 0.1,
+      ipv6_prefix: 64,
+    }
+  }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GlobalQuota {
+  pub burst: u32,
+  pub refill_per_second: f64,
+}
+impl Default for GlobalQuota {
+  fn default() -> Self {
+    Self {
+      burst: 64,
+      refill_per_second: 16.0,
+    }
+  }
+}
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Algorithms {

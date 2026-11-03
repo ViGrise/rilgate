@@ -109,6 +109,7 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POW, Text, "pow.rate_limit.max_clients", "pow-rate-limit-max-clients", "RILGATE_POW_RATE_LIMIT_MAX_CLIENTS", None, "Tracked rate limit clients"),
   spec!(POW, Text, "pow.rate_limit.client.burst", "pow-rate-limit-client-burst", "RILGATE_POW_RATE_LIMIT_CLIENT_BURST", None, "Proof requests a client may burst"),
   spec!(POW, Text, "pow.rate_limit.client.refill_per_second", "pow-rate-limit-client-refill-per-second", "RILGATE_POW_RATE_LIMIT_CLIENT_REFILL_PER_SECOND", None, "Client proof request refill rate"),
+  spec!(POW, Text, "pow.rate_limit.client.ipv6_prefix", "pow-rate-limit-client-ipv6-prefix", "RILGATE_POW_RATE_LIMIT_CLIENT_IPV6_PREFIX", None, "IPv6 prefix length that shares one client quota"),
   spec!(POW, Text, "pow.rate_limit.global.burst", "pow-rate-limit-global-burst", "RILGATE_POW_RATE_LIMIT_GLOBAL_BURST", None, "Proof requests all clients may burst"),
   spec!(POW, Text, "pow.rate_limit.global.refill_per_second", "pow-rate-limit-global-refill-per-second", "RILGATE_POW_RATE_LIMIT_GLOBAL_REFILL_PER_SECOND", None, "Global proof request refill rate"),
   spec!(POW, Text, "pow.algorithms.hashwx.nonces_per_seed", "pow-algorithms-hashwx-nonces-per-seed", "RILGATE_POW_ALGORITHMS_HASHWX_NONCES_PER_SEED", None, "HashWX nonces per seed: 463 to 1048576"),

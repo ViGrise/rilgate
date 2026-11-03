@@ -3,6 +3,7 @@ pub struct RateLimitConfig {
   pub enabled: bool,
   pub client_burst: u32,
   pub client_refill_per_second: f64,
+  pub client_ipv6_prefix: u8,
   pub global_burst: u32,
   pub global_refill_per_second: f64,
   pub max_clients: usize,
@@ -15,6 +16,7 @@ impl Default for RateLimitConfig {
       enabled: defaults.enabled,
       client_burst: defaults.client.burst,
       client_refill_per_second: defaults.client.refill_per_second,
+      client_ipv6_prefix: defaults.client.ipv6_prefix,
       global_burst: defaults.global.burst,
       global_refill_per_second: defaults.global.refill_per_second,
       max_clients: defaults.max_clients,
@@ -42,6 +44,10 @@ impl RateLimitConfig {
         "pow.rate_limit.{path}: expected a finite refill rate between 0.001 and 1000000 requests per second"
       );
     }
+    anyhow::ensure!(
+      (1..=128).contains(&self.client_ipv6_prefix),
+      "pow.rate_limit.client.ipv6_prefix: expected 1 to 128"
+    );
     anyhow::ensure!(
       (1..=65_536).contains(&self.max_clients),
       "pow.rate_limit.max_clients must be between 1 and 65536"

@@ -561,6 +561,12 @@ server:
       # Must be finite. Range: 0.001..1000000.
       #
       # refill_per_second: 0.1
+
+      # IPv6 clients in one network of this prefix length share one bucket,
+      # because one host usually holds a whole /64. IPv4 clients use their
+      # full address. Range: 1..128.
+      #
+      # ipv6_prefix: 64
     # global:
       # Shared initial tokens and capacity across clients. Range: 1..1000000.
       #
