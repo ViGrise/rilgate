@@ -264,7 +264,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
     0,
   );
   assert_eq!(decision.action, PolicyAction::Allow);
-  headers.clear();
+  headers.insert("user-agent", "unscored-client/1.0".parse().unwrap());
   assert_eq!(
     engine.evaluate(&headers, "/content", 0).action,
     PolicyAction::Challenge
@@ -397,4 +397,411 @@ fn domain_fronting_and_empty_user_agent_rules() {
       denied
     );
   }
+}
+
+const BROWSER: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
+
+fn catalog_engine(source: &str) -> PolicyEngine {
+  let document = rilgate_config::loader::parse(source).unwrap();
+  PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+    signals: document.signals.clone(),
+    policy: document.policy,
+  })
+  .unwrap()
+}
+
+fn rule_engine(rule: &str) -> PolicyEngine {
+  catalog_engine(&format!(
+    "policy:\n  default_action: challenge\n  rules:\n    - !include builtin:rules/{rule}\n"
+  ))
+}
+
+fn local_sets(names: &[&str]) -> String {
+  let sets: String = names
+    .iter()
+    .map(|name| format!("    {name}: {{cidrs: [192.0.2.0/24]}}\n"))
+    .collect();
+  format!("signals:\n  ip_sets:\n{sets}")
+}
+
+const SEARCH_SETS: [&str; 4] = [
+  "google-common-crawlers",
+  "bing-crawlers",
+  "apple-crawlers",
+  "duckduckgo-crawlers",
+];
+const AI_SETS: [&str; 6] = [
+  "openai-search-crawlers",
+  "openai-training-crawlers",
+  "chatgpt-user-fetchers",
+  "perplexity-crawlers",
+  "perplexity-user-fetchers",
+  "mistral-user-fetchers",
+];
+
+struct Probe<'a> {
+  agent: &'a str,
+  address: &'a str,
+  path: &'a str,
+  headers: &'a [(&'a str, &'a str)],
+  lookups: Option<&'a rilgate_policy::Lookups>,
+}
+
+impl Default for Probe<'_> {
+  fn default() -> Self {
+    Self {
+      agent: BROWSER,
+      address: "198.51.100.10",
+      path: "/content",
+      headers: &[],
+      lookups: None,
+    }
+  }
+}
+
+fn decide(engine: &PolicyEngine, probe: Probe<'_>) -> rilgate_policy::PolicyDecision {
+  let mut headers = http::HeaderMap::new();
+  if !probe.agent.is_empty() {
+    headers.insert("user-agent", probe.agent.parse().unwrap());
+  }
+  for (name, value) in probe.headers {
+    headers.insert(
+      http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+      value.parse().unwrap(),
+    );
+  }
+  engine.evaluate_context(
+    &Request {
+      trusted_peer: false,
+      host: "example.test",
+      headers: &headers,
+      path: probe.path,
+      method: &http::Method::GET,
+      client_ip: Some(probe.address.parse().unwrap()),
+      lookups: probe.lookups.unwrap_or(&rilgate_policy::Lookups::NONE),
+    },
+    0,
+  )
+}
+
+fn confirmed(name: &str) -> rilgate_policy::Lookups {
+  rilgate_policy::Lookups {
+    reverse_dns: Some(Some(name.to_string())),
+    ..rilgate_policy::Lookups::NONE
+  }
+}
+
+#[test]
+fn every_catalog_rule_compiles() {
+  let directory = concat!(env!("CARGO_MANIFEST_DIR"), "/../../config/rules");
+  let names: Vec<&str> = SEARCH_SETS.iter().chain(&AI_SETS).copied().collect();
+  for entry in std::fs::read_dir(directory).unwrap() {
+    let file = entry.unwrap().file_name().into_string().unwrap();
+    let source = format!(
+      "{}    tor-exits: {{cidrs: [192.0.2.0/24]}}\n  geoip:\n    asn: {{path: /unused/asn.mmdb}}\npolicy:\n  rules:\n    - !include builtin:rules/{file}\n",
+      local_sets(&names)
+    );
+    let document = rilgate_config::loader::parse(&source).unwrap();
+    PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+      signals: document.signals.clone(),
+      policy: document.policy,
+    })
+    .unwrap_or_else(|error| panic!("{file}: {error:#}"));
+  }
+}
+
+#[test]
+fn dns_verified_rules_require_the_agent_and_a_confirmed_name() {
+  for (rule, agent, name) in [
+    (
+      "yandexbot.yml",
+      "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)",
+      "5-255-231-1.spider.yandex.com",
+    ),
+    (
+      "qwantbot.yml",
+      "Mozilla/5.0 (compatible; Qwantbot/1.0; +https://help.qwant.com/bot/)",
+      "qwantbot-1-171-187-194.qwant.com",
+    ),
+    (
+      "mojeekbot.yml",
+      "Mozilla/5.0 (compatible; MojeekBot/0.11; +https://www.mojeek.com/bot.html)",
+      "crawl-5-102-173-71.mojeek.com",
+    ),
+    (
+      "ccbot.yml",
+      "CCBot/2.0 (https://commoncrawl.org/faq/)",
+      "18-97-14-80.crawl.commoncrawl.org",
+    ),
+    (
+      "telegram-preview.yml",
+      "TelegramBot (like TwitterBot)",
+      "ip-149-154-161-200.ptr.telegram.org",
+    ),
+    (
+      "vk-preview.yml",
+      "Mozilla/5.0 (compatible; vkShare; +http://vk.com/dev/Share)",
+      "snipster1.go.mail.ru",
+    ),
+  ] {
+    let engine = rule_engine(rule);
+    let verified = confirmed(name);
+    let forged = confirmed(&format!("{name}.attacker.example"));
+    for (lookups, expected) in [
+      (&verified, PolicyAction::Allow),
+      (&forged, PolicyAction::Challenge),
+    ] {
+      let decision = decide(
+        &engine,
+        Probe {
+          agent,
+          lookups: Some(lookups),
+          ..Default::default()
+        },
+      );
+      assert_eq!(decision.action, expected, "{rule}");
+    }
+    let unresolved = decide(
+      &engine,
+      Probe {
+        agent,
+        ..Default::default()
+      },
+    );
+    assert_ne!(unresolved.action, PolicyAction::Allow, "{rule}");
+    assert!(unresolved.needs_lookups, "{rule}");
+    let browser = decide(&engine, Probe::default());
+    assert_eq!(browser.action, PolicyAction::Challenge, "{rule}");
+    assert!(!browser.needs_lookups, "{rule}: browsers skip DNS lookups");
+  }
+}
+
+#[test]
+fn network_verified_rules_match_only_their_published_networks() {
+  for (rule, agent, inside) in [
+    (
+      "kagibot.yml",
+      "Mozilla/5.0 (compatible; Kagibot/1.0; +https://kagi.com/bot)",
+      "216.18.205.234",
+    ),
+    (
+      "marginalia-crawler.yml",
+      "search.marginalia.nu",
+      "193.183.0.170",
+    ),
+    (
+      "wikimedia-citation-fetchers.yml",
+      "Citoid/WMF (mailto:noc@wikimedia.org)",
+      "2620:0:861::1",
+    ),
+    ("internet-archive.yml", BROWSER, "207.241.229.10"),
+    ("arquivo-pt.yml", BROWSER, "194.210.235.10"),
+  ] {
+    let engine = rule_engine(rule);
+    for (address, expected) in [
+      (inside, PolicyAction::Allow),
+      ("198.51.100.10", PolicyAction::Challenge),
+    ] {
+      let decision = decide(
+        &engine,
+        Probe {
+          agent,
+          address,
+          ..Default::default()
+        },
+      );
+      assert_eq!(decision.action, expected, "{rule}: {address}");
+    }
+  }
+}
+
+#[test]
+fn tool_client_rules_stay_on_their_protocol_paths() {
+  for (rule, agent, protocol_path) in [
+    (
+      "allow-git-clients.yml",
+      "git/2.47.0",
+      "/group/repo.git/info/refs",
+    ),
+    (
+      "allow-git-clients.yml",
+      "JGit/6.10.0",
+      "/group/repo.git/git-upload-pack",
+    ),
+    (
+      "allow-git-clients.yml",
+      "git-lfs/3.5.1 (GitHub; linux amd64; go 1.22)",
+      "/group/repo.git/info/lfs/objects/batch",
+    ),
+    (
+      "allow-container-clients.yml",
+      "docker/27.1.0 go/go1.22 git-commit/abc kernel/6.8 os/linux arch/amd64",
+      "/v2/app/manifests/latest",
+    ),
+    (
+      "allow-container-clients.yml",
+      "containerd/1.7.20",
+      "/v2/app/blobs/sha256:abc",
+    ),
+  ] {
+    let engine = rule_engine(rule);
+    for (path, expected) in [
+      (protocol_path, PolicyAction::Allow),
+      ("/admin/users", PolicyAction::Challenge),
+    ] {
+      let decision = decide(
+        &engine,
+        Probe {
+          agent,
+          path,
+          ..Default::default()
+        },
+      );
+      assert_eq!(decision.action, expected, "{rule}: {agent} {path}");
+    }
+    let browser = decide(
+      &engine,
+      Probe {
+        path: protocol_path,
+        ..Default::default()
+      },
+    );
+    assert_eq!(browser.action, PolicyAction::Challenge, "{rule}");
+  }
+}
+
+#[test]
+fn crawler_protection_denies_unwanted_clients_and_tiers_suspicious_ones() {
+  let engine = catalog_engine(&format!(
+    "{}policy: !include builtin:policies/crawler-protection.yml\n",
+    local_sets(&SEARCH_SETS)
+  ));
+  for agent in [
+    "",
+    "AIWebIndex/2.0 (+https://lyrenth.com/bot)",
+    "code-review-sourcing/1.0 (+xai-research)",
+    "scraper (+https://github.com/US-Artificial-Intelligence/scraper)",
+    "Mozilla/5.0 (compatible; TavilyBot/1.0)",
+  ] {
+    let decision = decide(
+      &engine,
+      Probe {
+        agent,
+        ..Default::default()
+      },
+    );
+    assert_eq!(decision.action, PolicyAction::Deny, "{agent:?}");
+  }
+  let discontinued = decide(
+    &engine,
+    Probe {
+      agent: "Mozilla/4.0 (compatible; MSIE 6.0; Windows 98)",
+      ..Default::default()
+    },
+  );
+  assert_eq!(discontinued.action, PolicyAction::Challenge);
+  assert_eq!(discontinued.steps[0].difficulty, Some(6));
+
+  let browser = decide(&engine, Probe::default());
+  assert_eq!(browser.steps[0].difficulty, Some(2));
+  assert!(!browser.needs_lookups);
+
+  let low_score = decide(
+    &engine,
+    Probe {
+      agent: "preview-client/1.0",
+      headers: &[("x-firefox-ai", "1")],
+      ..Default::default()
+    },
+  );
+  assert_eq!(low_score.action, PolicyAction::Challenge);
+  assert_eq!(
+    format!("{:?}", low_score.steps[0].algorithm),
+    "Some(Refresh)"
+  );
+
+  let yandex = confirmed("5-255-231-1.spider.yandex.com");
+  let crawler = decide(
+    &engine,
+    Probe {
+      agent: "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)",
+      lookups: Some(&yandex),
+      ..Default::default()
+    },
+  );
+  assert_eq!(crawler.action, PolicyAction::Allow);
+}
+
+#[test]
+fn ai_search_policy_allows_only_verified_search_agents() {
+  let names: Vec<&str> = SEARCH_SETS.iter().chain(&AI_SETS).copied().collect();
+  let engine = catalog_engine(&format!(
+    "{}policy: !include builtin:policies/crawler-protection-ai-search.yml\n",
+    local_sets(&names)
+  ));
+  for (agent, address, expected) in [
+    (
+      "Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)",
+      "192.0.2.10",
+      PolicyAction::Allow,
+    ),
+    (
+      "Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)",
+      "198.51.100.10",
+      PolicyAction::Deny,
+    ),
+    (
+      "Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
+      "192.0.2.10",
+      PolicyAction::Allow,
+    ),
+    (
+      "Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)",
+      "192.0.2.10",
+      PolicyAction::Deny,
+    ),
+  ] {
+    let decision = decide(
+      &engine,
+      Probe {
+        agent,
+        address,
+        ..Default::default()
+      },
+    );
+    assert_eq!(decision.action, expected, "{agent} from {address}");
+  }
+  let thresholds = decide(&engine, Probe::default());
+  assert_eq!(thresholds.steps[0].difficulty, Some(2));
+}
+
+#[test]
+fn browser_signals_lower_the_score_only_for_complete_headers() {
+  let engine = catalog_engine(
+    "policy:\n  default_action: allow\n  rules:\n    - !include builtin:rules/browser-signals-score.yml\n    - !include builtin:rules/client-score.yml\n  score:\n    thresholds:\n      - {min: 1, action: deny}\n",
+  );
+  let complete = [
+    ("accept", "text/html"),
+    ("accept-language", "en"),
+    ("accept-encoding", "gzip, br"),
+    ("sec-fetch-dest", "document"),
+    ("sec-fetch-mode", "navigate"),
+    ("sec-fetch-site", "none"),
+  ];
+  let browser = decide(
+    &engine,
+    Probe {
+      headers: &complete,
+      ..Default::default()
+    },
+  );
+  assert_eq!(browser.action, PolicyAction::Allow);
+  let partial = decide(
+    &engine,
+    Probe {
+      headers: &complete[..5],
+      ..Default::default()
+    },
+  );
+  assert_eq!(partial.action, PolicyAction::Deny);
 }

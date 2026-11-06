@@ -1,0 +1,9 @@
+# Needs builtin:signals/ai-crawler-ip-sets.yml. Place before deny-ai-crawlers.yml.
+name: verified-openai-training-crawler
+when:
+  all:
+    - client_ip:
+        in_sets: [openai-training-crawlers]
+    - user_agent:
+        regex: 'GPTBot/[\d.]+; \+https://openai\.com/gptbot'
+action: allow

@@ -16,3 +16,15 @@
       X-Firefox-Ai: {regex: '.*'}
   action: score
   score: 5
+- name: discontinued-client-score
+  when:
+    user_agent:
+      regex: 'MSIE|Trident|Presto|Windows CE|Windows 95|Windows 98|Win 9x|Windows NT 11\.0|Alexa Toolbar|iPod'
+  action: score
+  score: 20
+- name: async-http-client-score
+  when:
+    user_agent:
+      contains: Custom-AsyncHttpClient
+  action: score
+  score: 10

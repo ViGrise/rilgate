@@ -31,13 +31,26 @@ policy: !include builtin:policies/balanced.yml
 | `builtin:policies/light.yml` | `public-endpoints` allows public paths. `suspicious-client` challenges empty or bot-like agents with Fast difficulty 1. |
 | `builtin:policies/strict.yml` | `public-endpoints` allows public paths. `protected-traffic` challenges with Fast difficulty 4. |
 | `builtin:policies/off.yml` | No rules. Default action `allow`. |
-| `builtin:policies/crawler-protection.yml` | AI/headless deny rules, verified search crawlers, public paths and client scoring. Needs `builtin:signals/crawler-ip-sets.yml`. |
+| `builtin:policies/crawler-protection.yml` | Deny rules for empty User-Agents, domain fronting, headless browsers and AI agents, verified crawlers, public paths and client scoring. Needs `builtin:signals/crawler-ip-sets.yml`. |
+| `builtin:policies/crawler-protection-ai-search.yml` | `crawler-protection` that also allows verified AI search crawlers and user-triggered AI fetchers. Needs `builtin:signals/crawler-ip-sets.yml` and `builtin:signals/ai-crawler-ip-sets.yml`. |
 
 The crawler-protection policy needs `signals.ip_sets: !include builtin:signals/crawler-ip-sets.yml`
-for Google, Bing, Apple and DuckDuckGo search crawler feeds. It includes score thresholds. Remote feed loading
-requires outbound HTTPS for runtime readiness. Configuration checks validate the
-policy without fetching the feeds.
+for Google, Bing, Apple and DuckDuckGo search crawler feeds. Its other verified crawlers
+use reverse DNS or fixed networks and need no feed. It includes score thresholds. Remote
+feed loading requires outbound HTTPS for runtime readiness. Configuration checks validate
+the policy without fetching the feeds.
 The [custom example](../config/examples/custom.yml) demonstrates selecting it.
+
+The AI search policy merges both signal files:
+
+```yaml
+signals:
+  ip_sets:
+    <<:
+      - !include builtin:signals/crawler-ip-sets.yml
+      - !include builtin:signals/ai-crawler-ip-sets.yml
+policy: !include builtin:policies/crawler-protection-ai-search.yml
+```
 
 Customize a built-in custom policy with a map merge:
 
@@ -71,14 +84,21 @@ policy:
 | Built-in rule | Behavior |
 | --- | --- |
 | `public-endpoints.yml` | Allows `/.well-known/`, favicon image variants, `/robots.txt` and `/sitemap.xml`. Broader than preset exceptions. |
+| `public-feeds.yml` | Allows `.rss` and `.atom` paths and paths that end in `/feed`. |
+| `allow-git-clients.yml` | Allows Git and Git LFS clients on Git transport paths only. |
+| `allow-container-clients.yml` | Allows container tools under `/v2/` only. |
+| `allow-private-networks.yml` | Allows private, shared, loopback and link-local addresses. Behind a proxy, it needs `server.trusted_proxies`; otherwise every request matches. |
 | `challenge-bots.yml` | Challenges empty or bot/tool-like User-Agents with Fast difficulty 1. |
 | `tor-exit.yml` | Adds 20 for membership in the operator-defined `tor-exits` IP set. |
 | `challenge-all.yml` | Terminal catchall challenge with Fast difficulty 2. Place it last. |
-| `deny-ai-crawlers.yml` | Denies recognized AI-affiliated agents, training and search crawlers, and user-triggered AI clients. |
+| `deny-ai-crawlers.yml` | Denies recognized AI-affiliated agents, AI scrapers, training and search crawlers, and user-triggered AI clients. |
 | `deny-headless-browsers.yml` | Denies recognized headless User-Agents and Lightpanda client hints. |
 | `deny-domain-fronting.yml` | Denies a nonempty `X-Tls-Sni-Name` that differs from the host. Requires an edge proxy in `server.trusted_proxies` that sets this header to the TLS server name. |
 | `deny-empty-user-agent.yml` | Denies empty or missing User-Agent headers. |
-| `client-score.yml` | Adds 10 for browser-like User-Agents, 15 for a present `CF-Worker` header and 5 for a present `X-Firefox-Ai` header. Requires score thresholds to act on the result. |
+| `client-score.yml` | Adds 10 for browser-like User-Agents, 15 for a present `CF-Worker` header, 5 for a present `X-Firefox-Ai` header, 20 for discontinued browsers and systems and 10 for `Custom-AsyncHttpClient`. Requires score thresholds to act on the result. |
+| `browser-signals-score.yml` | Subtracts 10 for a complete browser header set, 5 for Chrome client hints and 2 for `Upgrade-Insecure-Requests`, and adds 5 for a missing `Accept` header. Automated clients can copy these headers. |
+| `cloudflare-relay-score.yml` | Adds 15 for Cloudflare relay headers. Use it only on origins that are not behind Cloudflare. |
+| `cloud-network-score.yml` | Adds 20 for Alibaba Cloud, Huawei Cloud and Tencent Cloud networks. Needs `signals.geoip.asn`. |
 
 Rule names in this table use the `builtin:rules/` prefix. The optional deny
 groups can also match authorized automation. The default balanced policy keeps
@@ -103,9 +123,10 @@ policy:
 
 Its score of 20 combines with 10 from `client-score.yml` to reach the 30 tier.
 
-Each verified search crawler rule allows a request only when its User-Agent
-matches the crawler and the client address is in the named IP set. Define the
-set with the publisher feed before you include the rule:
+Each verified crawler rule checks the client network as well as the claimed
+identity. Feed rules allow a request only when its User-Agent matches the crawler
+and the client address is in the named IP set. Define the set with the publisher
+feed before you include the rule:
 
 ```yaml
 signals:
@@ -124,10 +145,35 @@ policy:
 | `bingbot.yml` | Bingbot documentation URL | `bing-crawlers` | `https://www.bing.com/toolbox/bingbot.json` |
 | `applebot.yml` | Applebot documentation URL | `apple-crawlers` | `https://search.developer.apple.com/applebot.json` |
 | `duckduckbot.yml` | DuckDuckBot documentation URL | `duckduckgo-crawlers` | `https://duckduckgo.com/duckduckbot.json` |
+| `verified-ai-search.yml` | OpenAI, Perplexity and Mistral documentation URLs | `openai-search-crawlers`, `perplexity-crawlers`, `chatgpt-user-fetchers`, `perplexity-user-fetchers`, `mistral-user-fetchers` | `builtin:signals/ai-crawler-ip-sets.yml` |
+| `verified-ai-training.yml` | GPTBot documentation URL | `openai-training-crawlers` | `builtin:signals/ai-crawler-ip-sets.yml` |
+
+Place the `verified-ai-*` rules before `deny-ai-crawlers.yml`, so the deny rules
+still reject the same User-Agents from other networks.
+
+Reverse DNS rules need no feed. They allow a request when its User-Agent matches
+and the forward-confirmed PTR name is in the listed domain. Rilgate performs the
+lookup only for requests with a matching User-Agent.
+
+| Reverse DNS rule | User-Agent | Domains |
+| --- | --- | --- |
+| `yandexbot.yml` | Yandex documentation URL | `yandex.ru`, `yandex.net`, `yandex.com` |
+| `qwantbot.yml` | Qwant documentation URL | `qwant.com` |
+| `mojeekbot.yml` | Mojeek documentation URL | `mojeek.com` |
+| `ccbot.yml` | `CCBot` | `crawl.commoncrawl.org` |
+| `telegram-preview.yml` | `TelegramBot` | `ptr.telegram.org` |
+| `vk-preview.yml` | VK share URL | `go.mail.ru` |
+
+Fixed network rules hold their address ranges in the rule file. `kagibot.yml`,
+`marginalia-crawler.yml` and `wikimedia-citation-fetchers.yml` also require a
+matching User-Agent. `internet-archive.yml` and `arquivo-pt.yml` match by network
+alone, because archive capture services also send browser User-Agents.
 
 The crawler-protection policy evaluates deny rules before crawler and public
-allows, then applies client scores. It uses Fast difficulties 1, 2, 4 and 6 at
-scores 1, 10, 20 and 30. Its fallback allows requests without a positive score.
+allows, then applies client scores. It uses the refresh challenge at score 1 and
+Fast difficulties 2, 4 and 6 at scores 10, 20 and 30. Its fallback allows requests
+without a positive score. `telegram-preview.yml`, `vk-preview.yml` and the tool
+client rules are not part of the preset; add them when the site needs them.
 CEL expressions are outside the current policy schema.
 
 ## Custom evaluation

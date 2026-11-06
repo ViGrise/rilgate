@@ -1,0 +1,24 @@
+# Needs signals.ip_sets from builtin:signals/crawler-ip-sets.yml and
+# builtin:signals/ai-crawler-ip-sets.yml.
+<<: !include crawler-protection.yml
+rules:
+  - !include ../rules/deny-empty-user-agent.yml
+  - !include ../rules/deny-domain-fronting.yml
+  - !include ../rules/deny-headless-browsers.yml
+  - !include ../rules/verified-ai-search.yml
+  - !include ../rules/deny-ai-crawlers.yml
+  - !include ../rules/googlebot.yml
+  - !include ../rules/bingbot.yml
+  - !include ../rules/applebot.yml
+  - !include ../rules/duckduckbot.yml
+  - !include ../rules/yandexbot.yml
+  - !include ../rules/qwantbot.yml
+  - !include ../rules/mojeekbot.yml
+  - !include ../rules/ccbot.yml
+  - !include ../rules/kagibot.yml
+  - !include ../rules/marginalia-crawler.yml
+  - !include ../rules/wikimedia-citation-fetchers.yml
+  - !include ../rules/internet-archive.yml
+  - !include ../rules/arquivo-pt.yml
+  - !include ../rules/public-endpoints.yml
+  - !include ../rules/client-score.yml

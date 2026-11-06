@@ -1,0 +1,31 @@
+# Remote feeds need outbound HTTPS; readiness fails until each has loaded once.
+openai-search-crawlers:
+  url: "https://openai.com/searchbot.json"
+  format: ip_prefixes_json
+  refresh: 24h
+  max_stale: 7d
+openai-training-crawlers:
+  url: "https://openai.com/gptbot.json"
+  format: ip_prefixes_json
+  refresh: 24h
+  max_stale: 7d
+chatgpt-user-fetchers:
+  url: "https://openai.com/chatgpt-user.json"
+  format: ip_prefixes_json
+  refresh: 24h
+  max_stale: 7d
+perplexity-crawlers:
+  url: "https://www.perplexity.com/perplexitybot.json"
+  format: ip_prefixes_json
+  refresh: 24h
+  max_stale: 7d
+perplexity-user-fetchers:
+  url: "https://www.perplexity.com/perplexity-user.json"
+  format: ip_prefixes_json
+  refresh: 24h
+  max_stale: 7d
+mistral-user-fetchers:
+  url: "https://mistral.ai/mistralai-user-ips.json"
+  format: ip_prefixes_json
+  refresh: 24h
+  max_stale: 7d

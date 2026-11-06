@@ -1192,6 +1192,7 @@ server:
 # balanced: challenge application traffic with Fast difficulty 2.
 # strict: challenge application traffic with Fast difficulty 4.
 # crawler-protection: deny AI/headless crawlers, verify search crawlers and score clients.
+# crawler-protection-ai-search: crawler-protection that allows verified AI search agents.
 
 # light, balanced and strict allow /robots.txt, /favicon.ico and ACME challenge paths.
 # Without a policy section, Rilgate uses builtin:policies/balanced.yml.
@@ -1206,6 +1207,14 @@ server:
 # policy:
 #   <<: !include builtin:policies/crawler-protection.yml
 #   default_action: challenge
+
+# crawler-protection-ai-search needs both signal files:
+#
+# signals:
+#   ip_sets:
+#     <<:
+#       - !include builtin:signals/crawler-ip-sets.yml
+#       - !include builtin:signals/ai-crawler-ip-sets.yml
 
 # policy:
   # Evaluated in declaration order.

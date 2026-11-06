@@ -1,0 +1,8 @@
+name: verified-yandex-crawler
+when:
+  all:
+    - user_agent:
+        regex: '\+http://yandex\.com/bots'
+    - client_ip:
+        reverse_dns: [yandex.ru, yandex.net, yandex.com]
+action: allow

@@ -1,0 +1,37 @@
+# Automated clients can copy these headers. Use it to lower friction, never as proof.
+- name: browser-request-headers-score
+  when:
+    all:
+      - user_agent: {regex: 'Firefox|Chrome|Safari'}
+      - headers:
+          Accept: {regex: '.*'}
+          Accept-Language: {regex: '.*'}
+          Accept-Encoding: {regex: '\b(?:zstd|br)\b'}
+          Sec-Fetch-Dest: {regex: '.*'}
+          Sec-Fetch-Mode: {regex: '.*'}
+          Sec-Fetch-Site: {regex: '.*'}
+  action: score
+  score: -10
+- name: chrome-client-hints-score
+  when:
+    all:
+      - user_agent: {contains: Chrome}
+      - headers:
+          Sec-Ch-Ua: {contains: Chromium}
+          Sec-Ch-Ua-Mobile: {regex: '.*'}
+          Sec-Ch-Ua-Platform: {regex: '.*'}
+  action: score
+  score: -5
+- name: upgrade-insecure-requests-score
+  when:
+    headers:
+      Upgrade-Insecure-Requests: {regex: '.*'}
+  action: score
+  score: -2
+- name: missing-accept-score
+  when:
+    not:
+      headers:
+        Accept: {regex: '.*'}
+  action: score
+  score: 5

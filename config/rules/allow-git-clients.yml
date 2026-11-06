@@ -1,0 +1,9 @@
+# Limited to Git transport paths, so a copied User-Agent cannot reach application pages.
+name: allow-git-clients
+when:
+  all:
+    - user_agent:
+        regex: '^(?:[Gg]it/|git-lfs/|JGit[/-]|go-git)|libgit'
+    - path:
+        regex: '/(?:info/refs|info/lfs/.*|git-upload-pack|git-receive-pack)$'
+action: allow

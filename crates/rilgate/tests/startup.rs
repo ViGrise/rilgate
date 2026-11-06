@@ -761,12 +761,22 @@ fn split_configuration_uses_default_file_paths_and_override_precedence() {
 
 #[test]
 fn embedded_policies_load_with_only_an_operator_configuration_file() {
-  for name in ["balanced", "light", "strict", "off", "crawler-protection"] {
+  for name in [
+    "balanced",
+    "light",
+    "strict",
+    "off",
+    "crawler-protection",
+    "crawler-protection-ai-search",
+  ] {
     let mut source = format!(
       "server:\n  upstream: {{url: http://127.0.0.1:3000}}\nsecurity:\n  secret: '${{RILGATE_SECURITY_SECRET}}'\npolicy: !include builtin:policies/{name}.yml\n"
     );
     if name == "crawler-protection" {
       source.push_str("signals:\n  ip_sets: !include builtin:signals/crawler-ip-sets.yml\n");
+    }
+    if name == "crawler-protection-ai-search" {
+      source.push_str("signals:\n  ip_sets:\n    <<: [!include builtin:signals/crawler-ip-sets.yml, !include builtin:signals/ai-crawler-ip-sets.yml]\n");
     }
     let result = command(
       &source,

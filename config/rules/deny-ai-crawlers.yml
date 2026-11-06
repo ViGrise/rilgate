@@ -18,3 +18,8 @@
     user_agent:
       regex: '(?i:ChatGPT-User|Claude-User|MistralAI-User|Perplexity-User)'
   action: deny
+- name: deny-ai-scrapers
+  when:
+    user_agent:
+      regex: '(?i:AIWebIndex|Amzn-SearchBot|ApifyBot|ApifyWebsiteContentCrawler|AzureAI-SearchBot|bedrockbot|Bravebot|ChatGLM-Spider|CloudVertexBot|code-review-sourcing.*\+xai-research|Crawl4AI|DeepSeekBot|github\.com/US-Artificial-Intelligence/scraper|iAskBot|Kimi-User|KlaviyoAIBot|laion-huggingface-processor|LAIONDownloader|LinerBot|LinkupBot|Manus-User|MyCentralAIScraperBot|PhindBot|QuillBot|SBIntuitionsBot|ShapBot|TavilyBot|TongyiBot|WRTNBot|YiyanBot)'
+  action: deny

@@ -1,0 +1,6 @@
+# Needs signals.geoip.asn. Covers Alibaba Cloud, Huawei Cloud and Tencent Cloud.
+name: cloud-network-score
+when:
+  asn: [45102, 37963, 136907, 55990, 132203, 45090]
+action: score
+score: 20

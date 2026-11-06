@@ -1,0 +1,13 @@
+# Limited to the registry API, so a copied User-Agent cannot reach application pages.
+name: allow-container-clients
+when:
+  all:
+    - path: {prefix: /v2/}
+    - not:
+        user_agent: {contains: Mozilla}
+    - any:
+        - user_agent:
+            regex: 'docker/|containerd/|containers/|Buildah/|crane/|go-containerregistry/|Renovate/'
+        - headers:
+            Docker-Distribution-Api-Version: {regex: '.*'}
+action: allow

@@ -1,0 +1,8 @@
+name: verified-mojeek-crawler
+when:
+  all:
+    - user_agent:
+        regex: '\+https://www\.mojeek\.com/bot\.html'
+    - client_ip:
+        reverse_dns: [mojeek.com]
+action: allow

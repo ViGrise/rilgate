@@ -1,0 +1,8 @@
+name: verified-vk-preview
+when:
+  all:
+    - user_agent:
+        regex: 'vkShare[^+]+\+http://vk\.com/dev/Share'
+    - client_ip:
+        reverse_dns: [go.mail.ru]
+action: allow
