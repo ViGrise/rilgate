@@ -1,0 +1,14 @@
+# Needs server.trusted_proxies when a proxy runs in front of the gateway.
+# Without it, the proxy address is the client address and every request matches.
+name: allow-private-networks
+when:
+  any:
+    - client_ip: {cidr: 10.0.0.0/8}
+    - client_ip: {cidr: 172.16.0.0/12}
+    - client_ip: {cidr: 192.168.0.0/16}
+    - client_ip: {cidr: 100.64.0.0/10}
+    - client_ip: {cidr: 127.0.0.0/8}
+    - client_ip: {cidr: "fc00::/7"}
+    - client_ip: {cidr: "fe80::/10"}
+    - client_ip: {cidr: "::1/128"}
+action: allow

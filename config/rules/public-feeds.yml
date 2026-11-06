@@ -1,0 +1,4 @@
+name: public-feeds
+when:
+  path: {regex: '(?i)(?:\.(?:rss|atom)|/feed/?)$'}
+action: allow

@@ -1,0 +1,8 @@
+name: verified-telegram-preview
+when:
+  all:
+    - user_agent:
+        contains: TelegramBot
+    - client_ip:
+        reverse_dns: [ptr.telegram.org]
+action: allow

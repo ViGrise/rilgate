@@ -1,0 +1,9 @@
+name: verified-wikimedia-citation-fetcher
+when:
+  all:
+    - user_agent:
+        regex: 'Citoid/WMF|ZoteroTranslationServer/WMF'
+    - any:
+        - client_ip: {cidr: 208.80.152.0/22}
+        - client_ip: {cidr: "2620:0:860::/46"}
+action: allow

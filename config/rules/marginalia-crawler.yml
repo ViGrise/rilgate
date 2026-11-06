@@ -1,0 +1,12 @@
+name: verified-marginalia-crawler
+when:
+  all:
+    - user_agent:
+        contains: search.marginalia.nu
+    - any:
+        - client_ip: {cidr: 193.183.0.162/31}
+        - client_ip: {cidr: 193.183.0.164/30}
+        - client_ip: {cidr: 193.183.0.168/30}
+        - client_ip: {cidr: 193.183.0.172/31}
+        - client_ip: {cidr: 193.183.0.174/32}
+action: allow

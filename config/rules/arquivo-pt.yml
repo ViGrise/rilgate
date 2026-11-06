@@ -1,0 +1,5 @@
+# Matches by network alone: archive capture services also send browser User-Agents.
+name: verified-arquivo-pt-network
+when:
+  client_ip: {cidr: 194.210.235.0/26}
+action: allow

@@ -1,0 +1,11 @@
+name: verified-kagi-crawler
+when:
+  all:
+    - user_agent:
+        regex: '\+https://kagi\.com/bot'
+    - any:
+        - client_ip: {cidr: 216.18.205.234/32}
+        - client_ip: {cidr: 35.212.27.76/32}
+        - client_ip: {cidr: 104.254.65.50/32}
+        - client_ip: {cidr: 209.151.156.194/32}
+action: allow

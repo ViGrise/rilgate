@@ -1,0 +1,41 @@
+# Needs builtin:signals/ai-crawler-ip-sets.yml. Place before deny-ai-crawlers.yml.
+- name: verified-openai-search-crawler
+  when:
+    all:
+      - client_ip:
+          in_sets: [openai-search-crawlers]
+      - user_agent:
+          regex: 'OAI-SearchBot/[\d.]+; \+https://openai\.com/searchbot'
+  action: allow
+- name: verified-perplexity-crawler
+  when:
+    all:
+      - client_ip:
+          in_sets: [perplexity-crawlers]
+      - user_agent:
+          regex: 'PerplexityBot/.+; \+https://perplexity\.ai/perplexitybot'
+  action: allow
+- name: verified-chatgpt-user-fetcher
+  when:
+    all:
+      - client_ip:
+          in_sets: [chatgpt-user-fetchers]
+      - user_agent:
+          regex: 'ChatGPT-User/.+; \+https://openai\.com/bot'
+  action: allow
+- name: verified-perplexity-user-fetcher
+  when:
+    all:
+      - client_ip:
+          in_sets: [perplexity-user-fetchers]
+      - user_agent:
+          regex: 'Perplexity-User/.+; \+https://perplexity\.ai/perplexity-user'
+  action: allow
+- name: verified-mistral-user-fetcher
+  when:
+    all:
+      - client_ip:
+          in_sets: [mistral-user-fetchers]
+      - user_agent:
+          regex: 'MistralAI-User/.+; \+https://docs\.mistral\.ai/robots'
+  action: allow

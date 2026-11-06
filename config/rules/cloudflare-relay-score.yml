@@ -1,0 +1,14 @@
+# Use on origins that are not behind Cloudflare, where these headers mark relayed traffic.
+name: cloudflare-relay-score
+when:
+  any:
+    - headers:
+        Cdn-Loop: {regex: '.*'}
+    - headers:
+        Cf-Ray: {regex: '.*'}
+    - headers:
+        Cf-Ew-Via: {regex: '.*'}
+    - headers:
+        Cf-Visitor: {regex: '.*'}
+action: score
+score: 15

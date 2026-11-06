@@ -1,0 +1,8 @@
+name: verified-common-crawl-crawler
+when:
+  all:
+    - user_agent:
+        contains: CCBot
+    - client_ip:
+        reverse_dns: [crawl.commoncrawl.org]
+action: allow

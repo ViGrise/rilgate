@@ -1,0 +1,8 @@
+name: verified-qwant-crawler
+when:
+  all:
+    - user_agent:
+        regex: '\+https://help\.qwant\.com/bot/'
+    - client_ip:
+        reverse_dns: [qwant.com]
+action: allow
