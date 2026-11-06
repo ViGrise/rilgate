@@ -51,6 +51,8 @@ pub struct Condition {
   pub headers: BTreeMap<String, StringMatch>,
   #[serde(skip_serializing_if = "BTreeMap::is_empty")]
   pub edge_headers: BTreeMap<String, StringMatch>,
+  #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+  pub query: BTreeMap<String, StringMatch>,
   #[serde(
     default,
     deserialize_with = "present",

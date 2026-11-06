@@ -1,0 +1,11 @@
+# WARNING: any client can send this User-Agent and parameter, so this rule proves no identity.
+# A forged request skips the challenge on every path. Include it only on sites that serve Go
+# modules, and add a path condition that limits it to module paths.
+name: allow-go-get
+when:
+  all:
+    - method: {exact: GET}
+    - user_agent: {prefix: Go-http-client/}
+    - query:
+        go-get: {exact: "1"}
+action: allow

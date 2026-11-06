@@ -54,6 +54,7 @@ fn decide(engine: &PolicyEngine, ip: &str) -> (PolicyAction, i32, bool) {
       path: "/",
       method: &Method::GET,
       client_ip: Some(ip.parse::<IpAddr>().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     },
     0,

@@ -140,6 +140,7 @@ pub async fn gate_with_client(
   if let (Some(honeypot), Some(ip)) = (&services.honeypot, client_ip) {
     known.honeypot = Some(honeypot.is_flagged(ip));
   }
+  let query = rilgate_policy::conditions::Query::new(uri.query().unwrap_or_default());
   known.rates = state.pow.counter_values(
     &Request {
       trusted_peer,
@@ -148,6 +149,7 @@ pub async fn gate_with_client(
       path: policy_path,
       method,
       client_ip,
+      query: &query,
       lookups: &known,
     },
     |name, key, selected| {
@@ -167,6 +169,7 @@ pub async fn gate_with_client(
     path: policy_path,
     method,
     client_ip,
+    query: &query,
     lookups: &known,
   };
   let mut decision = state.pow.evaluate_context(&request);
@@ -178,6 +181,7 @@ pub async fn gate_with_client(
     dns.resolve(ip, &state.pow.lookup_plan(), &mut filled).await;
     resolved = filled;
     request = Request {
+      query: &query,
       lookups: &resolved,
       ..request
     };

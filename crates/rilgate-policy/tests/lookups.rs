@@ -16,6 +16,7 @@ fn decide(engine: &PolicyEngine, lookups: &Lookups) -> rilgate_policy::PolicyDec
       path: "/",
       method: &Method::GET,
       client_ip: Some("66.249.66.1".parse().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups,
       trusted_peer: false,
     },

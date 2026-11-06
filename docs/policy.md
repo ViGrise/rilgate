@@ -87,6 +87,7 @@ policy:
 | `public-feeds.yml` | Allows `.rss` and `.atom` paths and paths that end in `/feed`. |
 | `allow-git-clients.yml` | Allows Git and Git LFS clients on Git transport paths only. |
 | `allow-container-clients.yml` | Allows container tools under `/v2/` only. |
+| `allow-go-get.yml` | Allows `GET` requests from the Go client with `go-get=1`. Any client can forge both, so include it only on sites that serve Go modules. |
 | `allow-private-networks.yml` | Allows private, shared, loopback and link-local addresses. Behind a proxy, it needs `server.trusted_proxies`; otherwise every request matches. |
 | `challenge-bots.yml` | Challenges empty or bot/tool-like User-Agents with Fast difficulty 1. |
 | `tor-exit.yml` | Adds 20 for membership in the operator-defined `tor-exits` IP set. |
@@ -258,7 +259,7 @@ empty.
 
 | Field | Operators |
 | --- | --- |
-| `host`, `path`, `method`, `user_agent`, individual `headers` and `edge_headers` | `exact`, `prefix`, `contains`, `in`, `regex`, `same_as` |
+| `host`, `path`, `method`, `user_agent`, individual `headers`, `edge_headers` and `query` | `exact`, `prefix`, `contains`, `in`, `regex`, `same_as` |
 | `client_ip` | `cidr`, `in_sets`, `reverse_dns` (a list of 1 to 16 domains) |
 | `score` | `eq`, `gt`, `gte`, `lt`, `lte` |
 | `load` | `window` (`1m`, `5m` default, `15m`), `gt`, `gte`, `lt`, `lte` |
@@ -283,6 +284,12 @@ Header names are case-insensitive.
 and the client IP resolution are described in
 [client address and forwarding](configuration.md#client-address-and-forwarding). The same
 resolved address controls IP rules and proof API quotas.
+
+`query` matches named query string parameters. Rilgate decodes percent escapes and `+`
+in names and values, so `go%2Dget=1` matches `go-get`. Parameter names are case-sensitive.
+Any repeated parameter value can satisfy its matcher, so a client can add a matching
+value to a request. A missing parameter does not match; `{regex: '.*'}` tests presence and
+`not` tests absence. `query` works in rules, `count_when` and `site.open_graph.when`.
 
 Any repeated header value can satisfy its matcher. Missing headers do not match,
 including an empty-string regex. `not` can test absence. A missing User-Agent is

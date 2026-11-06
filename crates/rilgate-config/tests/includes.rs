@@ -79,6 +79,7 @@ fn nested_includes_mix_rules_and_cidrs_and_preserve_policy_order() {
       path: "/protected",
       method: &http::Method::GET,
       client_ip: Some("198.51.100.10".parse().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
