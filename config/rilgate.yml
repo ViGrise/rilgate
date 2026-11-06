@@ -1247,6 +1247,7 @@ server:
           # - path: {prefix: "/.well-known/"}
           # - path: {in: ["/favicon.ico", "/robots.txt"]}
           # - path: {regex: '(?i)\.(rss|xml|atom)$'}
+          # - query: {format: {in: [rss, atom]}}
       #
       # action: allow
     # - name: browser-score

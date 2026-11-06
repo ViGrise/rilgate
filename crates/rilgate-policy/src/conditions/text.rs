@@ -12,6 +12,7 @@ pub(crate) enum Field {
   UserAgent,
   Header(HeaderName),
   EdgeHeader(HeaderName),
+  Query(String),
 }
 #[derive(Debug)]
 pub(crate) struct Text {
@@ -58,6 +59,16 @@ pub(super) fn compile_fields(
       nodes.push(Compiled::Text(field, test));
     }
   }
+  for (name, source) in &condition.query {
+    budget.consume(depth, path)?;
+    ensure!(
+      !name.is_empty() && name.len() <= 2048,
+      "{path}.query: expected a parameter name of 1 to 2048 bytes"
+    );
+    budget.bytes += name.len();
+    let test = Text::compile(source, budget).with_context(|| format!("{path}.query.{name}"))?;
+    nodes.push(Compiled::Text(Field::Query(name.clone()), test));
+  }
   Ok(())
 }
 
@@ -71,6 +82,14 @@ pub(super) fn match_field(field: &Field, test: &Text, request: &Request<'_>) -> 
       .get(http::header::USER_AGENT)
       .and_then(|v| v.to_str().ok())
       .unwrap_or_default(),
+    Field::Query(name) => {
+      return Truth::from_bool(
+        request
+          .query
+          .values(name)
+          .any(|value| test.matches(value, request)),
+      );
+    }
     Field::EdgeHeader(_) if !request.trusted_peer => return Truth::False,
     Field::Header(name) | Field::EdgeHeader(name) => {
       return Truth::from_bool(

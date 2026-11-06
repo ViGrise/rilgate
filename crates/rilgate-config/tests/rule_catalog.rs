@@ -56,6 +56,7 @@ fn verified_crawler_rules_require_both_crawler_network_and_matching_user_agent()
         path: "/content",
         method: &http::Method::GET,
         client_ip: Some(address.parse().unwrap()),
+        query: &rilgate_policy::conditions::Query::default(),
         lookups: &rilgate_policy::Lookups::NONE,
       };
       assert_eq!(
@@ -259,6 +260,7 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
       path: "/content",
       method: &http::Method::GET,
       client_ip: Some("192.0.2.10".parse().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
@@ -301,6 +303,7 @@ fn tor_exit_rule_scores_members_of_the_tor_set() {
       path: "/",
       method: &http::Method::GET,
       client_ip: Some(ip.parse().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     };
     assert_eq!(engine.evaluate_context(&request, 0).weight, expected);
@@ -390,6 +393,7 @@ fn domain_fronting_and_empty_user_agent_rules() {
       path: "/",
       method: &http::Method::GET,
       client_ip: None,
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     };
     assert_eq!(
@@ -478,6 +482,7 @@ fn decide(engine: &PolicyEngine, probe: Probe<'_>) -> rilgate_policy::PolicyDeci
       path: probe.path,
       method: &http::Method::GET,
       client_ip: Some(probe.address.parse().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: probe.lookups.unwrap_or(&rilgate_policy::Lookups::NONE),
     },
     0,
@@ -667,6 +672,54 @@ fn tool_client_rules_stay_on_their_protocol_paths() {
       },
     );
     assert_eq!(browser.action, PolicyAction::Challenge, "{rule}");
+  }
+}
+
+#[test]
+fn go_get_rule_requires_the_client_and_the_parameter() {
+  let engine = rule_engine("allow-go-get.yml");
+  for (agent, raw, method, expected) in [
+    (
+      "Go-http-client/1.1",
+      "go-get=1",
+      http::Method::GET,
+      PolicyAction::Allow,
+    ),
+    (
+      "Go-http-client/1.1",
+      "",
+      http::Method::GET,
+      PolicyAction::Challenge,
+    ),
+    (
+      "Go-http-client/1.1",
+      "go-get=1",
+      http::Method::POST,
+      PolicyAction::Challenge,
+    ),
+    (
+      BROWSER,
+      "go-get=1",
+      http::Method::GET,
+      PolicyAction::Challenge,
+    ),
+  ] {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("user-agent", agent.parse().unwrap());
+    let decision = engine.evaluate_context(
+      &Request {
+        trusted_peer: false,
+        host: "example.test",
+        headers: &headers,
+        path: "/group/module",
+        method: &method,
+        client_ip: None,
+        query: &rilgate_policy::conditions::Query::new(raw),
+        lookups: &rilgate_policy::Lookups::NONE,
+      },
+      0,
+    );
+    assert_eq!(decision.action, expected, "{agent}: {raw} {method}");
   }
 }
 

@@ -182,6 +182,7 @@ impl ChallengeService {
       path,
       method: &http::Method::GET,
       client_ip: None,
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     })
   }

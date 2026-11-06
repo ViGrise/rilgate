@@ -3,10 +3,12 @@ mod geo;
 mod lookups;
 mod network;
 mod numeric;
+mod query;
 mod text;
 
 pub(crate) use budget::{Budget, Scope};
 use numeric::Bounds;
+pub use query::Query;
 use text::{Field, Text};
 
 use crate::geoip::{GeoDatabase, GeoDatabases};
@@ -25,6 +27,7 @@ pub struct Request<'a> {
   pub headers: &'a HeaderMap,
   pub trusted_peer: bool,
   pub path: &'a str,
+  pub query: &'a Query<'a>,
   pub host: &'a str,
   pub method: &'a Method,
   pub client_ip: Option<IpAddr>,

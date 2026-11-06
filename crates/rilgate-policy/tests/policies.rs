@@ -60,6 +60,7 @@ policy:
       path: "/api/public",
       method: &Method::POST,
       client_ip: None,
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
@@ -75,6 +76,7 @@ policy:
       path: "/api/private/info",
       method: &Method::POST,
       client_ip: None,
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     },
     0,
@@ -104,6 +106,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
     path: "/api/users",
     method: &Method::POST,
     client_ip: Some("192.0.2.10".parse().unwrap()),
+    query: &rilgate_policy::conditions::Query::default(),
     lookups: &rilgate_policy::Lookups::NONE,
   };
   for (when, expected) in [
@@ -130,6 +133,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
   }
   let ipv6 = Request {
     client_ip: Some("2001:db8::1".parse().unwrap()),
+    query: &rilgate_policy::conditions::Query::default(),
     lookups: &rilgate_policy::Lookups::NONE,
     ..request
   };
@@ -137,6 +141,7 @@ fn string_numeric_and_ip_matchers_have_consistent_semantics() {
   let unknown = Request {
     trusted_peer: false,
     client_ip: None,
+    query: &rilgate_policy::conditions::Query::default(),
     lookups: &rilgate_policy::Lookups::NONE,
     ..ipv6
   };
@@ -296,6 +301,7 @@ fn invalid_conditions_and_excessive_evaluation_cost_are_rejected() {
 fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
   let headers = HeaderMap::new();
   let lookups = rilgate_policy::Lookups::NONE;
+  let query = rilgate_policy::conditions::Query::default();
   let request = |ip: &str| Request {
     trusted_peer: false,
     host: "example.test",
@@ -303,6 +309,7 @@ fn cidr_condition_matches_mapped_clients_and_mapped_networks() {
     path: "/",
     method: &Method::GET,
     client_ip: Some(ip.parse().unwrap()),
+    query: &query,
     lookups: &lookups,
   };
   assert!(matched(
@@ -338,6 +345,46 @@ fn condition_budget_errors_report_the_rule_path() {
 }
 
 #[test]
+fn query_conditions_match_decoded_parameters() {
+  let headers = HeaderMap::new();
+  for (raw, when, expected) in [
+    ("go-get=1", "{query: {go-get: {exact: '1'}}}", true),
+    ("go%2Dget=%31", "{query: {go-get: {exact: '1'}}}", true),
+    ("tab=code&go-get=1", "{query: {go-get: {exact: '1'}}}", true),
+    ("go-get=0", "{query: {go-get: {exact: '1'}}}", false),
+    ("Go-Get=1", "{query: {go-get: {exact: '1'}}}", false),
+    ("", "{query: {go-get: {exact: '1'}}}", false),
+    ("go-get=0&go-get=1", "{query: {go-get: {exact: '1'}}}", true),
+    ("q=a+b", "{query: {q: {exact: 'a b'}}}", true),
+    ("debug", "{query: {debug: {regex: '.*'}}}", true),
+    ("tab=code", "{not: {query: {debug: {regex: '.*'}}}}", true),
+    (
+      "title=Home&action=history",
+      "{query: {title: {regex: '.+'}, action: {exact: history}}}",
+      true,
+    ),
+    (
+      "action=history",
+      "{query: {title: {regex: '.+'}, action: {exact: history}}}",
+      false,
+    ),
+  ] {
+    let query = rilgate_policy::conditions::Query::new(raw);
+    let request = Request {
+      trusted_peer: false,
+      host: "example.test",
+      headers: &headers,
+      path: "/",
+      method: &Method::GET,
+      client_ip: None,
+      query: &query,
+      lookups: &rilgate_policy::Lookups::NONE,
+    };
+    assert_eq!(matched(when, &request, 1), expected, "{raw} with {when}");
+  }
+}
+
+#[test]
 fn edge_headers_require_a_trusted_peer() {
   let mut headers = HeaderMap::new();
   headers.insert("x-tls-sni-name", "example.com".parse().unwrap());
@@ -349,6 +396,7 @@ fn edge_headers_require_a_trusted_peer() {
       path: "/",
       method: &Method::GET,
       client_ip: None,
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     };
     assert_eq!(
@@ -374,6 +422,7 @@ fn same_as_host_ignores_port_and_case() {
       path: "/",
       method: &Method::GET,
       client_ip: None,
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     };
     assert_eq!(

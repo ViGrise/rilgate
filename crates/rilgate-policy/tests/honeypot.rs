@@ -23,6 +23,7 @@ fn decide(engine: &PolicyEngine, honeypot: Option<bool>) -> PolicyAction {
         path: "/",
         method: &Method::GET,
         client_ip: Some("192.0.2.1".parse().unwrap()),
+        query: &rilgate_policy::conditions::Query::default(),
         lookups: &lookups,
       },
       0,

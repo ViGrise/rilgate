@@ -18,6 +18,7 @@ fn decide(engine: &PolicyEngine, rates: Vec<Option<u32>>, weight: i32) -> Policy
       path: "/",
       method: &Method::GET,
       client_ip: Some("192.0.2.1".parse().unwrap()),
+      query: &rilgate_policy::conditions::Query::default(),
       lookups: &Lookups {
         rates,
         ..Lookups::NONE
@@ -152,6 +153,7 @@ fn key_parts_separate_hosts_join_networks_and_bound_header_values() {
     path: "/",
     method: &Method::GET,
     client_ip: Some("192.0.2.1".parse().unwrap()),
+    query: &rilgate_policy::conditions::Query::default(),
     lookups: &Lookups::NONE,
   };
   let key =
@@ -269,6 +271,7 @@ fn request_selection_controls_counting_and_unused_counters_are_skipped() {
     path: "/page",
     method: &Method::GET,
     client_ip: Some("192.0.2.1".parse().unwrap()),
+    query: &rilgate_policy::conditions::Query::default(),
     lookups: &Lookups::NONE,
   };
   let mut counts = [0; 3];

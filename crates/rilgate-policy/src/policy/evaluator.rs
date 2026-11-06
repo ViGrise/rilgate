@@ -376,6 +376,7 @@ impl PolicyEngine {
         path,
         method: &Method::GET,
         client_ip: None,
+        query: &crate::conditions::Query::default(),
         lookups: &Lookups::NONE,
       },
       initial_weight,
