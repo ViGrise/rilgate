@@ -26,7 +26,14 @@
   let earlierAttempts = 0;
   let currentProgress = null;
 
-  function randomxJob(job, difficulty, nonceOffset, expiresIn, receivedAt) {
+  function randomxJob(
+    job,
+    difficulty,
+    nonceOffset,
+    expiresIn,
+    receivedAt,
+    { poolTarget, startNonce = 0 } = {},
+  ) {
     const progress = { attempts: 0 };
     return {
       ...job,
@@ -34,6 +41,8 @@
       nonceOffset,
       expiresIn,
       receivedAt,
+      poolTarget,
+      startNonce,
       onProgress: (report) => reportRandomxProgress(progress, report),
     };
   }

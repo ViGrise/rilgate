@@ -90,6 +90,11 @@ async function solveJob(job) {
   ) {
     throw new Error("RandomX nonce offset is outside the hashing blob");
   }
+  const startNonce = job.startNonce ?? 0;
+  if (!Number.isInteger(startNonce) || startNonce < 0 || startNonce >= NONCE_SPACE) {
+    throw new Error("RandomX start nonce is outside the nonce space");
+  }
+  const poolThreshold = job.poolTarget === undefined ? null : poolThresholdFor(job.poolTarget);
   const target = targetFor(job.difficulty);
   const builtCache = await ensureInstance(job.seedHash, job.wasmUrl, seed);
   if (job.generation !== generation) return null;
@@ -100,7 +105,7 @@ async function solveJob(job) {
   let attempts = 0;
 
   for (
-    let nonce = (job.workerIndex || 0) * 3;
+    let nonce = startNonce + (job.workerIndex || 0) * 3;
     nonce < NONCE_SPACE;
     nonce += (job.workerCount || 1) * 3
   ) {
@@ -117,7 +122,10 @@ async function solveJob(job) {
 
     for (let lane = 0; lane < lanes; lane += 1) {
       const candidate = result.subarray(lane * 32, (lane + 1) * 32);
-      if (bytesToBigInt(candidate) <= target) {
+      if (
+        bytesToBigInt(candidate) <= target &&
+        (poolThreshold === null || bytesToBigInt(candidate.subarray(24, 32)) < poolThreshold)
+      ) {
         return {
           nonce: (nonce + lane).toString(16).padStart(8, "0"),
           result: bytesToHex(candidate),
@@ -355,6 +363,15 @@ function targetFor(difficulty) {
     throw new Error("RandomX difficulty is outside the supported range");
   }
   return (2n ** 256n - 1n) / value;
+}
+
+function poolThresholdFor(hex) {
+  if (typeof hex !== "string" || !/^(?:[a-f0-9]{8}|[a-f0-9]{16})$/i.test(hex)) {
+    throw new Error("RandomX pool target must be 4 or 8 nonzero bytes");
+  }
+  const value = bytesToBigInt(hexToBytes(hex));
+  if (value === 0n) throw new Error("RandomX pool target must be 4 or 8 nonzero bytes");
+  return hex.length === 8 ? 0xffffffffffffffffn / (0xffffffffn / value) : value;
 }
 
 function bytesToBigInt(bytes) {

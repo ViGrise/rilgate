@@ -133,7 +133,7 @@ test("a failed postMessage rejects cleanly and does not strand the next solve", 
   assert.equal((await next).nonce, "next");
 });
 
-async function workerHarness(instantiateStreaming, clock = Date, startNonce = 0) {
+async function workerHarness(instantiateStreaming, clock = Date) {
   const messages = [];
   const memory = new WebAssembly.Memory({ initial: 1 });
   const exports = {
@@ -159,10 +159,7 @@ async function workerHarness(instantiateStreaming, clock = Date, startNonce = 0)
     fetch: async () => new Response(new Uint8Array([0])),
     WebAssembly: { instantiateStreaming, instantiate: async () => ({ instance: { exports } }) },
   });
-  const source = (await readFile(workerUrl, "utf8")).replace(
-    "let nonce = (job.workerIndex || 0) * 3;",
-    `let nonce = ${startNonce};`,
-  );
+  const source = await readFile(workerUrl, "utf8");
   vm.runInContext(source, context);
   return { self, messages, memory, exports, wasmApi: context.WebAssembly };
 }
@@ -778,13 +775,9 @@ test("triple work finishing at the deadline cannot return a solution", async () 
 });
 
 test("triple search hashes the final 32-bit nonce singly without wrapping", async () => {
-  const { self, messages, exports } = await workerHarness(
-    async () => {
-      throw new Error("use buffer path");
-    },
-    Date,
-    0xfffffffc,
-  );
+  const { self, messages, exports } = await workerHarness(async () => {
+    throw new Error("use buffer path");
+  }, Date);
   tripleSupport(exports, -1, 0xfffffffc);
   let singleCalls = 0;
   const hash = exports.rx_hash;
@@ -797,7 +790,7 @@ test("triple search hashes the final 32-bit nonce singly without wrapping", asyn
     data: {
       type: "solve",
       requestId: 1,
-      job: { ...job, seedHash: job.seed_hash, wasmUrl: "test.wasm" },
+      job: { ...job, seedHash: job.seed_hash, wasmUrl: "test.wasm", startNonce: 0xfffffffc },
     },
   });
   await until(() =>

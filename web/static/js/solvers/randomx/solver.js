@@ -68,6 +68,8 @@ export async function solve(
           blob: job.blob,
           seedHash,
           difficulty: job.difficulty,
+          poolTarget: job.poolTarget,
+          startNonce: job.startNonce ?? 0,
           nonceOffset: job.nonceOffset,
           deadline:
             job.expiresIn === undefined

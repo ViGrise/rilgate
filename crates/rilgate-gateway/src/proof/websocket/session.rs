@@ -5,10 +5,12 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 type WebSocket = WebSocketStream<tokio::io::DuplexStream>;
 use futures_util::{SinkExt, StreamExt};
 use rilgate_pool::StratumEvent;
-use rilgate_pow::target::hash_meets_difficulty;
+use rilgate_pow::target::{PoolTarget, hash_meets_difficulty, hash_meets_pool_target};
 use rilgate_protocol::{PowAlgorithm, PowVerification};
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 use tokio::time::{Instant, sleep_until};
+
+const SUBMITTED_SHARES: usize = 16;
 
 pub async fn handle(socket: WebSocket, state: AppState, difficulty: u64, host: String) {
   if let Err(error) = run(socket, state, difficulty, host).await {
@@ -50,6 +52,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
   )
   .await?;
 
+  let mut submitted: VecDeque<(String, String)> = VecDeque::new();
   let mut pending_submit: Option<(u64, Instant)> = None;
 
   loop {
@@ -93,11 +96,30 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               continue;
             }
 
-            let valid_result = hex::decode(&result)
-              .is_ok_and(|hash| hash_meets_difficulty(&hash, difficulty));
-            if !stratum.is_recent_job(&job_id) || !valid_result {
+            let submitted_share = (job_id.clone(), nonce.to_ascii_lowercase());
+            if submitted.contains(&submitted_share) {
+              send_ws(
+                &mut ws_tx,
+                ServerWsMessage::Rejected {
+                  reason: "Share was already submitted".into(),
+                },
+              ).await?;
+              send_ws(
+                &mut ws_tx,
+                messages::job(stratum.current_job.clone(), difficulty, state.cfg.pow.nonce_offset),
+              ).await?;
+              continue;
+            }
+            let eligible = stratum.recent_job(&job_id).is_some_and(|job| {
+              PoolTarget::from_hex(&job.target).is_ok_and(|target| {
+                hex::decode(&result).is_ok_and(|hash| {
+                  hash_meets_difficulty(&hash, difficulty) && hash_meets_pool_target(&hash, target)
+                })
+              })
+            });
+            if !eligible {
               send_ws(&mut ws_tx, ServerWsMessage::Rejected {
-                reason: "Share must match the current job and required difficulty".into(),
+                reason: "Share must meet the pool target and the required difficulty of a recent job".into(),
               }).await?;
               send_ws(
                 &mut ws_tx,
@@ -106,6 +128,10 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               continue;
             }
             let request_id = stratum.submit_share(&job_id, &nonce, &result).await?;
+            submitted.push_back(submitted_share);
+            if submitted.len() > SUBMITTED_SHARES {
+              submitted.pop_front();
+            }
             pending_submit = Some((request_id, Instant::now() + state.cfg.pow.stratum_pool.submit_timeout));
           }
         }

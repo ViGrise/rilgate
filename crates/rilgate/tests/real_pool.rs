@@ -132,7 +132,8 @@ async fn real_pool_challenge_and_upstream() -> Result<()> {
           }
           Some("job") => message = response,
           Some("rejected")
-            if response["reason"] == "Share must match the current job and required difficulty" =>
+            if response["reason"]
+              == "Share must meet the pool target and the required difficulty of a recent job" =>
           {
             continue 'jobs;
           }

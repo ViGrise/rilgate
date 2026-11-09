@@ -9,6 +9,8 @@
     // Workers keep their cache across jobs with the same seed.
     let started = false;
     let seed = null;
+    // A resubmitted job continues after the last submitted nonce.
+    let resume = null;
 
     try {
       for (;;) {
@@ -38,6 +40,8 @@
                 if (message.type === "job") {
                   receivedJob = true;
                   failuresWithoutJob = 0;
+                  const workKey = `${message.job.job_id}|${message.job.blob}`;
+                  const startNonce = resume?.key === workKey ? resume.nonce : 0;
                   const myGeneration = ++generation;
                   window.PowClient.job({
                     id: message.job.job_id,
@@ -59,9 +63,13 @@
                       message.job,
                       message.difficulty,
                       message.nonce_offset,
+                      undefined,
+                      undefined,
+                      { poolTarget: message.job.target, startNonce },
                     ),
                   );
                   if (!solution || myGeneration !== generation || completed) return;
+                  resume = { key: workKey, nonce: parseInt(solution.nonce, 16) + 1 };
                   ws.send(
                     JSON.stringify({
                       type: "share",

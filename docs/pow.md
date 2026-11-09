@@ -165,9 +165,11 @@ WebSocket submits shares on that same pool connection. A new session can use a
 backup pool. With `verify.mode: gateway`, verification does not contact the pool and
 submits no shares. This mode earns no mining reward.
 
-A pool can change the requested difficulty. Rilgate keeps the target from the
-pool job. It reports one warning and one mismatch count per connection. The
-warning contains the pool name and requested and received difficulty.
+A pool can change the requested difficulty. The browser searches for a result that
+meets both the policy difficulty and the pool job target. A share that meets only
+one is not submitted. A rejected share continues the search on the same job.
+Rilgate reports one warning and one mismatch count per connection. The warning
+contains the pool name and requested and received difficulty.
 
 Use pools that you trust with `verify.mode: pool_share`. A pool that accepts every
 share can grant access to every client. Each failover pool can pay a different
