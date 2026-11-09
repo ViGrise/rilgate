@@ -612,3 +612,51 @@ async fn pool_target_filters_policy_only_shares_and_duplicate_submissions() {
   pool.await.unwrap();
   server.abort();
 }
+
+#[tokio::test]
+async fn keepalive_reply_does_not_reject_a_pending_share() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let (release, wait) = tokio::sync::oneshot::channel();
+  let pool = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let (read, mut writer) = socket.into_split();
+    let mut reader = BufReader::new(read);
+    read_json(&mut reader).await;
+    write_json(
+      &mut writer,
+      json!({"id":1,"result":{"id":"miner","extensions":["keepalive"],"job":job("first")}}),
+    )
+    .await;
+    let submit = read_json(&mut reader).await;
+    assert_eq!(submit["method"], "submit");
+    write_json(
+      &mut writer,
+      json!({"id":999,"result":{"status":"KEEPALIVED"}}),
+    )
+    .await;
+    write_json(&mut writer, json!({"id":submit["id"],"error":"rejected"})).await;
+    wait.await.unwrap();
+  });
+  let (mut ws, _, server) = browser(port).await;
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Job { .. }
+  ));
+  share(&mut ws, "first", &"00".repeat(32)).await;
+  assert!(
+    matches!(message(&mut ws).await, ServerWsMessage::Rejected { reason } if reason == "\"rejected\"")
+  );
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Job { .. }
+  ));
+  assert!(
+    tokio::time::timeout(Duration::from_millis(50), ws.next())
+      .await
+      .is_err()
+  );
+  release.send(()).unwrap();
+  pool.await.unwrap();
+  server.abort();
+}

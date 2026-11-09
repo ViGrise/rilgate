@@ -160,10 +160,11 @@ fails with `work_unavailable` on both paths while every pool is unavailable.
 ### Pool selection
 
 Configure a pool list with ordered backups. A pooled job session stays on the
-pool that supplied its jobs. With `verify.mode: pool_share`, the browser
-WebSocket submits shares on that same pool connection. A new session can use a
-backup pool. With `verify.mode: gateway`, verification does not contact the pool and
-submits no shares. This mode earns no mining reward.
+pool that supplied its jobs. The login requests `rx/0`. Rilgate sends a keepalive
+every 60 seconds when the pool advertises the `keepalive` extension. With
+`verify.mode: pool_share`, the browser WebSocket submits shares on that same pool
+connection. A new session can use a backup pool. With `verify.mode: gateway`,
+verification does not contact the pool and submits no shares. This mode earns no mining reward.
 
 A pool can change the requested difficulty. The browser searches for a result that
 meets both the policy difficulty and the pool job target. A share that meets only

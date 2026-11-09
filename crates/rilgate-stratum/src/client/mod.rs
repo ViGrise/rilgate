@@ -17,6 +17,7 @@ use rilgate_protocol::StratumJob;
 
 // Shares for the last jobs go to the pool, which decides whether each job is still valid.
 const RECENT_JOBS: usize = 3;
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 pub enum StratumEvent {
@@ -33,6 +34,8 @@ pub struct StratumSession {
   writer: WriteHalf<Stream>,
   pub rpc_id: String,
   next_request_id: u64,
+  keepalive: bool,
+  pending_keepalive: Option<u64>,
   pub current_job: StratumJob,
   recent_jobs: VecDeque<StratumJob>,
   submit_timeout: Duration,
@@ -93,6 +96,7 @@ impl StratumSession {
         "login": user,
         "pass": pass,
         "agent": cfg.agent.clone(),
+        "algo": ["rx/0"],
       }
     });
 
@@ -117,6 +121,11 @@ impl StratumSession {
       .get("result")
       .ok_or_else(|| anyhow!("Stratum pool login response has no result"))?;
 
+    let keepalive = result
+      .get("extensions")
+      .and_then(Value::as_array)
+      .is_some_and(|extensions| extensions.iter().any(|extension| extension == "keepalive"));
+
     let rpc_id = result
       .get("id")
       .and_then(Value::as_str)
@@ -134,6 +143,8 @@ impl StratumSession {
       writer,
       rpc_id,
       next_request_id: 2,
+      keepalive,
+      pending_keepalive: None,
       recent_jobs: VecDeque::from([current_job.clone()]),
       current_job,
       submit_timeout: cfg.submit_timeout,
@@ -172,6 +183,34 @@ impl StratumSession {
     }
   }
 
+  pub fn keepalive_interval(&self) -> Option<Duration> {
+    self.keepalive.then_some(KEEPALIVE_INTERVAL)
+  }
+
+  pub async fn send_keepalive(&mut self) -> Result<()> {
+    if self.pending_keepalive.is_some() {
+      return Ok(());
+    }
+    let id = self.next_request_id;
+    self.next_request_id = id
+      .checked_add(1)
+      .ok_or_else(|| anyhow!("Stratum request id exhausted"))?;
+    let keepalive = json!({
+      "id": id,
+      "jsonrpc": "2.0",
+      "method": "keepalived",
+      "params": {"id": self.rpc_id},
+    });
+    timeout(
+      self.submit_timeout,
+      write_json_line(&mut self.writer, &keepalive),
+    )
+    .await
+    .context("Stratum pool keepalive write timed out")??;
+    self.pending_keepalive = Some(id);
+    Ok(())
+  }
+
   pub async fn read_event(&mut self) -> Result<StratumEvent> {
     loop {
       let message = self.reader.next_json().await?;
@@ -191,6 +230,10 @@ impl StratumSession {
       }
 
       if let Some(id) = message.get("id").and_then(Value::as_u64) {
+        if self.pending_keepalive == Some(id) {
+          self.pending_keepalive = None;
+          continue;
+        }
         let error = message
           .get("error")
           .filter(|value| !value.is_null())

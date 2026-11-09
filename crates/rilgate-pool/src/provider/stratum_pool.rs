@@ -271,6 +271,8 @@ async fn run_session(
     .unwrap_or_else(|error| error.into_inner())
     .last_requested = Instant::now();
   jobs.send_replace(Some(session.current_job.clone()));
+  let keepalive = session.keepalive_interval();
+  let mut next_keepalive = keepalive.map(|interval| Instant::now() + interval);
   loop {
     let deadline = lifetime
       .0
@@ -292,6 +294,19 @@ async fn run_session(
         if idle {
           return;
         }
+      }
+      _ = async {
+        if let Some(deadline) = next_keepalive {
+          tokio::time::sleep_until(deadline).await;
+        } else {
+          std::future::pending::<()>().await;
+        }
+      } => {
+        if session.send_keepalive().await.is_err() {
+          tracing::debug!("Pooled Stratum pool keepalive failed");
+          return;
+        }
+        next_keepalive = keepalive.map(|interval| Instant::now() + interval);
       }
       event = session.read_event() => {
         if event.is_err() {
