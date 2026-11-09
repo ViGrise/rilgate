@@ -434,3 +434,29 @@ async fn keepalive_replies_are_consumed_before_job_events() {
     .unwrap();
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn nicehash_nonce_allocation_rejects_the_pool_login() {
+  use rilgate_stratum::StratumSession;
+  use serde_json::json;
+  use tokio::io::{AsyncBufReadExt, BufReader};
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let cfg = config(listener.local_addr().unwrap().port());
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let (read, mut write) = socket.into_split();
+    let mut reader = BufReader::new(read).lines();
+    reader.next_line().await.unwrap().unwrap();
+    let response = json!({"id":1,"result":{"id":"miner","extensions":["nicehash"],"job":{"blob":"00".repeat(64),"job_id":"first","seed_hash":"ab".repeat(32),"target":"ffffffff"}}});
+    write
+      .write_all(format!("{response}\n").as_bytes())
+      .await
+      .unwrap();
+  });
+  let error = StratumSession::connect(&cfg, 1000).await.err().unwrap();
+  assert_eq!(
+    error.to_string(),
+    "Stratum pool requires NiceHash nonce allocation, which Rilgate does not support"
+  );
+  server.await.unwrap();
+}

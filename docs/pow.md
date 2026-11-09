@@ -173,8 +173,10 @@ Rilgate reports one warning and one mismatch count per connection. The warning
 contains the pool name and requested and received difficulty.
 
 Use pools that you trust with `verify.mode: pool_share`. A pool that accepts every
-share can grant access to every client. Each failover pool can pay a different
-wallet. See [pool configuration](configuration.md#stratum-pools-and-proxies).
+share can grant access to every client. Pools and proxies that require NiceHash
+nonce allocation are not supported. Rilgate rejects their login and tries the
+next pool. Each failover pool can pay a different wallet.
+See [pool configuration](configuration.md#stratum-pools-and-proxies).
 
 P2Pool sets the payout wallet on the node with `--wallet` and ignores a login
 wallet. Use `x+{difficulty}` with P2Pool. Other pools can require a wallet in
