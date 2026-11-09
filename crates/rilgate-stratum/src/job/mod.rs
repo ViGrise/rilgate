@@ -29,6 +29,9 @@ pub(crate) fn parse_job(value: &Value) -> Result<StratumJob> {
       "Stratum pool job has invalid blob, seed, or target lengths"
     ));
   }
+  if target.iter().all(|byte| *byte == 0) {
+    return Err(anyhow!("Stratum pool job has a zero target"));
+  }
   if job.job_id.is_empty() || job.algo.as_deref().is_some_and(|algo| algo != "rx/0") {
     return Err(anyhow!(
       "Stratum pool job requires a job id and RandomX v1 algorithm"
@@ -51,6 +54,7 @@ mod tests {
       ("algo", "rx/wow"),
       ("job_id", ""),
       ("target", "ff"),
+      ("target", "00000000"),
     ] {
       let mut malformed = valid.clone();
       malformed[field] = Value::String(value.into());

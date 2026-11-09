@@ -34,7 +34,7 @@ pub struct StratumSession {
   pub rpc_id: String,
   next_request_id: u64,
   pub current_job: StratumJob,
-  recent_job_ids: VecDeque<String>,
+  recent_jobs: VecDeque<StratumJob>,
   submit_timeout: Duration,
   pool_name: String,
   requested_difficulty: u64,
@@ -126,7 +126,7 @@ impl StratumSession {
       writer,
       rpc_id,
       next_request_id: 2,
-      recent_job_ids: VecDeque::from([current_job.job_id.clone()]),
+      recent_jobs: VecDeque::from([current_job.clone()]),
       current_job,
       submit_timeout: cfg.submit_timeout,
       pool_name: cfg.name.clone(),
@@ -173,9 +173,9 @@ impl StratumSession {
           .get("params")
           .ok_or_else(|| anyhow!("Stratum job notification has no params"))?;
         let job = parse_job(params)?;
-        self.recent_job_ids.push_back(job.job_id.clone());
-        if self.recent_job_ids.len() > RECENT_JOBS {
-          self.recent_job_ids.pop_front();
+        self.recent_jobs.push_back(job.clone());
+        if self.recent_jobs.len() > RECENT_JOBS {
+          self.recent_jobs.pop_front();
         }
         self.current_job = job.clone();
         self.observe_difficulty();
@@ -204,8 +204,12 @@ impl StratumSession {
     }
   }
 
-  pub fn is_recent_job(&self, job_id: &str) -> bool {
-    self.recent_job_ids.iter().any(|recent| recent == job_id)
+  pub fn recent_job(&self, job_id: &str) -> Option<&StratumJob> {
+    self
+      .recent_jobs
+      .iter()
+      .rev()
+      .find(|job| job.job_id == job_id)
   }
 
   pub async fn submit_share(&mut self, job_id: &str, nonce: &str, result: &str) -> Result<u64> {
@@ -219,7 +223,7 @@ impl StratumSession {
       ));
     }
 
-    if !self.is_recent_job(job_id) {
+    if self.recent_job(job_id).is_none() {
       return Err(anyhow!("Share refers to a stale Stratum pool job"));
     }
     // Stratum encodes the nonce's little-endian bytes, while gateway clients use a numeric hex value.

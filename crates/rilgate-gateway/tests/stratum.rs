@@ -552,3 +552,63 @@ async fn unavailable_pools_send_a_work_unavailable_websocket_error() {
   );
   server.abort();
 }
+
+#[tokio::test]
+async fn pool_target_filters_policy_only_shares_and_duplicate_submissions() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let (release, wait) = tokio::sync::oneshot::channel();
+  let pool = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let (read, mut writer) = socket.into_split();
+    let mut reader = BufReader::new(read);
+    read_json(&mut reader).await;
+    let mut work = job("first");
+    work["target"] = json!("b88d0600");
+    write_json(
+      &mut writer,
+      json!({"id":1,"result":{"id":"miner","job":work}}),
+    )
+    .await;
+    let submit = read_json(&mut reader).await;
+    assert_eq!(submit["method"], "submit");
+    assert_eq!(
+      submit["params"]["result"],
+      format!("{}0000000000000400", "00".repeat(24))
+    );
+    write_json(&mut writer, json!({"id":submit["id"],"error":"rejected"})).await;
+    wait.await.unwrap();
+    assert!(
+      tokio::time::timeout(Duration::from_millis(50), read_json(&mut reader))
+        .await
+        .is_err()
+    );
+  });
+  let (mut ws, _, server) = browser(port).await;
+  message(&mut ws).await;
+  share(
+    &mut ws,
+    "first",
+    &format!("{}0000000000004000", "00".repeat(24)),
+  )
+  .await;
+  assert!(
+    matches!(message(&mut ws).await, ServerWsMessage::Rejected { reason } if reason == "Share must meet the pool target and the required difficulty of a recent job")
+  );
+  message(&mut ws).await;
+  let result = format!("{}0000000000000400", "00".repeat(24));
+  share(&mut ws, "first", &result).await;
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Rejected { .. }
+  ));
+  message(&mut ws).await;
+  share(&mut ws, "first", &result).await;
+  assert!(
+    matches!(message(&mut ws).await, ServerWsMessage::Rejected { reason } if reason == "Share was already submitted")
+  );
+  message(&mut ws).await;
+  release.send(()).unwrap();
+  pool.await.unwrap();
+  server.abort();
+}

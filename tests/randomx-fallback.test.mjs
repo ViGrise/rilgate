@@ -531,3 +531,99 @@ test("five sessions without a job reload once and then report a resume failure",
     assert.equal(page.cancels(), 1);
   }
 });
+
+test("rejected pool shares resume the same job after the submitted nonce", async () => {
+  const source = await readFile(
+    new URL("../web/static/js/challenge/stratum-pool.js", import.meta.url),
+    "utf8",
+  );
+  const events = [];
+  const solvedJobs = [];
+  let submissions = 0;
+  const states = [];
+  class WebSocket {
+    addEventListener(type, listener) {
+      if (type === "open") queueMicrotask(listener);
+      if (type === "message") {
+        this.onmessage = listener;
+        queueMicrotask(() =>
+          listener({
+            data: JSON.stringify({
+              type: "job",
+              job: {
+                job_id: "job",
+                blob: "00000000",
+                seed_hash: "00".repeat(32),
+                target: "b88d0600",
+              },
+              difficulty: 1,
+              nonce_offset: 0,
+            }),
+          }),
+        );
+      }
+    }
+    removeEventListener() {}
+    send(data) {
+      const message = JSON.parse(data);
+      assert.equal(message.type, "share");
+      events.push(message.type);
+      queueMicrotask(() => {
+        if (submissions++ === 0) {
+          this.onmessage({ data: JSON.stringify({ type: "rejected" }) });
+          this.onmessage({
+            data: JSON.stringify({
+              type: "job",
+              job: {
+                job_id: "job",
+                blob: "00000000",
+                seed_hash: "00".repeat(32),
+                target: "b88d0600",
+              },
+              difficulty: 1,
+              nonce_offset: 0,
+            }),
+          });
+        } else this.onmessage({ data: JSON.stringify({ type: "accepted", receipt: "receipt" }) });
+      });
+    }
+    close() {}
+  }
+  const window = {
+    POW_BRAND_ID: "rilgate",
+    POW_PRESENTATION_TOKEN: "presentation",
+    PowClient: {
+      job() {},
+      state(name) {
+        states.push(name);
+        events.push(name);
+      },
+      endpoint: (path) => path,
+      exchange: async (receipt) => {
+        assert.equal(receipt, "receipt");
+        events.push("exchange");
+      },
+      once: (target, type, listener) => target.addEventListener(type, listener),
+      randomxJob: (job, _difficulty, _offset, _expires, _received, options) => ({
+        ...job,
+        ...options,
+      }),
+      solveRandomX: (solver, job) => solver.solve(job),
+    },
+  };
+  vm.runInNewContext(source, {
+    window,
+    location: { protocol: "https:", host: "example.test" },
+    WebSocket,
+  });
+  await window.PowClient.stratumPoolAccepted({
+    solve: async (job) => {
+      solvedJobs.push(job);
+      return { nonce: "00000007", result: "00".repeat(32) };
+    },
+  });
+  assert.equal(solvedJobs.length, 2);
+  assert.equal(solvedJobs[0].startNonce, 0);
+  assert.equal(solvedJobs[1].startNonce, 8);
+  assert.equal(solvedJobs[1].poolTarget, "b88d0600");
+});

@@ -3522,6 +3522,7 @@ name = "rilgate-pow"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "hex",
  "rilgate-core",
  "rilgate-protocol",
  "serde",

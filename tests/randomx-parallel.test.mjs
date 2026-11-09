@@ -353,3 +353,63 @@ test("a superseded solve reuses workers and leaves the replacement job running",
   assert.equal((await second).nonce, "winner");
   vm.runInContext("cancel()", context);
 });
+
+test("resumed workers start at distinct groups after the submitted nonce", async () => {
+  for (const workerIndex of [0, 1]) {
+    const seen = [];
+    const context = vm.createContext({
+      self: { postMessage() {} },
+      Uint8Array,
+      Date,
+      record: (nonce) => seen.push(nonce),
+    });
+    vm.runInContext(
+      workerSource +
+        `
+      ensureInstance = async () => {};
+      hash = (_blob, output, _offset, nonce) => { record(nonce); output.fill(0); };
+    `,
+      context,
+    );
+    await vm.runInContext(
+      `solveJob({blob:"00000000",seedHash:"00".repeat(32),difficulty:1,nonceOffset:0,startNonce:7,workerIndex:${workerIndex},workerCount:2,generation:0})`,
+      context,
+    );
+    assert.deepEqual(seen, [7 + workerIndex * 3]);
+  }
+});
+
+test("pool targets use miner thresholds and exclude policy-only candidates", async () => {
+  const context = vm.createContext({ self: { postMessage() {} }, Uint8Array, Date });
+  vm.runInContext(workerSource, context);
+  for (const [hex, threshold] of [
+    ["ffffffff", 18446744073709551615n],
+    ["b88d0600", 1844674407370955n],
+    ["c5a70000", 184465596081134n],
+    ["0000000000010000", 1099511627776n],
+  ]) {
+    assert.equal(vm.runInContext(`poolThresholdFor("${hex}")`, context), threshold);
+  }
+  vm.runInContext(
+    `
+    ensureInstance = async () => {};
+    hash = (_blob, output) => { output.fill(0); for (let offset = 30; offset < output.length; offset += 32) output[offset] = 0x40; };
+    yieldToEventLoop = async () => { generation += 1; };
+  `,
+    context,
+  );
+  const result = await vm.runInContext(
+    `solveJob({blob:"00000000",seedHash:"00".repeat(32),difficulty:1000,nonceOffset:0,poolTarget:"b88d0600",generation:0})`,
+    context,
+  );
+  assert.equal(result, null);
+  vm.runInContext(
+    `hash = (_blob, output) => { output.fill(0); for (let offset = 30; offset < output.length; offset += 32) output[offset] = 0x04; };`,
+    context,
+  );
+  const accepted = await vm.runInContext(
+    `solveJob({blob:"00000000",seedHash:"00".repeat(32),difficulty:1000,nonceOffset:0,poolTarget:"b88d0600",generation})`,
+    context,
+  );
+  assert.equal(accepted?.nonce, "00000000");
+});
