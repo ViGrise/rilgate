@@ -816,3 +816,79 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
   }
   origin_task.abort();
 }
+
+#[tokio::test]
+async fn nicehash_pool_fails_over_to_supported_work_for_a_challenge() {
+  use rilgate_config::PowAlgorithm;
+  use rilgate_protocol::ChallengeResponse;
+  use rilgate_test_utils::gateway::service as make_service;
+  use std::sync::Arc;
+
+  let first = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let second = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = common::config();
+  let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
+  pow.stratum_pool.pools[0].port = first.local_addr().unwrap().port();
+  let mut backup = pow.stratum_pool.pools[0].clone();
+  backup.name = "backup".into();
+  backup.port = second.local_addr().unwrap().port();
+  pow.stratum_pool.pools.push(backup);
+  let choice = pow.policy.policy.rules.as_mut().unwrap()[0]
+    .challenge
+    .as_mut()
+    .unwrap();
+  choice.algorithm = Some(PowAlgorithm::RandomX);
+  choice.difficulty = Some(1000);
+  let unsupported = tokio::spawn(async move {
+    let (socket, _) = first.accept().await.unwrap();
+    let mut reader = BufReader::new(socket);
+    let mut line = String::new();
+    reader.read_line(&mut line).await.unwrap();
+    let response =
+      json!({"id":1,"result":{"id":"miner","extensions":["nicehash"],"job":job("unsupported")}});
+    reader
+      .get_mut()
+      .write_all(format!("{response}\n").as_bytes())
+      .await
+      .unwrap();
+  });
+  let supported = tokio::spawn(async move {
+    let (socket, _) = second.accept().await.unwrap();
+    let mut reader = BufReader::new(socket);
+    let mut line = String::new();
+    reader.read_line(&mut line).await.unwrap();
+    let response = json!({"id":1,"result":{"id":"miner","job":job("backup-job")}});
+    reader
+      .get_mut()
+      .write_all(format!("{response}\n").as_bytes())
+      .await
+      .unwrap();
+    assert_eq!(reader.read(&mut [0; 1]).await.unwrap(), 0);
+  });
+  let service = make_service(&cfg).unwrap();
+  let decision = service.evaluate_request(&Default::default(), "/protected");
+  let presentation = service
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap()
+    .token;
+  let ChallengeResponse::Randomx { job, .. } = tokio::time::timeout(
+    Duration::from_secs(3),
+    service.issue_challenge(&presentation, "example.test"),
+  )
+  .await
+  .unwrap()
+  .unwrap() else {
+    panic!("expected RandomX work");
+  };
+  assert_eq!(job.job_id, "backup-job");
+  drop(service);
+  unsupported.await.unwrap();
+  supported.await.unwrap();
+}

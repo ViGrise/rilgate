@@ -121,9 +121,13 @@ impl StratumSession {
       .get("result")
       .ok_or_else(|| anyhow!("Stratum pool login response has no result"))?;
 
-    let keepalive = result
-      .get("extensions")
-      .and_then(Value::as_array)
+    let extensions = result.get("extensions").and_then(Value::as_array);
+    anyhow::ensure!(
+      !extensions
+        .is_some_and(|extensions| extensions.iter().any(|extension| extension == "nicehash")),
+      "Stratum pool requires NiceHash nonce allocation, which Rilgate does not support"
+    );
+    let keepalive = extensions
       .is_some_and(|extensions| extensions.iter().any(|extension| extension == "keepalive"));
 
     let rpc_id = result

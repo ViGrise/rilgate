@@ -193,8 +193,8 @@ impl Connections {
       match result {
         Ok(Some(session)) => return Ok(session),
         Ok(None) => break,
-        Err(_) => {
-          tracing::warn!(pool = %pool.name, "Stratum pool connection or login failed");
+        Err(error) => {
+          tracing::warn!(pool = %pool.name, error = %format!("{error:#}"), "Stratum pool connection or login failed");
         }
       }
     }
