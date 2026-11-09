@@ -55,6 +55,8 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
   let mut submitted: VecDeque<(String, String)> = VecDeque::new();
   let mut pending_submit: Option<(u64, Instant)> = None;
 
+  let keepalive = stratum.keepalive_interval();
+  let mut next_keepalive = keepalive.map(|interval| Instant::now() + interval);
   loop {
     tokio::select! {
       _ = sleep_until(session_deadline) => {
@@ -70,6 +72,16 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
       } => {
         send_ws(&mut ws_tx, ServerWsMessage::Error { code: None, message: "Stratum pool share acceptance timed out".into() }).await?;
         return Ok(());
+      }
+      _ = async {
+        if let Some(deadline) = next_keepalive {
+          sleep_until(deadline).await;
+        } else {
+          std::future::pending::<()>().await;
+        }
+      } => {
+        stratum.send_keepalive().await?;
+        next_keepalive = keepalive.map(|interval| Instant::now() + interval);
       }
       browser = ws_rx.next() => {
         let Some(browser) = browser else {

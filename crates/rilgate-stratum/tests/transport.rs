@@ -382,3 +382,55 @@ async fn login_substitutes_the_password_difficulty() {
   StratumSession::connect(&cfg, 1000).await.unwrap();
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn keepalive_replies_are_consumed_before_job_events() {
+  use rilgate_stratum::{StratumEvent, StratumSession};
+  use serde_json::json;
+  use tokio::io::{AsyncBufReadExt, BufReader};
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let cfg = config(listener.local_addr().unwrap().port());
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let (read, mut write) = socket.into_split();
+    let mut reader = BufReader::new(read).lines();
+    let login: serde_json::Value =
+      serde_json::from_str(&reader.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(login["params"]["algo"], json!(["rx/0"]));
+    let job = json!({"blob":"00".repeat(64),"job_id":"first","seed_hash":"ab".repeat(32),"target":"ffffffff"});
+    let response = json!({"id":1,"result":{"id":"miner","extensions":["keepalive"],"job":job}});
+    write
+      .write_all(format!("{response}\n").as_bytes())
+      .await
+      .unwrap();
+    let keepalive: serde_json::Value =
+      serde_json::from_str(&reader.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(
+      keepalive,
+      json!({"id":2,"jsonrpc":"2.0","method":"keepalived","params":{"id":"miner"}})
+    );
+    let response = json!({"id":keepalive["id"],"result":{"status":"KEEPALIVED"}});
+    let notification = json!({"method":"job","params":job});
+    write
+      .write_all(format!("{response}\n{notification}\n").as_bytes())
+      .await
+      .unwrap();
+    let submit: serde_json::Value =
+      serde_json::from_str(&reader.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(submit["method"], "submit");
+    assert_eq!(submit["id"], 3);
+  });
+  let mut session = StratumSession::connect(&cfg, 1000).await.unwrap();
+  assert_eq!(session.keepalive_interval(), Some(Duration::from_secs(60)));
+  session.send_keepalive().await.unwrap();
+  session.send_keepalive().await.unwrap();
+  assert!(matches!(
+    session.read_event().await.unwrap(),
+    StratumEvent::Job(_)
+  ));
+  session
+    .submit_share("first", "01020304", &"00".repeat(32))
+    .await
+    .unwrap();
+  server.await.unwrap();
+}
