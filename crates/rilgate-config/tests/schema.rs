@@ -655,17 +655,27 @@ fn renamed_pool_keys_fail_with_the_new_name() {
 
 #[test]
 fn pool_login_templates_reject_ambiguous_difficulty_and_hide_operator_identity() {
-  for user in [
-    "wallet",
-    "{difficulty}{difficulty}",
-    "{wallet}+{difficulty}",
-  ] {
+  for user in ["{difficulty}{difficulty}", "{wallet}+{difficulty}"] {
     let text = format!(
       "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: '{user}'}}\n"
     );
     let error = format!("{:#}", resolve(&text).unwrap_err());
     assert!(error.contains("login.user"), "{error}");
     assert!(!error.contains(user), "{error}");
+  }
+  for password in ["d={difficulty}{difficulty}", "{worker}"] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: wallet, password: '{password}'}}\n"
+    );
+    let error = format!("{:#}", resolve(&text).unwrap_err());
+    assert!(error.contains("login.password"), "{error}");
+    assert!(!error.contains(password), "{error}");
+  }
+  for password in ["d={difficulty}", "x"] {
+    let text = format!(
+      "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: wallet, password: '{password}'}}\n"
+    );
+    assert!(resolve(&text).is_ok());
   }
   let text = format!(
     "{BASE}pow:\n  stratum_pool:\n    pools:\n      - name: primary\n        address: localhost:3333\n        login: {{user: 'private-wallet+{{difficulty}}', password: private-password}}\n"
@@ -798,7 +808,7 @@ fn resolution_errors_attribute_only_settings_inside_the_error_path() {
   for (text, settings, expected, unrelated) in [
     (
       format!(
-        "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, login: {{user: invalid}}}}]\n"
+        "{BASE}pow:\n  stratum_pool:\n    pools: [{{name: pool, address: localhost:3333, login: {{user: ''}}}}]\n"
       ),
       vec![
         setting(
@@ -806,11 +816,7 @@ fn resolution_errors_attribute_only_settings_inside_the_error_path() {
           "ADDRESS_SOURCE",
           "localhost:3333",
         ),
-        setting(
-          "pow.stratum_pool.pools.0.login.user",
-          "LOGIN_SOURCE",
-          "invalid",
-        ),
+        setting("pow.stratum_pool.pools.0.login.user", "LOGIN_SOURCE", ""),
         setting(
           "pow.stratum_pool.pools.0.login.password",
           "PASSWORD_SOURCE",

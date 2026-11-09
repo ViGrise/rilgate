@@ -77,13 +77,21 @@ impl StratumSession {
       (1..=256).contains(&user.len()),
       "Stratum pool login must be 1 to 256 bytes"
     );
+    let pass = cfg
+      .password
+      .expose()
+      .replace("{difficulty}", &difficulty.to_string());
+    anyhow::ensure!(
+      pass.len() <= 256,
+      "Stratum pool password must be at most 256 bytes"
+    );
     let login = json!({
       "id": 1,
       "jsonrpc": "2.0",
       "method": "login",
       "params": {
         "login": user,
-        "pass": cfg.password.expose(),
+        "pass": pass,
         "agent": cfg.agent.clone(),
       }
     });

@@ -177,7 +177,9 @@ wallet. See [pool configuration](configuration.md#stratum-pools-and-proxies).
 
 P2Pool sets the payout wallet on the node with `--wallet` and ignores a login
 wallet. Use `x+{difficulty}` with P2Pool. Other pools can require a wallet in
-`login.user`. Copy the login format from that pool's setup instructions.
+`login.user`. Pools that read difficulty from the password use `{difficulty}` in
+`login.password`. Pools that set difficulty need no placeholder. Copy the login
+format from that pool's setup instructions.
 
 ### Hybrid escalation
 
