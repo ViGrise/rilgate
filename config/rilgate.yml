@@ -775,13 +775,16 @@ server:
         #
         # address: 127.0.0.1:3333
         # login:
-          # Exactly one {difficulty} is required. No other placeholders are
-          # allowed. The substituted login must fit in 256 bytes.
+          # Each user and password accepts at most one {difficulty}.
+          # Use only this placeholder; omit it when the pool sets difficulty.
+          # The substituted user is 1..256 bytes; the password is 0..256 bytes.
           # P2Pool sets its wallet on the node. Other pools can need a wallet
           # in this template. Use an environment reference for private data.
           #
           # user: "x+{difficulty}"
           # password: x
+          # Example, not a default.
+          # password: "d={difficulty}"
 
         # Mutual TLS credentials.
         #

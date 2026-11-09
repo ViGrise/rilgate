@@ -355,3 +355,30 @@ async fn shares_for_recent_jobs_reach_the_pool_and_older_jobs_are_rejected() {
     .unwrap();
   server.await.unwrap();
 }
+
+#[tokio::test]
+async fn login_substitutes_the_password_difficulty() {
+  use rilgate_stratum::StratumSession;
+  use serde_json::json;
+  use tokio::io::{AsyncBufReadExt, BufReader};
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let mut cfg = config(listener.local_addr().unwrap().port());
+  cfg.user = Secret("wallet".into());
+  cfg.password = Secret("d={difficulty}".into());
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    let (read, mut write) = socket.into_split();
+    let mut reader = BufReader::new(read).lines();
+    let login: serde_json::Value =
+      serde_json::from_str(&reader.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(login["params"]["login"], "wallet");
+    assert_eq!(login["params"]["pass"], "d=1000");
+    let response = json!({"id":1,"result":{"id":"miner","job":{"blob":"00".repeat(64),"job_id":"first","seed_hash":"ab".repeat(32),"target":"ffffffff"}}});
+    write
+      .write_all(format!("{response}\n").as_bytes())
+      .await
+      .unwrap();
+  });
+  StratumSession::connect(&cfg, 1000).await.unwrap();
+  server.await.unwrap();
+}

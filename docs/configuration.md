@@ -712,10 +712,12 @@ in order. Each entry requires a unique `name` and an `address`. Names use 1 to
 64 lowercase ASCII letters, digits, hyphens or underscores. An address is
 `HOST:PORT` or `[IPv6]:PORT`. It has no scheme, credentials or path.
 
-`login.user` defaults to `x+{difficulty}`. It must contain `{difficulty}` exactly
-once, with no other placeholders. The substituted value must fit in 256 bytes.
-Environment references resolve first. `login.password` defaults to `x`.
-Both login fields are secrets in displayed configuration.
+`login.user` defaults to `x+{difficulty}` and `login.password` defaults to `x`.
+Each field accepts zero or one `{difficulty}` placeholder; other braces are invalid.
+Both fields receive the same decimal difficulty. After substitution, the user must
+contain 1 to 256 bytes and the password 0 to 256 bytes. Omit the placeholder when
+the pool sets difficulty. Environment references resolve first, and displayed
+configuration hides both fields.
 
 | Pool field | Default | Operation |
 | --- | --- | --- |

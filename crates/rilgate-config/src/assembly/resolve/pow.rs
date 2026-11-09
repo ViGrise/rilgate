@@ -52,9 +52,8 @@ impl Document {
         .map_err(|_| anyhow::anyhow!("{path}.address: expected HOST:PORT or [IPv6]:PORT"))?;
       ensure!(url.host_str().is_some() && url.port().is_some() && url.username().is_empty() && url.password().is_none() && url.path().is_empty() && url.query().is_none() && url.fragment().is_none(), "{path}.address: expected HOST:PORT without credentials or a path");
       entry.tls.validate().with_context(|| format!("{path}.tls.server_name"))?;
-      let user = entry.login.user.expose();
-      let remainder = user.replace("{difficulty}", "");
-      ensure!(user.matches("{difficulty}").count() == 1 && !remainder.contains(['{', '}']) && remainder.len() + difficulty_digits <= 256, "{path}.login.user: expected exactly one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
+      ensure!(login_template_length(entry.login.user.expose(), difficulty_digits).is_some_and(|length| (1..=256).contains(&length)), "{path}.login.user: expected at most one {{difficulty}}, no other placeholders, and 1 to 256 bytes after substitution");
+      ensure!(login_template_length(entry.login.password.expose(), difficulty_digits).is_some_and(|length| length <= 256), "{path}.login.password: expected at most one {{difficulty}}, no other placeholders, and at most 256 bytes after substitution");
       if let Some(proxies) = &entry.proxies { validate_proxies(proxies, &format!("{path}.proxies"))?; }
       Ok(rilgate_pool::StratumConfig {
         name: entry.name.clone(),
@@ -177,6 +176,15 @@ impl Document {
       },
     })
   }
+}
+
+fn login_template_length(template: &str, difficulty_digits: usize) -> Option<usize> {
+  let placeholders = template.matches("{difficulty}").count();
+  let remainder = template.replace("{difficulty}", "");
+  if placeholders > 1 || remainder.contains(['{', '}']) {
+    return None;
+  }
+  Some(remainder.len() + placeholders * difficulty_digits)
 }
 
 fn valid_name(name: &str) -> bool {
