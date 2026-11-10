@@ -5,8 +5,8 @@ use std::path::PathBuf;
 /// Proof-of-work reverse proxy gateway.
 ///
 /// Settings come from the YAML file, then environment variables, then flags;
-/// each later source overrides the earlier one. Policy rules, IP sets and
-/// signing key rotation are configured in YAML only.
+/// each later source overrides the earlier one. Maps and lists of maps, such as
+/// policy rules, IP sets and challenge hooks, are configured in YAML only.
 #[derive(Parser, Debug)]
 #[command(version = crate::VERSION, about, long_about)]
 pub struct Args {

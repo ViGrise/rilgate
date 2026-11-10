@@ -34,6 +34,8 @@ const SITE: &str = "Site";
 const SECURITY: &str = "Security";
 const POW: &str = "Proof of work";
 const POOL: &str = "Stratum pool";
+const SIGNALS: &str = "Signals";
+const POLICY: &str = "Policy";
 
 macro_rules! spec {
   ($heading:expr, $kind:ident, $path:literal, $flag:literal, $env:literal, $short:expr, $help:literal) => {
@@ -93,7 +95,19 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(SITE, List, "site.i18n.supported", "site-i18n-supported", "RILGATE_SITE_I18N_SUPPORTED", None, "Supported locales; empty discovers them from resources"),
   spec!(SITE, Switch, "site.i18n.strict", "site-i18n-strict", "RILGATE_SITE_I18N_STRICT", None, "Fail on missing translations"),
   spec!(SITE, Text, "site.i18n.cookie", "site-i18n-cookie", "RILGATE_SITE_I18N_COOKIE", None, "Locale cookie name"),
+  spec!(SITE, Switch, "site.open_graph.enabled", "site-open-graph-enabled", "RILGATE_SITE_OPEN_GRAPH_ENABLED", None, "Show upstream preview metadata on HTML challenge pages"),
+  spec!(SITE, Text, "site.open_graph.ttl", "site-open-graph-ttl", "RILGATE_SITE_OPEN_GRAPH_TTL", None, "Cache lifetime for fetched preview metadata"),
+  spec!(SITE, Text, "site.open_graph.negative_ttl", "site-open-graph-negative-ttl", "RILGATE_SITE_OPEN_GRAPH_NEGATIVE_TTL", None, "Cache lifetime for failed preview lookups"),
+  spec!(SITE, Text, "site.open_graph.timeout", "site-open-graph-timeout", "RILGATE_SITE_OPEN_GRAPH_TIMEOUT", None, "Longest response wait for a preview lookup"),
+  spec!(SITE, Text, "site.open_graph.max_entries", "site-open-graph-max-entries", "RILGATE_SITE_OPEN_GRAPH_MAX_ENTRIES", None, "Maximum cached preview pages"),
+  spec!(SITE, Switch, "site.open_graph.include_query", "site-open-graph-include-query", "RILGATE_SITE_OPEN_GRAPH_INCLUDE_QUERY", None, "Include the query in the preview cache key and fetch URL"),
+  spec!(SITE, List, "site.open_graph.tags.prefixes", "site-open-graph-tags-prefixes", "RILGATE_SITE_OPEN_GRAPH_TAGS_PREFIXES", None, "Tag-name prefixes copied from the upstream page"),
+  spec!(SITE, List, "site.open_graph.tags.names", "site-open-graph-tags-names", "RILGATE_SITE_OPEN_GRAPH_TAGS_NAMES", None, "Whole tag names copied from the upstream page"),
   spec!(SECURITY, Secret, "security.secret", "security-secret", "RILGATE_SECURITY_SECRET", Some('s'), "Signing secret of at least 32 bytes; prefer the variable over the flag"),
+  spec!(SECURITY, Secret, "security.keys.challenge", "security-keys-challenge", "RILGATE_SECURITY_KEYS_CHALLENGE", None, "Challenge signing key of at least 32 bytes; with security.keys.auth it replaces security.secret"),
+  spec!(SECURITY, Secret, "security.keys.auth", "security-keys-auth", "RILGATE_SECURITY_KEYS_AUTH", None, "Authentication token signing key of at least 32 bytes"),
+  spec!(SECURITY, Text, "security.keys.challenge_rotation.active_id", "security-keys-challenge-rotation-active-id", "RILGATE_SECURITY_KEYS_CHALLENGE_ROTATION_ACTIVE_ID", None, "Key ID signed into challenge tokens"),
+  spec!(SECURITY, Text, "security.keys.auth_rotation.active_id", "security-keys-auth-rotation-active-id", "RILGATE_SECURITY_KEYS_AUTH_ROTATION_ACTIVE_ID", None, "Key ID signed into authentication tokens"),
   spec!(SECURITY, Text, "security.auth.cookie", "security-auth-cookie", "RILGATE_SECURITY_AUTH_COOKIE", None, "Authentication cookie name"),
   spec!(SECURITY, Text, "security.auth.ttl", "security-auth-ttl", "RILGATE_SECURITY_AUTH_TTL", None, "Authentication cookie lifetime"),
   spec!(SECURITY, Text, "security.auth.bind.client_ip.max_networks", "security-auth-bind-client-ip-max-networks", "RILGATE_SECURITY_AUTH_BIND_CLIENT_IP_MAX_NETWORKS", None, "Maximum client networks remembered in an access cookie (1 to 8; default 1)"),
@@ -156,6 +170,28 @@ pub(crate) const SPECS: &[Spec] = &[
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.mode", "pow-stratum-pool-job-sessions-mode", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MODE", None, "Job connections: pooled or per_challenge"),
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.max", "pow-stratum-pool-job-sessions-max", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_MAX", None, "Pooled job connections"),
   spec!(POOL, Text, "pow.stratum_pool.job_sessions.idle", "pow-stratum-pool-job-sessions-idle", "RILGATE_POW_STRATUM_POOL_JOB_SESSIONS_IDLE", None, "Idle time before a pooled job connection closes"),
+  spec!(SIGNALS, Text, "signals.geoip.country.path", "signals-geoip-country-path", "RILGATE_SIGNALS_GEOIP_COUNTRY_PATH", None, "Local country database file (.mmdb)"),
+  spec!(SIGNALS, Text, "signals.geoip.country.maxmind.edition", "signals-geoip-country-maxmind-edition", "RILGATE_SIGNALS_GEOIP_COUNTRY_MAXMIND_EDITION", None, "MaxMind edition to download as the country database"),
+  spec!(SIGNALS, Text, "signals.geoip.country.maxmind.account_id", "signals-geoip-country-maxmind-account-id", "RILGATE_SIGNALS_GEOIP_COUNTRY_MAXMIND_ACCOUNT_ID", None, "MaxMind account ID for the country database download"),
+  spec!(SIGNALS, Secret, "signals.geoip.country.maxmind.license_key", "signals-geoip-country-maxmind-license-key", "RILGATE_SIGNALS_GEOIP_COUNTRY_MAXMIND_LICENSE_KEY", None, "MaxMind license key for the country database download"),
+  spec!(SIGNALS, Text, "signals.geoip.country.refresh", "signals-geoip-country-refresh", "RILGATE_SIGNALS_GEOIP_COUNTRY_REFRESH", None, "Refresh interval of the country database"),
+  spec!(SIGNALS, Text, "signals.geoip.country.max_stale", "signals-geoip-country-max-stale", "RILGATE_SIGNALS_GEOIP_COUNTRY_MAX_STALE", None, "Longest age of the country database before its conditions turn unknown"),
+  spec!(SIGNALS, Text, "signals.geoip.asn.path", "signals-geoip-asn-path", "RILGATE_SIGNALS_GEOIP_ASN_PATH", None, "Local ASN database file (.mmdb)"),
+  spec!(SIGNALS, Text, "signals.geoip.asn.maxmind.edition", "signals-geoip-asn-maxmind-edition", "RILGATE_SIGNALS_GEOIP_ASN_MAXMIND_EDITION", None, "MaxMind edition to download as the ASN database"),
+  spec!(SIGNALS, Text, "signals.geoip.asn.maxmind.account_id", "signals-geoip-asn-maxmind-account-id", "RILGATE_SIGNALS_GEOIP_ASN_MAXMIND_ACCOUNT_ID", None, "MaxMind account ID for the ASN database download"),
+  spec!(SIGNALS, Secret, "signals.geoip.asn.maxmind.license_key", "signals-geoip-asn-maxmind-license-key", "RILGATE_SIGNALS_GEOIP_ASN_MAXMIND_LICENSE_KEY", None, "MaxMind license key for the ASN database download"),
+  spec!(SIGNALS, Text, "signals.geoip.asn.refresh", "signals-geoip-asn-refresh", "RILGATE_SIGNALS_GEOIP_ASN_REFRESH", None, "Refresh interval of the ASN database"),
+  spec!(SIGNALS, Text, "signals.geoip.asn.max_stale", "signals-geoip-asn-max-stale", "RILGATE_SIGNALS_GEOIP_ASN_MAX_STALE", None, "Longest age of the ASN database before its conditions turn unknown"),
+  spec!(SIGNALS, Text, "signals.dns.timeout", "signals-dns-timeout", "RILGATE_SIGNALS_DNS_TIMEOUT", None, "Time one request waits for the DNS lookups of its client"),
+  spec!(SIGNALS, Text, "signals.dns.cache_ttl", "signals-dns-cache-ttl", "RILGATE_SIGNALS_DNS_CACHE_TTL", None, "Cache time of a listed address or a verified name"),
+  spec!(SIGNALS, Text, "signals.dns.negative_ttl", "signals-dns-negative-ttl", "RILGATE_SIGNALS_DNS_NEGATIVE_TTL", None, "Cache time of an unlisted address or an unverified client"),
+  spec!(SIGNALS, Text, "signals.dns.max_entries", "signals-dns-max-entries", "RILGATE_SIGNALS_DNS_MAX_ENTRIES", None, "Maximum cached DNS results"),
+  spec!(SIGNALS, Text, "signals.honeypot.ttl", "signals-honeypot-ttl", "RILGATE_SIGNALS_HONEYPOT_TTL", None, "Time a client stays flagged after it requests the hidden link"),
+  spec!(SIGNALS, Text, "signals.honeypot.max_entries", "signals-honeypot-max-entries", "RILGATE_SIGNALS_HONEYPOT_MAX_ENTRIES", None, "Maximum flagged clients"),
+  spec!(POLICY, Text, "policy.default_action", "policy-default-action", "RILGATE_POLICY_DEFAULT_ACTION", None, "Action when no rule or score threshold matches: allow, deny or challenge"),
+  spec!(POLICY, Text, "policy.score.initial", "policy-score-initial", "RILGATE_POLICY_SCORE_INITIAL", None, "Starting risk score before the rules run"),
+  spec!(POLICY, Switch, "policy.score.debug_header.enabled", "policy-score-debug-header-enabled", "RILGATE_POLICY_SCORE_DEBUG_HEADER_ENABLED", None, "Let clients replace the starting score through a request header; development only"),
+  spec!(POLICY, Text, "policy.score.debug_header.name", "policy-score-debug-header-name", "RILGATE_POLICY_SCORE_DEBUG_HEADER_NAME", None, "Request header that carries the starting score"),
 ];
 
 pub(crate) const POOL_FIELDS: &[(&str, &str)] = &[
@@ -355,7 +391,7 @@ impl FromArgMatches for Settings {
 }
 
 /// A document that enables the optional sections whose defaults are shown.
-const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\n";
+const OPTIONAL_SECTIONS: &str = "pow:\n  algorithms:\n    randomx:\n      serve: {}\n  stratum_pool: {}\nsecurity:\n  auth:\n    bind:\n      client_ip: {}\nsignals:\n  dns: {}\n  honeypot: {}\npolicy:\n  score: {}\n";
 
 /// The schema defaults, with the optional sections present so their defaults
 /// are shown too.
@@ -385,6 +421,53 @@ pub(crate) fn default_text(root: &serde_yaml_ng::Value, path: &str) -> Option<St
   }
 }
 
+/// A document that sets each optional section and each optional scalar.
+#[cfg(test)]
+const EVERY_SECTION: &str = "site:\n  base_path: /.well-known/rilgate\n  i18n:\n    cookie: rilgate_lang\nserver:\n  client_ip_header: cf-connecting-ip\nsecurity:\n  secret: placeholder\n  keys:\n    challenge: challenge-key-with-at-least-32-bytes\n    auth: auth-key-with-at-least-32-bytes-long\n    challenge_rotation: {active_id: a}\n    auth_rotation: {active_id: a}\n  auth:\n    cookie: rilgate_auth\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n      fallback:\n        algorithm: fast\n        difficulty: 4\n  stratum_pool: {}\nsignals:\n  dns: {}\n  honeypot: {}\n  geoip:\n    country: &database\n      path: /data/database.mmdb\n      maxmind: {edition: GeoLite2-ASN, account_id: 1, license_key: placeholder}\n      refresh: 1d\n      max_stale: 7d\n    asn: *database\npolicy:\n  default_action: allow\n  rules: []\n  score: {}\n";
+
+/// Settings that hold a map or a list of maps, which have no flag.
+#[cfg(test)]
+const STRUCTURED: &[&str] = &[
+  "site.content_security_policy.extra_sources",
+  "site.open_graph.request_headers",
+  "site.open_graph.when",
+  "site.open_graph.override",
+  "security.keys.challenge_rotation.previous",
+  "security.keys.auth_rotation.previous",
+  "pow.stratum_pool.pools",
+  "pow.stratum_pool.proxies",
+  "challenge_hooks",
+  "signals.ip_sets",
+  "signals.asn_sets",
+  "signals.counters",
+  "policy.rules",
+  "policy.score.thresholds",
+];
+
+/// Collects the dotted path of each scalar and each list of scalars.
+#[cfg(test)]
+fn scalar_leaves(value: &serde_yaml_ng::Value, path: String, leaves: &mut Vec<String>) {
+  use serde_yaml_ng::Value;
+  match value {
+    Value::Mapping(entries) => {
+      for (key, child) in entries {
+        let key = key.as_str().unwrap();
+        let child_path = if path.is_empty() {
+          key.to_string()
+        } else {
+          format!("{path}.{key}")
+        };
+        scalar_leaves(child, child_path, leaves);
+      }
+    }
+    Value::Sequence(items)
+      if items
+        .iter()
+        .any(|item| item.is_mapping() || item.is_sequence()) => {}
+    _ => leaves.push(path),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -409,10 +492,7 @@ mod tests {
 
   #[test]
   fn every_path_exists_in_the_schema() {
-    let defaults = defaults_of(
-      "site:\n  base_path: /.well-known/rilgate\n  i18n:\n    cookie: rilgate_lang\nserver:\n  client_ip_header: cf-connecting-ip\nsecurity:\n  secret: placeholder\n  auth:\n    cookie: rilgate_auth\n    bind:\n      client_ip: {}\n      user_agent: family\npow:\n  algorithms:\n    randomx:\n      serve: {}\n      fallback:\n        algorithm: fast\n        difficulty: 4\n  stratum_pool: {}\n",
-    )
-    .unwrap();
+    let defaults = defaults_of(EVERY_SECTION).unwrap();
     for spec in SPECS {
       assert!(
         spec
@@ -459,6 +539,22 @@ mod tests {
         .value,
       SettingValue::Scalar("https://flag.test:9443".into())
     );
+  }
+
+  #[test]
+  fn every_scalar_setting_has_a_flag_and_a_variable() {
+    let defaults = defaults_of(EVERY_SECTION).unwrap();
+    let mut leaves = Vec::new();
+    scalar_leaves(&defaults, String::new(), &mut leaves);
+    for leaf in leaves {
+      let structured = STRUCTURED
+        .iter()
+        .any(|path| leaf == *path || leaf.starts_with(&format!("{path}.")));
+      assert!(
+        structured || SPECS.iter().any(|spec| spec.path == leaf),
+        "{leaf} has no flag; add it to SPECS, or to STRUCTURED when it holds a map or a list of maps"
+      );
+    }
   }
 
   #[test]

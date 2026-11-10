@@ -64,8 +64,10 @@ Booleans need `true` or `false`. Numbers must fit their numeric type. Literal
 YAML values retain strict typing. `${VARIABLE_NAME}` requires a present, nonempty UTF-8
 variable. Shell substitution and default-value syntax are unsupported.
 
-Shared scalar and list settings have a flag and an environment variable. Named maps,
-including [challenge hooks](#challenge-hooks), use YAML and scalar interpolation. Precedence is
+Each scalar setting and each list of scalars has a flag and an environment variable. Maps and
+lists of maps use YAML and scalar interpolation: policy rules, score thresholds, IP and ASN sets,
+counters, [challenge hooks](#challenge-hooks), previous signing keys, extra Content Security Policy
+sources, and the Open Graph `when`, `request_headers` and `override` settings. Precedence is
 flag, then variable, then YAML, then the default. The flag is the YAML path with
 `.` and `_` replaced by `-`. The variable is `RILGATE_`
 followed by the flag in upper snake case. Indexed pool and proxy entries use variables without flags.
@@ -82,6 +84,8 @@ followed by the flag in upper snake case. Indexed pool and proxy entries use var
 | `security.secret` | `--security-secret`, `-s` | `RILGATE_SECURITY_SECRET` |
 | `server.max_connections` | `--server-max-connections` | `RILGATE_SERVER_MAX_CONNECTIONS` |
 | `site.i18n.default` | `--site-i18n-default` | `RILGATE_SITE_I18N_DEFAULT` |
+| `signals.dns.timeout` | `--signals-dns-timeout` | `RILGATE_SIGNALS_DNS_TIMEOUT` |
+| `policy.default_action` | `--policy-default-action` | `RILGATE_POLICY_DEFAULT_ACTION` |
 | `pow.stratum_pool.pools[0].address` | none | `RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS` |
 
 `rilgate --help` lists shared scalar settings with their YAML paths and defaults. Values are validated by
@@ -91,10 +95,11 @@ sizes take `16MiB`. An invalid value names its flag or variable.
 Boolean flags alone mean `true` and accept `--flag=false`. Lists are comma-separated
 or repeated and replace the YAML list. An empty value clears it.
 
-Any `pow.stratum_pool.*` value enables pool access with defaults for the rest. Policy rules, IP sets
-and signing key rotation (`security.keys`) are YAML only. Pass the secret through
-`RILGATE_SECURITY_SECRET`. Do not use `--security-secret`, because process arguments are visible to other
-local users.
+A value below an optional section enables that section with defaults for the rest. For example,
+any `pow.stratum_pool.*` value enables pool access, and `security.keys.challenge` with
+`security.keys.auth` selects explicit keys. Pass each secret through its variable, such as
+`RILGATE_SECURITY_SECRET`. Do not use a secret flag such as `--security-secret`, because process
+arguments are visible to other local users.
 
 `server.listen` takes one address or a list of up to 16, such as `[":8080", "[::]:8443"]`. `--server-listen`
 and `RILGATE_SERVER_LISTEN` take a comma-separated list. `[::]:8080` accepts IPv4 and IPv6 on

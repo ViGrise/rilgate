@@ -424,6 +424,41 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   assert_eq!(value["pow"]["stratum_pool"]["sessions"]["max"], 64);
 }
 
+#[test]
+fn variables_set_signals_and_policy_scalars_over_the_default_policy() {
+  let directory = tempfile::tempdir().unwrap();
+  let result = show(
+    directory.path(),
+    &[
+      ("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000"),
+      ("RILGATE_SIGNALS_DNS_TIMEOUT", "500ms"),
+      ("RILGATE_SIGNALS_GEOIP_ASN_MAXMIND_EDITION", "GeoLite2-ASN"),
+      ("RILGATE_SIGNALS_GEOIP_ASN_MAXMIND_ACCOUNT_ID", "123456"),
+      ("RILGATE_SIGNALS_GEOIP_ASN_MAXMIND_LICENSE_KEY", "license"),
+      ("RILGATE_SITE_OPEN_GRAPH_TAGS_NAMES", "description,author"),
+      ("RILGATE_POLICY_DEFAULT_ACTION", "deny"),
+      ("RILGATE_POLICY_SCORE_INITIAL", "-3"),
+    ],
+    &[],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["signals"]["dns"]["timeout"], "500ms");
+  assert_eq!(value["signals"]["dns"]["max_entries"], 65536);
+  assert_eq!(
+    value["signals"]["geoip"]["asn"]["maxmind"]["account_id"],
+    "123456"
+  );
+  assert_eq!(value["site"]["open_graph"]["tags"]["names"][1], "author");
+  assert_eq!(value["policy"]["default_action"], "deny");
+  assert_eq!(value["policy"]["score"]["initial"], -3);
+  assert_eq!(value["policy"]["rules"][0]["name"], "public-endpoints");
+}
+
 fn listen_file(listen: &str) -> String {
   format!("server:\n  upstream:\n    url: http://127.0.0.1:3000\n  listen: {listen}\n")
 }
