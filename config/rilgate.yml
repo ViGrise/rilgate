@@ -1083,6 +1083,8 @@ server:
     # Country database source.
     #
     # country:
+      # Local database file (.mmdb).
+      #
       # Example, not a default.
       #
       # path: /var/lib/rilgate/GeoLite2-Country.mmdb
@@ -1102,6 +1104,8 @@ server:
         #
         # edition: GeoLite2-ASN
 
+        # MaxMind account ID.
+        #
         # Example, not a default.
         #
         # account_id: "123456"
@@ -1138,7 +1142,7 @@ server:
     #
     # negative_ttl: 10m
 
-    # Range: 1..1048576.
+    # Maximum cached lookup results. Range: 1..1048576.
     #
     # max_entries: 65536
 
@@ -1153,7 +1157,8 @@ server:
     #
     # ttl: 24h
 
-    # Range: 1..1048576. A full table drops expired flags, then the oldest.
+    # Maximum flagged clients. Range: 1..1048576.
+    # A full table drops expired flags, then the oldest.
     #
     # max_entries: 65536
 

@@ -21,7 +21,8 @@ const HEADER: &str = "\
 #
 # Copy this file to .env in the working directory, or pass --env-file FILE.
 # Variables already set in the process environment take precedence over the
-# file. Policy rules, IP sets and signing key rotation are configured in YAML.
+# file. Maps and lists of maps, such as policy rules, IP sets and challenge
+# hooks, are configured in YAML.
 # Optional variables are commented out; values shown are defaults.
 #
 # Check the result: rilgate config check
