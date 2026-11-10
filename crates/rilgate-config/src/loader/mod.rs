@@ -82,13 +82,12 @@ pub fn load(args: &Overrides) -> Result<Loaded> {
     }
     None => read_default(&mut warnings, &mut resolver)?,
   };
-  let (value, config_sources) = match input {
-    Some((text, path)) => resolver.resolve(&text, &path)?,
-    None => (
-      Value::Mapping(Default::default()),
-      sources::ConfigurationSources::default(),
-    ),
-  };
+  let (value, config_sources) = resolver.resolve(
+    input
+      .as_ref()
+      .map(|(text, path)| (text.as_str(), path.as_path())),
+    args.inline.as_deref(),
+  )?;
   let mut document = document_from_value(value, &args.settings, config_sources)?;
   if let Some(port) = args.port {
     let addresses = document.config_sources.result(
@@ -145,7 +144,7 @@ pub fn parse(text: &str) -> Result<Document> {
 /// so overridden values pass the same schema validation as YAML values.
 pub fn parse_with(text: &str, settings: &[Setting]) -> Result<Document> {
   let (value, config_sources) = includes::Resolver::default()
-    .resolve_inline(text)
+    .resolve(None, Some(text))
     .map_err(|error| anyhow::anyhow!("{error:#}"))?;
   document_from_value(value, settings, config_sources)
 }

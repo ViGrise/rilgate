@@ -5,6 +5,9 @@ use std::path::PathBuf;
 #[derive(Debug, Default, Clone)]
 pub struct Overrides {
   pub config: Option<PathBuf>,
+  /// A YAML document merged over the configuration file. Maps merge key by
+  /// key, and each other value replaces the file value.
+  pub inline: Option<String>,
   /// Replaces the port of every listen address.
   pub port: Option<u16>,
   pub settings: Vec<Setting>,

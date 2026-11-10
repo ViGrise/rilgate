@@ -459,6 +459,78 @@ fn variables_set_signals_and_policy_scalars_over_the_default_policy() {
   assert_eq!(value["policy"]["rules"][0]["name"], "public-endpoints");
 }
 
+#[test]
+fn inline_document_configures_rules_and_sets_without_a_file() {
+  let directory = tempfile::tempdir().unwrap();
+  let result = show(
+    directory.path(),
+    &[
+      ("RILGATE_SERVER_UPSTREAM_URL", "http://127.0.0.1:3000"),
+      (
+        "RILGATE_CONFIG_INLINE",
+        "signals:\n  ip_sets:\n    <<: !include builtin:signals/tor-ip-sets.yml\n    office: {cidrs: [203.0.113.0/24]}\npolicy:\n  rules:\n    - !include builtin:rules/tor-exit.yml\n",
+      ),
+    ],
+    &[],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(
+    value["signals"]["ip_sets"]["tor-exits"]["format"],
+    "list_text"
+  );
+  assert_eq!(
+    value["signals"]["ip_sets"]["office"]["cidrs"][0],
+    "203.0.113.0/24"
+  );
+  assert_eq!(value["policy"]["rules"][0]["name"], "tor-exit");
+  assert_eq!(value["policy"]["rules"].as_sequence().unwrap().len(), 1);
+}
+
+#[test]
+fn inline_document_merges_over_the_file_and_below_variables() {
+  let directory = tempfile::tempdir().unwrap();
+  std::fs::write(
+    directory.path().join("rilgate.yml"),
+    "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  max_connections: 10\n  max_requests: 10\nsignals:\n  ip_sets:\n    internal: {cidrs: [10.0.0.0/8]}\npolicy:\n  default_action: allow\n  rules:\n    - name: internal\n      when: {client_ip: {in_sets: [internal]}}\n      action: allow\n",
+  )
+  .unwrap();
+  let result = show(
+    directory.path(),
+    &[
+      (
+        "RILGATE_CONFIG_INLINE",
+        "server: {max_connections: 20, max_requests: 20}\nsignals:\n  ip_sets:\n    office: {cidrs: [203.0.113.0/24]}\npolicy:\n  default_action: deny\n",
+      ),
+      ("RILGATE_SERVER_MAX_REQUESTS", "30"),
+    ],
+    &[],
+  );
+  assert!(
+    result.status.success(),
+    "{}",
+    String::from_utf8_lossy(&result.stderr)
+  );
+  let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
+  assert_eq!(value["server"]["upstream"]["url"], "http://127.0.0.1:3000");
+  assert_eq!(value["server"]["max_connections"], 20);
+  assert_eq!(value["server"]["max_requests"], 30);
+  assert_eq!(
+    value["signals"]["ip_sets"]["internal"]["cidrs"][0],
+    "10.0.0.0/8"
+  );
+  assert_eq!(
+    value["signals"]["ip_sets"]["office"]["cidrs"][0],
+    "203.0.113.0/24"
+  );
+  assert_eq!(value["policy"]["default_action"], "deny");
+  assert_eq!(value["policy"]["rules"][0]["name"], "internal");
+}
+
 fn listen_file(listen: &str) -> String {
   format!("server:\n  upstream:\n    url: http://127.0.0.1:3000\n  listen: {listen}\n")
 }

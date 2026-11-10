@@ -22,7 +22,8 @@ const HEADER: &str = "\
 # Copy this file to .env in the working directory, or pass --env-file FILE.
 # Variables already set in the process environment take precedence over the
 # file. Maps and lists of maps, such as policy rules, IP sets and challenge
-# hooks, are configured in YAML.
+# hooks, have no variable of their own. Set them in the YAML file or in
+# RILGATE_CONFIG_INLINE.
 # Optional variables are commented out; values shown are defaults.
 #
 # Check the result: rilgate config check
@@ -38,6 +39,14 @@ const PROCESS: &[(&str, &str, &str)] = &[
      rilgate.yml and config/rilgate.yml that exists and warns when both exist.\n\
      An explicitly selected missing file fails; missing default files are\n\
      allowed when variables supply the required values. Flag: --config",
+  ),
+  (
+    "RILGATE_CONFIG_INLINE",
+    "",
+    "YAML document merged over the configuration file. Maps merge key by key;\n\
+     lists and scalars replace the file value. Without a file, it is the full\n\
+     document. It accepts builtin: includes. In this file, put the document in\n\
+     single quotes; it can have more than one line. Flag: --config-inline",
   ),
   (
     "RILGATE_PORT",

@@ -79,7 +79,7 @@ async fn run_verifier(command: VerifierCommand, args: &Args, overrides: Override
   match command {
     VerifierCommand::Serve => {
       setup_tracing(args);
-      log_lookup(&lookup);
+      log_lookup(&lookup, overrides.inline.is_some());
       for warning in warnings {
         tracing::warn!("{warning}");
       }
@@ -124,7 +124,7 @@ async fn run_gateway(command: GatewayCommand, args: &Args, overrides: Overrides)
       if args.log_format != LogFormat::Json {
         println!("{BANNER}");
       }
-      log_lookup(&lookup);
+      log_lookup(&lookup, overrides.inline.is_some());
       tracing::info!(
         "Rilgate {} ({}), configuration {}, upstream {}",
         crate::VERSION,
@@ -169,7 +169,7 @@ fn setup_tracing(args: &Args) {
   );
 }
 
-fn log_lookup(lookup: &Lookup) {
+fn log_lookup(lookup: &Lookup, inline: bool) {
   match std::env::current_dir() {
     Ok(directory) => tracing::info!("Working directory {}", directory.display()),
     Err(error) => tracing::warn!("Working directory is unavailable: {error}"),
@@ -185,5 +185,10 @@ fn log_lookup(lookup: &Lookup) {
         tracing::info!("Trying configuration file {}: {result}", path.display());
       }
     }
+  }
+  if inline {
+    tracing::info!(
+      "Merging the inline configuration document from --config-inline or RILGATE_CONFIG_INLINE"
+    );
   }
 }

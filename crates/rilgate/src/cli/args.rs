@@ -6,7 +6,8 @@ use std::path::PathBuf;
 ///
 /// Settings come from the YAML file, then environment variables, then flags;
 /// each later source overrides the earlier one. Maps and lists of maps, such as
-/// policy rules, IP sets and challenge hooks, are configured in YAML only.
+/// policy rules, IP sets and challenge hooks, have no flag. Set them in the YAML
+/// file or in the --config-inline document.
 #[derive(Parser, Debug)]
 #[command(version = crate::VERSION, about, long_about)]
 pub struct Args {
@@ -20,6 +21,16 @@ pub struct Args {
     value_name = "FILE"
   )]
   pub config: Option<PathBuf>,
+
+  /// YAML document merged over the configuration file; maps merge key by key and other values replace the file value
+  #[arg(
+    long,
+    global = true,
+    env = "RILGATE_CONFIG_INLINE",
+    hide_env_values = true,
+    value_name = "YAML"
+  )]
+  pub config_inline: Option<String>,
 
   /// Load environment variables from this file instead of ./.env
   #[arg(long, global = true, value_name = "FILE")]
@@ -125,6 +136,10 @@ impl Args {
   pub fn overrides(&mut self) -> rilgate_config::Overrides {
     rilgate_config::Overrides {
       config: self.config.clone(),
+      inline: self
+        .config_inline
+        .clone()
+        .filter(|text| !text.trim().is_empty()),
       port: self.port,
       settings: std::mem::take(&mut self.settings).into_settings(),
     }

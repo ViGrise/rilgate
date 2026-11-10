@@ -147,17 +147,29 @@ impl Resolver {
       .with_context(|| format!("configuration file {}: file does not exist", path.display()))
   }
 
-  pub fn resolve(&mut self, text: &str, path: &Path) -> Result<(Value, ConfigurationSources)> {
-    let node = self.document(text, Source::File(path.to_path_buf()), Vec::new(), 0, false)?;
+  /// Resolves the file document and merges the inline document over it. Maps
+  /// merge key by key, and each other inline value replaces the file value.
+  pub fn resolve(
+    &mut self,
+    file: Option<(&str, &Path)>,
+    inline: Option<&str>,
+  ) -> Result<(Value, ConfigurationSources)> {
+    let mut layers = Vec::new();
+    if let Some((text, path)) = file {
+      layers.push(self.document(text, Source::File(path.to_path_buf()), Vec::new(), 0, false)?);
+    }
+    if let Some(text) = inline {
+      self.charge(text.len(), &Source::Inline)?;
+      layers.push(self.document(text, Source::Inline, Vec::new(), 0, false)?);
+    }
     let mut sources = ConfigurationSources::default();
-    let value = node.finish(&mut Vec::new(), &mut sources);
-    Ok((value, sources))
-  }
-
-  pub fn resolve_inline(&mut self, text: &str) -> Result<(Value, ConfigurationSources)> {
-    self.charge(text.len(), &Source::Inline)?;
-    let node = self.document(text, Source::Inline, Vec::new(), 0, false)?;
-    let mut sources = ConfigurationSources::default();
+    let mut layers = layers.into_iter();
+    let Some(mut node) = layers.next() else {
+      return Ok((Value::Mapping(Default::default()), sources));
+    };
+    for higher in layers {
+      node.overlay(higher);
+    }
     let value = node.finish(&mut Vec::new(), &mut sources);
     Ok((value, sources))
   }

@@ -56,6 +56,29 @@ If no default file exists, `RILGATE_SERVER_UPSTREAM_URL` and `RILGATE_SECURITY_S
 Rilgate loads `.env` from the working directory, or loads the file named by
 `--env-file`. Existing process variables remain unchanged.
 
+`--config-inline YAML` or `RILGATE_CONFIG_INLINE` supplies a YAML document as text. Rilgate merges
+this inline document over the configuration file with the rules of [`<<`](#merging-and-overriding):
+maps merge recursively, and lists and scalars replace the file value. Without a configuration
+file, the inline document is the full document. It accepts `builtin:` includes; a local include
+needs a configuration file. Rilgate reads the inline document at startup, and a reload uses the
+same text. A deployment that supplies only environment variables can set policy rules, IP sets
+and challenge hooks with it:
+
+```sh
+RILGATE_CONFIG_INLINE='
+signals:
+  ip_sets:
+    <<: !include builtin:signals/tor-ip-sets.yml
+policy:
+  rules:
+    - !include builtin:rules/tor-exit.yml
+    - !include builtin:rules/challenge-all.yml
+'
+```
+
+In a `.env` file, put the document in single quotes. The value can span lines, and `${VARIABLE_NAME}`
+references stay for Rilgate to resolve.
+
 YAML is parsed before string interpolation, so environment values cannot inject YAML
 structure. References are converted according to the expected scalar type. Strings
 remain strings.
@@ -65,10 +88,11 @@ YAML values retain strict typing. `${VARIABLE_NAME}` requires a present, nonempt
 variable. Shell substitution and default-value syntax are unsupported.
 
 Each scalar setting and each list of scalars has a flag and an environment variable. Maps and
-lists of maps use YAML and scalar interpolation: policy rules, score thresholds, IP and ASN sets,
-counters, [challenge hooks](#challenge-hooks), previous signing keys, extra Content Security Policy
-sources, and the Open Graph `when`, `request_headers` and `override` settings. Precedence is
-flag, then variable, then YAML, then the default. The flag is the YAML path with
+lists of maps have no flag. Set them in the configuration file or in the inline document: policy
+rules, score thresholds, IP and ASN sets, counters, [challenge hooks](#challenge-hooks), previous
+signing keys, extra Content Security Policy sources, and the Open Graph `when`, `request_headers`
+and `override` settings. Precedence is flag, then variable, then the inline document, then the
+configuration file, then the default. The flag is the YAML path with
 `.` and `_` replaced by `-`. The variable is `RILGATE_`
 followed by the flag in upper snake case. Indexed pool and proxy entries use variables without flags.
 [`.env.example`](../.env.example) lists every variable with its default.
