@@ -1,0 +1,6 @@
+# Remote feeds need outbound HTTPS; readiness fails until each has loaded once.
+tor-exits:
+  url: "https://check.torproject.org/torbulkexitlist"
+  format: list_text
+  refresh: 1h
+  max_stale: 1d
