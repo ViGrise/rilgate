@@ -33,6 +33,7 @@ pub async fn build(
     .map(|(name, _)| name.clone())
     .collect();
   Ok(Gateway::new(AppState {
+    websocket_sessions: Arc::new(Default::default()),
     hooks,
     until_expiry,
     challenge_header: format!("{}-challenge", cfg.web.brand_id).parse()?,

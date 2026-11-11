@@ -452,7 +452,8 @@ When `pow.stratum_pool` is enabled, its defaults are:
 - One pool named `default`, at `127.0.0.1:3333`, with login `x+{difficulty}` and password `x`.
 - No proxies, TLS disabled, failover timeout `15s`, failover cooldown `30s`, and agent `rilgate/<version>`.
 - Connect timeout `5s` and submit timeout `20s`.
-- Session capacity `64` and session TTL `15m`.
+- Session capacity `64` and session TTL `15m`; browser admission and share limits
+  follow [pool session configuration](#stratum-pools-and-proxies).
 - Job-session mode `pooled`, maximum `16`, and idle `1m`.
 
 Set mode `per_challenge` to create one connection per job. `max` and `idle`
@@ -760,6 +761,29 @@ Use `--pow-stratum-pool-failover-timeout` or
 
 The provider loads the TLS CA file once at startup. A missing or invalid CA file
 stops startup with an error that names the pool.
+
+Browser WebSocket sessions and pooled job connections share `sessions.max`
+capacity (default 64, range 1 to 4096). `sessions.ttl` limits browser session
+lifetime (default 15m). `sessions.max_per_client` defaults to 4 and accepts 1 to
+4096 concurrent WebSocket sessions per client network. It is capped at
+`sessions.max - 1` when total capacity exceeds one, so a network leaves room for
+another client. With one total slot, only the total limit can apply. The network
+uses the resolved IPv4 address or the IPv6 prefix from
+`pow.rate_limit.client.ipv6_prefix`, including when proof rate limiting is disabled.
+WebSocket closure releases both permits.
+
+`sessions.share_idle_timeout` defaults to `60s` and accepts a positive duration
+up to one year. A session closes if it submits no share during that interval.
+Pool job notifications and browser ping frames do not extend the interval.
+Choose an interval that accommodates the intended browsers' solve time.
+`sessions.max_rejected_shares` defaults to 4 and accepts 1 to 100 total rejected
+shares before closure. These scalars have flags and environment variables:
+`--pow-stratum-pool-sessions-max-per-client` and
+`RILGATE_POW_STRATUM_POOL_SESSIONS_MAX_PER_CLIENT`,
+`--pow-stratum-pool-sessions-share-idle-timeout` and
+`RILGATE_POW_STRATUM_POOL_SESSIONS_SHARE_IDLE_TIMEOUT`, and
+`--pow-stratum-pool-sessions-max-rejected-shares` and
+`RILGATE_POW_STRATUM_POOL_SESSIONS_MAX_REJECTED_SHARES`.
 
 #### Indexed environment variables
 

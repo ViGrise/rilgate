@@ -65,6 +65,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
   let (service, pool) = gateway::services(&cfg).unwrap();
   let web = rilgate_web::WebManager::new(cfg.web.clone()).unwrap();
   let state = AppState {
+    websocket_sessions: Arc::new(Default::default()),
     hooks: Arc::new(
       rilgate_challenge_hooks::ChallengeHooks::new(Arc::new(Default::default())).unwrap(),
     ),
