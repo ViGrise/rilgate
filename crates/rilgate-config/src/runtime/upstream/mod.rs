@@ -4,6 +4,7 @@ pub struct UpstreamConfig {
   pub preserve_host: bool,
   pub max_body_bytes: usize,
   pub client_ip_headers: Vec<http::HeaderName>,
+  pub strip_headers: Vec<http::HeaderName>,
   pub connect_timeout: std::time::Duration,
   pub read_timeout: std::time::Duration,
 }
@@ -11,6 +12,10 @@ pub struct UpstreamConfig {
 impl UpstreamConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
     use anyhow::ensure;
+    ensure!(
+      self.strip_headers.len() <= 64,
+      "server.upstream.strip_headers: at most 64 headers are supported"
+    );
     let url = url::Url::parse(&self.url)?;
     ensure!(
       matches!(url.scheme(), "http" | "https") && url.host_str().is_some(),

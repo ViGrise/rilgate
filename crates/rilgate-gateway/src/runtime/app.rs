@@ -33,6 +33,12 @@ pub async fn build(
     .map(|(name, _)| name.clone())
     .collect();
   Ok(Gateway::new(AppState {
+    trap_signer: rilgate_crypto::token::TokenSigner::rotating(
+      cfg.pow.signing_key.expose().as_bytes(),
+      rilgate_crypto::token::TokenPurpose::Honeypot,
+      &cfg.pow.signing_keys,
+    )?,
+    websocket_sessions: Arc::new(Default::default()),
     hooks,
     until_expiry,
     challenge_header: format!("{}-challenge", cfg.web.brand_id).parse()?,

@@ -87,6 +87,10 @@ Windows:
 irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1 | iex
 ```
 
+Release files are signed with the key
+`F396 7F20 4825 CDE6 07A8  1452 B990 C5BC 82BD 2323`. See
+[installation](docs/installation.md#verify-a-download).
+
 Docker:
 
 ```bash

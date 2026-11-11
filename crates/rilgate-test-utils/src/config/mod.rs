@@ -24,6 +24,7 @@ pub fn config() -> Config {
       client_ip_headers: ["x-forwarded-for", "x-real-ip", "forwarded"]
         .map(http::HeaderName::from_static)
         .into(),
+      strip_headers: vec![],
       connect_timeout: std::time::Duration::from_secs(1),
       read_timeout: std::time::Duration::from_secs(2),
     },
@@ -87,6 +88,9 @@ pub fn config() -> Config {
         connect_timeout: std::time::Duration::from_secs(1),
         submit_timeout: std::time::Duration::from_secs(1),
         max_sessions: 4,
+        max_sessions_per_client: 2,
+        share_idle_timeout: std::time::Duration::from_secs(60),
+        max_rejected_shares: 4,
         session_ttl: std::time::Duration::from_secs(10),
         max_job_sessions: 2,
         job_session_mode: rilgate_pool::JobSessionMode::Pooled,

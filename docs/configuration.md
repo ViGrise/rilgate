@@ -129,7 +129,8 @@ preserves operations addresses. `--log-level` (`RUST_LOG`) sets the log filter a
 `CONFIG` aliases are unsupported.
 
 `rilgate upgrade` replaces the running binary with the latest GitHub release, or the tag
-given by `--version`, after it checks the release `SHA256SUMS`. A static Linux binary
+given by `--version`, after it verifies the release signature of `SHA256SUMS` and the
+checksum of the binary. A static Linux binary
 upgrades to the static build of the release. It keeps the current
 binary when the release is not newer unless `--force` is set.
 
@@ -416,8 +417,11 @@ or overflow.
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
 | `server.upstream.client_ip_headers` | `[x-forwarded-for, x-real-ip, forwarded]`, replaced with the resolved client address; `[]` forwards them unchanged |
+| `server.upstream.strip_headers` | `[]`, extra headers removed from untrusted peers (at most 64 HTTP header names) |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |
 | `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
+| `server.max_connections_per_client` | `64`, range `1..1000000`, open connections per client network |
+| `server.header_timeout`, `.idle_timeout` | `10s`, `60s`, each from `1ms` to `10m` |
 | `server.trusted_proxies` | `[]`, trust no peers |
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
 | `server.decision_log` | `challenge`, log denied and challenged requests at info level |
@@ -452,7 +456,8 @@ When `pow.stratum_pool` is enabled, its defaults are:
 - One pool named `default`, at `127.0.0.1:3333`, with login `x+{difficulty}` and password `x`.
 - No proxies, TLS disabled, failover timeout `15s`, failover cooldown `30s`, and agent `rilgate/<version>`.
 - Connect timeout `5s` and submit timeout `20s`.
-- Session capacity `64` and session TTL `15m`.
+- Session capacity `64` and session TTL `15m`; browser admission and share limits
+  follow [pool session configuration](#stratum-pools-and-proxies).
 - Job-session mode `pooled`, maximum `16`, and idle `1m`.
 
 Set mode `per_challenge` to create one connection per job. `max` and `idle`
@@ -490,7 +495,18 @@ that is present:
 
 The edge must overwrite these headers. `Forwarded` is not used to resolve the address.
 
-Before a request reaches the upstream, Rilgate removes every value of the headers in
+Before a request reaches the upstream, Rilgate removes `x-original-url`, `x-rewrite-url`,
+`x-forwarded-host`, `x-forwarded-proto`, `x-forwarded-port`, `true-client-ip`,
+`cf-connecting-ip`, `x-client-ip` and `x-cluster-client-ip` from untrusted socket peers.
+`server.upstream.strip_headers` adds up to 64 header names to that removal set. It defaults
+to `[]` and accepts `--server-upstream-strip-headers` and
+`RILGATE_SERVER_UPSTREAM_STRIP_HEADERS` as comma-separated lists. Values from trusted
+proxies pass through. Rilgate sets `X-Forwarded-Host` and `X-Forwarded-Proto` from the
+received request host and transport scheme when a trusted proxy did not send them, and
+always for untrusted peers. An edge that terminates TLS must be listed in
+`server.trusted_proxies`, or the upstream receives `X-Forwarded-Proto: http`.
+
+Rilgate removes every value of the headers in
 `server.upstream.client_ip_headers` and writes the resolved client address in each one.
 The default list is `x-forwarded-for`, `x-real-ip` and `forwarded`. `Forwarded` receives
 `for=<address>`, with an IPv6 address as `for="[<address>]"`. The other headers receive the
@@ -760,6 +776,29 @@ Use `--pow-stratum-pool-failover-timeout` or
 
 The provider loads the TLS CA file once at startup. A missing or invalid CA file
 stops startup with an error that names the pool.
+
+Browser WebSocket sessions and pooled job connections share `sessions.max`
+capacity (default 64, range 1 to 4096). `sessions.ttl` limits browser session
+lifetime (default 15m). `sessions.max_per_client` defaults to 4 and accepts 1 to
+4096 concurrent WebSocket sessions per client network. It is capped at
+`sessions.max - 1` when total capacity exceeds one, so a network leaves room for
+another client. With one total slot, only the total limit can apply. The network
+uses the resolved IPv4 address or the IPv6 prefix from
+`pow.rate_limit.client.ipv6_prefix`, including when proof rate limiting is disabled.
+WebSocket closure releases both permits.
+
+`sessions.share_idle_timeout` defaults to `5m` and accepts a positive duration
+up to one year. A session closes if it submits no share during that interval.
+Pool job notifications and browser ping frames do not extend the interval.
+Choose an interval that accommodates the intended browsers' solve time.
+`sessions.max_rejected_shares` defaults to 4 and accepts 1 to 100 total rejected
+shares before closure. These scalars have flags and environment variables:
+`--pow-stratum-pool-sessions-max-per-client` and
+`RILGATE_POW_STRATUM_POOL_SESSIONS_MAX_PER_CLIENT`,
+`--pow-stratum-pool-sessions-share-idle-timeout` and
+`RILGATE_POW_STRATUM_POOL_SESSIONS_SHARE_IDLE_TIMEOUT`, and
+`--pow-stratum-pool-sessions-max-rejected-shares` and
+`RILGATE_POW_STRATUM_POOL_SESSIONS_MAX_REJECTED_SHARES`.
 
 #### Indexed environment variables
 
@@ -1165,7 +1204,9 @@ unavailable:
   `503` with `{"code": "hook_unavailable"}` and `Retry-After: 1`. The page shows
   the `unavailable` state and its retry control.
 - With `action: fallback`, the same response contains `next` with the fallback
-  step, so the page starts the fallback proof without a reload. While the hook is
+  step, so the page starts the fallback proof without a reload. Receipt exchange
+  applies the hook label only when the receipt matches the presented fallback algorithm
+  and verification mode and meets its difficulty. While the hook is
   marked unavailable, the gate presents the fallback step directly. After
   `recheck`, the gate presents the hook again. A `pass` or `fail` outcome marks
   the hook available. An `unavailable` outcome restarts `recheck`.

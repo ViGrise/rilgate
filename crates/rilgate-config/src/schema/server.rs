@@ -9,6 +9,9 @@ pub struct Server {
   pub watch_config: bool,
   pub upstream: Upstream,
   pub max_connections: usize,
+  pub max_connections_per_client: usize,
+  pub header_timeout: Time,
+  pub idle_timeout: Time,
   pub max_requests: usize,
   pub h2_max_streams: u32,
   pub trusted_proxies: Vec<String>,
@@ -31,6 +34,9 @@ impl Default for Server {
       watch_config: false,
       upstream: Upstream::default(),
       max_connections: 1024,
+      max_connections_per_client: 64,
+      header_timeout: Time::seconds(10),
+      idle_timeout: Time::seconds(60),
       max_requests: 512,
       h2_max_streams: 64,
       trusted_proxies: vec![],
@@ -55,6 +61,7 @@ pub struct Upstream {
   pub preserve_host: bool,
   pub max_body_size: Size,
   pub client_ip_headers: Vec<String>,
+  pub strip_headers: Vec<String>,
   pub timeout: Timeout,
 }
 impl Default for Upstream {
@@ -66,6 +73,7 @@ impl Default for Upstream {
       client_ip_headers: ["x-forwarded-for", "x-real-ip", "forwarded"]
         .map(String::from)
         .into(),
+      strip_headers: vec![],
       timeout: Timeout::default(),
     }
   }

@@ -172,10 +172,10 @@ one is not submitted. A rejected share continues the search on the same job.
 Rilgate reports one warning and one mismatch count per connection. The warning
 contains the pool name and requested and received difficulty.
 
-Use pools that you trust with `verify.mode: pool_share`. A pool that accepts every
-share can grant access to every client. Pools and proxies that require NiceHash
-nonce allocation are not supported. Rilgate rejects their login and tries the
-next pool. Each failover pool can pay a different wallet.
+Use pools that you trust to supply work and report acceptance; see
+[pool share verification](#pool-share-verification) for the proof and trust requirements.
+Pools and proxies that require NiceHash nonce allocation are not supported.
+Rilgate rejects their login and tries the next pool. Each failover pool can pay a different wallet.
 See [pool configuration](configuration.md#stratum-pools-and-proxies).
 
 P2Pool sets the payout wallet on the node with `--wallet` and ignores a login
@@ -284,9 +284,19 @@ protocol event from a Stratum `accepted` response.
 
 ### Pool share verification
 
-With `pool_share`, a RandomX proof is valid only when a Stratum pool accepts
-the share. Shares for the last 3 jobs go to the pool, which decides if each job is
-still valid. The browser keeps its workers and cache across jobs with the same seed.
+With `pool_share`, the gateway computes the RandomX hash with the local
+hasher, checks equality with the client result and requires both the policy
+difficulty and pool target before submission. A receipt also requires pool acceptance.
+The pool controls acceptance, job freshness, availability and payouts; it cannot
+substitute an uncomputed client result for a valid hash. Shares for the last 3 jobs
+can be submitted; the pool decides if each job is still valid.
+Each eligible submission costs one RandomX hash. The local hasher uses a bounded
+queue and a dedicated thread, a roughly 256 MiB seed cache and VM scratch memory.
+Cache initialization and seed changes add setup work. Pool-share mode requires
+the local hasher; remote hashing is available in gateway mode.
+WebSocket admission, idle time and rejection limits follow
+[pool session configuration](configuration.md#stratum-pools-and-proxies). The browser
+keeps its workers and cache across jobs with the same seed.
 A job with the same seed keeps the hashing state and the total attempt count; a
 different seed shows the setup state.
 
@@ -316,7 +326,7 @@ matching Stratum pool session
 browser solves current job
   |
   v
-gateway submits job_id + nonce + result
+gateway verifies hash, then submits job_id + nonce + result
   |
   v
 Stratum pool returns accepted
@@ -411,7 +421,10 @@ items on demand. It does not materialize the ~2 GiB dataset.
 
 Presentation and challenge tokens bind the request host. Receipts and access cookies
 retain that binding, including the port. HTTP/2 authority is supported when the Host
-header is absent.
+header is absent. Presentation tokens omit policy rule names and scores. Versions 1
+and 2 accept optional legacy `rule` and `weight` fields; access decisions use the signed
+steps. Upgrade all instances together, or keep presentation traffic on compatible
+instances during rollout. Instances that require metadata can reject tokens that omit it.
 
 Missing hosts cannot bypass a nonempty binding. Old receipts and access tokens without a
 host claim need a new proof. Fast challenges also retain their verification mode and

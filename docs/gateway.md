@@ -66,7 +66,8 @@ remain application routes governed by the configured policy because they are out
 them, other application paths need a valid proof.
 
 Unknown paths below the configured gateway prefix are **never** proxied to the protected
-application.
+application. Local responses carry `X-Content-Type-Options: nosniff`, and plain-text errors
+use `Content-Type: text/plain; charset=utf-8`.
 
 ## Reverse proxy
 
@@ -88,8 +89,9 @@ server:
 Normal application URLs stay unchanged.
 
 Paths that need URL normalization return `400`. These are `.` or `..` segments,
-their percent-encoded forms and `..;` forms, and paths whose canonical form
-changes again when it is decoded a second time, such as `/%4%44`. Paths longer
+their percent-encoded forms and `..;` forms, literal or percent-encoded backslashes,
+and paths whose canonical form changes again when it is decoded a second time, such
+as `/%4%44`. Paths longer
 than 8 KiB return `414`. The upstream receives the path byte for byte. Policy conditions match its canonical form, with decoded
 unreserved characters and `%2F` and collapsed `/`. Query strings do not affect this check.
 
@@ -241,6 +243,9 @@ Uploads are never retried automatically. After streaming begins, a read timeout 
 the body because the status was already sent. PoW JSON requests are limited to 16 KiB
 and their responses use `Cache-Control: no-store`. Stratum messages are limited to 64 KiB.
 
+Connection header and idle deadlines and per-network admission limits are described in
+[capacity and quotas](production.md#capacity-and-quotas).
+
 Local HTTP endpoints have a deadline of `server.request_timeout` (default 30 seconds) and
 return `408` on expiry. Proxy connection attempts share that budget, and uploads use it
 too, with the same value as the downstream read timeout. Upstream reads and writes use `server.upstream.timeout.read`.
@@ -262,9 +267,12 @@ difficulty.
 
 ## Proof API rate limits
 
-Rate limiting is enabled by default for challenge issuance, verification, receipt
-exchange, and WebSocket upgrades. Each request uses one unit from its client bucket and
-the instance's global bucket. Rejected requests return `429`, `Retry-After`, and
+Rate limiting is enabled by default for the proof API, session requests, challenge
+pages, exchange, refresh and WebSocket upgrades. Each request uses one client unit.
+The global work bucket is charged after signed token validation for challenge issue,
+proof verification, hook verification (including callbacks), and WebSocket job admission.
+Eligible WebSocket share submissions also consume a global work unit. Session, page,
+exchange and refresh requests use only the client bucket. Rejected requests return `429`, `Retry-After`, and
 `Cache-Control: no-store`. Client configuration, operational endpoints, assets, and application proxy
 traffic do not use this proof quota. All requests remain subject to connection and
 request concurrency limits.
@@ -298,10 +306,11 @@ share that peer's quota. Configure trusted proxies or enforce client quotas at t
 `Gateway::serve` gets peer addresses from accepted TCP sockets. Requests without connection
 information share an anonymous bucket.
 
-The client table is bounded by `max_clients`. Fully replenished entries can be removed
-without a reset of an active quota. If the table is full of active entries, new
-identities are throttled until a slot becomes available. No background cleanup task or
-external store is required. Set `enabled: false` to disable this limiter explicitly.
+The client table is bounded by `max_clients`. At capacity, a fresh network evicts the
+least recently used bucket, including a partly used bucket. A full table therefore
+permits admission of fresh networks. Returning evicted networks receive a fresh client
+burst; costly work still consumes the independent global quota. No background cleanup
+task or external store is required. Set `enabled: false` to disable this limiter explicitly.
 
 ## Logging
 

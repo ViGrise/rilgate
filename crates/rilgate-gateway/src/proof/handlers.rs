@@ -57,6 +57,14 @@ pub async fn challenge(
   uri: &Uri,
   request: ChallengeRequest,
 ) -> Result<Response, ApiError> {
+  state
+    .pow
+    .verify_presentation(&request.presentation_token, &request_host(headers, uri))
+    .map_err(ApiError::proof)?;
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   let issued = state
     .pow
     .issue_challenge(&request.presentation_token, &request_host(headers, uri))
@@ -71,6 +79,14 @@ pub async fn verify(
   request: VerifyRequest,
   binding: &BindingInput<'_>,
 ) -> Result<Response, ApiError> {
+  state
+    .pow
+    .validate_challenge(&request.challenge_token, &request_host(headers, uri))
+    .map_err(ApiError::proof)?;
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   let receipt = state
     .pow
     .verify_challenge(
@@ -138,10 +154,11 @@ fn exchange_cookie(
       .verify_presentation(token, &request_host(headers, uri))
       .ok()
   });
-  let fallback_for = presentation
+  let fallback_step = presentation
     .as_ref()
     .and_then(|p| p.presented_pow().ok())
-    .and_then(|p| p.fallback_for.clone());
+    .filter(|p| p.fallback_for.is_some())
+    .cloned();
   let issued = state
     .pow
     .exchange_receipt_with_claims(
@@ -149,7 +166,7 @@ fn exchange_cookie(
       &request_host(headers, uri),
       binding,
       cookie_value(headers, &state.cfg.pow.auth_cookie_name),
-      fallback_for,
+      fallback_step,
     )
     .map_err(ApiError::proof)?;
   if issued.network_merged {
@@ -185,10 +202,11 @@ pub fn refresh_rate_limited(
   uri: &Uri,
   seconds: u64,
   head: bool,
+  client_ip: Option<std::net::IpAddr>,
 ) -> Option<Response> {
   let token = refresh_token(uri)?;
   let (html, locale, policy) =
-    crate::web::pages::render_refresh_page(state, &token, seconds, headers, uri);
+    crate::web::pages::render_refresh_page(state, client_ip, &token, seconds, headers, uri);
   let mut out =
     crate::proxy::gate::page_response(StatusCode::TOO_MANY_REQUESTS, html, locale, head, policy);
   out
@@ -287,8 +305,14 @@ fn refresh_redemption(
       Ok(out)
     }
     RefreshRedemption::Wait { seconds } => {
-      let (html, locale, policy) =
-        crate::web::pages::render_refresh_page(state, token, seconds, headers, uri);
+      let (html, locale, policy) = crate::web::pages::render_refresh_page(
+        state,
+        binding.client_ip,
+        token,
+        seconds,
+        headers,
+        uri,
+      );
       Ok(crate::proxy::gate::page_response(
         state.cfg.web.responses.challenge_status,
         html,
@@ -327,6 +351,10 @@ pub fn websocket_admission(
       "WebSocket verification is only valid for randomx challenges".into(),
     ));
   }
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   Ok(presentation)
 }
 

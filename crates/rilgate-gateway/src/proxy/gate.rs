@@ -353,6 +353,7 @@ pub async fn gate_with_client(
     let (html, locale, policy) = if refresh && !json {
       render_refresh_page(
         state,
+        client_ip,
         &presentation.token,
         presentation
           .claims
@@ -363,7 +364,16 @@ pub async fn gate_with_client(
         uri,
       )
     } else {
-      render_challenge_page(state, presentation, headers, uri, json, false, &open_graph)
+      render_challenge_page(
+        state,
+        presentation,
+        headers,
+        uri,
+        json,
+        false,
+        &open_graph,
+        client_ip,
+      )
     };
 
     let mut out = formatted_response(

@@ -57,8 +57,18 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
 
   let keepalive = stratum.keepalive_interval();
   let mut next_keepalive = keepalive.map(|interval| Instant::now() + interval);
+  let mut share_deadline = Instant::now() + state.cfg.pow.stratum_pool.share_idle_timeout;
+  let mut rejected = 0;
   loop {
+    if rejected >= state.cfg.pow.stratum_pool.max_rejected_shares {
+      tokio::time::timeout(Duration::from_secs(5), ws_tx.send(Message::Close(None))).await??;
+      return Ok(());
+    }
     tokio::select! {
+      _ = sleep_until(share_deadline) => {
+        tokio::time::timeout(Duration::from_secs(5), ws_tx.send(Message::Close(None))).await??;
+        return Ok(());
+      }
       _ = sleep_until(session_deadline) => {
         send_ws(&mut ws_tx, ServerWsMessage::Error { code: None, message: "Proof-of-work session expired".into() }).await?;
         return Ok(());
@@ -98,6 +108,8 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
 
         match message {
           ClientWsMessage::Share { job_id, nonce, result } => {
+            share_deadline = Instant::now() + state.cfg.pow.stratum_pool.share_idle_timeout;
+            rejected += 1;
             if pending_submit.is_some() {
               send_ws(
                 &mut ws_tx,
@@ -139,6 +151,19 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               ).await?;
               continue;
             }
+            if let Err(seconds) = state.limiter.check_global() {
+              send_ws(&mut ws_tx, ServerWsMessage::Rejected { reason: format!("Proof quota exceeded; retry after {seconds} seconds") }).await?;
+              continue;
+            }
+            let job = stratum.recent_job(&job_id).expect("Eligible recent job");
+            if let Err(error) = state.pow.verify_pool_share(job, &nonce, &result,
+              (Instant::now() + state.cfg.pow.stratum_pool.submit_timeout).min(session_deadline).min(share_deadline).into_std()).await {
+              tracing::debug!(?error, "Share verification failed");
+              send_ws(&mut ws_tx, ServerWsMessage::Rejected { reason: "Share hash verification failed".into() }).await?;
+              send_ws(&mut ws_tx, messages::job(stratum.current_job.clone(), difficulty, state.cfg.pow.nonce_offset)).await?;
+              continue;
+            }
+            rejected -= 1;
             let request_id = stratum.submit_share(&job_id, &nonce, &result).await?;
             submitted.push_back(submitted_share);
             if submitted.len() > SUBMITTED_SHARES {
@@ -174,6 +199,7 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               return Ok(());
             }
 
+            rejected += 1;
             send_ws(
               &mut ws_tx,
               ServerWsMessage::Rejected {

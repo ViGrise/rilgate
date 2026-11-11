@@ -7,7 +7,9 @@ pub struct PresentationClaims {
   pub v: u8,
   pub host: String,
   pub path: String,
+  #[serde(default, skip_serializing)]
   pub rule: String,
+  #[serde(default, skip_serializing)]
   pub weight: i32,
   pub algorithm: PowAlgorithm,
   pub difficulty: u64,
@@ -25,7 +27,9 @@ pub struct PresentationClaimsV2 {
   pub v: u8,
   pub host: String,
   pub path: String,
+  #[serde(default, skip_serializing)]
   pub rule: String,
+  #[serde(default, skip_serializing)]
   pub weight: i32,
   pub challenge_id: String,
   pub steps: Vec<crate::ChallengeStep>,
@@ -226,4 +230,23 @@ pub struct ChallengeMetadata<'a> {
   pub difficulty: u64,
   pub issued_at: i64,
   pub expires_at: i64,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn presentation_rollout_reads_legacy_metadata_and_omits_it_on_issue() {
+    for payload in [
+      serde_json::json!({"v":1,"host":"example.test","path":"/admin","rule":"internal-admin-rule","weight":42,"algorithm":"fast","difficulty":1,"enforce":"local_verify","issued_at":1,"expires_at":60}),
+      serde_json::json!({"v":2,"host":"example.test","path":"/admin","rule":"internal-admin-rule","weight":42,"challenge_id":"challenge","steps":[{"pow":{"algorithm":"fast","difficulty":1,"enforce":"local_verify"}}],"step":0,"issued_at":1,"expires_at":60}),
+    ] {
+      let claims: AnyPresentationClaims = serde_json::from_value(payload).unwrap();
+      let issued = serde_json::to_value(claims).unwrap();
+      assert!(issued.get("rule").is_none());
+      assert!(issued.get("weight").is_none());
+      let _: AnyPresentationClaims = serde_json::from_value(issued).unwrap();
+    }
+  }
 }

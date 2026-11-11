@@ -60,9 +60,14 @@ async fn login(
 }
 
 async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<()>) {
+  let (browser, cfg, task, _) = browser_url(p2pool_port).await;
+  (browser, cfg, task)
+}
+async fn browser_url(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<()>, String) {
   let mut cfg = common::config();
   let pow = &mut Arc::get_mut(&mut cfg).unwrap().pow;
   pow.verification.randomx = PowVerification::PoolShare;
+  pow.stratum_pool.share_idle_timeout = Duration::from_secs(2);
   pow.stratum_pool.pools[0].port = p2pool_port;
   let mut unavailable = pow.stratum_pool.pools[0].clone();
   unavailable.name = "unavailable".into();
@@ -93,7 +98,60 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
     )
     .unwrap()
     .token;
-  let gateway = app::build(cfg.clone()).await.unwrap();
+  let (original, pool) = app::services(&cfg).unwrap();
+  drop(original);
+  struct Hasher;
+  impl rilgate_pow_randomx::RandomXHasher for Hasher {
+    fn kind(&self) -> rilgate_pow_randomx::HasherKind {
+      rilgate_pow_randomx::HasherKind::Local
+    }
+    fn hash(
+      &self,
+      seed: Vec<u8>,
+      input: Vec<u8>,
+      _: std::time::Instant,
+    ) -> futures_util::future::BoxFuture<'_, Result<[u8; 32], rilgate_pow_randomx::HashError>> {
+      assert_eq!(seed, vec![0xab; 32]);
+      assert_eq!(&input[39..43], &[4, 3, 2, 1]);
+      Box::pin(async {
+        let mut hash = [0; 32];
+        hash[0] = 1;
+        Ok(hash)
+      })
+    }
+  }
+  let mut registry = rilgate_pow::AlgorithmRegistry::default();
+  registry
+    .register(Arc::new(rilgate_pow_hash::FastAlgorithm::new(
+      &rilgate_pow_hash::FastConfig { ttl: 60 },
+    )))
+    .unwrap();
+  registry
+    .register(Arc::new(
+      rilgate_pow_randomx::RandomXAlgorithm::with_hasher(
+        &rilgate_pow_randomx::RandomXConfig {
+          difficulty: cfg.pow.difficulty.clone(),
+          ttl: 3600,
+          nonce_offset: 39,
+          solver_module_path: cfg.pow.browser.solver_module_path.clone(),
+          max_workers: 1,
+          store_cache: false,
+          job_details: false,
+          queue_capacity: 8,
+          cache_idle_timeout: Duration::from_secs(60),
+        },
+        pool.clone(),
+        rilgate_pow_randomx::OrderedHasher::new(vec![Arc::new(Hasher)]),
+      ),
+    ))
+    .unwrap();
+  let pow = Arc::new(
+    rilgate_challenge::ChallengeService::with_registry(Arc::new(cfg.pow.challenge()), registry)
+      .unwrap(),
+  );
+  let gateway = rilgate_gateway::app::build(cfg.clone(), pow, pool)
+    .await
+    .unwrap();
   let server = tokio::spawn(async move {
     gateway
       .serve(vec![listener], vec![], std::future::pending())
@@ -104,8 +162,8 @@ async fn browser(p2pool_port: u16) -> (Browser, Config, tokio::task::JoinHandle<
     "ws://{host}{}/api/ws?presentation_token={presentation}",
     cfg.web.base_path
   );
-  let (browser, _) = connect_async(url).await.unwrap();
-  (browser, cfg, server)
+  let (browser, _) = connect_async(&url).await.unwrap();
+  (browser, cfg, server, url)
 }
 
 async fn message(browser: &mut Browser) -> ServerWsMessage {
@@ -139,7 +197,7 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     assert_eq!(submit["method"], "submit");
     assert_eq!(submit["params"]["job_id"], "first");
     assert_eq!(submit["params"]["nonce"], "04030201");
-    assert_eq!(submit["params"]["result"], "00".repeat(32));
+    assert_eq!(submit["params"]["result"], format!("01{}", "00".repeat(31)));
     write_json(
       &mut writer,
       json!({"method": "job", "params": job("second")}),
@@ -167,7 +225,7 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     message(&mut ws).await,
     ServerWsMessage::Job { .. }
   ));
-  share(&mut ws, "stale", &"00".repeat(32)).await;
+  share(&mut ws, "stale", &format!("01{}", "00".repeat(31))).await;
   assert!(matches!(
     message(&mut ws).await,
     ServerWsMessage::Rejected { .. }
@@ -176,7 +234,7 @@ async fn receipt_requires_a_matching_accepted_submission_even_across_job_rotatio
     message(&mut ws).await,
     ServerWsMessage::Job { .. }
   ));
-  share(&mut ws, "first", &"00".repeat(32)).await;
+  share(&mut ws, "first", &format!("01{}", "00".repeat(31))).await;
   assert!(
     matches!(message(&mut ws).await, ServerWsMessage::Job { job, .. } if job.job_id == "second")
   );
@@ -245,7 +303,7 @@ async fn a_previous_job_share_reaches_the_pool_and_returns_a_receipt() {
   assert!(
     matches!(message(&mut ws).await, ServerWsMessage::Job { job, .. } if job.job_id == "second")
   );
-  share(&mut ws, "first", &"00".repeat(32)).await;
+  share(&mut ws, "first", &format!("01{}", "00".repeat(31))).await;
   let ServerWsMessage::Accepted { receipt } = message(&mut ws).await else {
     panic!("expected accepted share")
   };
@@ -271,7 +329,7 @@ async fn a_silent_p2pool_submission_expires() {
   });
   let (mut ws, _, server) = browser(port).await;
   message(&mut ws).await;
-  share(&mut ws, "first", &"00".repeat(32)).await;
+  share(&mut ws, "first", &format!("01{}", "00".repeat(31))).await;
   assert!(
     matches!(message(&mut ws).await, ServerWsMessage::Error { message, .. } if message.contains("acceptance timed out"))
   );
@@ -352,7 +410,7 @@ async fn failed_primary_uses_backup_and_cooldown_preserves_pool_affinity() {
   for _ in 0..2 {
     let mut session = provider.connect(1000).await.unwrap();
     session
-      .submit_share("backup-job", "01020304", &"00".repeat(32))
+      .submit_share("backup-job", "01020304", &format!("01{}", "00".repeat(31)))
       .await
       .unwrap();
   }
@@ -572,10 +630,7 @@ async fn pool_target_filters_policy_only_shares_and_duplicate_submissions() {
     .await;
     let submit = read_json(&mut reader).await;
     assert_eq!(submit["method"], "submit");
-    assert_eq!(
-      submit["params"]["result"],
-      format!("{}0000000000000400", "00".repeat(24))
-    );
+    assert_eq!(submit["params"]["result"], format!("01{}", "00".repeat(31)));
     write_json(&mut writer, json!({"id":submit["id"],"error":"rejected"})).await;
     wait.await.unwrap();
     assert!(
@@ -596,7 +651,7 @@ async fn pool_target_filters_policy_only_shares_and_duplicate_submissions() {
     matches!(message(&mut ws).await, ServerWsMessage::Rejected { reason } if reason == "Share must meet the pool target and the required difficulty of a recent job")
   );
   message(&mut ws).await;
-  let result = format!("{}0000000000000400", "00".repeat(24));
+  let result = format!("01{}", "00".repeat(31));
   share(&mut ws, "first", &result).await;
   assert!(matches!(
     message(&mut ws).await,
@@ -643,7 +698,7 @@ async fn keepalive_reply_does_not_reject_a_pending_share() {
     message(&mut ws).await,
     ServerWsMessage::Job { .. }
   ));
-  share(&mut ws, "first", &"00".repeat(32)).await;
+  share(&mut ws, "first", &format!("01{}", "00".repeat(31))).await;
   assert!(
     matches!(message(&mut ws).await, ServerWsMessage::Rejected { reason } if reason == "\"rejected\"")
   );
@@ -658,5 +713,121 @@ async fn keepalive_reply_does_not_reject_a_pending_share() {
   );
   release.send(()).unwrap();
   pool.await.unwrap();
+  server.abort();
+}
+
+#[tokio::test]
+async fn fabricated_zero_result_never_reaches_the_pool() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let (ready, waiting) = tokio::sync::oneshot::channel();
+  let pool = tokio::spawn(async move {
+    let (mut reader, _writer) = login(listener).await;
+    waiting.await.unwrap();
+    let mut line = String::new();
+    assert!(
+      tokio::time::timeout(Duration::from_millis(300), reader.read_line(&mut line))
+        .await
+        .is_err(),
+      "pool received {line}"
+    );
+  });
+  let (mut ws, _, server) = browser(port).await;
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Job { .. }
+  ));
+  share(&mut ws, "first", &"00".repeat(32)).await;
+  ready.send(()).unwrap();
+  assert!(matches!(
+    message(&mut ws).await,
+    ServerWsMessage::Rejected { .. }
+  ));
+  pool.await.unwrap();
+  server.abort();
+}
+
+#[tokio::test]
+async fn client_network_leaves_pool_slots_for_other_clients() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let pool = tokio::spawn(async move {
+    loop {
+      let (socket, _) = listener.accept().await.unwrap();
+      tokio::spawn(async move {
+        let mut socket = BufReader::new(socket);
+        let mut line = String::new();
+        socket.read_line(&mut line).await.unwrap();
+        socket
+          .get_mut()
+          .write_all(
+            format!(
+              "{}\n",
+              json!({"id":1,"result":{"id":"miner","job":job("first")}})
+            )
+            .as_bytes(),
+          )
+          .await
+          .unwrap();
+        let _ = socket.read_line(&mut String::new()).await;
+      });
+    }
+  });
+  let (mut first, _, server, url) = browser_url(port).await;
+  message(&mut first).await;
+  let (mut second, _) = connect_async(&url).await.unwrap();
+  message(&mut second).await;
+  assert!(matches!(connect_async(&url).await,
+    Err(tokio_tungstenite::tungstenite::Error::Http(response)) if response.status() == StatusCode::SERVICE_UNAVAILABLE));
+  first.close(None).await.unwrap();
+  second.close(None).await.unwrap();
+  pool.abort();
+  server.abort();
+}
+
+#[tokio::test]
+async fn session_without_a_share_closes() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let pool = tokio::spawn(async move {
+    let (_reader, _writer) = login(listener).await;
+    std::future::pending::<()>().await;
+  });
+  let (mut ws, _, server) = browser(port).await;
+  message(&mut ws).await;
+  let frame = tokio::time::timeout(Duration::from_secs(3), ws.next())
+    .await
+    .expect("Idle session remained open");
+  assert!(matches!(frame, None | Some(Ok(Message::Close(_)))));
+  pool.abort();
+  server.abort();
+}
+
+#[tokio::test]
+async fn repeated_rejected_shares_close_the_session() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let pool = tokio::spawn(async move {
+    let (_reader, _writer) = login(listener).await;
+    std::future::pending::<()>().await;
+  });
+  let (mut ws, _, server) = browser(port).await;
+  message(&mut ws).await;
+  for _ in 0..4 {
+    share(&mut ws, "first", &"ff".repeat(32)).await;
+    assert!(matches!(
+      message(&mut ws).await,
+      ServerWsMessage::Rejected { .. }
+    ));
+    assert!(matches!(
+      message(&mut ws).await,
+      ServerWsMessage::Job { .. }
+    ));
+  }
+  let frame = tokio::time::timeout(Duration::from_secs(1), ws.next())
+    .await
+    .expect("Rejected shares left the session open");
+  assert!(matches!(frame, None | Some(Ok(Message::Close(_)))));
+  pool.abort();
   server.abort();
 }

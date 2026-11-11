@@ -8,13 +8,29 @@
 # directory (default: /usr/local/bin). On Linux amd64 and arm64, LIBC selects the
 # dynamic glibc build (gnu) or the static build (musl); by default the glibc build
 # is used when the system has glibc 2.36 or newer. Linux ppc64le and riscv64 have
-# only the static build. Archives are verified against SHA256SUMS.
+# only the static build. Archives are verified against SHA256SUMS. When gpg is
+# installed, SHA256SUMS is verified against the release key embedded below;
+# REQUIRE_SIGNATURE=1 refuses to install without that check.
 set -euo pipefail
 
 REPO="ViGrise/rilgate"
 BIN_NAME="rilgate"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 VERSION="${VERSION:-latest}"
+RELEASE_KEY_FINGERPRINT="F3967F204825CDE607A81452B990C5BC82BD2323"
+RELEASE_KEY="$(cat <<'KEY'
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEat5D9hYJKwYBBAHaRw8BAQdAZ4YULVPl0zNBD9/P4nt1M4CcnC0FkVrWFijL
+ArPC/e60K1JpbGdhdGUgUmVsZWFzZSBTaWduaW5nIDx0aGluaEB0aGluaGh2LmNv
+bT6ItQQTFgoAXRYhBPOWfyBIJc3mB6gUUrmQxbyCvSMjBQJq3kP2GxSAAAAAAAQA
+Dm1hbnUyLDIuNSsxLjEyLDAsMwIbAwUJA8JnAAULCQgHAgIiAgYVCgkICwIEFgID
+AQIeBwIXgAAKCRC5kMW8gr0jI/aMAP9oPhJNLDpxxsfRhwssFwJ1NdqQDFCj64J+
+QPUngPuPVwEA0+/LkpW47BlfkuBQzbgihuzTkriDfJYAJ4FvVaLeEAk=
+=1oJd
+-----END PGP PUBLIC KEY BLOCK-----
+KEY
+)"
 
 fail() {
   echo "$*" >&2
@@ -82,6 +98,22 @@ trap 'rm -rf "$workdir"' EXIT
 echo "Downloading ${archive} (${VERSION})..."
 download "${base}/${archive}" "${workdir}/${archive}"
 download "${base}/SHA256SUMS" "${workdir}/SHA256SUMS"
+
+if command -v gpg >/dev/null 2>&1; then
+  download "${base}/SHA256SUMS.asc" "${workdir}/SHA256SUMS.asc"
+  mkdir -m 700 "${workdir}/gnupg"
+  printf '%s\n' "$RELEASE_KEY" | GNUPGHOME="${workdir}/gnupg" gpg --batch --quiet --import 2>/dev/null
+  GNUPGHOME="${workdir}/gnupg" gpg --batch --status-file "${workdir}/gpg-status" \
+    --verify "${workdir}/SHA256SUMS.asc" "${workdir}/SHA256SUMS" 2>/dev/null ||
+    fail "SHA256SUMS has no valid release signature"
+  grep -q "^\[GNUPG:\] VALIDSIG ${RELEASE_KEY_FINGERPRINT} " "${workdir}/gpg-status" ||
+    fail "SHA256SUMS is not signed by the release key"
+  GNUPGHOME="${workdir}/gnupg" gpgconf --kill gpg-agent >/dev/null 2>&1 || true
+elif [ "${REQUIRE_SIGNATURE:-0}" = "1" ]; then
+  fail "gpg is required to verify the release signature (REQUIRE_SIGNATURE=1)"
+else
+  echo "gpg not found: verifying the checksum only" >&2
+fi
 
 expected="$(awk -v file="$archive" '$2 == file {print $1}' "${workdir}/SHA256SUMS")"
 [ -n "$expected" ] || fail "SHA256SUMS has no entry for ${archive}"

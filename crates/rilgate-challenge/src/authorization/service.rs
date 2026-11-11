@@ -87,7 +87,7 @@ impl ChallengeService {
     request_host: &str,
     binding: &BindingInput<'_>,
     previous: Option<&str>,
-    fallback_for: Option<String>,
+    fallback_step: Option<rilgate_protocol::PowStep>,
   ) -> Result<IssuedAuthToken> {
     let receipt: ReceiptClaims = self
       .tokens
@@ -115,10 +115,19 @@ impl ChallengeService {
       .get(receipt.algorithm)?
       .validate_difficulty(receipt.difficulty)?;
 
+    if let Some(step) = &fallback_step {
+      anyhow::ensure!(
+        receipt.algorithm == step.algorithm
+          && receipt.verification == step.verification
+          && receipt.difficulty >= step.difficulty,
+        "Proof receipt does not satisfy the fallback step"
+      );
+    }
+
     self.issue_access(
       receipt.host,
       NewGrant::Pow {
-        fallback_for,
+        fallback_for: fallback_step.and_then(|step| step.fallback_for),
         algorithm: receipt.algorithm,
         difficulty: receipt.difficulty,
         verification: receipt.verification,

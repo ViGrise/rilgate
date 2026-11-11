@@ -55,6 +55,12 @@ async fn main() -> anyhow::Result<()> {
   let (pow, pool) = rilgate_test_utils::gateway::services(&cfg)?;
   let web = rilgate_web::WebManager::new(cfg.web.clone())?;
   let state = AppState {
+    trap_signer: rilgate_crypto::token::TokenSigner::new(
+      b"test-signing-key",
+      rilgate_crypto::token::TokenPurpose::Honeypot,
+    )
+    .unwrap(),
+    websocket_sessions: Arc::new(Default::default()),
     hooks: Arc::new(rilgate_challenge_hooks::ChallengeHooks::new(
       cfg.challenge_hooks.clone(),
     )?),

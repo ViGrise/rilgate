@@ -112,6 +112,13 @@ server:
     #
     # client_ip_headers: [x-forwarded-for, x-real-ip, forwarded]
 
+    # Extra HTTP header names removed from untrusted socket peers, in addition
+    # to the gateway's default forwarding and URL-override header set. At most
+    # 64 names. Trusted proxies keep their values. Range and trust rules are
+    # described in docs/configuration.md under client address and forwarding.
+    #
+    # strip_headers: []
+
     # timeout:
       # Per-attempt upstream connection timeout, within server.request_timeout.
       # DNS resolution and connection setup consume that budget.
@@ -128,6 +135,21 @@ server:
   # Excess connections are closed before request processing.
   #
   # max_connections: 1024
+
+  # Open connections per IPv4 address or IPv6 network. The IPv6 prefix follows
+  # pow.rate_limit.client.ipv6_prefix. Trusted proxies use the resolved client
+  # network after headers arrive. Range: 1..1000000.
+  #
+  # max_connections_per_client: 64
+
+  # Deadline to receive a complete request header, including a silent client.
+  # Range: 1ms..10m.
+  #
+  # header_timeout: 10s
+
+  # Idle keep-alive connection deadline. Range: 1ms..10m.
+  #
+  # idle_timeout: 60s
 
   # Maximum concurrent requests. Streaming responses and upgraded WebSockets hold
   # their slot until completion. Excess requests receive 503 with Retry-After.
@@ -542,14 +564,14 @@ server:
     # receipt_ttl: 30s
 
   # rate_limit:
-    # Apply per-client and global token buckets to proof HTTP APIs and WebSocket
-    # handshakes. Ordinary proxied requests use server admission limits instead.
-    # Quotas are per gateway process, not shared across a deployment.
+    # Apply per-client quotas to proof API routes and pages. Signed challenge
+    # issue and verification work also uses the global quota. Application
+    # requests use server admission limits. Quotas are per gateway process.
     #
     # enabled: true
 
     # Maximum tracked client-IP buckets, bounding memory. Range: 1..65536.
-    # If no bucket can be reclaimed at capacity, new clients are rate limited.
+    # At capacity, a fresh network evicts the least recently used client bucket.
     #
     # max_clients: 4096
     # client:
@@ -847,6 +869,16 @@ server:
       # Range: 1..4096. Process-local. Capacity exhaustion returns 503.
       #
       # max: 64
+
+      # Concurrent WebSocket sessions per resolved client network. Range: 1..4096.
+      # Capped below total capacity when sessions.max is greater than one.
+      # max_per_client: 4
+
+      # Maximum interval between browser shares. Positive duration up to one year.
+      # share_idle_timeout: 5m
+
+      # Total rejected shares before a WebSocket closes. Range: 1..100.
+      # max_rejected_shares: 4
 
       # Maximum lifetime of a WebSocket acceptance session, not a proof-token TTL.
       #
@@ -1146,11 +1178,11 @@ server:
     #
     # max_entries: 65536
 
-  # Hidden link in the challenge and refresh pages. A
-  # client that requests the link is flagged, and the condition honeypot: true
-  # matches flagged clients. A flag covers one IPv4 address or one IPv6 /64, and
-  # a request without a resolved client IP flags nobody. The link points to
-  # {site.base_path}/trap/<random>, which answers like an unknown internal route.
+  # Hidden link in challenge and refresh pages. Its signed token binds the
+  # client network and expires after pow.challenge.ttl. A valid same-network
+  # request flags that network unless Sec-Fetch-Site is cross-site. The condition
+  # honeypot: true matches flagged clients. Flags cover one IPv4 address or IPv6
+  # /64. Requests without a resolved client IP flag nobody. Trap URLs answer 404.
   #
   # honeypot:
     # Time a client stays flagged. Range: 1s..30d.

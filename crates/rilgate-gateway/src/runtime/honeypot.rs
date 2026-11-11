@@ -83,6 +83,43 @@ impl Honeypot {
   }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct TrapClaims {
+  pub network: IpAddr,
+  pub expires_at: u64,
+  pub nonce: String,
+}
+
+pub(crate) fn issue_trap(state: &super::state::AppState, ip: Option<IpAddr>) -> Option<String> {
+  let ip = ip?;
+  let mut nonce = [0; 16];
+  getrandom::fill(&mut nonce).expect("Operating system randomness");
+  let claims = TrapClaims {
+    network: key(ip),
+    expires_at: rilgate_core::time::unix_now().ok()? as u64 + state.cfg.pow.challenge_ttl_seconds,
+    nonce: hex::encode(nonce),
+  };
+  state.trap_signer.sign_json(&claims).ok()
+}
+
+pub(crate) fn valid_trap(
+  state: &super::state::AppState,
+  segment: &str,
+  ip: Option<IpAddr>,
+) -> bool {
+  let Some(ip) = ip else {
+    return false;
+  };
+  state
+    .trap_signer
+    .verify_json::<TrapClaims>(segment)
+    .is_ok_and(|claims| {
+      claims.network == key(ip)
+        && rilgate_core::time::unix_now()
+          .is_ok_and(|now| now >= 0 && (now as u64) < claims.expires_at)
+    })
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

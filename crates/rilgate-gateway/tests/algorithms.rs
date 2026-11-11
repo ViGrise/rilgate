@@ -311,6 +311,12 @@ async fn randomx_verify_handler_maps_verifier_outcomes_to_http_status() {
     let pool = Arc::new(rilgate_pool::StratumPoolProvider::new(cfg.stratum_pool.clone()).unwrap());
     let web = rilgate_web::WebManager::new(config.web.clone()).unwrap();
     let state = AppState {
+      trap_signer: rilgate_crypto::token::TokenSigner::new(
+        b"test-signing-key",
+        rilgate_crypto::token::TokenPurpose::Honeypot,
+      )
+      .unwrap(),
+      websocket_sessions: Arc::new(Default::default()),
       hooks: Arc::new(
         rilgate_challenge_hooks::ChallengeHooks::new(Arc::new(Default::default())).unwrap(),
       ),

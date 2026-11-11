@@ -31,6 +31,13 @@ pub async fn run(version: Option<String>, force: bool) -> Result<()> {
     .build()?;
   let base = format!("{RELEASES}/download/{tag}");
   let sums = fetch(&downloads, &format!("{base}/SHA256SUMS")).await?;
+  let sums_signature = fetch(&downloads, &format!("{base}/SHA256SUMS.asc")).await?;
+  super::release_signature::verify(
+    &sums,
+    &String::from_utf8_lossy(&sums_signature),
+    super::release_signature::RELEASE_KEYS,
+  )
+  .with_context(|| format!("SHA256SUMS of {tag} has no valid release signature"))?;
   let expected = checksum_for(&String::from_utf8_lossy(&sums), asset)
     .with_context(|| format!("SHA256SUMS of {tag} has no entry for {asset}"))?;
   let binary = fetch(&downloads, &format!("{base}/{asset}")).await?;

@@ -1,6 +1,7 @@
 mod args;
 pub use args::{Args, Command, ConfigCommand, LogFormat, VerifierCommand, WebCommand, env_file};
 pub mod config;
+mod release_signature;
 pub mod reload;
 pub mod serve;
 mod settings;
