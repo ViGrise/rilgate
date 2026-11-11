@@ -7,6 +7,8 @@ pub type Response = http::Response<Body>;
 pub fn response(status: StatusCode, bytes: impl Into<Bytes>) -> Response {
   http::Response::builder()
     .status(status)
+    .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+    .header("x-content-type-options", "nosniff")
     .body(rilgate_web::assets::body(bytes))
     .expect("valid response")
 }

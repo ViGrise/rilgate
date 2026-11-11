@@ -65,7 +65,9 @@ remain application routes governed by the configured policy because they are out
 `/.well-known/rilgate`. The balanced preset allows ACME paths. Unless a policy explicitly allows
 them, other application paths need a valid proof.
 
-Unknown paths below the configured gateway prefix are **never** proxied to the protected
+Local responses carry `X-Content-Type-Options: nosniff`. Plain-text errors use
+`Content-Type: text/plain; charset=utf-8`. Unknown paths below the configured gateway
+prefix are **never** proxied to the protected
 application.
 
 ## Reverse proxy
