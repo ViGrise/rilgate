@@ -85,7 +85,11 @@ impl Fixture {
 
   /// Returns the honeypot link of the challenge page for a protected path.
   async fn trap_url(&self) -> String {
-    let body = self.get("/protected", None).await.text().await.unwrap();
+    self.trap_url_for(None).await
+  }
+
+  async fn trap_url_for(&self, ip: Option<&str>) -> String {
+    let body = self.get("/protected", ip).await.text().await.unwrap();
     let attributes = r#"" rel="nofollow" hidden aria-hidden="true" tabindex="-1"></a>"#;
     let end = body.find(attributes).expect("honeypot link");
     let start = body[..end].rfind(r#"<a href=""#).unwrap() + r#"<a href=""#.len();
@@ -98,12 +102,12 @@ async fn challenge_and_refresh_pages_link_the_trap() {
   for refresh in [false, true] {
     let fixture = fixture(false, refresh).await;
     let first = fixture.trap_url().await;
-    let hex = first
+    first
       .strip_prefix(&format!("{BASE}/trap/"))
       .expect("trap path under the internal prefix");
-    assert_eq!(hex.len(), 32, "{first}");
-    assert!(hex.bytes().all(|byte| byte.is_ascii_hexdigit()), "{first}");
     assert_ne!(first, fixture.trap_url().await);
+    assert_eq!(fixture.get(&first, None).await.status(), 404);
+    assert_eq!(fixture.get("/page", None).await.status(), 403);
   }
 }
 
@@ -135,7 +139,7 @@ async fn trap_hit_flags_the_client() {
 #[tokio::test]
 async fn ipv6_trap_hit_flags_the_slash_64() {
   let fixture = fixture(true, false).await;
-  let trap = fixture.trap_url().await;
+  let trap = fixture.trap_url_for(Some("2001:db8:1:2::5")).await;
   assert_eq!(
     fixture.get(&trap, Some("2001:db8:1:2::5")).await.status(),
     404
@@ -157,4 +161,85 @@ async fn trap_route_without_a_honeypot_is_unknown() {
     .await
     .unwrap();
   assert_eq!(response.status(), 404);
+}
+
+#[tokio::test]
+async fn unverified_cross_site_trap_cannot_deny_a_visitor() {
+  let fixture = fixture(true, false).await;
+  assert_eq!(
+    fixture.get("/protected", Some("192.0.2.1")).await.status(),
+    200
+  );
+  let response = fixture
+    .client
+    .get(format!("http://{}{BASE}/trap/x", fixture.address))
+    .header("host", "example.test")
+    .header("x-forwarded-for", "192.0.2.1")
+    .header("sec-fetch-site", "cross-site")
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 404);
+  assert_eq!(
+    fixture.get("/protected", Some("192.0.2.1")).await.status(),
+    200
+  );
+  assert_eq!(
+    fixture.get("/protected", Some("192.0.2.2")).await.status(),
+    200
+  );
+}
+
+#[tokio::test]
+async fn issued_link_cannot_flag_another_network() {
+  let fixture = fixture(true, false).await;
+  let trap = fixture.trap_url().await;
+  assert_eq!(fixture.get(&trap, Some("192.0.2.2")).await.status(), 404);
+  assert_eq!(
+    fixture.get("/protected", Some("192.0.2.2")).await.status(),
+    200
+  );
+}
+
+#[tokio::test]
+async fn signed_links_reject_cross_site_and_expired_requests() {
+  let fixture = fixture(true, false).await;
+  let trap = fixture.trap_url_for(Some("192.0.2.1")).await;
+  assert_eq!(
+    fixture
+      .client
+      .get(format!("http://{}{trap}", fixture.address))
+      .header("host", "example.test")
+      .header("x-forwarded-for", "192.0.2.1")
+      .header("sec-fetch-site", "cross-site")
+      .send()
+      .await
+      .unwrap()
+      .status(),
+    404
+  );
+  assert_eq!(
+    fixture.get("/protected", Some("192.0.2.1")).await.status(),
+    200
+  );
+  let cfg = common::config();
+  let segment = rilgate_crypto::token::sign_json(
+    &serde_json::json!({
+      "network": "192.0.2.1", "expires_at": 1, "nonce": "expired"
+    }),
+    cfg.pow.signing_key.expose().as_bytes(),
+    rilgate_crypto::token::TokenPurpose::Honeypot,
+  )
+  .unwrap();
+  assert_eq!(
+    fixture
+      .get(&format!("{BASE}/trap/{segment}"), Some("192.0.2.1"))
+      .await
+      .status(),
+    404
+  );
+  assert_eq!(
+    fixture.get("/protected", Some("192.0.2.1")).await.status(),
+    200
+  );
 }

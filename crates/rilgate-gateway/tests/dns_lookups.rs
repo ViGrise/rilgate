@@ -65,6 +65,11 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
   let (service, pool) = gateway::services(&cfg).unwrap();
   let web = rilgate_web::WebManager::new(cfg.web.clone()).unwrap();
   let state = AppState {
+    trap_signer: rilgate_crypto::token::TokenSigner::new(
+      b"test-signing-key",
+      rilgate_crypto::token::TokenPurpose::Honeypot,
+    )
+    .unwrap(),
     hooks: Arc::new(
       rilgate_challenge_hooks::ChallengeHooks::new(Arc::new(Default::default())).unwrap(),
     ),

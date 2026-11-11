@@ -445,8 +445,20 @@ impl Handler {
       return Ok(Some(out));
     }
     if endpoint == Some(Endpoint::Trap) {
-      if let Some(honeypot) = &self.state.policy_services.load().honeypot {
-        honeypot.record_hit(resolved_client_ip.ok().flatten());
+      let ip = resolved_client_ip.ok().flatten();
+      let cross_site = headers
+        .get_all("sec-fetch-site")
+        .iter()
+        .any(|value| value.as_bytes().eq_ignore_ascii_case(b"cross-site"));
+      if !cross_site
+        && crate::runtime::honeypot::valid_trap(
+          &self.state,
+          path.strip_prefix("/trap/").unwrap_or_default(),
+          ip,
+        )
+        && let Some(honeypot) = &self.state.policy_services.load().honeypot
+      {
+        honeypot.record_hit(ip);
         self
           .state
           .metrics
@@ -479,6 +491,7 @@ impl Handler {
               &uri,
               seconds,
               method == Method::HEAD,
+              peer,
             )
           })
           .flatten();
@@ -505,9 +518,13 @@ impl Handler {
       }
       Some(endpoint) => {
         let result: Result<Response, ApiError> = match endpoint {
-          Endpoint::ChallengePage => {
-            crate::web::pages::challenge_page(&self.state, &headers, &uri, method == Method::HEAD)
-          }
+          Endpoint::ChallengePage => crate::web::pages::challenge_page(
+            &self.state,
+            &headers,
+            &uri,
+            method == Method::HEAD,
+            client_ip,
+          ),
           Endpoint::ClientConfig => Ok(handlers::client_config(&self.state)),
           Endpoint::Live => Ok(json(StatusCode::OK, &serde_json::json!({"status": "ok"}))),
           Endpoint::Ready => Ok(crate::observability::readiness::service::check(&self.state).await),

@@ -1146,11 +1146,11 @@ server:
     #
     # max_entries: 65536
 
-  # Hidden link in the challenge and refresh pages. A
-  # client that requests the link is flagged, and the condition honeypot: true
-  # matches flagged clients. A flag covers one IPv4 address or one IPv6 /64, and
-  # a request without a resolved client IP flags nobody. The link points to
-  # {site.base_path}/trap/<random>, which answers like an unknown internal route.
+  # Hidden link in challenge and refresh pages. Its signed token binds the
+  # client network and expires after pow.challenge.ttl. A valid same-network
+  # request flags that network unless Sec-Fetch-Site is cross-site. The condition
+  # honeypot: true matches flagged clients. Flags cover one IPv4 address or IPv6
+  # /64. Requests without a resolved client IP flag nobody. Trap URLs answer 404.
   #
   # honeypot:
     # Time a client stays flagged. Range: 1s..30d.

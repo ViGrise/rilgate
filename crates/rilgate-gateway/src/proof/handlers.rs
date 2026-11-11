@@ -185,10 +185,11 @@ pub fn refresh_rate_limited(
   uri: &Uri,
   seconds: u64,
   head: bool,
+  client_ip: Option<std::net::IpAddr>,
 ) -> Option<Response> {
   let token = refresh_token(uri)?;
   let (html, locale, policy) =
-    crate::web::pages::render_refresh_page(state, &token, seconds, headers, uri);
+    crate::web::pages::render_refresh_page(state, client_ip, &token, seconds, headers, uri);
   let mut out =
     crate::proxy::gate::page_response(StatusCode::TOO_MANY_REQUESTS, html, locale, head, policy);
   out
@@ -287,8 +288,14 @@ fn refresh_redemption(
       Ok(out)
     }
     RefreshRedemption::Wait { seconds } => {
-      let (html, locale, policy) =
-        crate::web::pages::render_refresh_page(state, token, seconds, headers, uri);
+      let (html, locale, policy) = crate::web::pages::render_refresh_page(
+        state,
+        binding.client_ip,
+        token,
+        seconds,
+        headers,
+        uri,
+      );
       Ok(crate::proxy::gate::page_response(
         state.cfg.web.responses.challenge_status,
         html,

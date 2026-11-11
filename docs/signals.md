@@ -297,9 +297,11 @@ unlisted address or a client without a verified name.
 
 `signals.honeypot` turns on a hidden link in the challenge and refresh pages. A person
 does not see the link. A crawler that follows every link requests it. The link points to
-`{site.base_path}/trap/<random>`, where `<random>` is 16 random bytes in hex that change
-on every page. The request flags the client, and the trap URL answers like an unknown
-internal route (the 404 page).
+`{site.base_path}/trap/<token>`. The token carries an HMAC over the client network key,
+an expiry and a random nonce. It uses the challenge signing keys and their rotation
+settings with a separate signing purpose. The link expires after `pow.challenge.ttl`.
+Only a valid link followed by the same network before expiry flags that network.
+Requests with `Sec-Fetch-Site: cross-site` flag nobody. Every trap URL answers 404.
 
 The condition `honeypot: true` matches flagged clients, and `honeypot: false` matches the
 others. The condition needs `signals.honeypot` and works only in policy rules.
@@ -325,7 +327,8 @@ Rilgate keeps flags in memory, so a restart clears them. A flag covers one IPv4 
 one IPv6 /64. A request without a resolved client IP flags nobody, so one hit cannot flag
 every client behind a proxy that Rilgate does not trust. When the table is full, Rilgate
 drops expired flags first and then the oldest flag. The metric
-`rilgate_honeypot_hits_total` counts the requests to the trap URL. A page template can
+`rilgate_honeypot_hits_total` counts verified, same-network trap hits. Unverified and
+cross-site requests do not count, so this metric measures actionable crawler signals. A page template can
 place the link with the variable `honeypot_url`, which is an empty string when the
 honeypot is off.
 
