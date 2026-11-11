@@ -278,7 +278,7 @@ impl Default for Sessions {
     Self {
       max: 64,
       max_per_client: 4,
-      share_idle_timeout: Time::seconds(60),
+      share_idle_timeout: Time::seconds(300),
       max_rejected_shares: 4,
       ttl: Time::seconds(900),
     }

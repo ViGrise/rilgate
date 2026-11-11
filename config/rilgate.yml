@@ -853,7 +853,7 @@ server:
       # max_per_client: 4
 
       # Maximum interval between browser shares. Positive duration up to one year.
-      # share_idle_timeout: 60s
+      # share_idle_timeout: 5m
 
       # Total rejected shares before a WebSocket closes. Range: 1..100.
       # max_rejected_shares: 4

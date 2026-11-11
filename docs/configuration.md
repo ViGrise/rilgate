@@ -772,7 +772,7 @@ uses the resolved IPv4 address or the IPv6 prefix from
 `pow.rate_limit.client.ipv6_prefix`, including when proof rate limiting is disabled.
 WebSocket closure releases both permits.
 
-`sessions.share_idle_timeout` defaults to `60s` and accepts a positive duration
+`sessions.share_idle_timeout` defaults to `5m` and accepts a positive duration
 up to one year. A session closes if it submits no share during that interval.
 Pool job notifications and browser ping frames do not extend the interval.
 Choose an interval that accommodates the intended browsers' solve time.
