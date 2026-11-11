@@ -1,0 +1,18 @@
+# Workflow actions are pinned to commit SHAs with the version in a trailing
+# comment. Dependabot updates both and opens one grouped pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A release must be public for 14 days before an update proposes it.
+    cooldown:
+      default-days: 14
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci
+      include: scope
