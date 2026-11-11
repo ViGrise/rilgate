@@ -70,6 +70,7 @@ async fn gate_allows_only_forward_confirmed_crawlers() {
       rilgate_crypto::token::TokenPurpose::Honeypot,
     )
     .unwrap(),
+    websocket_sessions: Arc::new(Default::default()),
     hooks: Arc::new(
       rilgate_challenge_hooks::ChallengeHooks::new(Arc::new(Default::default())).unwrap(),
     ),

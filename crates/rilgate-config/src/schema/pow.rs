@@ -268,12 +268,18 @@ impl Default for PoolTimeout {
 #[serde(default, deny_unknown_fields)]
 pub struct Sessions {
   pub max: usize,
+  pub max_per_client: usize,
+  pub share_idle_timeout: Time,
+  pub max_rejected_shares: usize,
   pub ttl: Time,
 }
 impl Default for Sessions {
   fn default() -> Self {
     Self {
       max: 64,
+      max_per_client: 4,
+      share_idle_timeout: Time::seconds(300),
+      max_rejected_shares: 4,
       ttl: Time::seconds(900),
     }
   }

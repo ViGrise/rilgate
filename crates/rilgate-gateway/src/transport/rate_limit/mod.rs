@@ -122,7 +122,7 @@ impl RateLimiter {
 
 /// The address that keys a client bucket: the full IPv4 address, or the IPv6 network of
 /// `ipv6_prefix` bits with the host bits cleared.
-fn client_network(ip: IpAddr, ipv6_prefix: u8) -> IpAddr {
+pub(crate) fn client_network(ip: IpAddr, ipv6_prefix: u8) -> IpAddr {
   match ip.to_canonical() {
     IpAddr::V6(ip) => {
       let mask = u128::MAX << (128 - u32::from(ipv6_prefix.clamp(1, 128)));

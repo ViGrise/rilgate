@@ -15,6 +15,9 @@ pub struct StratumPoolConfig {
   pub connect_timeout: std::time::Duration,
   pub submit_timeout: std::time::Duration,
   pub max_sessions: usize,
+  pub max_sessions_per_client: usize,
+  pub share_idle_timeout: std::time::Duration,
+  pub max_rejected_shares: usize,
   pub session_ttl: std::time::Duration,
   pub job_session_mode: JobSessionMode,
   pub max_job_sessions: usize,
@@ -24,6 +27,14 @@ pub struct StratumPoolConfig {
 
 impl StratumPoolConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
+    anyhow::ensure!(
+      (1..=4096).contains(&self.max_sessions_per_client),
+      "pow.stratum_pool.sessions.max_per_client must be between 1 and 4096"
+    );
+    anyhow::ensure!(
+      (1..=100).contains(&self.max_rejected_shares),
+      "pow.stratum_pool.sessions.max_rejected_shares must be between 1 and 100"
+    );
     anyhow::ensure!(
       (1..=4096).contains(&self.max_sessions),
       "pow.stratum_pool.sessions.max must be between 1 and 4096"
@@ -39,6 +50,7 @@ impl StratumPoolConfig {
       ("timeout.connect", self.connect_timeout),
       ("timeout.submit", self.submit_timeout),
       ("sessions.ttl", self.session_ttl),
+      ("sessions.share_idle_timeout", self.share_idle_timeout),
       ("job_sessions.idle", self.job_session_idle),
     ] {
       anyhow::ensure!(

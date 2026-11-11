@@ -127,6 +127,38 @@ impl RandomXAlgorithm {
   }
 }
 impl Algorithm for RandomXAlgorithm {
+  fn verify_pool_share<'a>(
+    &'a self,
+    job: &'a StratumJob,
+    nonce: &'a str,
+    result: &'a str,
+    deadline: Instant,
+  ) -> AlgorithmFuture<'a, ()> {
+    Box::pin(async move {
+      let seed = hex::decode(&job.seed_hash).context("Invalid RandomX seed hash")?;
+      let mut blob = hex::decode(&job.blob).context("Invalid RandomX hashing blob")?;
+      anyhow::ensure!(
+        seed.len() == 32 && !blob.is_empty() && blob.len() <= 256,
+        "Invalid RandomX work dimensions"
+      );
+      let claimed = hex::decode(result).context("Invalid RandomX result")?;
+      anyhow::ensure!(claimed.len() == 32, "Invalid RandomX result length");
+      write_nonce(&mut blob, self.nonce_offset, nonce)?;
+      let hash = tokio::time::timeout_at(deadline.into(), self.hasher.hash(seed, blob, deadline))
+        .await
+        .context("Share verification timed out")?
+        .map_err(|error| match error {
+          HashError::Unavailable(error) => error.context(PowBackendUnavailable),
+          HashError::Invalid(error) => error,
+        })?;
+      anyhow::ensure!(Instant::now() < deadline, "Share verification timed out");
+      anyhow::ensure!(
+        hash.as_slice() == claimed,
+        "Share result does not match RandomX hash"
+      );
+      Ok(())
+    })
+  }
   fn hash_diagnostics(&self) -> Option<rilgate_pow::algorithm::HashDiagnostics> {
     Some(self.hasher.diagnostics())
   }

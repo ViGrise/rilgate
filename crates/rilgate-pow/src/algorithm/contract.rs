@@ -42,6 +42,15 @@ pub trait Algorithm: Send + Sync {
   fn challenge_ttl(&self) -> u64;
   fn issue(&self, request: WorkRequest) -> AlgorithmFuture<'_, PreparedWork>;
   fn verify<'a>(&'a self, work: &'a PreparedWork, proof: Proof<'a>) -> AlgorithmFuture<'a, ()>;
+  fn verify_pool_share<'a>(
+    &'a self,
+    _: &'a rilgate_protocol::StratumJob,
+    _: &'a str,
+    _: &'a str,
+    _: std::time::Instant,
+  ) -> AlgorithmFuture<'a, ()> {
+    Box::pin(async { anyhow::bail!("Pool shares are unsupported by this algorithm") })
+  }
   fn id(&self) -> PowAlgorithm {
     self.descriptor().id
   }

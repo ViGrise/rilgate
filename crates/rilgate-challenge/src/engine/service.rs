@@ -105,6 +105,20 @@ impl ChallengeService {
     })
   }
 
+  pub async fn verify_pool_share(
+    &self,
+    job: &rilgate_protocol::StratumJob,
+    nonce: &str,
+    result: &str,
+    deadline: std::time::Instant,
+  ) -> Result<()> {
+    self
+      .algorithms
+      .get(PowAlgorithm::RandomX)?
+      .verify_pool_share(job, nonce, result, deadline)
+      .await
+  }
+
   pub fn verifier_diagnostics(&self) -> Option<rilgate_pow::algorithm::VerifierDiagnostics> {
     self
       .algorithms

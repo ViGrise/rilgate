@@ -604,6 +604,25 @@ impl Handler {
     let handshake = tokio_tungstenite::tungstenite::handshake::server::create_response(&request)
       .map_err(|error| ApiError::InvalidRequest(error.to_string()))?;
     let presentation = handlers::websocket_admission(&self.state, &header.headers, &header.uri)?;
+    let client = ctx
+      .client_ip
+      .ok_or_else(|| ApiError::InvalidRequest("Missing client address".into()))?;
+    let sessions = &self.state.cfg.pow.stratum_pool;
+    // A client network leaves one shared slot available when capacity permits.
+    let client_limit = sessions
+      .max_sessions_per_client
+      .min(sessions.max_sessions.saturating_sub(1).max(1));
+    let _client_slot = self
+      .state
+      .websocket_sessions
+      .acquire(
+        client,
+        self.state.cfg.pow.rate_limit.client_ipv6_prefix,
+        client_limit,
+      )
+      .ok_or_else(|| {
+        ApiError::ServiceUnavailable("Client WebSocket session limit reached".into())
+      })?;
     let _slot = self.state.pool.acquire_slot().map_err(ApiError::proof)?;
     let (mut parts, _) = handshake.into_parts();
     parts.headers.insert("x-request-id", ctx.id.clone());

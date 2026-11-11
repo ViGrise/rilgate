@@ -855,6 +855,16 @@ server:
       #
       # max: 64
 
+      # Concurrent WebSocket sessions per resolved client network. Range: 1..4096.
+      # Capped below total capacity when sessions.max is greater than one.
+      # max_per_client: 4
+
+      # Maximum interval between browser shares. Positive duration up to one year.
+      # share_idle_timeout: 5m
+
+      # Total rejected shares before a WebSocket closes. Range: 1..100.
+      # max_rejected_shares: 4
+
       # Maximum lifetime of a WebSocket acceptance session, not a proof-token TTL.
       #
       # ttl: 15m

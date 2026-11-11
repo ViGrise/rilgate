@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
       rilgate_crypto::token::TokenPurpose::Honeypot,
     )
     .unwrap(),
+    websocket_sessions: Arc::new(Default::default()),
     hooks: Arc::new(rilgate_challenge_hooks::ChallengeHooks::new(
       cfg.challenge_hooks.clone(),
     )?),

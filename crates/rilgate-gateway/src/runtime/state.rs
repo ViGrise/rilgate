@@ -5,6 +5,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
   pub trap_signer: rilgate_crypto::token::TokenSigner,
+  pub websocket_sessions: Arc<crate::proof::websocket::limits::SessionLimits>,
   pub hooks: Arc<rilgate_challenge_hooks::ChallengeHooks>,
   pub until_expiry: std::collections::BTreeSet<String>,
   pub challenge_header: http::HeaderName,

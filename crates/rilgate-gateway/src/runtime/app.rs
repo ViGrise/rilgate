@@ -38,6 +38,7 @@ pub async fn build(
       rilgate_crypto::token::TokenPurpose::Honeypot,
       &cfg.pow.signing_keys,
     )?,
+    websocket_sessions: Arc::new(Default::default()),
     hooks,
     until_expiry,
     challenge_header: format!("{}-challenge", cfg.web.brand_id).parse()?,
