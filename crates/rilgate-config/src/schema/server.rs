@@ -55,6 +55,7 @@ pub struct Upstream {
   pub preserve_host: bool,
   pub max_body_size: Size,
   pub client_ip_headers: Vec<String>,
+  pub strip_headers: Vec<String>,
   pub timeout: Timeout,
 }
 impl Default for Upstream {
@@ -66,6 +67,7 @@ impl Default for Upstream {
       client_ip_headers: ["x-forwarded-for", "x-real-ip", "forwarded"]
         .map(String::from)
         .into(),
+      strip_headers: vec![],
       timeout: Timeout::default(),
     }
   }

@@ -201,6 +201,7 @@ mod tests {
         preserve_host: true,
         max_body_bytes: 1024,
         client_ip_headers: vec![],
+        strip_headers: vec![],
         connect_timeout: std::time::Duration::from_secs(2),
         read_timeout: std::time::Duration::from_secs(3),
       })
@@ -273,6 +274,7 @@ mod tests {
         preserve_host: true,
         max_body_bytes: 1024,
         client_ip_headers: vec![],
+        strip_headers: vec![],
         connect_timeout: std::time::Duration::from_secs(2),
         read_timeout: std::time::Duration::from_secs(3),
       })
@@ -301,6 +303,7 @@ mod tests {
       preserve_host: true,
       max_body_bytes: 1024,
       client_ip_headers: vec![],
+      strip_headers: vec![],
       connect_timeout: std::time::Duration::from_secs(2),
       read_timeout: std::time::Duration::from_secs(3),
     })

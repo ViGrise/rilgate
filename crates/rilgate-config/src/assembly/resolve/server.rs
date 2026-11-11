@@ -105,6 +105,14 @@ impl Document {
       preserve_host: self.server.upstream.preserve_host,
       max_body_bytes: self.server.upstream.max_body_size.0,
       client_ip_headers: client_ip_headers(&self.server.upstream.client_ip_headers)?,
+      strip_headers: self
+        .server
+        .upstream
+        .strip_headers
+        .iter()
+        .map(|name| name.parse())
+        .collect::<Result<_, _>>()
+        .context("server.upstream.strip_headers: expected HTTP header names")?,
       connect_timeout: self.server.upstream.timeout.connect.0,
       read_timeout: self.server.upstream.timeout.read.0,
     })
