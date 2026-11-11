@@ -411,7 +411,10 @@ items on demand. It does not materialize the ~2 GiB dataset.
 
 Presentation and challenge tokens bind the request host. Receipts and access cookies
 retain that binding, including the port. HTTP/2 authority is supported when the Host
-header is absent.
+header is absent. Presentation tokens omit policy rule names and scores. Versions 1
+and 2 accept optional legacy `rule` and `weight` fields; access decisions use the signed
+steps. Upgrade all instances together, or keep presentation traffic on compatible
+instances during rollout. Instances that require metadata can reject tokens that omit it.
 
 Missing hosts cannot bypass a nonempty binding. Old receipts and access tokens without a
 host claim need a new proof. Fast challenges also retain their verification mode and
