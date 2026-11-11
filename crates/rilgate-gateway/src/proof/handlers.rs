@@ -138,10 +138,11 @@ fn exchange_cookie(
       .verify_presentation(token, &request_host(headers, uri))
       .ok()
   });
-  let fallback_for = presentation
+  let fallback_step = presentation
     .as_ref()
     .and_then(|p| p.presented_pow().ok())
-    .and_then(|p| p.fallback_for.clone());
+    .filter(|p| p.fallback_for.is_some())
+    .cloned();
   let issued = state
     .pow
     .exchange_receipt_with_claims(
@@ -149,7 +150,7 @@ fn exchange_cookie(
       &request_host(headers, uri),
       binding,
       cookie_value(headers, &state.cfg.pow.auth_cookie_name),
-      fallback_for,
+      fallback_step,
     )
     .map_err(ApiError::proof)?;
   if issued.network_merged {
