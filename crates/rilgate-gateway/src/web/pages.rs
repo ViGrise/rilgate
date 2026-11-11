@@ -1,5 +1,6 @@
 use crate::{runtime::state::AppState, transport::context::request_host};
 use http::{HeaderMap, HeaderValue, Uri};
+#[allow(clippy::too_many_arguments)]
 pub fn render_challenge_page(
   state: &AppState,
   issued: rilgate_challenge::IssuedToken<rilgate_challenge::challenge::Presentation>,
@@ -8,6 +9,7 @@ pub fn render_challenge_page(
   json: bool,
   embedded: bool,
   open_graph: &[rilgate_web::templates::context::OpenGraphTag],
+  client_ip: Option<std::net::IpAddr>,
 ) -> (String, String, Option<String>) {
   use rilgate_web::templates::context::PublicChallengeInfo;
   let snapshot = state.web.current();
@@ -47,7 +49,7 @@ pub fn render_challenge_page(
     expires_at: Some(issued.claims.expires_at),
     expires_in: Some(issued.claims.expires_at.saturating_sub(now).max(0) as u64),
     solver_module_url: snapshot.asset_url(&solver_module_path),
-    honeypot_url: honeypot_url(state, &snapshot.config.base_path),
+    honeypot_url: honeypot_url(state, &snapshot.config.base_path, client_ip),
     ..Default::default()
   };
   // The page runs later steps in place, so it allows the sources of every hook in its step list.
@@ -74,15 +76,14 @@ pub fn render_challenge_page(
   (html, locale, policy)
 }
 
-/// Returns a hidden link target that is unique to one page, or an empty string when
-/// the honeypot is off.
-fn honeypot_url(state: &AppState, prefix: &str) -> String {
+/// Returns a signed hidden link for the resolved client network.
+fn honeypot_url(state: &AppState, prefix: &str, client_ip: Option<std::net::IpAddr>) -> String {
   if state.policy_services.load().honeypot.is_none() {
     return String::new();
   }
-  let mut segment = [0u8; 16];
-  getrandom::fill(&mut segment).expect("Operating system randomness");
-  format!("{prefix}/trap/{}", hex::encode(segment))
+  crate::runtime::honeypot::issue_trap(state, client_ip)
+    .map(|segment| format!("{prefix}/trap/{segment}"))
+    .unwrap_or_default()
 }
 
 pub(crate) fn challenge_url(prefix: &str, token: &str) -> String {
@@ -97,6 +98,7 @@ pub(crate) fn challenge_page(
   headers: &HeaderMap,
   uri: &Uri,
   head: bool,
+  client_ip: Option<std::net::IpAddr>,
 ) -> Result<crate::transport::response::Response, crate::transport::errors::ApiError> {
   use crate::transport::errors::ApiError;
   let token = uri
@@ -113,7 +115,8 @@ pub(crate) fn challenge_page(
     .verify_presentation(&token, &request_host(headers, uri))
     .map_err(ApiError::proof)?;
   let issued = rilgate_challenge::IssuedToken { token, claims };
-  let (html, locale, policy) = render_challenge_page(state, issued, headers, uri, false, true, &[]);
+  let (html, locale, policy) =
+    render_challenge_page(state, issued, headers, uri, false, true, &[], client_ip);
   let mut out = crate::proxy::gate::page_response(http::StatusCode::OK, html, locale, head, policy);
   if !out.headers().contains_key("content-security-policy") {
     out.headers_mut().insert(
@@ -234,6 +237,7 @@ pub fn render_page(
 /// Renders the page whose meta refresh opens the refresh URL after `seconds`.
 pub fn render_refresh_page(
   state: &AppState,
+  client_ip: Option<std::net::IpAddr>,
   token: &str,
   seconds: u64,
   headers: &HeaderMap,
@@ -262,7 +266,7 @@ pub fn render_refresh_page(
       url: format!("{}/api/refresh?{query}", snapshot.config.base_path),
       algorithm: "refresh".into(),
       difficulty: Some(seconds),
-      honeypot_url: honeypot_url(state, &snapshot.config.base_path),
+      honeypot_url: honeypot_url(state, &snapshot.config.base_path, client_ip),
       ..Default::default()
     },
   };
