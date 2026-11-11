@@ -24,6 +24,7 @@ pub fn config() -> Config {
       client_ip_headers: ["x-forwarded-for", "x-real-ip", "forwarded"]
         .map(http::HeaderName::from_static)
         .into(),
+      strip_headers: vec![],
       connect_timeout: std::time::Duration::from_secs(1),
       read_timeout: std::time::Duration::from_secs(2),
     },

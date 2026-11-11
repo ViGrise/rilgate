@@ -1261,3 +1261,13 @@ fn brand_id_derives_cookies_and_preserves_explicit_names() {
   .unwrap();
   assert_eq!(cfg.pow.auth_cookie_name, "custom_auth");
 }
+
+#[test]
+fn stripped_header_configuration_rejects_invalid_names_and_excess_capacity() {
+  let with = |list: &str| {
+    resolve(&BASE.replace("    url:", &format!("    strip_headers: {list}\n    url:")))
+  };
+  assert!(with("[bad header]").is_err());
+  assert!(with(&format!("[{}]", vec!["x-extra"; 65].join(","))).is_err());
+  assert!(with("[x-application-route]").is_ok());
+}

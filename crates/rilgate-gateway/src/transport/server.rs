@@ -917,10 +917,51 @@ impl ProxyHttp for Handler {
   }
   async fn upstream_request_filter(
     &self,
-    _: &mut Session,
+    session: &mut Session,
     request: &mut pingora::http::RequestHeader,
     ctx: &mut RequestContext,
   ) -> pingora::Result<()> {
+    let peer = session
+      .client_addr()
+      .and_then(|address| address.as_inet())
+      .map(|address| address.ip());
+    let trusted = crate::transport::client_ip::trusted_peer(peer, &self.state.cfg.server);
+    if !trusted {
+      for name in [
+        "x-original-url",
+        "x-rewrite-url",
+        "x-forwarded-host",
+        "x-forwarded-proto",
+        "x-forwarded-port",
+        "true-client-ip",
+        "cf-connecting-ip",
+        "x-client-ip",
+        "x-cluster-client-ip",
+      ] {
+        request.remove_header(name);
+      }
+      for name in &self.state.cfg.upstream.strip_headers {
+        request.remove_header(name);
+      }
+    }
+    if !trusted || !request.headers.contains_key("x-forwarded-host") {
+      let host = crate::transport::context::request_host(
+        &session.req_header().headers,
+        &session.req_header().uri,
+      );
+      request.insert_header("x-forwarded-host", host)?;
+    }
+    if !trusted || !request.headers.contains_key("x-forwarded-proto") {
+      let scheme = if session
+        .digest()
+        .is_some_and(|digest| digest.ssl_digest.is_some())
+      {
+        "https"
+      } else {
+        "http"
+      };
+      request.insert_header("x-forwarded-proto", scheme)?;
+    }
     request.set_uri(
       ctx
         .upstream

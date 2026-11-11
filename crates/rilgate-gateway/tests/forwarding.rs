@@ -179,3 +179,76 @@ async fn request_id_is_kept_only_from_trusted_proxies() {
     .unwrap();
   assert_ne!(response.headers()["x-request-id"], "a b");
 }
+
+#[tokio::test]
+async fn forwarding_headers_follow_the_socket_trust_boundary() {
+  let names = [
+    "x-original-url",
+    "x-rewrite-url",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "x-forwarded-port",
+    "true-client-ip",
+    "cf-connecting-ip",
+    "x-client-ip",
+    "x-cluster-client-ip",
+  ];
+  for trusted in [false, true] {
+    let fixture = fixture(|config| {
+      if trusted {
+        config.server.trusted_proxies =
+          vec!["127.0.0.1/32".parse().unwrap(), "::1/128".parse().unwrap()];
+      }
+    })
+    .await;
+    assert_eq!(fixture.get("/page").send().await.unwrap().status(), 200);
+    let (_, baseline) = fixture.last();
+    assert_eq!(baseline["x-forwarded-host"], "example.test");
+    assert_eq!(baseline["x-forwarded-proto"], "http");
+    let mut request = fixture.get("/page");
+    for name in names {
+      request = request.header(name, "client-value");
+    }
+    assert_eq!(request.send().await.unwrap().status(), 200);
+    let (_, headers) = fixture.last();
+    for name in names {
+      if trusted {
+        assert_eq!(headers[name], "client-value", "{name}");
+      } else if name == "x-forwarded-host" {
+        assert_eq!(headers[name], "example.test");
+      } else if name == "x-forwarded-proto" {
+        assert_eq!(headers[name], "http");
+      } else {
+        assert!(!headers.contains_key(name), "{name}");
+      }
+    }
+  }
+}
+
+#[tokio::test]
+async fn configured_strip_headers_follow_the_socket_trust_boundary() {
+  for trusted in [false, true] {
+    let fixture = fixture(|config| {
+      config.upstream.strip_headers = vec!["x-application-route".parse().unwrap()];
+      if trusted {
+        config.server.trusted_proxies =
+          vec!["127.0.0.1/32".parse().unwrap(), "::1/128".parse().unwrap()];
+      }
+    })
+    .await;
+    assert_eq!(
+      fixture
+        .get("/page")
+        .header("x-application-route", "client-value")
+        .send()
+        .await
+        .unwrap()
+        .status(),
+      200
+    );
+    assert_eq!(
+      fixture.last().1.contains_key("x-application-route"),
+      trusted
+    );
+  }
+}

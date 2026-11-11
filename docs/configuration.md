@@ -416,6 +416,7 @@ or overflow.
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
 | `server.upstream.client_ip_headers` | `[x-forwarded-for, x-real-ip, forwarded]`, replaced with the resolved client address; `[]` forwards them unchanged |
+| `server.upstream.strip_headers` | `[]`, extra headers removed from untrusted peers (at most 64 HTTP header names) |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |
 | `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
 | `server.trusted_proxies` | `[]`, trust no peers |
@@ -490,7 +491,18 @@ that is present:
 
 The edge must overwrite these headers. `Forwarded` is not used to resolve the address.
 
-Before a request reaches the upstream, Rilgate removes every value of the headers in
+Before a request reaches the upstream, Rilgate removes `x-original-url`, `x-rewrite-url`,
+`x-forwarded-host`, `x-forwarded-proto`, `x-forwarded-port`, `true-client-ip`,
+`cf-connecting-ip`, `x-client-ip` and `x-cluster-client-ip` from untrusted socket peers.
+`server.upstream.strip_headers` adds up to 64 header names to that removal set. It defaults
+to `[]` and accepts `--server-upstream-strip-headers` and
+`RILGATE_SERVER_UPSTREAM_STRIP_HEADERS` as comma-separated lists. Values from trusted
+proxies pass through. Rilgate sets `X-Forwarded-Host` and `X-Forwarded-Proto` from the
+received request host and transport scheme when a trusted proxy did not send them, and
+always for untrusted peers. An edge that terminates TLS must be listed in
+`server.trusted_proxies`, or the upstream receives `X-Forwarded-Proto: http`.
+
+Rilgate removes every value of the headers in
 `server.upstream.client_ip_headers` and writes the resolved client address in each one.
 The default list is `x-forwarded-for`, `x-real-ip` and `forwarded`. `Forwarded` receives
 `for=<address>`, with an IPv6 address as `for="[<address>]"`. The other headers receive the
