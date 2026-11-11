@@ -1165,7 +1165,9 @@ unavailable:
   `503` with `{"code": "hook_unavailable"}` and `Retry-After: 1`. The page shows
   the `unavailable` state and its retry control.
 - With `action: fallback`, the same response contains `next` with the fallback
-  step, so the page starts the fallback proof without a reload. While the hook is
+  step, so the page starts the fallback proof without a reload. Receipt exchange
+  applies the hook label only when the receipt matches the presented fallback algorithm
+  and verification mode and meets its difficulty. While the hook is
   marked unavailable, the gate presents the fallback step directly. After
   `recheck`, the gate presents the hook again. A `pass` or `fail` outcome marks
   the hook available. An `unavailable` outcome restarts `recheck`.
