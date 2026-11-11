@@ -549,14 +549,14 @@ server:
     # receipt_ttl: 30s
 
   # rate_limit:
-    # Apply per-client and global token buckets to proof HTTP APIs and WebSocket
-    # handshakes. Ordinary proxied requests use server admission limits instead.
-    # Quotas are per gateway process, not shared across a deployment.
+    # Apply per-client quotas to proof API routes and pages. Signed challenge
+    # issue and verification work also uses the global quota. Application
+    # requests use server admission limits. Quotas are per gateway process.
     #
     # enabled: true
 
     # Maximum tracked client-IP buckets, bounding memory. Range: 1..65536.
-    # If no bucket can be reclaimed at capacity, new clients are rate limited.
+    # At capacity, a fresh network evicts the least recently used client bucket.
     #
     # max_clients: 4096
     # client:

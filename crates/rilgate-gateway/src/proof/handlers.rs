@@ -57,6 +57,14 @@ pub async fn challenge(
   uri: &Uri,
   request: ChallengeRequest,
 ) -> Result<Response, ApiError> {
+  state
+    .pow
+    .verify_presentation(&request.presentation_token, &request_host(headers, uri))
+    .map_err(ApiError::proof)?;
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   let issued = state
     .pow
     .issue_challenge(&request.presentation_token, &request_host(headers, uri))
@@ -71,6 +79,14 @@ pub async fn verify(
   request: VerifyRequest,
   binding: &BindingInput<'_>,
 ) -> Result<Response, ApiError> {
+  state
+    .pow
+    .validate_challenge(&request.challenge_token, &request_host(headers, uri))
+    .map_err(ApiError::proof)?;
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   let receipt = state
     .pow
     .verify_challenge(
@@ -335,6 +351,10 @@ pub fn websocket_admission(
       "WebSocket verification is only valid for randomx challenges".into(),
     ));
   }
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   Ok(presentation)
 }
 

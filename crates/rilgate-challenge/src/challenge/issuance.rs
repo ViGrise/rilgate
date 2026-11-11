@@ -38,6 +38,33 @@ impl ChallengeService {
     nonce: &str,
     request_host: &str,
   ) -> Result<String> {
+    let claims = self.validate_challenge(challenge_token, request_host)?;
+    let metadata = claims.metadata();
+    let backend = self.algorithms.get(metadata.algorithm)?;
+    backend
+      .verify(&work::prepared(&claims), Proof { nonce })
+      .await?;
+    validate_lifetime(
+      metadata.version,
+      &[1],
+      metadata.issued_at,
+      metadata.expires_at,
+      backend.challenge_ttl(),
+    )?;
+    self.issue_receipt(
+      metadata.host.to_owned(),
+      metadata.challenge_id.to_owned(),
+      metadata.algorithm,
+      metadata.difficulty,
+      metadata.verification,
+    )
+  }
+  /// Validates a challenge before admitting proof computation.
+  pub fn validate_challenge(
+    &self,
+    challenge_token: &str,
+    request_host: &str,
+  ) -> Result<ChallengeClaims> {
     let claims: ChallengeClaims = self
       .tokens
       .challenge
@@ -62,22 +89,6 @@ impl ChallengeService {
     );
     backend.validate_verification(metadata.verification)?;
     backend.validate_difficulty(metadata.difficulty)?;
-    backend
-      .verify(&work::prepared(&claims), Proof { nonce })
-      .await?;
-    validate_lifetime(
-      metadata.version,
-      &[1],
-      metadata.issued_at,
-      metadata.expires_at,
-      backend.challenge_ttl(),
-    )?;
-    self.issue_receipt(
-      metadata.host.to_owned(),
-      metadata.challenge_id.to_owned(),
-      metadata.algorithm,
-      metadata.difficulty,
-      metadata.verification,
-    )
+    Ok(claims)
   }
 }

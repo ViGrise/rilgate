@@ -56,6 +56,10 @@ pub async fn verify(
       "result must contain 1 to 8192 bytes".into(),
     ));
   }
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   match verify_result(
     state,
     headers,
@@ -237,6 +241,10 @@ pub async fn callback(
     .map(|(_, v)| v.as_ref())
     .filter(|v| (1..=8192).contains(&v.len()))
     .ok_or_else(|| ApiError::InvalidRequest("Missing hook result".into()))?;
+  state
+    .limiter
+    .check_global()
+    .map_err(ApiError::RateLimited)?;
   let outcome = verify_result(state, headers, uri, binding, &p, name, result).await;
   let mut out = match outcome {
     Outcome::Unavailable if state.cfg.pow.hooks[name].fallback.is_none() => {

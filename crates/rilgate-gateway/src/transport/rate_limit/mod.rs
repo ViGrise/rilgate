@@ -1,8 +1,8 @@
 use std::{
-  collections::HashMap,
+  collections::{BTreeMap, HashMap},
   net::IpAddr,
   sync::Mutex,
-  time::{Duration, Instant},
+  time::Instant,
 };
 
 use rilgate_config::RateLimitConfig;
@@ -34,7 +34,9 @@ impl Bucket {
 struct LimiterState {
   global: Bucket,
   clients: HashMap<Option<IpAddr>, Bucket>,
-  next_cleanup: Option<Instant>,
+  recency: BTreeMap<u64, Option<IpAddr>>,
+  sequence: u64,
+  stamps: HashMap<Option<IpAddr>, u64>,
 }
 
 pub struct RateLimiter {
@@ -49,7 +51,9 @@ impl RateLimiter {
       state: Mutex::new(LimiterState {
         global: Bucket::new(config.global_burst, Instant::now()),
         clients: HashMap::new(),
-        next_cleanup: None,
+        recency: BTreeMap::new(),
+        sequence: 0,
+        stamps: HashMap::new(),
       }),
       config,
     })
@@ -65,44 +69,25 @@ impl RateLimiter {
     }
     let cfg = &self.config;
     let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-    // Concurrent callers can acquire the lock in a different order from their timestamps.
-    let now = now.max(state.global.updated);
-    state
-      .global
-      .refill(cfg.global_burst, cfg.global_refill_per_second, now);
-    if state.global.tokens < 1.0 {
-      return Err(state.global.wait_for(1.0, cfg.global_refill_per_second));
-    }
     let client = client.map(|ip| client_network(ip, cfg.client_ipv6_prefix));
     if !state.clients.contains_key(&client) {
-      if state.clients.len() >= cfg.max_clients {
-        if let Some(deadline) = state.next_cleanup
-          && now < deadline
-        {
-          return Err(deadline.duration_since(now).as_secs_f64().ceil().max(1.0) as u64);
-        }
-        // Fully refilled buckets can be removed without granting additional quota.
-        state.clients.retain(|_, bucket| {
-          bucket.refill(cfg.client_burst, cfg.client_refill_per_second, now);
-          bucket.tokens < f64::from(cfg.client_burst)
-        });
+      if state.clients.len() >= cfg.max_clients
+        && let Some((_, oldest)) = state.recency.pop_first()
+      {
+        state.clients.remove(&oldest);
+        state.stamps.remove(&oldest);
       }
-      if state.clients.len() >= cfg.max_clients {
-        let wait = state
-          .clients
-          .values()
-          .map(|bucket| bucket.wait_for(f64::from(cfg.client_burst), cfg.client_refill_per_second))
-          .min()
-          .unwrap_or(1);
-        // The earliest refill bounds when another full-table scan can free a slot.
-        state.next_cleanup = Some(now + Duration::from_secs(wait));
-        return Err(wait);
-      }
-      state.next_cleanup = None;
       state
         .clients
         .insert(client, Bucket::new(cfg.client_burst, now));
     }
+    if let Some(stamp) = state.stamps.remove(&client) {
+      state.recency.remove(&stamp);
+    }
+    state.sequence += 1;
+    let stamp = state.sequence;
+    state.stamps.insert(client, stamp);
+    state.recency.insert(stamp, client);
     let bucket = state
       .clients
       .get_mut(&client)
@@ -112,6 +97,24 @@ impl RateLimiter {
       return Err(bucket.wait_for(1.0, cfg.client_refill_per_second));
     }
     bucket.tokens -= 1.0;
+    Ok(())
+  }
+  pub fn check_global(&self) -> Result<(), u64> {
+    self.check_global_at(Instant::now())
+  }
+
+  fn check_global_at(&self, now: Instant) -> Result<(), u64> {
+    if !self.config.enabled {
+      return Ok(());
+    }
+    let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+    let cfg = &self.config;
+    state
+      .global
+      .refill(cfg.global_burst, cfg.global_refill_per_second, now);
+    if state.global.tokens < 1.0 {
+      return Err(state.global.wait_for(1.0, cfg.global_refill_per_second));
+    }
     state.global.tokens -= 1.0;
     Ok(())
   }
@@ -132,7 +135,7 @@ fn client_network(ip: IpAddr, ipv6_prefix: u8) -> IpAddr {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::sync::Arc;
+  use std::{sync::Arc, time::Duration};
 
   fn config() -> RateLimitConfig {
     RateLimitConfig {
@@ -184,7 +187,7 @@ mod tests {
           (1..=16)
             .filter(|index| {
               let ip = IpAddr::V4(std::net::Ipv4Addr::new(192, 0, group, *index));
-              limiter.check_at(Some(ip), now).is_ok()
+              limiter.check_at(Some(ip), now).is_ok() && limiter.check_global_at(now).is_ok()
             })
             .count()
         })
@@ -215,7 +218,7 @@ mod tests {
   }
 
   #[test]
-  fn client_and_global_quotas_refill_without_charging_rejected_requests() {
+  fn client_quotas_refill_without_charging_rejected_requests() {
     let limiter = RateLimiter::new(config()).unwrap();
     let now = Instant::now();
     let first = Some("192.0.2.1".parse().unwrap());
@@ -225,7 +228,7 @@ mod tests {
     assert_eq!(limiter.check_at(first, now), Err(1));
     assert!(limiter.check_at(second, now).is_ok());
     assert!(limiter.check_at(second, now).is_ok());
-    assert_eq!(limiter.check_at(None, now), Err(1));
+    assert!(limiter.check_at(None, now).is_ok());
     assert!(
       limiter
         .check_at(first, now + Duration::from_secs(1))
@@ -234,7 +237,7 @@ mod tests {
   }
 
   #[test]
-  fn client_table_is_bounded_and_only_refilled_entries_are_evicted() {
+  fn client_table_evicts_the_least_recently_used_network() {
     let mut cfg = config();
     cfg.global_burst = 100;
     let limiter = RateLimiter::new(cfg).unwrap();
@@ -243,14 +246,14 @@ mod tests {
       assert!(limiter.check_at(Some(ip.parse().unwrap()), now).is_ok());
     }
     let third = Some("192.0.2.3".parse().unwrap());
-    assert_eq!(limiter.check_at(third, now), Err(1));
+    assert!(limiter.check_at(third, now).is_ok());
     assert_eq!(limiter.state.lock().unwrap().clients.len(), 2);
     assert!(
       limiter
         .check_at(third, now + Duration::from_secs(1))
         .is_ok()
     );
-    assert_eq!(limiter.state.lock().unwrap().clients.len(), 1);
+    assert_eq!(limiter.state.lock().unwrap().clients.len(), 2);
   }
 
   #[test]
