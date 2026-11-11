@@ -58,7 +58,12 @@ pub fn verify(data: &[u8], armored: &str, keys: &[ReleaseKey]) -> Result<()> {
       VerifyingKey::from_bytes(&key.ed25519)
         .is_ok_and(|key| key.verify_strict(&digest, &ed25519).is_ok())
     }),
-    "signature is not from a release key"
+    "signature is not from a release key ({})",
+    keys
+      .iter()
+      .map(|key| key.fingerprint)
+      .collect::<Vec<_>>()
+      .join(", ")
   );
   Ok(())
 }
