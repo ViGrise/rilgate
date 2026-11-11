@@ -22,10 +22,10 @@ use http_body::Body as _;
 use http_body_util::BodyExt;
 use pingora::{
   Error, ErrorType,
-  apps::{HttpServerOptions, ServerApp},
+  apps::{HttpServerApp, HttpServerOptions, ReusedHttpStream, ServerApp},
   protocols::{GetSocketDigest, SocketDigest, l4::stream::Stream},
   proxy::{FailToProxy, HttpProxy, ProxyHttp, Session, http_proxy},
-  server::configuration::ServerConf,
+  server::{ShutdownWatch, configuration::ServerConf},
   upstreams::peer::HttpPeer,
 };
 use rilgate_challenge::authorization::binding::BindingInput;
@@ -49,9 +49,10 @@ const MAX_JSON_BODY_BYTES: usize = 16 * 1024;
 
 #[derive(Clone)]
 pub struct Gateway {
-  proxy: Arc<HttpProxy<Handler>>,
-  operations_proxy: Arc<HttpProxy<Handler>>,
+  proxy: Arc<GatewayHttpProxy>,
+  operations_proxy: Arc<GatewayHttpProxy>,
   state: AppState,
+  client_connections: Arc<super::connections::Connections>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ListenerRole {
@@ -68,9 +69,41 @@ impl ListenerRole {
 }
 struct Handler {
   state: AppState,
+  client_connections: Arc<super::connections::Connections>,
   role: ListenerRole,
   reload: Option<Arc<dyn crate::runtime::reload::ReloadControl>>,
 }
+struct GatewayHttpProxy {
+  proxy: Arc<HttpProxy<Handler>>,
+}
+
+#[async_trait]
+impl HttpServerApp for GatewayHttpProxy {
+  async fn process_new_http(
+    self: &Arc<Self>,
+    mut session: pingora::protocols::http::ServerSession,
+    shutdown: &ShutdownWatch,
+  ) -> Option<ReusedHttpStream> {
+    // The connection watchdog owns header and idle deadlines across protocol negotiation and reuse.
+    if session.get_keepalive().is_some() {
+      session.set_keepalive(Some(0));
+    }
+    self.proxy.process_new_http(session, shutdown).await
+  }
+
+  fn server_options(&self) -> Option<&HttpServerOptions> {
+    self.proxy.server_options()
+  }
+
+  fn h2_options(&self) -> Option<pingora::protocols::http::v2::server::H2Options> {
+    self.proxy.h2_options()
+  }
+
+  async fn http_cleanup(&self) {
+    self.proxy.http_cleanup().await;
+  }
+}
+
 pub struct RequestContext {
   id: http::HeaderValue,
   policy_path: String,
@@ -82,7 +115,16 @@ pub struct RequestContext {
   upstream: Option<http::Uri>,
   failure: Option<StatusCode>,
   permit: Option<tokio::sync::OwnedSemaphorePermit>,
+  connection: Option<Arc<super::connections::Connection>>,
 }
+impl Drop for RequestContext {
+  fn drop(&mut self) {
+    if let Some(connection) = self.connection.take() {
+      connection.finish_request(self.client_ip);
+    }
+  }
+}
+
 impl Gateway {
   pub fn new(state: AppState) -> Self {
     Self::with_reload(state, None)
@@ -101,11 +143,18 @@ impl Gateway {
       upstream_keepalive_pool_size: state.cfg.server.max_connections,
       ..Default::default()
     });
+    let client_connections = super::connections::Connections::new(
+      state.cfg.server.max_connections_per_client,
+      state.cfg.pow.rate_limit.client_ipv6_prefix,
+      state.cfg.server.header_timeout,
+      state.cfg.server.idle_timeout,
+    );
     let build_proxy = |role| {
       let mut proxy = http_proxy(
         &conf,
         Handler {
           state: state.clone(),
+          client_connections: client_connections.clone(),
           role,
           reload: reload.clone(),
         },
@@ -113,16 +162,19 @@ impl Gateway {
       let mut options = HttpServerOptions::default();
       options.h2c = true;
       options.keepalive_request_limit = Some(1000);
-      options.h2_idle_timeout = Some(Duration::from_secs(60));
+      options.h2_idle_timeout = Some(state.cfg.server.idle_timeout);
       proxy.server_options = Some(options);
       let mut h2 = pingora::protocols::http::v2::server::default_h2_options();
       h2.max_concurrent_streams(state.cfg.server.h2_max_streams);
       proxy.h2_options = Some(h2);
-      Arc::new(proxy)
+      Arc::new(GatewayHttpProxy {
+        proxy: Arc::new(proxy),
+      })
     };
     Self {
       proxy: build_proxy(ListenerRole::Public),
       operations_proxy: build_proxy(ListenerRole::Operations),
+      client_connections,
       state,
     }
   }
@@ -155,7 +207,7 @@ impl Gateway {
       tokio::select! {
         _ = &mut shutdown => break Ok(()),
         accepted = accept_any(&listeners, &mut first) => {
-          let (index, (socket, _)) = match accepted { Ok(pair) => pair, Err(error) => break Err(error.into()) };
+          let (index, (socket, peer)) = match accepted { Ok(pair) => pair, Err(error) => break Err(error.into()) };
           let permit = match self.state.connections.clone().try_acquire_owned() {
             Ok(permit) => permit,
             Err(_) => {
@@ -164,6 +216,13 @@ impl Gateway {
               continue;
             }
           };
+          let trusted = super::client_ip::trusted_peer(Some(peer.ip()), &self.state.cfg.server);
+          let local = match socket.local_addr() { Ok(local) => local, Err(error) => break Err(error.into()) };
+          let Some(connection) = self.client_connections.accept(local, peer, trusted) else {
+            self.state.metrics.connection_rejections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            drop(socket);
+            continue;
+          };
           if let Err(error) = socket.set_nodelay(true) { break Err(error.into()); }
           #[cfg(unix)]
           let digest = { use std::os::fd::AsRawFd; SocketDigest::from_raw_fd(socket.as_raw_fd()) };
@@ -171,10 +230,16 @@ impl Gateway {
           let digest = { use std::os::windows::io::AsRawSocket; SocketDigest::from_raw_socket(socket.as_raw_socket()) };
           let mut stream = Stream::from(socket);
           stream.set_socket_digest(digest);
-          let stream = DownstreamStream::new(stream);
+          let stream = DownstreamStream::with_connection(stream, connection.clone());
           let proxy = if index < public_count { self.proxy.clone() } else { self.operations_proxy.clone() };
           let stopped = stopped.clone();
-          connections.spawn(async move { let _permit = permit; proxy.process_new(Box::new(stream), &stopped).await; });
+          connections.spawn(async move {
+            let _permit = permit;
+            tokio::select! {
+              _ = proxy.process_new(Box::new(stream), &stopped) => {},
+              _ = connection.expired() => {},
+            }
+          });
         }
         Some(result) = connections.join_next(), if !connections.is_empty() => {
           if let Err(error) = result { tracing::warn!(%error, "HTTP connection task failed"); }
@@ -699,6 +764,7 @@ impl ProxyHttp for Handler {
       upstream: None,
       failure: None,
       permit: None,
+      connection: None,
     }
   }
   async fn request_filter(
@@ -727,6 +793,39 @@ impl ProxyHttp for Handler {
       &self.state.cfg.server,
     );
     ctx.client_ip = resolved_client_ip.as_ref().ok().copied().flatten();
+    if let Some(connection) = session
+      .client_addr()
+      .and_then(|address| address.as_inet())
+      .and_then(|peer| {
+        session
+          .server_addr()
+          .and_then(|address| address.as_inet())
+          .and_then(|local| self.client_connections.get(*local, *peer))
+      })
+    {
+      connection.start_request();
+      ctx.connection = Some(connection.clone());
+      if let Some(ip) = ctx.client_ip
+        && !connection.admit(ip)
+      {
+        self
+          .state
+          .metrics
+          .connection_rejections
+          .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        session.set_keepalive(None);
+        send(
+          session,
+          response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Client connection capacity exhausted",
+          ),
+          ctx,
+        )
+        .await?;
+        return Ok(true);
+      }
+    }
     match self.state.requests.clone().try_acquire_owned() {
       Ok(permit) => ctx.permit = Some(permit),
       Err(_) => {
@@ -1139,6 +1238,9 @@ impl ProxyHttp for Handler {
       ctx.started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
     );
     ctx.permit.take();
+    if let Some(connection) = ctx.connection.take() {
+      connection.finish_request(ctx.client_ip);
+    }
     tracing::debug!(request_id = %ctx.id.to_str().unwrap_or_default(), client_ip = ?ctx.client_ip, method = %session.req_header().method, path = %session.req_header().uri.path(), status = session.response_written().map(|header| header.status.as_u16()), elapsed_us = ctx.started.elapsed().as_micros(), error = ?error, "HTTP request completed");
   }
 }

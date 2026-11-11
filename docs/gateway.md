@@ -243,6 +243,9 @@ Uploads are never retried automatically. After streaming begins, a read timeout 
 the body because the status was already sent. PoW JSON requests are limited to 16 KiB
 and their responses use `Cache-Control: no-store`. Stratum messages are limited to 64 KiB.
 
+Connection header and idle deadlines and per-network admission limits are described in
+[capacity and quotas](production.md#capacity-and-quotas).
+
 Local HTTP endpoints have a deadline of `server.request_timeout` (default 30 seconds) and
 return `408` on expiry. Proxy connection attempts share that budget, and uploads use it
 too, with the same value as the downstream read timeout. Upstream reads and writes use `server.upstream.timeout.read`.

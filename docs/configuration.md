@@ -419,6 +419,8 @@ or overflow.
 | `server.upstream.strip_headers` | `[]`, extra headers removed from untrusted peers (at most 64 HTTP header names) |
 | `server.upstream.timeout.connect`, `.read` | `5s`, `30s` |
 | `server.max_connections`, `.max_requests`, `.h2_max_streams` | `1024`, `512`, `64` |
+| `server.max_connections_per_client` | `64`, range `1..1000000`, open connections per client network |
+| `server.header_timeout`, `.idle_timeout` | `10s`, `60s`, each from `1ms` to `10m` |
 | `server.trusted_proxies` | `[]`, trust no peers |
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
 | `server.decision_log` | `challenge`, log denied and challenged requests at info level |

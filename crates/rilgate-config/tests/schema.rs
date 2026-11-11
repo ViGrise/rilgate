@@ -1271,3 +1271,17 @@ fn stripped_header_configuration_rejects_invalid_names_and_excess_capacity() {
   assert!(with(&format!("[{}]", vec!["x-extra"; 65].join(","))).is_err());
   assert!(with("[x-application-route]").is_ok());
 }
+
+#[test]
+fn connection_deadlines_and_network_capacity_reject_invalid_configuration() {
+  for (name, values) in [
+    ("header_timeout", vec!["0s", "11m"]),
+    ("idle_timeout", vec!["0s", "11m"]),
+    ("max_connections_per_client", vec!["0", "1000001"]),
+  ] {
+    for value in values {
+      let text = BASE.replace("  upstream:", &format!("  {name}: {value}\n  upstream:"));
+      assert!(resolve(&text).is_err(), "{name}={value}");
+    }
+  }
+}

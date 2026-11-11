@@ -30,6 +30,7 @@ pub struct DownstreamStream {
   pending: Vec<u8>,
   written: usize,
   coalesce: AtomicBool,
+  connection: Option<Arc<super::connections::Connection>>,
 }
 
 impl DownstreamStream {
@@ -39,7 +40,16 @@ impl DownstreamStream {
       pending: Vec::new(),
       written: 0,
       coalesce: AtomicBool::new(false),
+      connection: None,
     }
+  }
+  pub(crate) fn with_connection(
+    inner: Stream,
+    connection: Arc<super::connections::Connection>,
+  ) -> Self {
+    let mut stream = Self::new(inner);
+    stream.connection = Some(connection);
+    stream
   }
   /// Enables or disables coalescing when `stream` is a `DownstreamStream`.
   pub fn set_coalescing(stream: Option<&pingora::protocols::Stream>, enabled: bool) {
@@ -76,7 +86,14 @@ impl AsyncRead for DownstreamStream {
     cx: &mut Context<'_>,
     buf: &mut ReadBuf<'_>,
   ) -> Poll<io::Result<()>> {
-    Pin::new(&mut self.inner).poll_read(cx, buf)
+    let before = buf.filled().len();
+    let result = Pin::new(&mut self.inner).poll_read(cx, buf);
+    if buf.filled().len() > before
+      && let Some(connection) = &self.connection
+    {
+      connection.received();
+    }
+    result
   }
 }
 
