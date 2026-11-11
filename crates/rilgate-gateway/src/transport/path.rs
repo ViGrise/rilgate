@@ -11,6 +11,11 @@ pub(crate) fn policy_path(raw: &str) -> Result<String, &'static str> {
   if decoded
     .split('/')
     .any(|segment| matches!(segment.split(';').next(), Some("." | "..")))
+    || decoded.contains('\\')
+    || decoded
+      .as_bytes()
+      .windows(3)
+      .any(|escape| escape.eq_ignore_ascii_case(b"%5c"))
     || decode_unreserved(&decoded) != decoded
   {
     return Err("Request path must not require URL normalization");
@@ -56,6 +61,10 @@ mod tests {
     assert_eq!(policy_path("/a%20b").unwrap(), "/a%20b");
     assert_eq!(policy_path("/%2541").unwrap(), "/%2541");
     for rejected in [
+      "/public/..%5cadmin",
+      "/public/..%5Cadmin",
+      "/public/..%5%63admin",
+      "/public/..\\admin",
       "/x/..;/admin",
       "/a/%2e%2e/b",
       "/a/.;x/b",

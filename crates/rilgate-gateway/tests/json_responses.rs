@@ -554,3 +554,35 @@ async fn brand_id_names_the_headers_namespace_and_page_message() {
     assert!(html.contains("\"brand_id\":\"vigrise\""));
   }
 }
+
+#[tokio::test]
+async fn local_errors_declare_their_media_type_and_disable_sniffing() {
+  let router = app::router(common::config()).await.unwrap();
+  for (payload, content_type) in [
+    ("{", "text/plain; charset=utf-8"),
+    (r#"{"presentation_token":"invalid"}"#, "application/json"),
+  ] {
+    let response = router
+      .clone()
+      .oneshot(
+        Request::builder()
+          .method("POST")
+          .uri("/.well-known/test-pow/api/challenge")
+          .header("host", "example.test")
+          .header("content-type", "application/json")
+          .body(Body::from(payload))
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert!(response.status().is_client_error());
+    assert_eq!(
+      response.headers().get("x-content-type-options").unwrap(),
+      "nosniff"
+    );
+    assert_eq!(
+      response.headers().get("content-type").unwrap(),
+      content_type
+    );
+  }
+}

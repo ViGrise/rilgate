@@ -285,6 +285,10 @@ async fn write_local(
 ) -> pingora::Result<()> {
   let (mut parts, mut body) = out.into_parts();
   parts.headers.insert("x-request-id", ctx.id.clone());
+  parts.headers.insert(
+    "x-content-type-options",
+    http::HeaderValue::from_static("nosniff"),
+  );
   if !parts.headers.contains_key(CONTENT_LENGTH)
     && parts.status != StatusCode::NOT_MODIFIED
     && let Some(size) = body.size_hint().exact()
@@ -586,6 +590,10 @@ impl Handler {
     let _slot = self.state.pool.acquire_slot().map_err(ApiError::proof)?;
     let (mut parts, _) = handshake.into_parts();
     parts.headers.insert("x-request-id", ctx.id.clone());
+    parts.headers.insert(
+      "x-content-type-options",
+      http::HeaderValue::from_static("nosniff"),
+    );
     parts.headers.insert(CACHE_CONTROL, NO_STORE);
     session
       .write_response_header(Box::new(parts.into()), false)
