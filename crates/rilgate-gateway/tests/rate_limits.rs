@@ -106,20 +106,51 @@ async fn proof_endpoints_share_quota_but_assets_and_health_remain_available() {
   assert_eq!(health.status(), StatusCode::OK);
 }
 
+fn signed_challenge_request(cfg: &rilgate_config::Config, ip: &str) -> Request<Body> {
+  let service = app::service(cfg).unwrap();
+  let decision = service.evaluate_request(&http::HeaderMap::new(), "/protected");
+  let issued = service
+    .issue_presentation(
+      "example.test".into(),
+      "/protected".into(),
+      decision.rule.to_string(),
+      decision.weight,
+      service.resolve_steps(&decision).unwrap(),
+      0,
+    )
+    .unwrap();
+  Request::builder()
+    .uri("/.well-known/test-pow/api/challenge")
+    .method("POST")
+    .header("content-type", "application/json")
+    .header("host", "example.test")
+    .header("x-forwarded-for", ip)
+    .body(Body::from(
+      serde_json::json!({"presentation_token": issued.token}).to_string(),
+    ))
+    .unwrap()
+}
+
 #[tokio::test]
 async fn a_global_limit_cannot_be_bypassed_by_rotating_client_ips() {
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().pow.rate_limit.global_burst = 1;
-  let router = app::router(cfg).await.unwrap();
-  let path = "/.well-known/test-pow/api/verify";
-  router
-    .clone()
-    .oneshot(request(path, Some("127.0.0.1"), ""))
-    .await
-    .unwrap();
+  let config = Arc::get_mut(&mut cfg).unwrap();
+  config.pow.rate_limit.global_burst = 1;
+  config.pow.rate_limit.global_refill_per_second = 0.001;
+  config.server.trusted_proxies = vec!["::1/128".parse().unwrap(), "127.0.0.1/32".parse().unwrap()];
+  let router = app::router(cfg.clone()).await.unwrap();
   assert_eq!(
     router
-      .oneshot(request(path, Some("::1"), ""))
+      .clone()
+      .oneshot(signed_challenge_request(&cfg, "192.0.2.1"))
+      .await
+      .unwrap()
+      .status(),
+    StatusCode::OK
+  );
+  assert_eq!(
+    router
+      .oneshot(signed_challenge_request(&cfg, "192.0.2.2"))
       .await
       .unwrap()
       .status(),
@@ -204,4 +235,86 @@ async fn trusted_proxy_clients_have_independent_quotas_and_spoofed_prefixes_do_n
       expected
     );
   }
+}
+
+#[tokio::test]
+async fn sessions_do_not_consume_the_global_work_quota() {
+  let mut cfg = common::config();
+  Arc::get_mut(&mut cfg).unwrap().server.trusted_proxies =
+    vec!["::1/128".parse().unwrap(), "127.0.0.1/32".parse().unwrap()];
+  let gateway = app::router(cfg.clone()).await.unwrap();
+  for network in 0..12 {
+    for _ in 0..10 {
+      let response = gateway
+        .clone()
+        .oneshot(
+          Request::builder()
+            .uri("/.well-known/test-pow/api/session")
+            .header("x-forwarded-for", format!("2001:db8:{network}::1"))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+      assert!(matches!(
+        response.status(),
+        StatusCode::OK | StatusCode::TOO_MANY_REQUESTS
+      ));
+    }
+  }
+  let response = gateway
+    .oneshot(signed_challenge_request(&cfg, "2001:db8:ffff::1"))
+    .await
+    .unwrap();
+  assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn active_client_table_cannot_exclude_a_fresh_network() {
+  let mut cfg = common::config();
+  let config = Arc::get_mut(&mut cfg).unwrap();
+  config.server.trusted_proxies = vec!["::1/128".parse().unwrap(), "127.0.0.1/32".parse().unwrap()];
+  config.pow.rate_limit.max_clients = 2;
+  let gateway = app::router(cfg).await.unwrap();
+  for network in 0..3 {
+    let response = gateway
+      .clone()
+      .oneshot(
+        Request::builder()
+          .uri("/.well-known/test-pow/api/session")
+          .header("x-forwarded-for", format!("2001:db8:{network}::1"))
+          .body(Body::empty())
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+  }
+}
+
+#[tokio::test]
+async fn invalid_tokens_do_not_consume_work_quota() {
+  let mut cfg = common::config();
+  let config = Arc::get_mut(&mut cfg).unwrap();
+  config.pow.rate_limit.global_burst = 1;
+  config.pow.rate_limit.global_refill_per_second = 0.001;
+  let gateway = app::router(cfg.clone()).await.unwrap();
+  let invalid = Request::builder()
+    .uri("/.well-known/test-pow/api/challenge")
+    .method("POST")
+    .header("content-type", "application/json")
+    .body(Body::from(r#"{"presentation_token":"forged"}"#))
+    .unwrap();
+  assert_eq!(
+    gateway.clone().oneshot(invalid).await.unwrap().status(),
+    StatusCode::UNAUTHORIZED
+  );
+  assert_eq!(
+    gateway
+      .oneshot(signed_challenge_request(&cfg, "192.0.2.1"))
+      .await
+      .unwrap()
+      .status(),
+    StatusCode::OK
+  );
 }

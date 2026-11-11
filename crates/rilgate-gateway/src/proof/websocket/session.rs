@@ -139,6 +139,10 @@ async fn run(socket: WebSocket, state: AppState, difficulty: u64, host: String) 
               ).await?;
               continue;
             }
+            if let Err(seconds) = state.limiter.check_global() {
+              send_ws(&mut ws_tx, ServerWsMessage::Rejected { reason: format!("Proof quota exceeded; retry after {seconds} seconds") }).await?;
+              continue;
+            }
             let request_id = stratum.submit_share(&job_id, &nonce, &result).await?;
             submitted.push_back(submitted_share);
             if submitted.len() > SUBMITTED_SHARES {

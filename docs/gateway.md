@@ -262,9 +262,12 @@ difficulty.
 
 ## Proof API rate limits
 
-Rate limiting is enabled by default for challenge issuance, verification, receipt
-exchange, and WebSocket upgrades. Each request uses one unit from its client bucket and
-the instance's global bucket. Rejected requests return `429`, `Retry-After`, and
+Rate limiting is enabled by default for the proof API, session requests, challenge
+pages, exchange, refresh and WebSocket upgrades. Each request uses one client unit.
+The global work bucket is charged after signed token validation for challenge issue,
+proof verification, hook verification (including callbacks), and WebSocket job admission.
+Eligible WebSocket share submissions also consume a global work unit. Session, page,
+exchange and refresh requests use only the client bucket. Rejected requests return `429`, `Retry-After`, and
 `Cache-Control: no-store`. Client configuration, operational endpoints, assets, and application proxy
 traffic do not use this proof quota. All requests remain subject to connection and
 request concurrency limits.
@@ -298,10 +301,11 @@ share that peer's quota. Configure trusted proxies or enforce client quotas at t
 `Gateway::serve` gets peer addresses from accepted TCP sockets. Requests without connection
 information share an anonymous bucket.
 
-The client table is bounded by `max_clients`. Fully replenished entries can be removed
-without a reset of an active quota. If the table is full of active entries, new
-identities are throttled until a slot becomes available. No background cleanup task or
-external store is required. Set `enabled: false` to disable this limiter explicitly.
+The client table is bounded by `max_clients`. At capacity, a fresh network evicts the
+least recently used bucket, including a partly used bucket. A full table therefore
+permits admission of fresh networks. Returning evicted networks receive a fresh client
+burst; costly work still consumes the independent global quota. No background cleanup
+task or external store is required. Set `enabled: false` to disable this limiter explicitly.
 
 ## Logging
 
