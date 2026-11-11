@@ -255,7 +255,23 @@ verifier only when a rule selects RandomX and
 ## Capacity and quotas
 
 `server.max_connections` bounds accepted TCP connections, including idle clients. Excess connections
-are closed. It also sets how many idle upstream connections the gateway keeps for reuse. `server.max_requests` bounds concurrent requests, including streams and upgraded
+are closed. `server.max_connections_per_client` defaults to 64 connections per IPv4
+address or IPv6 network, using `pow.rate_limit.client.ipv6_prefix` (default 64), including
+when proof rate limiting is disabled. IPv4-mapped addresses use the IPv4 quota.
+Untrusted socket peers are limited at accept. Trusted proxies are limited by resolved
+client network after headers arrive; a connection occupies one slot for each active
+client network and retains the last network slot while idle. Excess resolved-client requests receive 503 and close
+HTTP/1 keep-alive. Both forms of rejection increment `rilgate_connections_rejected_total`.
+
+`server.header_timeout` (default 10s) bounds the wait for a complete request header,
+including a connection that sends no bytes. `server.idle_timeout` (default 60s) closes
+idle keep-alive connections. Each accepts 1ms to 10m. The edge must still provide TLS,
+connection limits before proxy headers exist, cluster-wide quotas, and volumetric
+protection. Keep the proxy trust list restricted to controlled peers. See
+[server configuration](configuration.md#defaults) for settings and the CLI/environment
+path convention.
+
+`server.max_connections` also sets how many idle upstream connections the gateway keeps for reuse. `server.max_requests` bounds concurrent requests, including streams and upgraded
 WebSockets.
 
 Excess requests receive `503` and `Retry-After: 1`. HTTP/2 streams per connection are

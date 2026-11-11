@@ -72,6 +72,9 @@ impl Document {
       operations_reload: self.server.operations.reload,
       watch_config: self.server.watch_config,
       max_connections: self.server.max_connections,
+      max_connections_per_client: self.server.max_connections_per_client,
+      header_timeout: self.server.header_timeout.0,
+      idle_timeout: self.server.idle_timeout.0,
       max_requests: self.server.max_requests,
       h2_max_streams: self.server.h2_max_streams,
       trusted_proxies: self

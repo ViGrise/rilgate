@@ -16,6 +16,9 @@ pub struct ServerConfig {
   pub operations_reload: bool,
   pub watch_config: bool,
   pub max_connections: usize,
+  pub max_connections_per_client: usize,
+  pub header_timeout: std::time::Duration,
+  pub idle_timeout: std::time::Duration,
   pub max_requests: usize,
   pub h2_max_streams: u32,
   pub trusted_proxies: Vec<IpNet>,
@@ -33,6 +36,9 @@ impl Default for ServerConfig {
       operations_reload: defaults.operations.reload,
       watch_config: defaults.watch_config,
       max_connections: defaults.max_connections,
+      max_connections_per_client: defaults.max_connections_per_client,
+      header_timeout: defaults.header_timeout.0,
+      idle_timeout: defaults.idle_timeout.0,
       max_requests: defaults.max_requests,
       h2_max_streams: defaults.h2_max_streams,
       trusted_proxies: vec![],
@@ -51,6 +57,20 @@ impl ServerConfig {
       (1..=1_000_000).contains(&self.max_connections),
       "server.max_connections must be between 1 and 1000000"
     );
+    anyhow::ensure!(
+      (1..=1_000_000).contains(&self.max_connections_per_client),
+      "server.max_connections_per_client must be between 1 and 1000000"
+    );
+    for (name, value) in [
+      ("header_timeout", self.header_timeout),
+      ("idle_timeout", self.idle_timeout),
+    ] {
+      anyhow::ensure!(
+        (std::time::Duration::from_millis(1)..=std::time::Duration::from_secs(600))
+          .contains(&value),
+        "server.{name} must be between 1ms and 10m"
+      );
+    }
     anyhow::ensure!(
       (1..=1_000_000).contains(&self.max_requests),
       "server.max_requests must be between 1 and 1000000"

@@ -129,6 +129,21 @@ server:
   #
   # max_connections: 1024
 
+  # Open connections per IPv4 address or IPv6 network. The IPv6 prefix follows
+  # pow.rate_limit.client.ipv6_prefix. Trusted proxies use the resolved client
+  # network after headers arrive. Range: 1..1000000.
+  #
+  # max_connections_per_client: 64
+
+  # Deadline to receive a complete request header, including a silent client.
+  # Range: 1ms..10m.
+  #
+  # header_timeout: 10s
+
+  # Idle keep-alive connection deadline. Range: 1ms..10m.
+  #
+  # idle_timeout: 60s
+
   # Maximum concurrent requests. Streaming responses and upgraded WebSockets hold
   # their slot until completion. Excess requests receive 503 with Retry-After.
   # Range: 1..1000000. This is independent of the TCP connection limit.

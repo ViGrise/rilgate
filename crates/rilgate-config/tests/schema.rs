@@ -1261,3 +1261,17 @@ fn brand_id_derives_cookies_and_preserves_explicit_names() {
   .unwrap();
   assert_eq!(cfg.pow.auth_cookie_name, "custom_auth");
 }
+
+#[test]
+fn connection_deadlines_and_network_capacity_reject_invalid_configuration() {
+  for (name, values) in [
+    ("header_timeout", vec!["0s", "11m"]),
+    ("idle_timeout", vec!["0s", "11m"]),
+    ("max_connections_per_client", vec!["0", "1000001"]),
+  ] {
+    for value in values {
+      let text = BASE.replace("  upstream:", &format!("  {name}: {value}\n  upstream:"));
+      assert!(resolve(&text).is_err(), "{name}={value}");
+    }
+  }
+}

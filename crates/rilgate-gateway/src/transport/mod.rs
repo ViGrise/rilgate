@@ -1,4 +1,5 @@
 pub mod client_ip;
+pub(crate) mod connections;
 pub mod context;
 pub mod errors;
 pub(crate) mod headers;
