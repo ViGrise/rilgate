@@ -11,8 +11,8 @@ pub(crate) fn policy_path(raw: &str) -> Result<String, &'static str> {
   if decoded
     .split('/')
     .any(|segment| matches!(segment.split(';').next(), Some("." | "..")))
-    || raw.contains('\\')
-    || raw
+    || decoded.contains('\\')
+    || decoded
       .as_bytes()
       .windows(3)
       .any(|escape| escape.eq_ignore_ascii_case(b"%5c"))
@@ -63,6 +63,7 @@ mod tests {
     for rejected in [
       "/public/..%5cadmin",
       "/public/..%5Cadmin",
+      "/public/..%5%63admin",
       "/public/..\\admin",
       "/x/..;/admin",
       "/a/%2e%2e/b",

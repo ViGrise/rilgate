@@ -65,10 +65,9 @@ remain application routes governed by the configured policy because they are out
 `/.well-known/rilgate`. The balanced preset allows ACME paths. Unless a policy explicitly allows
 them, other application paths need a valid proof.
 
-Local responses carry `X-Content-Type-Options: nosniff`. Plain-text errors use
-`Content-Type: text/plain; charset=utf-8`. Unknown paths below the configured gateway
-prefix are **never** proxied to the protected
-application.
+Unknown paths below the configured gateway prefix are **never** proxied to the protected
+application. Local responses carry `X-Content-Type-Options: nosniff`, and plain-text errors
+use `Content-Type: text/plain; charset=utf-8`.
 
 ## Reverse proxy
 
@@ -91,8 +90,8 @@ Normal application URLs stay unchanged.
 
 Paths that need URL normalization return `400`. These are `.` or `..` segments,
 their percent-encoded forms and `..;` forms, literal or percent-encoded backslashes,
-and paths whose canonical form
-changes again when it is decoded a second time, such as `/%4%44`. Paths longer
+and paths whose canonical form changes again when it is decoded a second time, such
+as `/%4%44`. Paths longer
 than 8 KiB return `414`. The upstream receives the path byte for byte. Policy conditions match its canonical form, with decoded
 unreserved characters and `%2F` and collapsed `/`. Query strings do not affect this check.
 
