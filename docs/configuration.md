@@ -496,10 +496,11 @@ Before a request reaches the upstream, Rilgate removes `x-original-url`, `x-rewr
 `cf-connecting-ip`, `x-client-ip` and `x-cluster-client-ip` from untrusted socket peers.
 `server.upstream.strip_headers` adds up to 64 header names to that removal set. It defaults
 to `[]` and accepts `--server-upstream-strip-headers` and
-`RILGATE_SERVER_UPSTREAM_STRIP_HEADERS` as comma-separated lists. Trusted proxy values
-pass through. Missing forwarded host and proto values are filled from the received
-request host and transport scheme, before upstream host rewriting. Untrusted peers
-always receive these gateway-generated values.
+`RILGATE_SERVER_UPSTREAM_STRIP_HEADERS` as comma-separated lists. Values from trusted
+proxies pass through. Rilgate sets `X-Forwarded-Host` and `X-Forwarded-Proto` from the
+received request host and transport scheme when a trusted proxy did not send them, and
+always for untrusted peers. An edge that terminates TLS must be listed in
+`server.trusted_proxies`, or the upstream receives `X-Forwarded-Proto: http`.
 
 Rilgate removes every value of the headers in
 `server.upstream.client_ip_headers` and writes the resolved client address in each one.
