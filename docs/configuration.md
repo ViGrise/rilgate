@@ -129,7 +129,8 @@ preserves operations addresses. `--log-level` (`RUST_LOG`) sets the log filter a
 `CONFIG` aliases are unsupported.
 
 `rilgate upgrade` replaces the running binary with the latest GitHub release, or the tag
-given by `--version`, after it checks the release `SHA256SUMS`. A static Linux binary
+given by `--version`, after it verifies the release signature of `SHA256SUMS` and the
+checksum of the binary. A static Linux binary
 upgrades to the static build of the release. It keeps the current
 binary when the release is not newer unless `--force` is set.
 

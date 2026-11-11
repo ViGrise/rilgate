@@ -2,6 +2,8 @@
 
 Rilgate releases are on [GitHub Releases](https://github.com/ViGrise/rilgate/releases). The
 install scripts download a release binary, verify it against `SHA256SUMS` and install it.
+Release files are signed with the release key
+`F396 7F20 4825 CDE6 07A8  1452 B990 C5BC 82BD 2323`; see [verify a download](#verify-a-download).
 
 ## Linux, macOS and FreeBSD
 
@@ -17,6 +19,13 @@ not writable. Set these variables to change the defaults:
 | `INSTALL_DIR` | `/usr/local/bin` | Destination directory                                                       |
 | `VERSION`     | `latest`         | Release tag, for example `v0.5.0`                                           |
 | `LIBC`        | detected         | Linux amd64 and arm64 only: `gnu` for the glibc build (glibc 2.36 or newer), `musl` for the static build |
+| `REQUIRE_SIGNATURE` | `0`        | `1` refuses to install when `gpg` is missing                                |
+
+When `gpg` is installed, the script also verifies `SHA256SUMS.asc` against the release
+key that the script embeds. Without `gpg`, it checks the checksum only. The script that
+`releases/latest/download` serves comes from the same release as the files it checks;
+to verify it independently, download `install.sh` and `install.sh.asc` and verify them
+as described in [verify a download](#verify-a-download) before you run it.
 
 ```bash
 curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.5.0 INSTALL_DIR="$HOME/.local/bin" bash
@@ -92,13 +101,19 @@ installer puts `rilgate.exe`, `LICENSE.txt` and the example `rilgate.yml` into
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
-A signed release also has a detached GPG signature `<file>.asc` for each file and the
-public key `rilgate-release-key.asc`:
+Each release file also has a detached GPG signature `<file>.asc`. The release key has
+the fingerprint `F396 7F20 4825 CDE6 07A8  1452 B990 C5BC 82BD 2323`, which this page,
+the README and `install.sh` publish outside the release. Import the key, check that its
+fingerprint matches, then verify:
 
 ```bash
 gpg --import rilgate-release-key.asc
+gpg --fingerprint F3967F204825CDE607A81452B990C5BC82BD2323
 gpg --verify SHA256SUMS.asc SHA256SUMS
 ```
+
+`install.ps1` checks the checksum only. On Windows, verify the signature with Gpg4win
+when the download needs it.
 
 ## Source
 
@@ -153,7 +168,9 @@ See [deployment examples](../deploy/README.md) for a hardened Compose file and s
 ## Upgrade
 
 Run the install script again, or use the built-in command. For a Linux package, use
-the package manager.
+the package manager. `rilgate upgrade` verifies `SHA256SUMS.asc` against the release
+keys built into the binary, then checks the downloaded binary against `SHA256SUMS`. It
+refuses a release without a valid signature.
 
 ```bash
 rilgate upgrade
