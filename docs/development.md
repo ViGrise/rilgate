@@ -179,6 +179,9 @@ cargo +nightly miri test -p hashwx-core --lib
 cargo +nightly miri test -p randomx-core --lib
 ```
 
+Miri skips the tests that have `#[cfg_attr(miri, ignore)]`, because they are slow in
+its interpreter. `cargo test` runs them.
+
 CI runs each fuzz target for 20 seconds on pull requests and 10 minutes daily.
 It runs Miri on both libraries daily, because Miri takes more than 20 minutes.
 Reproduce a failure with its saved input:

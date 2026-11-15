@@ -275,6 +275,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(miri, ignore = "slow under Miri; runs in the native test job")]
   fn accelerated_rounding_matches_software_at_ieee_boundaries() {
     let values = [
       0,
@@ -309,6 +310,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(miri, ignore = "slow under Miri; runs in the native test job")]
   fn accelerated_rounding_matches_software_for_random_bit_patterns() {
     let mut state = 0x4979_706f_7758_1234_u64;
     let mut next = || {
