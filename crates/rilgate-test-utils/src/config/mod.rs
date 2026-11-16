@@ -33,6 +33,11 @@ pub fn config() -> Config {
       name: "Rilgate".into(),
       website_url: "https://rilgate.com".into(),
       base_path: "/.well-known/test-pow".into(),
+      // A distinct denial status lets tests tell a denial from an upstream 200 response.
+      responses: rilgate_web::config::ResponseConfig {
+        deny_status: http::StatusCode::FORBIDDEN,
+        ..Default::default()
+      },
       ..Default::default()
     },
     pow: PowConfig {

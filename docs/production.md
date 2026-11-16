@@ -105,8 +105,9 @@ bypass the cache when the authentication cookie is absent. Purge affected URLs i
 HTML was cached.
 
 Most caches store a 403 response only when a rule tells them to. Behind such caches,
-set `site.responses.challenge_status: 403`. The default remains 200. See
-[Response status codes](web.md#response-status-codes) for allowed values and JSON responses.
+set `site.responses.challenge_status: 403` and `site.responses.deny_status: 403`.
+Both default to 200. See [Response status codes](web.md#response-status-codes) for
+status selection and JSON responses.
 
 A Workbox `CacheFirst` runtime cache can store 200 responses without checking the
 content type. Add a scripts cache plugin with `cacheWillUpdate` to require

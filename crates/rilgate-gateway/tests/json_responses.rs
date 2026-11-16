@@ -292,7 +292,7 @@ async fn json_head_deny_and_forced_path_selection_preserve_policy_semantics() {
 
 #[tokio::test]
 async fn html_challenge_uses_the_configured_status() {
-  for status in [403, 200, 401, 429, 503] {
+  for status in [403, 200, 302, 418, 599] {
     let document = rilgate_config::loader::parse(&format!(
       "site: {{responses: {{challenge_status: {status}}}}}"
     ))
@@ -339,7 +339,7 @@ async fn html_challenge_uses_the_configured_status() {
 
 #[tokio::test]
 async fn denial_uses_the_configured_status() {
-  for status in [404, 403, 410, 429] {
+  for status in [200, 403, 302, 418, 599] {
     let document =
       rilgate_config::loader::parse(&format!("site: {{responses: {{deny_status: {status}}}}}"))
         .unwrap();
@@ -362,13 +362,15 @@ async fn denial_uses_the_configured_status() {
         )
         .await
         .unwrap();
-      assert_eq!(response.status().as_u16(), status);
       assert!(!response.headers().contains_key("rilgate-challenge"));
-      let body = to_bytes(response.into_body(), 100000).await.unwrap();
       if accept == "application/json" {
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = to_bytes(response.into_body(), 100000).await.unwrap();
         let body: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["code"], "access_denied");
       } else {
+        assert_eq!(response.status().as_u16(), status);
+        let body = to_bytes(response.into_body(), 100000).await.unwrap();
         assert!(String::from_utf8(body.to_vec()).unwrap().contains("<html"));
       }
     }
@@ -378,12 +380,7 @@ async fn denial_uses_the_configured_status() {
 #[test]
 fn unsupported_status_is_rejected() {
   let base = "server: {upstream: {url: 'http://127.0.0.1:3000'}}\nsecurity: {secret: '0123456789abcdef0123456789abcdef'}\n";
-  for (field, value, expected) in [
-    ("challenge_status", 302, "200, 401, 403, 429, 503"),
-    ("deny_status", 302, "403, 404, 410, 429"),
-    ("deny_status", 200, "403, 404, 410, 429"),
-    ("deny_status", 503, "403, 404, 410, 429"),
-  ] {
+  for (field, value) in [("challenge_status", 600), ("deny_status", 999)] {
     let error =
       rilgate_config::loader::parse(&format!("{base}site: {{responses: {{{field}: {value}}}}}"))
         .and_then(|document| document.resolve())
@@ -391,7 +388,7 @@ fn unsupported_status_is_rejected() {
     let message = format!("{error:#}");
     assert!(
       message.contains(&format!(
-        "site.responses.{field}: expected one of {expected}"
+        "site.responses.{field}: expected a status from 100 to 599"
       )),
       "{message}"
     );

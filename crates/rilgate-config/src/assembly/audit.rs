@@ -71,6 +71,7 @@ pub(super) fn audit(config: &Configuration) -> Vec<Finding> {
   audit_stratum_proxies(config, transport_severity, &mut findings);
   audit_verifier(config, production, &mut findings);
   audit_metrics(config, &mut findings);
+  audit_response_statuses(config, &mut findings);
   findings
 }
 
@@ -379,4 +380,27 @@ fn host_is_public(host: &str) -> bool {
     ]
     .iter()
     .any(|suffix| host.ends_with(suffix))
+}
+
+fn audit_response_statuses(config: &Configuration, findings: &mut Vec<Finding>) {
+  let responses = &config.web.responses;
+  for (field, status) in [
+    ("challenge_status", responses.challenge_status),
+    ("deny_status", responses.deny_status),
+  ] {
+    let code = status.as_u16();
+    let effect = if status.is_informational() {
+      "the HTTP server answers 500 without the page"
+    } else if matches!(code, 204 | 205 | 304) {
+      "this status has no content, so clients do not show the page"
+    } else {
+      continue;
+    };
+    report(
+      findings,
+      "response-status-without-page",
+      Severity::Warning,
+      format!("site.responses.{field}: {code} cannot carry the page; {effect}"),
+    );
+  }
 }

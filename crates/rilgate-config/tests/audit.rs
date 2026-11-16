@@ -314,3 +314,21 @@ fn private_dns_names_allow_pool_and_proxy_transport_in_production() {
     assert!(resolve(&text).is_err(), "{host}");
   }
 }
+
+#[test]
+fn page_statuses_without_content_warn_and_still_load() {
+  for (field, status, expected) in [
+    ("challenge_status", 103, true),
+    ("deny_status", 204, true),
+    ("deny_status", 304, true),
+    ("challenge_status", 302, false),
+    ("deny_status", 418, false),
+  ] {
+    let text = format!("{BASE}site:\n  responses:\n    {field}: {status}\n");
+    assert_eq!(
+      warnings(&text).contains(&"response-status-without-page"),
+      expected,
+      "{field}: {status}"
+    );
+  }
+}

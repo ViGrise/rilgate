@@ -3726,6 +3726,7 @@ dependencies = [
  "rilgate-pow-hash",
  "rilgate-pow-hashwx",
  "rilgate-pow-randomx",
+ "rilgate-web",
  "tokio",
  "tokio-util",
  "tower",
