@@ -15,6 +15,7 @@ pub struct ProxyService {
   base_path: String,
   fixed_address: Option<SocketAddr>,
   resolved: RwLock<Option<(Instant, Arc<[SocketAddr]>)>>,
+  pub(crate) availability: super::availability::UpstreamAvailability,
 }
 impl ProxyService {
   pub fn new(cfg: UpstreamConfig) -> Result<Self> {
@@ -37,6 +38,7 @@ impl ProxyService {
       base_path,
       cfg,
       resolved: RwLock::new(None),
+      availability: Default::default(),
     })
   }
   pub fn request_url(&self, uri: &http::Uri) -> Result<url::Url, ApiError> {

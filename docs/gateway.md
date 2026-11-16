@@ -331,8 +331,17 @@ RUST_LOG=rilgate_gateway::transport::server=debug   # HTTP completion events
 RUST_LOG=rilgate_gateway::proxy::gate=debug          # gate diagnostics
 ```
 
-Startup and successful reload events use `INFO`. WebSocket Stratum pool session loss
-uses `WARN`. Upstream errors are included in HTTP completion events.
+Startup and successful reload events use `INFO`. At startup, the `Gateway settings`
+event gives the rule count, the default action and algorithm, the enabled HashWX and
+RandomX algorithms, the trusted proxy count, the client IP header, the decision log
+level, the metrics state and the challenge and denial statuses. It contains no secrets.
+WebSocket Stratum pool session loss uses `WARN`.
+
+A proxied request that fails with 502 or 504 because of an upstream error logs
+`Upstream requests are failing` at `WARN`, at most once every 10 seconds, with the
+failures since the last upstream response. The first upstream response after that
+warning logs `Upstream requests succeed again` at `INFO` with the failure count. HTTP
+completion events also include each upstream error.
 
 HTTP job-fetch failures use rate-limited `WARN` events with cumulative counters.
 Pooled connection details use `DEBUG`. HTTP completion events, including individual

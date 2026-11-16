@@ -1127,6 +1127,15 @@ impl ProxyHttp for Handler {
     }
     Ok(())
   }
+  async fn upstream_response_filter(
+    &self,
+    _: &mut Session,
+    _: &mut pingora::http::ResponseHeader,
+    _: &mut RequestContext,
+  ) -> pingora::Result<()> {
+    self.state.proxy.availability.record_success();
+    Ok(())
+  }
   async fn response_filter(
     &self,
     _: &mut Session,
@@ -1186,6 +1195,19 @@ impl ProxyHttp for Handler {
       _ if error.esource() == &pingora::ErrorSource::Downstream => StatusCode::BAD_REQUEST,
       _ => StatusCode::BAD_GATEWAY,
     });
+    if ctx.failure.is_none()
+      && !matches!(error.etype(), ErrorType::HTTPStatus(_))
+      && matches!(
+        status,
+        StatusCode::BAD_GATEWAY | StatusCode::GATEWAY_TIMEOUT
+      )
+    {
+      self
+        .state
+        .proxy
+        .availability
+        .record_failure(status.as_u16(), error);
+    }
     if session.response_written().is_none() {
       let out = if matches!(session.req_header().method, Method::GET | Method::HEAD)
         && matches!(
