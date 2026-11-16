@@ -136,12 +136,47 @@ async fn run_gateway(command: GatewayCommand, args: &Args, overrides: Overrides)
         ),
         config.upstream.url,
       );
+      log_settings(&config);
       for warning in &warnings {
         tracing::warn!("{warning}");
       }
       serve::run(config, overrides, files).await
     }
   }
+}
+
+/// Logs the protection settings that decide how requests are handled, without secrets.
+fn log_settings(config: &rilgate_config::Config) {
+  fn name<T: serde::Serialize>(value: &T) -> String {
+    match serde_json::to_value(value) {
+      Ok(serde_json::Value::String(text)) => text,
+      _ => "unknown".into(),
+    }
+  }
+  let policy = &config.pow.policy.policy;
+  let responses = &config.web.responses;
+  tracing::info!(
+    rules = policy.rules.as_ref().map_or(0, Vec::len),
+    default_action = name(
+      &policy
+        .default_action
+        .unwrap_or(rilgate_config::schema::policy::Action::Allow)
+    ),
+    default_algorithm = name(&config.pow.default_algorithm),
+    hashwx = config.pow.hashwx_enabled,
+    randomx = config.pow.randomx_enabled,
+    trusted_proxies = config.server.trusted_proxies.len(),
+    client_ip_header = config
+      .server
+      .client_ip_header
+      .as_ref()
+      .map_or("x-forwarded-for", |header| header.as_str()),
+    decision_log = name(&config.server.decision_log),
+    metrics = config.server.metrics_enabled,
+    challenge_status = responses.challenge_status.as_u16(),
+    deny_status = responses.deny_status.as_u16(),
+    "Gateway settings"
+  );
 }
 
 fn config_command(
