@@ -249,8 +249,8 @@ cargo build --release --locked -p rilgate-gateway --example null-upstream
 scripts/perf-gate.sh
 ```
 
-The generated lab configuration sets `server.decision_log: off` to measure request
-processing with policy decision logs disabled. The shipping default is `challenge`.
+The generated lab configuration sets `server.decision_log: off`, the shipping default,
+to measure request processing with policy decision logs disabled.
 The benchmark uses the shipping log filter unless `PERF_GATE_RUST_LOG` overrides it.
 Its default 65536-byte log cap checks incidental log volume during load.
 

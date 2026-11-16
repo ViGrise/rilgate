@@ -424,7 +424,7 @@ or overflow.
 | `server.header_timeout`, `.idle_timeout` | `10s`, `60s`, each from `1ms` to `10m` |
 | `server.trusted_proxies` | `[]`, trust no peers |
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
-| `server.decision_log` | `challenge`, log denied and challenged requests at info level |
+| `server.decision_log` | `off`, log no policy decisions |
 | `server.metrics_enabled`, `.readiness_timeout`, `.request_timeout` | `false`, `2s`, `30s` |
 | `site.name`, `.url`, `.brand_id`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `rilgate`, `/.well-known/<brand_id>`, `css/rilgate.css` |
 | `site.resources.directory`, `.seed` | none, `if_empty` |
@@ -526,11 +526,13 @@ the headers count as absent. See [conditions](policy.md#conditions).
 
 ### Policy decision logs
 
-`server.decision_log` controls policy decision logs at info level. Set it to `off` to
-suppress them, `deny` to log denied requests, `challenge` (the default) to log denied
-and challenged requests, or `all` to include allowed requests. Requests allowed by a
-valid authentication cookie are logged as `allow`. The equivalent overrides are
-`RILGATE_SERVER_DECISION_LOG` and `--server-decision-log`.
+`server.decision_log` controls policy decision logs at info level. The default `off`
+logs no decisions, so the info log shows lifecycle events, such as startup and
+reload, and no line for each request. Set it to `deny` to log denied requests,
+`challenge` to log denied and challenged requests, or `all` to include allowed
+requests. Requests allowed by a valid authentication cookie are logged as `allow`.
+The equivalent overrides are `RILGATE_SERVER_DECISION_LOG` and
+`--server-decision-log`.
 
 Each decision includes `request_id`, `client_ip`, `method`, `host`, `path`, `action`,
 `rule`, `weight`, `algorithm`, `difficulty`, `hook`, `step`, `steps`, `unresolved`, and `fallback`.
