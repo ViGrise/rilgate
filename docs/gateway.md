@@ -335,13 +335,24 @@ Startup and successful reload events use `INFO`. At startup, the `Gateway settin
 event gives the rule count, the default action and algorithm, the enabled HashWX and
 RandomX algorithms, the trusted proxy count, the client IP header, the decision log
 level, the metrics state and the challenge and denial statuses. It contains no secrets.
-WebSocket Stratum pool session loss uses `WARN`.
+Startup also logs the web snapshot with its template and locale counts, and
+`Policy reloaded` gives the rule count of the new policy.
+
+Shutdown events use `INFO`. The gateway logs the shutdown signal name, the open
+connection count before the drain and `Rilgate stopped` at the end. A drain that
+exceeds 30 seconds logs `WARN` and closes the remaining connections.
 
 A proxied request that fails with 502 or 504 because of an upstream error logs
 `Upstream requests are failing` at `WARN`, at most once every 10 seconds, with the
 failures since the last upstream response. The first upstream response after that
 warning logs `Upstream requests succeed again` at `INFO` with the failure count. HTTP
 completion events also include each upstream error.
+
+A remote IP or ASN set logs `INFO` with its entry count at the first load and when the
+count changes. A GeoIP database logs `INFO` when a new database loads.
+
+A Stratum pool logs `INFO` at its first connection and at the first connection after a
+failure. WebSocket Stratum pool session loss uses `WARN`.
 
 HTTP job-fetch failures use rate-limited `WARN` events with cumulative counters.
 Pooled connection details use `DEBUG`. HTTP completion events, including individual

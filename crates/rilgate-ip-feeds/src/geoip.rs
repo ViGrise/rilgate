@@ -40,6 +40,10 @@ impl GeoRefresher {
   /// Loads the database once, publishing it on success.
   pub async fn refresh_once(&self, database: &GeoDatabase, state: &mut GeoState) -> Outcome {
     match self.load(database, state).await {
+      Ok(Outcome::Updated) => {
+        tracing::info!(database = database.kind().label(), "GeoIP database loaded");
+        Outcome::Updated
+      }
       Ok(outcome) => outcome,
       Err(error) => {
         database.record_failure();

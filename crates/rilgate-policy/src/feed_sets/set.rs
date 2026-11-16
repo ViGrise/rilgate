@@ -87,6 +87,17 @@ impl<I: FeedIndex> FeedSet<I> {
     }));
   }
 
+  /// The entry count of the published snapshot, or `None` before the first load.
+  pub fn entries(&self) -> Option<usize> {
+    self
+      .shared
+      .state
+      .load()
+      .index
+      .as_ref()
+      .map(|index| index.entries())
+  }
+
   /// Re-stamps the current snapshot after a not-modified response.
   pub fn renew(&self) {
     let snapshot = self.shared.state.load();

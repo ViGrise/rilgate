@@ -39,7 +39,9 @@ pub async fn run(
       crate::shutdown::shutdown_signal(),
     )
     .await
-    .context("Gateway server failed")
+    .context("Gateway server failed")?;
+  tracing::info!("Rilgate stopped");
+  Ok(())
 }
 
 /// Binds every address. An IPv6 wildcard accepts IPv4 too on every OS, except when the list
