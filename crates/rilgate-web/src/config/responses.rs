@@ -18,7 +18,7 @@ impl Default for ResponseConfig {
       format: ResponseFormat::default(),
       json_paths: Vec::new(),
       challenge_status: StatusCode::OK,
-      deny_status: StatusCode::FORBIDDEN,
+      deny_status: StatusCode::OK,
     }
   }
 }
@@ -51,14 +51,8 @@ pub enum ResponseFormat {
 
 impl ResponseConfig {
   pub fn validate(&self) -> anyhow::Result<()> {
-    anyhow::ensure!(
-      [200, 401, 403, 429, 503].contains(&self.challenge_status.as_u16()),
-      "site.responses.challenge_status: expected one of 200, 401, 403, 429, 503"
-    );
-    anyhow::ensure!(
-      [403, 404, 410, 429].contains(&self.deny_status.as_u16()),
-      "site.responses.deny_status: expected one of 403, 404, 410, 429"
-    );
+    validate_page_status("challenge_status", self.challenge_status)?;
+    validate_page_status("deny_status", self.deny_status)?;
     anyhow::ensure!(
       self.json_paths.len() <= 64,
       "site.responses.json_paths: at most 64 path prefixes are supported"
@@ -80,4 +74,12 @@ impl ResponseConfig {
     );
     Ok(())
   }
+}
+
+fn validate_page_status(field: &str, status: StatusCode) -> anyhow::Result<()> {
+  anyhow::ensure!(
+    (100..=599).contains(&status.as_u16()),
+    "site.responses.{field}: expected a status from 100 to 599"
+  );
+  Ok(())
 }

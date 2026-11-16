@@ -199,6 +199,9 @@ server:
   trusted_proxies: ['127.0.0.1/32', '::1/128']
 security:
   secret: remote-ip-set-flow-secret-with-at-least-32-bytes
+site:
+  responses:
+    deny_status: 403
 signals:
   ip_sets:
     feed:

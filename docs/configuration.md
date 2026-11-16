@@ -387,6 +387,7 @@ warning-free configuration, run it in CI or before deployment.
 | `auth-ttl-long` | production | warning | `security.auth.ttl` exceeds `7d` |
 | `development-public-listener` | development | warning | A `server.listen` address is beyond loopback, including the default `:8080` |
 | `metrics-unreachable` | both | warning | `server.metrics_enabled` is `true` with no `server.operations.listen` address |
+| `response-status-without-page` | both | warning | `site.responses.challenge_status` or `deny_status` is 1xx, 204, 205 or 304, so the page does not reach the client |
 | `generated-secret` | both | warning | Neither `security.secret` nor `security.keys` is set, so the gateway signs with a random secret for each start |
 
 Loopback, private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), shared
@@ -562,9 +563,10 @@ application-specific envelope. See [AJAX and API integration](api-integration.md
 notification headers, JSON body templates and iframe completion.
 
 `site.responses.challenge_status` sets the HTML challenge status (default 200).
-`site.responses.deny_status` sets the HTML and JSON denial status (default 403).
-JSON challenges always return 403. Every challenge response carries `<brand_id>-challenge: required`.
-See [response status codes](web.md#response-status-codes) for allowed values.
+`site.responses.deny_status` sets the HTML denial status (default 200).
+Both accept any HTTP status from 100 to 599. JSON challenges and JSON denials always
+return 403. Every challenge response carries `<brand_id>-challenge: required`.
+See [response status codes](web.md#response-status-codes) for status selection.
 
 ### Open Graph passthrough
 

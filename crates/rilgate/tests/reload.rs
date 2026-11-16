@@ -40,6 +40,7 @@ fn configuration(listen: u16, upstream: u16, rules: &str) -> String {
   format!(
     "server:\n  listen: \"127.0.0.1:{listen}\"\n  upstream:\n    url: http://127.0.0.1:{upstream}\n\
      security:\n  secret: \"{SECRET}\"\n\
+     site:\n  responses:\n    deny_status: 403\n\
      policy:\n  default_action: allow\n  rules:\n{rules}"
   )
 }

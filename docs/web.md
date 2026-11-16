@@ -366,21 +366,24 @@ render the metadata. `rilgate web diff` shows the embedded layout change.
 
 ## Response status codes
 
-`site.responses.challenge_status` sets the HTML challenge status. It defaults to
-200 and accepts 200, 401, 403, 429 or 503. JSON challenges always return 403.
+`site.responses.challenge_status` sets the HTML challenge status, and
+`site.responses.deny_status` sets the HTML policy denial status. Both default to
+200 and accept any HTTP status from 100 to 599. Many crawlers retry a request after
+an error status, and stop after a 200 response. JSON challenges and JSON denials
+always return 403, so API clients never read a challenge or a denial as a success.
+A 1xx, 204, 205 or 304 status cannot carry the page: the HTTP server answers a 1xx
+status with 500, and clients show no content for the others. Such a value gives the
+`response-status-without-page` [configuration warning](configuration.md#environment-checks).
 Every challenge response, whatever its status, carries `Rilgate-Challenge: required`,
 so clients identify a challenge by that header, whose name follows
 [`site.brand_id`](configuration.md#site).
 
-A challenge page answers at the URL of the requested resource and carries
+A challenge or denial page answers at the URL of the requested resource and carries
 `Cache-Control: no-store`. Some caches ignore that header, for example a CDN rule
 that overrides origin cache headers or a service worker that stores every 200
-response. Such a cache can keep a 200 challenge page as the resource, such as a
-script or a stylesheet, and serve it to clients that passed the challenge. Behind
-such a cache, set `challenge_status` to 403, because most caches store a 403
+response. Such a cache can keep a 200 page as the resource, such as a script or a
+stylesheet, and serve it to clients that passed the challenge. Behind such a cache,
+set `challenge_status` and `deny_status` to 403, because most caches store a 403
 response only when a rule tells them to. Also allow public static asset paths in
 the policy, so that these paths never receive a challenge. See [Web frontends and
 caches](production.md#web-frontends-and-caches) for policy and cache examples.
-
-`site.responses.deny_status` sets the status for HTML and JSON policy denials.
-It defaults to 403 and accepts 403, 404, 410 or 429.

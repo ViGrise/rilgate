@@ -251,7 +251,11 @@ pub async fn gate_with_client(
       };
       let (html, locale, policy) = render_page(state, template, "", "fast", headers, uri);
       return Ok(Some(formatted_response(
-        state.cfg.web.responses.deny_status,
+        if json {
+          StatusCode::FORBIDDEN
+        } else {
+          state.cfg.web.responses.deny_status
+        },
         html,
         locale,
         method == Method::HEAD,

@@ -394,16 +394,18 @@ server:
     #
     # format: auto
 
-    # HTML challenge status: 200, 401, 403, 429 or 503.
+    # HTML challenge status: any HTTP status from 100 to 599.
     # JSON challenges always return 403. Every challenge carries Rilgate-Challenge.
     # Use 403 behind a CDN or service worker that ignores Cache-Control: no-store,
     # so that it does not store a challenge page as the requested resource.
+    # A 1xx, 204, 205 or 304 status cannot carry the page and gives a warning.
     #
     # challenge_status: 200
 
-    # HTML and JSON denial status: 403, 404, 410 or 429.
+    # HTML denial status: any HTTP status from 100 to 599.
+    # JSON denials always return 403. The cache and warning notes above apply.
     #
-    # deny_status: 403
+    # deny_status: 200
 
     # Optional API path prefixes that always receive JSON in auto mode, even if
     # a client sends Accept: text/html. Matches whole path segments: /api matches
