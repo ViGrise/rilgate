@@ -320,14 +320,15 @@ Generated request IDs are UUIDv7 with ordering within each worker. The
 [request ID rule](configuration.md#client-address-and-forwarding) decides when an
 incoming `x-request-id` is kept.
 
-Per-request diagnostics (the HTTP completion event, per-request policy decisions,
-presented challenges and missing translations) are `DEBUG`, so the default does not
-emit them. If you enable them, they add log output for each request and can affect
+Per-request diagnostics (the HTTP completion event, presented challenges and missing
+translations) are `DEBUG`, so the default does not emit them. Policy decisions use
+`INFO` when [`server.decision_log`](configuration.md#policy-decision-logs) selects
+them, and the default `off` selects none. If you enable them, they add log output for each request and can affect
 throughput. Raise them for a specific subsystem:
 
 ```bash
 RUST_LOG=rilgate_gateway::transport::server=debug   # HTTP completion events
-RUST_LOG=rilgate_gateway::proxy::gate=debug          # policy decisions
+RUST_LOG=rilgate_gateway::proxy::gate=debug          # gate diagnostics
 ```
 
 Startup and successful reload events use `INFO`. WebSocket Stratum pool session loss

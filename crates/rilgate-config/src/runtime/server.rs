@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionLog {
+  #[default]
   Off,
   Deny,
-  #[default]
   Challenge,
   All,
 }

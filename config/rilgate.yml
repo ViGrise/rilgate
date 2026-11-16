@@ -183,7 +183,7 @@ server:
   # challenge includes denied requests; all also includes allowed requests.
   # These lines contain client IP addresses, request paths and policy details.
   #
-  # decision_log: challenge
+  # decision_log: off
 
   # Enable Prometheus metrics at <site.base_path>/api/metrics; false returns 404.
   # This endpoint has no application authentication. Restrict access at the edge.
