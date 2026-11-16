@@ -45,6 +45,12 @@ impl WebManager {
         WebSnapshot::build(&config, 1, false)?
       }
     };
+    tracing::info!(
+      generation = 1,
+      templates = snapshot.templates.templates().count(),
+      locales = snapshot.supported.tags().len(),
+      "Web snapshot loaded"
+    );
     let diagnostics = WebDiagnostics {
       generation: 1,
       last_successful_reload: Some(timestamp()),

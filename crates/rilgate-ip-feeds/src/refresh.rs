@@ -40,7 +40,12 @@ pub async fn refresh_once<I: FeedParse>(
       {
         Ok(ranges) => {
           *validators = new;
+          let entries = ranges.entries();
+          let previous = set.entries();
           set.publish(ranges);
+          if previous != Some(entries) {
+            tracing::info!(set = set.name(), entries, previous, "{} loaded", I::LABEL);
+          }
           Outcome::Updated
         }
         Err(error) => {

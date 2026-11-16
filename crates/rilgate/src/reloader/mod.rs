@@ -121,7 +121,17 @@ impl Reloader {
     self.handle.replace(&config.pow.policy)?;
     self.running = config;
     self.start_background_tasks()?;
-    tracing::info!("Policy reloaded");
+    tracing::info!(
+      rules = self
+        .running
+        .pow
+        .policy
+        .policy
+        .rules
+        .as_ref()
+        .map_or(0, Vec::len),
+      "Policy reloaded"
+    );
     Ok(ReloadOutcome::Reloaded)
   }
 

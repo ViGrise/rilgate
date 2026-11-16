@@ -172,11 +172,17 @@ impl Connections {
       }
       let pool = &self.config.pools[index];
       let result = self.attempt(index, difficulty, deadline).await;
+      let mut connected_event = None;
       {
         let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
         let state = &mut states[index];
         match &result {
           Ok(Some(_)) => {
+            if state.connected == 0 {
+              connected_event = Some("Stratum pool connected");
+            } else if state.failed_at.is_some() {
+              connected_event = Some("Stratum pool connection recovered");
+            }
             state.connected += 1;
             state.failed_at = None;
           }
@@ -189,6 +195,9 @@ impl Connections {
             }
           }
         }
+      }
+      if let Some(message) = connected_event {
+        tracing::info!(pool = %pool.name, "{message}");
       }
       match result {
         Ok(Some(session)) => return Ok(session),

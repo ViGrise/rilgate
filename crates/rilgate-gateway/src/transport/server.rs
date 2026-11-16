@@ -247,6 +247,10 @@ impl Gateway {
       }
     };
     drop(listeners);
+    tracing::info!(
+      connections = connections.len(),
+      "Listeners closed, draining open connections"
+    );
     self.state.shutdown.cancel();
     let _ = stop.send(true);
     self.proxy.cleanup().await;
@@ -257,6 +261,11 @@ impl Gateway {
     .await
     .is_err()
     {
+      tracing::warn!(
+        connections = connections.len(),
+        drain_seconds = SHUTDOWN_DRAIN.as_secs(),
+        "Connection drain timed out, closing open connections"
+      );
       connections.abort_all();
       while connections.join_next().await.is_some() {}
     }

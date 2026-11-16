@@ -16,10 +16,10 @@ pub async fn shutdown_signal() {
   #[cfg(not(unix))]
   let terminate = std::future::pending::<()>();
 
-  tokio::select! {
-    _ = ctrl_c => {},
-    _ = terminate => {},
-  }
+  let signal = tokio::select! {
+    _ = ctrl_c => "SIGINT",
+    _ = terminate => "SIGTERM",
+  };
 
-  tracing::info!("Shutdown signal received");
+  tracing::info!(signal, "Shutdown signal received");
 }
