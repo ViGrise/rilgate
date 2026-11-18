@@ -1,3 +1,4 @@
+pub mod duration;
 pub mod error;
 pub mod time;
 pub type BoxFuture<'a, T> =

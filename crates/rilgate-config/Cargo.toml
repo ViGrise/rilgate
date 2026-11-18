@@ -17,7 +17,6 @@ serde_json.workspace = true
 serde_yaml_ng.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-humantime.workspace = true
 http.workspace = true
 url.workspace = true
 rilgate-pow.workspace = true
@@ -29,6 +28,7 @@ rilgate-pool.workspace = true
 rilgate-pow-randomx.workspace = true
 rilgate-protocol.workspace = true
 rilgate-crypto.workspace = true
+rilgate-core.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

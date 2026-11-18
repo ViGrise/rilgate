@@ -1561,22 +1561,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
-name = "humantime"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
-
-[[package]]
-name = "humantime-serde"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57a3db5ea5923d99402c94e9feb261dc5ee9b4efa158b0315f788cf549cc200c"
-dependencies = [
- "humantime",
- "serde",
-]
-
-[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3429,11 +3413,11 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "http",
- "humantime",
  "include_dir",
  "ipnet",
  "rilgate-challenge",
  "rilgate-challenge-hooks",
+ "rilgate-core",
  "rilgate-crypto",
  "rilgate-policy",
  "rilgate-pool",
@@ -3458,6 +3442,7 @@ name = "rilgate-core"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "serde",
  "thiserror 2.0.21",
 ]
 
@@ -3574,11 +3559,11 @@ dependencies = [
  "arc-swap",
  "form_urlencoded",
  "http",
- "humantime-serde",
  "ipnet",
  "libc",
  "maxminddb",
  "regex",
+ "rilgate-core",
  "rilgate-crypto",
  "rilgate-protocol",
  "serde",
@@ -3746,12 +3731,12 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "humantime-serde",
  "include_dir",
  "language-tags",
  "mime_guess",
  "minijinja",
  "notify",
+ "rilgate-core",
  "serde",
  "serde_json",
  "sha2",

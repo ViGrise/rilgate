@@ -102,7 +102,6 @@ hex = "0.4.3"
 semver = "1"
 regex = "1.12.2"
 
-humantime = "2"
 maxminddb = "0.32"
 hickory-resolver = "0.26"
 flate2 = "1.1"
@@ -112,7 +111,6 @@ http = "1"
 url = "2"
 
 arc-swap = "1"
-humantime-serde = "1"
 fastrand = "2"
 include_dir = "0.7"
 minijinja = { version = "2", features = ["loader", "json", "fuel"] }

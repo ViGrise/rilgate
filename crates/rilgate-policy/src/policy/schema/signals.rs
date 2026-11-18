@@ -60,13 +60,13 @@ pub struct IpSetDefinition {
   pub format: Option<FeedFormat>,
   #[serde(
     default,
-    with = "humantime_serde",
+    with = "rilgate_core::duration::option",
     skip_serializing_if = "Option::is_none"
   )]
   pub refresh: Option<std::time::Duration>,
   #[serde(
     default,
-    with = "humantime_serde",
+    with = "rilgate_core::duration::option",
     skip_serializing_if = "Option::is_none"
   )]
   pub max_stale: Option<std::time::Duration>,
@@ -95,13 +95,13 @@ pub struct AsnSetDefinition {
   pub format: Option<FeedFormat>,
   #[serde(
     default,
-    with = "humantime_serde",
+    with = "rilgate_core::duration::option",
     skip_serializing_if = "Option::is_none"
   )]
   pub refresh: Option<std::time::Duration>,
   #[serde(
     default,
-    with = "humantime_serde",
+    with = "rilgate_core::duration::option",
     skip_serializing_if = "Option::is_none"
   )]
   pub max_stale: Option<std::time::Duration>,
@@ -141,13 +141,13 @@ pub struct GeoDatabaseDefinition {
   pub maxmind: Option<MaxMindSource>,
   #[serde(
     default,
-    with = "humantime_serde",
+    with = "rilgate_core::duration::option",
     skip_serializing_if = "Option::is_none"
   )]
   pub refresh: Option<std::time::Duration>,
   #[serde(
     default,
-    with = "humantime_serde",
+    with = "rilgate_core::duration::option",
     skip_serializing_if = "Option::is_none"
   )]
   pub max_stale: Option<std::time::Duration>,
@@ -158,7 +158,7 @@ pub struct GeoDatabaseDefinition {
 #[serde(default, deny_unknown_fields)]
 pub struct HoneypotDefinition {
   /// How long a client stays flagged.
-  #[serde(with = "humantime_serde")]
+  #[serde(with = "rilgate_core::duration")]
   pub ttl: std::time::Duration,
   /// The most clients that are flagged at one time.
   pub max_entries: usize,
@@ -197,7 +197,7 @@ impl HoneypotDefinition {
 #[serde(deny_unknown_fields)]
 pub struct CounterDefinition {
   pub key: Vec<CounterKeyPart>,
-  #[serde(with = "humantime_serde")]
+  #[serde(with = "rilgate_core::duration")]
   pub window: std::time::Duration,
   #[serde(default = "counter_capacity")]
   pub max_entries: usize,
@@ -254,13 +254,13 @@ impl Default for CounterIp {
 #[serde(default, deny_unknown_fields)]
 pub struct DnsDefinition {
   /// The time one request waits for the lookups of its client.
-  #[serde(with = "humantime_serde")]
+  #[serde(with = "rilgate_core::duration")]
   pub timeout: std::time::Duration,
   /// How long a listed address or a verified name stays cached.
-  #[serde(with = "humantime_serde")]
+  #[serde(with = "rilgate_core::duration")]
   pub cache_ttl: std::time::Duration,
   /// How long an unlisted address or a missing name stays cached.
-  #[serde(with = "humantime_serde")]
+  #[serde(with = "rilgate_core::duration")]
   pub negative_ttl: std::time::Duration,
   pub max_entries: usize,
 }
