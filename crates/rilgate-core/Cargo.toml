@@ -8,3 +8,4 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 thiserror.workspace = true
+serde.workspace = true

@@ -17,13 +17,13 @@ impl Time {
 }
 impl Serialize for Time {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&humantime::format_duration(self.0).to_string())
+    serializer.serialize_str(&rilgate_core::duration::format(self.0))
   }
 }
 impl<'de> Deserialize<'de> for Time {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     let value = String::deserialize(deserializer)?;
-    let duration = humantime::parse_duration(&value)
+    let duration = rilgate_core::duration::parse(&value)
       .map_err(|_| D::Error::custom("expected a duration such as 300ms, 5s, 1m or 6h"))?;
     if duration.is_zero() || duration > Duration::from_secs(31_536_000) {
       return Err(D::Error::custom(
@@ -37,13 +37,13 @@ impl<'de> Deserialize<'de> for Time {
 pub struct IdleTimeout(pub Duration);
 impl Serialize for IdleTimeout {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&humantime::format_duration(self.0).to_string())
+    serializer.serialize_str(&rilgate_core::duration::format(self.0))
   }
 }
 impl<'de> Deserialize<'de> for IdleTimeout {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     let value = String::deserialize(deserializer)?;
-    let duration = humantime::parse_duration(&value)
+    let duration = rilgate_core::duration::parse(&value)
       .map_err(|_| D::Error::custom("expected a duration such as 0s, 300ms, 5s, 1m or 7d"))?;
     if duration > Duration::from_secs(604_800) {
       return Err(D::Error::custom("idle timeout must be at most 7d"));

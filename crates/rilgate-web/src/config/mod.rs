@@ -61,7 +61,7 @@ impl Default for SeedConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct WatchConfig {
   pub enabled: bool,
-  #[serde(with = "humantime_serde")]
+  #[serde(with = "rilgate_core::duration")]
   pub debounce: Duration,
 }
 impl Default for WatchConfig {
