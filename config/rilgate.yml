@@ -1078,6 +1078,11 @@ server:
       # format: list_text
       # refresh: 1h
       # max_stale: 1d
+    # tor-exits-v6:
+      # url: "https://onionoo.torproject.org/details?flag=Exit&running=true&fields=or_addresses"
+      # format: {regex: '\[(?P<value>[0-9a-f:]+)\]:\d+'}
+      # refresh: 1h
+      # max_stale: 1d
 
   # asn_sets match the client ASN from signals.geoip.asn, so they need that database.
   #
@@ -1314,6 +1319,10 @@ server:
       # score: 5
 
     # - !include builtin:rules/tor-exit.yml
+    # - !include builtin:rules/tor-exit-v6.yml
+    # Behind Cloudflare, use this rule in place of the two Tor set rules.
+    #
+    # - !include builtin:rules/tor-exit-cloudflare.yml
     # - name: verified-googlebot
       # Example, not a default.
       #

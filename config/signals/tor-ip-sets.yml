@@ -4,3 +4,11 @@ tor-exits:
   format: list_text
   refresh: 1h
   max_stale: 1d
+# Onion routing addresses of running exit relays. The regex keeps the bracketed IPv6
+# addresses, because the exit list above holds IPv4 addresses only. A relay can exit
+# from an address other than its onion routing address.
+tor-exits-v6:
+  url: "https://onionoo.torproject.org/details?flag=Exit&running=true&fields=or_addresses"
+  format: {regex: '\[(?P<value>[0-9a-f:]+)\]:\d+'}
+  refresh: 1h
+  max_stale: 1d

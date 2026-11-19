@@ -1,0 +1,7 @@
+# Cloudflare sets the country code T1 for Tor clients, over IPv4 and IPv6.
+name: tor-exit-cloudflare
+when:
+  edge_headers:
+    Cf-Ipcountry: {exact: T1}
+action: score
+score: 20
