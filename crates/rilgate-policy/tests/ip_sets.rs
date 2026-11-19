@@ -273,8 +273,12 @@ fn lookups_racing_publishes_see_complete_snapshots() {
 fn remote_definitions_are_validated_and_deny_rules_register_fallback_challenges() {
   for (text, message) in [
     (
-      REMOTE.replace("refresh: 1h", "refresh: 59m"),
-      "signals.ip_sets.feed.refresh: expected 1h to 7d",
+      REMOTE.replace("refresh: 1h", "refresh: 59s"),
+      "signals.ip_sets.feed.refresh: expected 1m to 30d",
+    ),
+    (
+      REMOTE.replace("refresh: 1h", "refresh: 31d"),
+      "signals.ip_sets.feed.refresh: expected 1m to 30d",
     ),
     (
       REMOTE.replace("max_stale: 2h", "max_stale: 30m"),

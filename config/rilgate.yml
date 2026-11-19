@@ -1063,7 +1063,7 @@ server:
       # format: {regex: '(?m)^(?P<value>[0-9.]+):\d+$'}
       # format: {json_path: ['$.prefixes[*].ipv4Prefix']}
 
-      # Refresh interval. Range: 1h..7d. Default: 24h.
+      # Refresh interval. Range: 1m..30d. Default: 24h.
       #
       # refresh: 24h
 
@@ -1103,7 +1103,7 @@ server:
       # format: {regex: '(?m)^(?P<value>AS[0-9]+)$'}
       # format: {json_path: ['$.asns[*]']}
 
-      # Refresh interval. Range: 1h..7d. Default: 24h.
+      # Refresh interval. Range: 1m..30d. Default: 24h.
       #
       # refresh: 24h
 

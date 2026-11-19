@@ -90,7 +90,9 @@ impl<I: FeedIndex> FeedSets<I> {
         let refresh = definition.refresh().unwrap_or(DEFAULT_REFRESH);
         ensure!(
           (MIN_REFRESH..=MAX_REFRESH).contains(&refresh),
-          "{path}.refresh: expected 1h to 7d"
+          "{path}.refresh: expected {} to {}",
+          describe(MIN_REFRESH),
+          describe(MAX_REFRESH)
         );
         let max_stale = definition.max_stale().unwrap_or(DEFAULT_MAX_STALE);
         ensure!(
