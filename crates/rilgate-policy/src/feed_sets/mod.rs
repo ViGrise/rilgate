@@ -11,8 +11,8 @@ pub const MAX_SET_NAME_BYTES: usize = 64;
 pub const MAX_SETS_PER_MATCHER: usize = 16;
 pub const MAX_ENTRIES_PER_SET: usize = 65_536;
 pub const DEFAULT_REFRESH: Duration = Duration::from_secs(24 * 3600);
-pub const MIN_REFRESH: Duration = Duration::from_secs(3600);
-pub const MAX_REFRESH: Duration = Duration::from_secs(7 * 24 * 3600);
+pub const MIN_REFRESH: Duration = Duration::from_secs(60);
+pub const MAX_REFRESH: Duration = Duration::from_secs(30 * 24 * 3600);
 pub const DEFAULT_MAX_STALE: Duration = Duration::from_secs(7 * 24 * 3600);
 pub const MAX_MAX_STALE: Duration = Duration::from_secs(30 * 24 * 3600);
 

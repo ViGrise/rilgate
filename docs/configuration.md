@@ -449,8 +449,8 @@ or overflow.
 | `pow.algorithms.randomx.verify.remote.tls.ca`, `.client_cert`, `.client_key` | none (all required in production; client cert and key must be paired; absent CA uses webpki roots in development) |
 | `pow.algorithms.randomx.difficulty.base`, `.score_step`, `.max` | `1000`, `10`, `32000` |
 | `pow.algorithms.randomx.browser.module` | `/static/js/solvers/randomx/solver.js` |
-| `signals.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
-| `signals.asn_sets.<name>.refresh`, `.max_stale` | `24h` (1h to 7d), `7d` (refresh to 30d) |
+| `signals.ip_sets.<name>.refresh`, `.max_stale` | `24h` (1m to 30d), `7d` (refresh to 30d) |
+| `signals.asn_sets.<name>.refresh`, `.max_stale` | `24h` (1m to 30d), `7d` (refresh to 30d) |
 
 When `pow.stratum_pool` is enabled, its defaults are:
 

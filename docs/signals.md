@@ -80,7 +80,7 @@ signals:
       format: {json_path: ["$.prefixes[?@.service == 'EC2'].ip_prefix"]}
 ```
 
-`refresh` defaults to `24h`. Its range is `1h..=7d`.
+`refresh` defaults to `24h`. Its range is `1m..=30d`.
 
 `max_stale` defaults to `7d`, is at least `refresh` and at most `30d`. Static sets reject
 remote fields. In production a remote `url` must use `https`. Development also accepts
@@ -156,7 +156,7 @@ with 1 to 65536 entries. Set names follow the IP set rules. Choose exactly one s
 static `asns` or a remote `url` with `format`. ASN values range from 1 to 4294967295.
 Remote values accept decimal numbers with an optional case-insensitive `AS` prefix. ASN
 feeds accept `list_text`, `regex` and `json_path`. They reject `ip_prefixes_json`.
-`refresh` defaults to `24h`, with a range of `1h` to `7d`. `max_stale` defaults to `7d`,
+`refresh` defaults to `24h`, with a range of `1m` to `30d`. `max_stale` defaults to `7d`,
 with a range from `refresh` to `30d`. Static sets reject `format`, `refresh` and
 `max_stale`. Production feed URLs require HTTPS. Development also accepts HTTP. Feed
 loading, body limits, retries and snapshot retention follow the IP set rules.
