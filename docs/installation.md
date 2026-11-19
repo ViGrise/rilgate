@@ -17,7 +17,7 @@ not writable. Set these variables to change the defaults:
 | Variable      | Default          | Description                                                                 |
 | ------------- | ---------------- | --------------------------------------------------------------------------- |
 | `INSTALL_DIR` | `/usr/local/bin` | Destination directory                                                       |
-| `VERSION`     | `latest`         | Release tag, for example `v0.5.0`                                           |
+| `VERSION`     | `latest`         | Release tag, for example `v0.6.0`                                           |
 | `LIBC`        | detected         | Linux amd64 and arm64 only: `gnu` for the glibc build (glibc 2.36 or newer), `musl` for the static build |
 | `REQUIRE_SIGNATURE` | `0`        | `1` refuses to install when `gpg` is missing                                |
 
@@ -28,7 +28,7 @@ to verify it independently, download `install.sh` and `install.sh.asc` and verif
 as described in [verify a download](#verify-a-download) before you run it.
 
 ```bash
-curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.5.0 INSTALL_DIR="$HOME/.local/bin" bash
+curl -fsSL https://github.com/ViGrise/rilgate/releases/latest/download/install.sh | VERSION=v0.6.0 INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 Linux ppc64le and riscv64 have only the static build. The FreeBSD build is available
@@ -83,10 +83,10 @@ environment variables, to change the defaults:
 | Parameter     | Default                       | Description                       |
 | ------------- | ----------------------------- | --------------------------------- |
 | `-InstallDir` | `%LOCALAPPDATA%\rilgate\bin`  | Destination directory             |
-| `-Version`    | `latest`                      | Release tag, for example `v0.5.0` |
+| `-Version`    | `latest`                      | Release tag, for example `v0.6.0` |
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.5.0
+& ([scriptblock]::Create((irm https://github.com/ViGrise/rilgate/releases/latest/download/install.ps1))) -Version v0.6.0
 ```
 
 The release also has `rilgate-windows-amd64.msi` and `rilgate-windows-arm64.msi`. The
