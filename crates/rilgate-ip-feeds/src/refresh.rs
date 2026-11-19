@@ -43,8 +43,14 @@ pub async fn refresh_once<I: FeedParse>(
           let entries = ranges.entries();
           let previous = set.entries();
           set.publish(ranges);
-          if previous != Some(entries) {
-            tracing::info!(set = set.name(), entries, previous, "{} loaded", I::LABEL);
+          // The first load is a lifecycle event. Later count changes are routine for
+          // lists that change often, so they stay out of the default log.
+          match previous {
+            None => tracing::info!(set = set.name(), entries, "{} loaded", I::LABEL),
+            Some(previous) if previous != entries => {
+              tracing::debug!(set = set.name(), entries, previous, "{} loaded", I::LABEL)
+            }
+            Some(_) => {}
           }
           Outcome::Updated
         }
