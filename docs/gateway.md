@@ -336,7 +336,9 @@ event gives the rule count, the default action and algorithm, the enabled HashWX
 RandomX algorithms, the trusted proxy count, the client IP header, the decision log
 level, the metrics state and the challenge and denial statuses. It contains no secrets.
 Startup also logs the web snapshot with its template and locale counts, and
-`Policy reloaded` gives the rule count of the new policy.
+`Policy reloaded` gives the rule count of the new policy. An IP set or ASN set logs its
+first load at `INFO`. A later refresh that changes its entry count logs at `DEBUG`, which
+`rilgate_ip_feeds::refresh=debug` in `RUST_LOG` shows.
 
 Shutdown events use `INFO`. The gateway logs the shutdown signal name, the open
 connection count before the drain and `Rilgate stopped` at the end. A drain that
