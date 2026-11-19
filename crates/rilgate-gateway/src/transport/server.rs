@@ -7,7 +7,7 @@ use crate::{
     headers::NO_STORE,
     path::policy_path,
     response::{Response, json, response},
-    routes::{Endpoint, Exposure},
+    routes::Endpoint,
     stream::DownstreamStream,
   },
   web::{assets, pages::render_page},
@@ -58,14 +58,6 @@ pub struct Gateway {
 enum ListenerRole {
   Public,
   Operations,
-}
-impl ListenerRole {
-  fn exposure(self) -> Exposure {
-    match self {
-      Self::Public => Exposure::Public,
-      Self::Operations => Exposure::Operations,
-    }
-  }
 }
 struct Handler {
   state: AppState,
@@ -476,6 +468,18 @@ impl Handler {
     };
     json(status, &body)
   }
+  /// The endpoint path of a request below the listener's base path: `site.base_path` on
+  /// public listeners and `server.operations.base_path` on operations listeners.
+  fn local_path(&self, path: &str) -> Option<String> {
+    let prefix = match self.role {
+      ListenerRole::Public => &self.state.cfg.web.base_path,
+      ListenerRole::Operations => &self.state.cfg.server.operations_base_path,
+    };
+    path
+      .strip_prefix(prefix.as_str())
+      .filter(|suffix| suffix.is_empty() || suffix.starts_with('/'))
+      .map(str::to_owned)
+  }
   async fn local(
     &self,
     session: &mut Session,
@@ -486,7 +490,10 @@ impl Handler {
     let headers = session.req_header().headers.clone();
     let uri = session.req_header().uri.clone();
     let method = session.req_header().method.clone();
-    let endpoint = Endpoint::from_path(path);
+    let endpoint = match self.role {
+      ListenerRole::Public => Endpoint::from_public_path(path),
+      ListenerRole::Operations => Endpoint::from_operations_path(path),
+    };
     if endpoint == Some(Endpoint::Reload)
       && self.role == ListenerRole::Operations
       && self.state.cfg.server.operations_reload
@@ -512,12 +519,14 @@ impl Handler {
     }
     let hidden = match endpoint {
       Some(Endpoint::Reload) => true,
-      Some(endpoint) => endpoint.exposure() != self.role.exposure(),
+      Some(_) => false,
       None => self.role == ListenerRole::Operations,
     };
+    // API and operational responses describe live state, so no cache may store them.
+    let uncacheable = self.role == ListenerRole::Operations || path.starts_with("/api/");
     if hidden {
       let mut out = response(StatusCode::NOT_FOUND, "");
-      if path.starts_with("/api/") {
+      if uncacheable {
         out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
       }
       return Ok(Some(out));
@@ -583,8 +592,9 @@ impl Handler {
       headers: &headers,
       trusted_peer: crate::transport::client_ip::trusted_peer(socket_peer, &self.state.cfg.server),
     };
-    let endpoint = endpoint
-      .filter(|endpoint| *endpoint != Endpoint::Metrics || self.state.cfg.server.metrics_enabled);
+    let endpoint = endpoint.filter(|endpoint| {
+      *endpoint != Endpoint::Metrics || self.state.cfg.server.operations_metrics
+    });
     let mut out = match endpoint {
       None => response(StatusCode::NOT_FOUND, ""),
       Some(endpoint) if !endpoint.accepts(&method) => {
@@ -661,7 +671,7 @@ impl Handler {
         result.unwrap_or_else(ApiError::into_response)
       }
     };
-    if path.starts_with("/api/") {
+    if uncacheable {
       out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
     }
     Ok(Some(out))
@@ -882,15 +892,7 @@ impl ProxyHttp for Handler {
         return Ok(true);
       }
     }
-    let prefix = &self.state.cfg.web.base_path;
-    if let Some(path) = session
-      .req_header()
-      .uri
-      .path()
-      .strip_prefix(prefix)
-      .filter(|suffix| suffix.is_empty() || suffix.starts_with('/'))
-      .map(str::to_owned)
-    {
+    if let Some(path) = self.local_path(session.req_header().uri.path()) {
       let out = if path == "/api/ws" {
         self.local(session, ctx, &path, resolved_client_ip).await?
       } else {
@@ -911,7 +913,9 @@ impl ProxyHttp for Handler {
     }
 
     if self.role == ListenerRole::Operations {
-      send(session, response(StatusCode::NOT_FOUND, ""), ctx).await?;
+      let mut out = response(StatusCode::NOT_FOUND, "");
+      out.headers_mut().insert(CACHE_CONTROL, NO_STORE);
+      send(session, out, ctx).await?;
       return Ok(true);
     }
     if session.req_header().uri.path().len() > crate::transport::path::MAX_REQUEST_PATH_BYTES {

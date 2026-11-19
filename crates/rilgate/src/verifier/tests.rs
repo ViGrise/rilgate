@@ -77,7 +77,7 @@ fn anonymous_clients_share_only_the_global_queue() {
 #[tokio::test]
 async fn readiness_is_cold_and_operations_are_separate() {
   let state = state();
-  assert_eq!(state.operations("/api/ready").status(), StatusCode::OK);
+  assert_eq!(state.operations("/ready").status(), StatusCode::OK);
   assert_eq!(
     state.operations("/v1/ready").status(),
     StatusCode::NOT_FOUND
@@ -89,10 +89,10 @@ async fn readiness_is_cold_and_operations_are_separate() {
   );
   state.mark_unhealthy();
   assert_eq!(
-    state.operations("/api/ready").status(),
+    state.operations("/ready").status(),
     StatusCode::SERVICE_UNAVAILABLE
   );
-  assert_eq!(state.operations("/api/live").status(), StatusCode::OK);
+  assert_eq!(state.operations("/live").status(), StatusCode::OK);
 }
 
 struct Waiting(tokio::sync::Notify);
@@ -256,7 +256,7 @@ async fn operations_budget_is_independent_of_hash_connections() {
   let _occupied = hash_budget.acquire().await.unwrap();
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let address = listener.local_addr().unwrap();
-  let task = tokio::spawn(operations_loop(listener, state()));
+  let task = tokio::spawn(operations_loop(listener, state(), "/api".into()));
   let mut client = tokio::net::TcpStream::connect(address).await.unwrap();
   client
     .write_all(b"GET /api/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")

@@ -71,7 +71,7 @@ server:
   # watch_config: false
 
   operations:
-    # Operational routes are served only here, relative to site.base_path.
+    # Operational routes are served only here, below server.operations.base_path.
     # An empty list disables them. Use loopback or a private monitoring network.
     # Accepts one address or up to 16 unique addresses, distinct from server.listen.
     # Example: "127.0.0.1:9090". --port preserves these addresses.
@@ -80,10 +80,30 @@ server:
     #
     listen: "127.0.0.1:9090"
 
-    # Enable POST {site.base_path}/reload on this listener.
+    # Path prefix of the operational routes: <base_path>/live, /health, /ready,
+    # /metrics and /reload. It starts with / and has no trailing slash.
+    # An empty value serves the routes from the root, such as /live.
+    #
+    # base_path: /api
+
+    # Enable POST <server.operations.base_path>/reload on this listener.
     # Requests with an Origin header receive 403. Keep this listener private.
     #
     # reload: false
+
+    # Enable Prometheus metrics at <server.operations.base_path>/metrics;
+    # false returns 404. This endpoint has no application authentication.
+    # Labels are bounded; request paths and client identities are not metric labels.
+    #
+    # metrics: false
+
+    # Dependency-probe timeout for <server.operations.base_path>/ready. Maximum: 30s.
+    # Readiness probes TCP reachability of the upstream and, when required by the
+    # selected challenges, a Stratum pool through its proxies and TLS. This does
+    # not check application response health or Stratum login.
+    # <server.operations.base_path>/live only reports process liveness.
+    #
+    # readiness_timeout: 2s
 
   upstream:
     # REQUIRED. HTTP or HTTPS application URL, optionally including a base path.
@@ -184,20 +204,6 @@ server:
   # These lines contain client IP addresses, request paths and policy details.
   #
   # decision_log: off
-
-  # Enable Prometheus metrics at <site.base_path>/api/metrics; false returns 404.
-  # This endpoint has no application authentication. Restrict access at the edge.
-  # Labels are bounded; request paths and client identities are not metric labels.
-  #
-  # metrics_enabled: false
-
-  # Dependency-probe timeout for <site.base_path>/api/ready. Maximum: 30s.
-  # Readiness probes TCP reachability of the upstream and, when required by the
-  # selected challenges, a Stratum pool through its proxies and TLS. This does
-  # not check application response health or Stratum login.
-  # <site.base_path>/api/live only reports process liveness.
-  #
-  # readiness_timeout: 2s
 
   # Time limit to receive a request, including its body, and to connect to the
   # upstream. It also limits gateway endpoints below site.base_path. A request

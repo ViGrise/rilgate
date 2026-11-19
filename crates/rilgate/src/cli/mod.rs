@@ -172,7 +172,7 @@ fn log_settings(config: &rilgate_config::Config) {
       .as_ref()
       .map_or("x-forwarded-for", |header| header.as_str()),
     decision_log = name(&config.server.decision_log),
-    metrics = config.server.metrics_enabled,
+    metrics = config.server.operations_metrics,
     challenge_status = responses.challenge_status.as_u16(),
     deny_status = responses.deny_status.as_u16(),
     "Gateway settings"

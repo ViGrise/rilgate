@@ -166,7 +166,7 @@ mod tests {
       "rilgate",
       "--server-upstream-url",
       "http://127.0.0.1:3000",
-      "--server-metrics-enabled",
+      "--server-operations-metrics",
       "--site-i18n-strict=false",
       "--server-trusted-proxies",
       "10.0.0.0/8,192.0.2.1/32",
@@ -190,7 +190,7 @@ mod tests {
       ))
     );
     assert_eq!(
-      find("server.metrics_enabled").unwrap().0,
+      find("server.operations.metrics").unwrap().0,
       SettingValue::Scalar("true".into())
     );
     assert_eq!(

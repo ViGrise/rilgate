@@ -630,7 +630,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
     let mut cfg = common::config();
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{upstream}");
-    config.server.metrics_enabled = true;
+    config.server.operations_metrics = true;
     config.pow.stratum_pool.pools[0].port = address.port();
     config.pow.stratum_pool.cooldown = Duration::from_secs(1);
     let choice = config.pow.policy.policy.rules.as_mut().unwrap()[0]
@@ -691,10 +691,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
     );
     let client = reqwest::Client::new();
     let ready = client
-      .get(format!(
-        "http://{}/.well-known/test-pow/api/ready",
-        router.operations_address()
-      ))
+      .get(format!("http://{}/api/ready", router.operations_address()))
       .send()
       .await
       .unwrap();
@@ -799,7 +796,7 @@ async fn randomx_fallback_cookie_expires_when_pool_work_can_resume() {
     assert!(html.contains("\"algorithm\":\"randomx\""));
     let metrics = client
       .get(format!(
-        "http://{}/.well-known/test-pow/api/metrics",
+        "http://{}/api/metrics",
         router.operations_address()
       ))
       .send()

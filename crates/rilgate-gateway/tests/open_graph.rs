@@ -530,7 +530,7 @@ async fn request_selection_applies_to_fetches_overrides_and_lookup_metrics() {
   for overrides in [false, true] {
     let mut cfg = upstream.config();
     let config = Arc::get_mut(&mut cfg).unwrap();
-    config.server.metrics_enabled = true;
+    config.server.operations_metrics = true;
     config.pow.policy.policy.rules.as_mut().unwrap()[0]
       .when
       .path
@@ -560,7 +560,7 @@ async fn request_selection_applies_to_fetches_overrides_and_lookup_metrics() {
     );
     let metrics = reqwest::Client::new()
       .get(format!(
-        "http://{}/.well-known/test-pow/api/metrics",
+        "http://{}/api/metrics",
         gateway.operations_address()
       ))
       .send()

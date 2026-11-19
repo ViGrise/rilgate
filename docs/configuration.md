@@ -79,6 +79,7 @@ followed by the flag in upper snake case. Indexed pool and proxy entries use var
 | `server.upstream.url` | `--server-upstream-url`, `-u` | `RILGATE_SERVER_UPSTREAM_URL` |
 | `server.listen` | `--server-listen`, `-l` | `RILGATE_SERVER_LISTEN` |
 | `server.operations.listen` | `--server-operations-listen` | `RILGATE_SERVER_OPERATIONS_LISTEN` |
+| `server.operations.base_path` | `--server-operations-base-path` | `RILGATE_SERVER_OPERATIONS_BASE_PATH` |
 | `server.operations.reload` | `--server-operations-reload` | `RILGATE_SERVER_OPERATIONS_RELOAD` |
 | `server.watch_config` | `--server-watch-config` | `RILGATE_SERVER_WATCH_CONFIG` |
 | `security.secret` | `--security-secret`, `-s` | `RILGATE_SECURITY_SECRET` |
@@ -112,15 +113,27 @@ It defaults to `[]` (disabled). Its flag and environment variable take a
 comma-separated list. Duplicate addresses and addresses equal to any `server.listen`
 address are rejected. Dual-stack binding considers both lists together.
 
-Only the operations listeners serve `/api/live`, `/api/health`, `/api/ready` and
-`/api/metrics`, relative to `site.base_path`. Public listeners return 404 for those paths.
-Enable `server.operations.reload` to also serve `POST /reload`.
-Operations listeners return 404 for all other paths and never evaluate policy or proxy
-upstream.
+Only the operations listeners serve the operational routes `/live`, `/health`, `/ready`
+and `/metrics`, below `server.operations.base_path`. The default base path `/api` gives
+`/api/live`, `/api/health`, `/api/ready` and `/api/metrics`. The base path starts with `/` and has
+no trailing slash. An empty base path serves the routes from the root, such as `/live`.
+`site.base_path` does not apply to these routes. Enable `server.operations.reload` to also
+serve `POST {server.operations.base_path}/reload`. Operations listeners return 404 for all
+other paths and never evaluate policy or proxy upstream.
+
+```yaml
+server:
+  operations:
+    listen: 127.0.0.1:9090
+    base_path: /api
+    metrics: true
+    readiness_timeout: 2s
+```
 
 These endpoints have no authentication. Bind them to loopback or a private monitoring
-network. `server.metrics_enabled` still controls metrics availability. With the default empty list,
-these routes are served nowhere.
+network. `server.operations.metrics` enables `/metrics`; when it is `false`, that route returns 404.
+`server.operations.readiness_timeout` limits each dependency probe of `/ready`, at most `30s`.
+With the default empty list, these routes are served nowhere.
 
 `--port` (`RILGATE_PORT`) replaces the port of every `server.listen` address. It
 preserves operations addresses. `--log-level` (`RUST_LOG`) sets the log filter and
@@ -286,7 +299,7 @@ and sends plain HTTP/1.1 with a 10 s timeout. It sends no credentials and follow
 The reload route needs an operations listener. Keep that listener private.
 A connection failure or 404 reports that the gateway may be stopped or `server.operations.reload` may be off.
 
-The route is `POST {site.base_path}/reload` on the operations listener only.
+The route is `POST {server.operations.base_path}/reload` on the operations listener only.
 It is absent when `server.operations.reload` is `false` (404).
 Any request with an `Origin` header receives 403. Other methods receive 405 with `Allow: POST`.
 The request body is ignored. The server reads its own configuration with its own environment,
@@ -386,7 +399,7 @@ warning-free configuration, run it in CI or before deployment.
 | `resource-watch-enabled` | production | warning | `site.resources.watch.enabled` is `true` |
 | `auth-ttl-long` | production | warning | `security.auth.ttl` exceeds `7d` |
 | `development-public-listener` | development | warning | A `server.listen` address is beyond loopback, including the default `:8080` |
-| `metrics-unreachable` | both | warning | `server.metrics_enabled` is `true` with no `server.operations.listen` address |
+| `metrics-unreachable` | both | warning | `server.operations.metrics` is `true` with no `server.operations.listen` address |
 | `response-status-without-page` | both | warning | `site.responses.challenge_status` or `deny_status` is 1xx, 204, 205 or 304, so the page does not reach the client |
 | `generated-secret` | both | warning | Neither `security.secret` nor `security.keys` is set, so the gateway signs with a random secret for each start |
 
@@ -413,7 +426,8 @@ or overflow.
 | `environment` | `production` |
 | `server.listen` | `:8080` (one address or a list) |
 | `server.operations.listen` | `[]` (disabled) |
-| `server.operations.reload` | `false` |
+| `server.operations.base_path` | `/api` |
+| `server.operations.reload`, `.metrics`, `.readiness_timeout` | `false`, `false`, `2s` |
 | `server.watch_config` | `false` |
 | `server.upstream.preserve_host` | `true` |
 | `server.upstream.max_body_size` | `16MiB` |
@@ -426,7 +440,7 @@ or overflow.
 | `server.trusted_proxies` | `[]`, trust no peers |
 | `server.client_ip_header` | none, use `X-Forwarded-For` from trusted peers |
 | `server.decision_log` | `off`, log no policy decisions |
-| `server.metrics_enabled`, `.readiness_timeout`, `.request_timeout` | `false`, `2s`, `30s` |
+| `server.request_timeout` | `30s` |
 | `site.name`, `.url`, `.brand_id`, `.base_path`, `.stylesheet` | `Rilgate`, `https://rilgate.com`, `rilgate`, `/.well-known/<brand_id>`, `css/rilgate.css` |
 | `site.resources.directory`, `.seed` | none, `if_empty` |
 | `site.resources.watch.enabled`, `.debounce` | `false`, `300ms` |
@@ -774,7 +788,7 @@ including login. It defaults to `15s` and accepts `1s` to `5m`. It must be at le
 When the budget expires, the gateway stops and reports that all Stratum pools
 are unavailable. A try that this budget stops does not start a pool or
 proxy cooldown. A failure before the budget expires still starts the applicable
-cooldown. Readiness probes keep the separate `server.readiness_timeout` bound.
+cooldown. Readiness probes keep the separate `server.operations.readiness_timeout` bound.
 Use `--pow-stratum-pool-failover-timeout` or
 `RILGATE_POW_STRATUM_POOL_FAILOVER_TIMEOUT` to set the budget.
 
@@ -915,7 +929,7 @@ rilgate verifier serve --config /etc/rilgate/verifier.yml
 ```
 
 This command resolves only `environment`, `pow.algorithms.randomx.cache`,
-`pow.algorithms.randomx.serve`, `server.operations` and `server.metrics_enabled`.
+`pow.algorithms.randomx.serve` and `server.operations.listen`, `.base_path` and `.metrics`.
 It uses the same YAML loader, environment variables, flags and logging options
 as the gateway. It needs no upstream URL, signing secret, policy or pool.
 Configuration checks load TLS files but do not open a listener.
@@ -924,7 +938,7 @@ Configuration checks load TLS files but do not open a listener.
 server:
   operations:
     listen: 127.0.0.1:9091
-  metrics_enabled: true
+    metrics: true
 pow:
   algorithms:
     randomx:
@@ -958,8 +972,8 @@ Excess hash requests receive `503` with `Retry-After: 1`. Excess connections are
 closed. The service accepts JSON bodies of at most 4 KiB.
 
 The verifier listener serves only `POST /v1/randomx/hash` and `GET /v1/ready`.
-The operations listener serves `GET /api/live`, `GET /api/ready` and, when metrics
-are enabled, `GET /api/metrics`. These routes do not check an upstream or pool.
+The operations listener serves `GET /live`, `GET /ready` and, when metrics
+are enabled, `GET /metrics`, below `server.operations.base_path`. These routes do not check an upstream or pool.
 A cold worker is ready. A worker failure makes it not ready for one second.
 The next hash can retry initialization. During shutdown, it stays not ready.
 The verifier stops new hash connections and allows up to 30 seconds for active

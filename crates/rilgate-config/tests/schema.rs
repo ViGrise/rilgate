@@ -31,7 +31,7 @@ fn durations_sizes_ipv6_and_resource_settings_resolve_without_rounding() {
   let text = BASE
     .replace(
       "  upstream:",
-      "  listen: '[::1]:9090'\n  readiness_timeout: 300ms\n  upstream:",
+      "  listen: '[::1]:9090'\n  operations:\n    readiness_timeout: 300ms\n  upstream:",
     )
     .replace(
       "    url:",
@@ -40,7 +40,7 @@ fn durations_sizes_ipv6_and_resource_settings_resolve_without_rounding() {
   let cfg = resolve(&text).unwrap();
   assert_eq!(cfg.listen_addresses, ["[::1]:9090".parse().unwrap()]);
   assert_eq!(cfg.upstream.connect_timeout.as_millis(), 300);
-  assert_eq!(cfg.server.readiness_timeout.as_millis(), 300);
+  assert_eq!(cfg.server.operations_readiness_timeout.as_millis(), 300);
   assert_eq!(cfg.upstream.max_body_bytes, 16 * 1024 * 1024);
   assert!(resolve(&format!("{BASE}pow:\n  challenge:\n    ttl: 300ms\n")).is_err());
 }
@@ -500,6 +500,27 @@ fn operations_listen_accepts_single_list_and_empty_default() {
       .operations_listen_addresses
       .is_empty()
   );
+}
+
+#[test]
+fn operations_base_path_accepts_root_and_rejects_paths_that_cannot_match() {
+  let with_base_path = |base_path: &str| {
+    BASE.replace(
+      "  upstream:",
+      &format!("  operations:\n    base_path: '{base_path}'\n  upstream:"),
+    )
+  };
+  for base_path in ["", "/api", "/internal/ops"] {
+    let cfg = resolve(&with_base_path(base_path)).unwrap();
+    assert_eq!(cfg.server.operations_base_path, base_path);
+  }
+  for base_path in ["api", "/", "/api/", "/a/../b", "/a?b"] {
+    let error = resolve(&with_base_path(base_path)).unwrap_err();
+    assert!(
+      format!("{error:#}").contains("server.operations.base_path"),
+      "{base_path}: {error:#}"
+    );
+  }
 }
 
 #[test]

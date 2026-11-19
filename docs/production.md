@@ -249,9 +249,9 @@ Monitor these counters without endpoint or certificate labels:
 
 The gateway also exposes `rilgate_randomx_remote_duration_seconds`. The verifier
 exposes its request counter only on its operations listener when
-`server.metrics_enabled` is true. Readiness of a remote-only gateway probes the
+`server.operations.metrics` is true. Readiness of a remote-only gateway probes the
 verifier only when a rule selects RandomX and
-`pow.algorithms.randomx.verify.mode` is `gateway`. The probe uses `server.readiness_timeout`.
+`pow.algorithms.randomx.verify.mode` is `gateway`. The probe uses `server.operations.readiness_timeout`.
 
 ## Capacity and quotas
 
@@ -293,19 +293,20 @@ can be interrupted and clients must reconnect.
 
 ## Health, metrics and alerts
 
-The following routes are relative to `site.base_path`:
+The following routes use the default `server.operations.base_path`, `/api`:
 
 | Route          | Meaning                                                                                                                                                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/api/live`    | The process can serve HTTP requests                                                                                                                                                                                                                                      |
 | `/api/health`  | Existing web diagnostics and cumulative pool failures                                                                                                                                                                                                                    |
 | `/api/ready`   | Checks upstream TCP connectivity and an initial successful load of every configured remote IP and ASN set. When a configured challenge rule selects RandomX, at least one pool must connect through its proxies and configured TLS, unless a RandomX fallback is configured. Returns 503 when unavailable or during drain |
-| `/api/metrics` | Prometheus exposition, enabled only with `server.metrics_enabled: true`                                                                                                                                                                                                  |
+| `/api/metrics` | Prometheus exposition, enabled only with `server.operations.metrics: true`                                                                                                                                                                                               |
 
 With a configured RandomX fallback, pool readiness does not affect `/api/ready`.
 The response still includes `pool` and `pools`. See [RandomX fallback](pow.md#when-every-pool-is-unavailable).
 
-Readiness probes have a positive timeout up to 30s (default 2s). They probe dependencies
+Readiness probes have a positive timeout up to 30s (default 2s), set by
+`server.operations.readiness_timeout`. They probe dependencies
 concurrently. Only one probe runs at a time per instance.
 
 Upstream TCP readiness does not check application HTTP responses. Pool readiness
@@ -320,15 +321,14 @@ Keep operational endpoints private. Set `server.operations.listen` to a loopback
 `127.0.0.1:9090`, or an address on a private monitoring network. Direct probes and
 Prometheus to that listener.
 
-Public listeners always return 404 for these routes. Operations listeners serve only
-these four routes and share connection and request capacity with public traffic. The
+Public listeners do not serve these routes. Operations listeners serve only
+these routes and the optional reload route, and share connection and request capacity with public traffic. The
 default empty list disables operational routes entirely. `config/rilgate.production.yml` sets `127.0.0.1:9090`
 and enables metrics. Container orchestrator probes need an operations address reachable
 by the probe, such as the pod IP. Loopback is reachable only within the container
 network namespace.
 
-Edge examples retain rules that block their public paths as defense in depth. If you
-change `site.base_path`, adjust those rules. These endpoints have no authentication.
+These endpoints have no authentication.
 
 Metrics cover HTTP status classes and duration histograms, active connections and
 requests, overload rejections, pool sessions and failures, and web reloads. They also

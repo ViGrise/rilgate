@@ -125,10 +125,9 @@ policy:
     });
     for (let attempt = 0; ; attempt++) {
       try {
-        const ready = await fetch(
-          `http://127.0.0.1:${operationsPort}/.well-known/rilgate/api/ready`,
-          { signal: AbortSignal.timeout(500) },
-        );
+        const ready = await fetch(`http://127.0.0.1:${operationsPort}/api/ready`, {
+          signal: AbortSignal.timeout(500),
+        });
         if (ready.ok) break;
       } catch {
         /* Startup is asynchronous. */

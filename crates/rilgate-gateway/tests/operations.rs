@@ -12,13 +12,10 @@ async fn readiness_tracks_required_dependencies_while_liveness_stays_available()
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
-  config.server.metrics_enabled = true;
+  config.server.operations_metrics = true;
   let gateway = app::router(cfg).await.unwrap();
   let client = reqwest::Client::new();
-  let base = format!(
-    "http://{}/.well-known/test-pow/api",
-    gateway.operations_address()
-  );
+  let base = format!("http://{}/api", gateway.operations_address());
   let ready = client.get(format!("{base}/ready")).send().await.unwrap();
   assert_eq!(ready.status(), 200);
   let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();
@@ -95,7 +92,7 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
   let hanging = TcpListener::bind("127.0.0.1:0").await.unwrap();
   primary.port = hanging.local_addr().unwrap().port();
   primary.tls.enabled = true;
-  config.server.readiness_timeout = Duration::from_millis(100);
+  config.server.operations_readiness_timeout = Duration::from_millis(100);
   let hanging_server = tokio::spawn(async move {
     loop {
       let (stream, _) = hanging.accept().await.unwrap();
@@ -118,10 +115,7 @@ async fn randomx_readiness_requires_pool_connectivity_and_metrics_are_opt_in() {
     .difficulty = Some(1000);
   let gateway = app::router(cfg).await.unwrap();
   let client = reqwest::Client::new();
-  let base = format!(
-    "http://{}/.well-known/test-pow/api",
-    gateway.operations_address()
-  );
+  let base = format!("http://{}/api", gateway.operations_address());
   assert_eq!(
     client
       .get(format!("{base}/ready"))
@@ -159,7 +153,7 @@ async fn connections_are_bounded_and_capacity_is_reclaimed() {
     .await
     .unwrap();
   first
-    .write_all(b"GET /.well-known/test-pow/api/live HTTP/1.1\r\nHost: example.test\r\n\r\n")
+    .write_all(b"GET /api/live HTTP/1.1\r\nHost: example.test\r\n\r\n")
     .await
     .unwrap();
   let mut buffer = [0; 4096];
@@ -175,10 +169,7 @@ async fn connections_are_bounded_and_capacity_is_reclaimed() {
   tokio::time::timeout(Duration::from_secs(2), async {
     loop {
       if client
-        .get(format!(
-          "http://{}/.well-known/test-pow/api/live",
-          gateway.operations_address()
-        ))
+        .get(format!("http://{}/api/live", gateway.operations_address()))
         .send()
         .await
         .is_ok_and(|r| r.status() == 200)
@@ -229,10 +220,7 @@ async fn in_flight_requests_are_bounded_and_released_after_completion() {
     .await
     .unwrap();
   let excess = client
-    .get(format!(
-      "http://{}/.well-known/test-pow/api/live",
-      gateway.operations_address()
-    ))
+    .get(format!("http://{}/api/live", gateway.operations_address()))
     .send()
     .await
     .unwrap();
@@ -244,10 +232,7 @@ async fn in_flight_requests_are_bounded_and_released_after_completion() {
     "done"
   );
   let response = client
-    .get(format!(
-      "http://{}/.well-known/test-pow/api/live",
-      gateway.operations_address()
-    ))
+    .get(format!("http://{}/api/live", gateway.operations_address()))
     .send()
     .await
     .unwrap();
@@ -303,7 +288,7 @@ async fn unloaded_geoip_databases_fail_readiness_and_report_metrics() {
   {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
-    config.server.metrics_enabled = true;
+    config.server.operations_metrics = true;
     config.pow.policy.signals.geoip = Some(GeoIpDefinition {
       country: Some(GeoDatabaseDefinition {
         path: Some(database.into()),
@@ -321,10 +306,7 @@ async fn unloaded_geoip_databases_fail_readiness_and_report_metrics() {
   .await
   .unwrap();
   let client = reqwest::Client::new();
-  let base = format!(
-    "http://{}/.well-known/test-pow/api",
-    gateway.operations_address()
-  );
+  let base = format!("http://{}/api", gateway.operations_address());
 
   let ready = client.get(format!("{base}/ready")).send().await.unwrap();
   assert_eq!(ready.status(), 503);
@@ -377,7 +359,7 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
   {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
-    config.server.metrics_enabled = true;
+    config.server.operations_metrics = true;
     config.pow.policy.signals.ip_sets.insert(
       "feed".into(),
       IpSetDefinition {
@@ -409,10 +391,7 @@ async fn unloaded_remote_ip_sets_fail_readiness_and_report_metrics() {
   .await
   .unwrap();
   let client = reqwest::Client::new();
-  let base = format!(
-    "http://{}/.well-known/test-pow/api",
-    gateway.operations_address()
-  );
+  let base = format!("http://{}/api", gateway.operations_address());
 
   let ready = client.get(format!("{base}/ready")).send().await.unwrap();
   assert_eq!(ready.status(), 503);
@@ -496,7 +475,7 @@ async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_g
     let mut cfg = common::config();
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.operations_listen_addresses = vec!["127.0.0.1:0".parse().unwrap()];
-    config.server.metrics_enabled = metrics_enabled;
+    config.server.operations_metrics = metrics_enabled;
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
     let gateway = app::router(cfg).await.unwrap();
     let public_address = gateway.address();
@@ -522,7 +501,7 @@ async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_g
         let response = client
           .request(
             method.clone(),
-            format!("http://{operations_address}{prefix}/api/{route}"),
+            format!("http://{operations_address}/api/{route}"),
           )
           .send()
           .await
@@ -557,6 +536,9 @@ async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_g
       "/upstream".into(),
       "/challenge".into(),
       "/.well-known/test-pow-other/api/live".into(),
+      format!("{prefix}/api/live"),
+      "/api".into(),
+      "/apilive".into(),
     ] {
       assert_eq!(
         client
@@ -568,6 +550,30 @@ async fn operations_listener_isolates_routes_and_preserves_methods_and_metrics_g
         404,
         "{path}"
       );
+    }
+  }
+}
+
+#[tokio::test]
+async fn operations_routes_follow_the_configured_base_path() {
+  for base_path in ["/ops", ""] {
+    let mut cfg = common::config();
+    let config = Arc::get_mut(&mut cfg).unwrap();
+    config.operations_listen_addresses = vec!["127.0.0.1:0".parse().unwrap()];
+    config.server.operations_base_path = base_path.into();
+    let gateway = app::router(cfg).await.unwrap();
+    let client = reqwest::Client::new();
+    for (path, status) in [
+      (format!("{base_path}/live"), 200),
+      ("/api/live".into(), 404),
+    ] {
+      let response = client
+        .get(format!("http://{}{path}", gateway.operations_address()))
+        .send()
+        .await
+        .unwrap();
+      assert_eq!(response.status(), status, "{path}");
+      assert_eq!(response.headers()["cache-control"], "no-store", "{path}");
     }
   }
 }
@@ -659,10 +665,7 @@ async fn socket_remote_readiness_probes_only_required_hashers() {
     });
     let gateway = app::router(cfg).await.unwrap();
     let client = reqwest::Client::new();
-    let url = format!(
-      "http://{}/.well-known/test-pow/api/ready",
-      gateway.operations_address()
-    );
+    let url = format!("http://{}/api/ready", gateway.operations_address());
     for healthy in [true, false] {
       available.store(healthy, Ordering::SeqCst);
       let previous = calls.load(Ordering::SeqCst);
@@ -698,7 +701,7 @@ async fn unloaded_remote_asn_sets_fail_readiness_and_report_metrics() {
   {
     let config = Arc::get_mut(&mut cfg).unwrap();
     config.upstream.url = format!("http://{}", origin.local_addr().unwrap());
-    config.server.metrics_enabled = true;
+    config.server.operations_metrics = true;
     config.pow.policy.signals.asn_sets.insert(
       "feed".into(),
       AsnSetDefinition {
@@ -717,10 +720,7 @@ async fn unloaded_remote_asn_sets_fail_readiness_and_report_metrics() {
   .await
   .unwrap();
   let client = reqwest::Client::new();
-  let base = format!(
-    "http://{}/.well-known/test-pow/api",
-    gateway.operations_address()
-  );
+  let base = format!("http://{}/api", gateway.operations_address());
   let ready = client.get(format!("{base}/ready")).send().await.unwrap();
   assert_eq!(ready.status(), 503);
   let body: serde_json::Value = serde_json::from_slice(&ready.bytes().await.unwrap()).unwrap();

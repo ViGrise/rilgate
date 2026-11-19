@@ -101,7 +101,7 @@ ENV MIMALLOC_PURGE_DELAY=0
 
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl --fail --silent --max-time 4 http://127.0.0.1:9090/.well-known/rilgate/api/ready || exit 1
+  CMD curl --fail --silent --max-time 4 http://127.0.0.1:9090/api/ready || exit 1
 
 EXPOSE 8080 9090
 ENTRYPOINT ["/app/rilgate"]
@@ -129,7 +129,7 @@ ENV MIMALLOC_PURGE_DELAY=0
 
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl --fail --silent --max-time 4 http://127.0.0.1:9090/.well-known/rilgate/api/ready || exit 1
+  CMD curl --fail --silent --max-time 4 http://127.0.0.1:9090/api/ready || exit 1
 
 EXPOSE 8080 9090
 ENTRYPOINT ["/app/rilgate"]

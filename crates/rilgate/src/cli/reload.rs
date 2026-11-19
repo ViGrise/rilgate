@@ -28,7 +28,10 @@ async fn request(config: &Configuration) -> Result<String> {
       IpAddr::V6(_) => IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
     });
   }
-  let url = format!("http://{address}{}/reload", config.web.base_path);
+  let url = format!(
+    "http://{address}{}/reload",
+    config.server.operations_base_path
+  );
   let response = reqwest::Client::builder()
     .http1_only()
     .no_proxy()

@@ -12,9 +12,14 @@ use std::path::{Path, PathBuf};
 /// neither `--config` nor `RILGATE_CONFIG` selects one.
 const DEFAULT_PATHS: &[&str] = &["rilgate.yml", "config/rilgate.yml"];
 
-/// Configuration sections with a new name. An old name fails with the new one,
+/// Configuration settings and sections with a new name. An old name fails with the new one,
 /// so an operator does not lose a setting without notice.
-const RENAMED_SECTIONS: &[(&str, &str)] = &[
+const RENAMED_SETTINGS: &[(&str, &str)] = &[
+  ("server.metrics_enabled", "server.operations.metrics"),
+  (
+    "server.readiness_timeout",
+    "server.operations.readiness_timeout",
+  ),
   ("pow.p2pool", "pow.stratum_pool"),
   ("policy.ip_sets", "signals.ip_sets"),
   ("policy.asn_sets", "signals.asn_sets"),
@@ -215,7 +220,7 @@ fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
       .split('.')
       .try_fold(document, |node, key| node.get(key))
   };
-  for (old, new) in RENAMED_SECTIONS {
+  for (old, new) in RENAMED_SETTINGS {
     ensure!(
       lookup(old).is_none()
         && !settings
@@ -233,8 +238,8 @@ fn reject_renamed(document: &Value, settings: &[Setting]) -> Result<()> {
   Ok(())
 }
 
-/// Fails for an environment variable of a renamed section. Without this check,
-/// the variable has no effect.
+/// Fails for an environment variable of a renamed setting or section. Without this
+/// check, the variable has no effect.
 fn reject_renamed_environment(names: impl Iterator<Item = String>) -> Result<()> {
   let variable = |path: &str| format!("RILGATE_{}_", path.replace('.', "_").to_uppercase());
   for name in names {
@@ -255,8 +260,11 @@ fn reject_renamed_environment(names: impl Iterator<Item = String>) -> Result<()>
     if let Some(indexed) = indexed {
       anyhow::bail!("{name}: renamed to {indexed}");
     }
-    for (old, new) in RENAMED_SECTIONS {
+    for (old, new) in RENAMED_SETTINGS {
       let prefix = variable(old);
+      if name == prefix.trim_end_matches('_') {
+        anyhow::bail!("{name}: renamed to {}", variable(new).trim_end_matches('_'));
+      }
       if let Some(rest) = name.strip_prefix(&prefix) {
         anyhow::bail!("{name}: renamed to {}{rest}", variable(new));
       }
@@ -443,6 +451,23 @@ mod tests {
         ["RILGATE_POW_STRATUM_POOL_POOLS_0_ADDRESS".to_string()].into_iter()
       )
       .is_ok()
+    );
+  }
+
+  #[test]
+  fn renamed_operations_settings_fail_with_the_new_name() {
+    let error = super::parse("server: {metrics_enabled: true}").unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "server.metrics_enabled: renamed to server.operations.metrics"
+    );
+    let error = super::reject_renamed_environment(
+      ["RILGATE_SERVER_READINESS_TIMEOUT".to_string()].into_iter(),
+    )
+    .unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "RILGATE_SERVER_READINESS_TIMEOUT: renamed to RILGATE_SERVER_OPERATIONS_READINESS_TIMEOUT"
     );
   }
 }

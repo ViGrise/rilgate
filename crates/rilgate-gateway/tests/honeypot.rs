@@ -28,7 +28,7 @@ async fn fixture(trust_proxy: bool, refresh: bool) -> Fixture {
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{}", listener.local_addr().unwrap());
-  config.server.metrics_enabled = true;
+  config.server.operations_metrics = true;
   if trust_proxy {
     config.server.trusted_proxies =
       vec!["::1/128".parse().unwrap(), "127.0.0.1/32".parse().unwrap()];
@@ -120,10 +120,7 @@ async fn trap_hit_flags_the_client() {
   assert_eq!(fixture.get("/page", None).await.status(), 403);
   let metrics = fixture
     .client
-    .get(format!(
-      "http://{}{BASE}/api/metrics",
-      fixture.operations_address
-    ))
+    .get(format!("http://{}/api/metrics", fixture.operations_address))
     .send()
     .await
     .unwrap()

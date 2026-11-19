@@ -95,7 +95,7 @@ async fn shutdown_closes_idle_connections_and_releases_the_listener() {
   }));
   let mut socket = TcpStream::connect(operations_address).await.unwrap();
   socket
-    .write_all(b"GET /.well-known/test-pow/api/health HTTP/1.1\r\nHost: example.test\r\n\r\n")
+    .write_all(b"GET /api/health HTTP/1.1\r\nHost: example.test\r\n\r\n")
     .await
     .unwrap();
   let mut buffer = [0; 4096];
@@ -179,7 +179,7 @@ async fn public_listeners_hide_operational_routes_without_operations_configured(
   }
   let addresses: Vec<_> = listeners.iter().map(|l| l.local_addr().unwrap()).collect();
   let mut cfg = common::config();
-  Arc::get_mut(&mut cfg).unwrap().server.metrics_enabled = true;
+  Arc::get_mut(&mut cfg).unwrap().server.operations_metrics = true;
   assert!(cfg.operations_listen_addresses.is_empty());
   let gateway = app::build(cfg).await.unwrap();
   let (stop, stopped) = tokio::sync::oneshot::channel();

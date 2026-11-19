@@ -97,7 +97,7 @@ async fn trusted_proxy_networks_have_independent_connection_slots() {
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.server.max_connections_per_client = 2;
-  config.server.metrics_enabled = true;
+  config.server.operations_metrics = true;
   config.server.trusted_proxies = vec!["::1/128".parse().unwrap()];
   let gateway = app::router(cfg).await.unwrap();
   let mut held = Vec::new();
@@ -117,7 +117,7 @@ async fn trusted_proxy_networks_have_independent_connection_slots() {
       .starts_with(b"HTTP/1.1 503")
   );
   let metrics = reqwest::get(format!(
-    "http://{}/.well-known/test-pow/api/metrics",
+    "http://{}/api/metrics",
     gateway.operations_address()
   ))
   .await

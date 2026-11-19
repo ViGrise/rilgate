@@ -97,12 +97,9 @@ async fn proof_endpoints_share_quota_but_assets_and_health_remain_available() {
       .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
   }
-  let health = reqwest::get(format!(
-    "http://{}/.well-known/test-pow/api/health",
-    router.operations_address()
-  ))
-  .await
-  .unwrap();
+  let health = reqwest::get(format!("http://{}/api/health", router.operations_address()))
+    .await
+    .unwrap();
   assert_eq!(health.status(), StatusCode::OK);
 }
 

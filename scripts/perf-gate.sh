@@ -104,7 +104,7 @@ measure_latency() {
     "${request_headers[@]}" "http://127.0.0.1:$port$path"; } 2>"$result_prefix-client-time.txt")"
   process_snapshot >"$result_prefix-process-after.txt"
   printf '%s\n' "$out" >"$result_prefix-wrk.txt"
-  curl -fsS "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/metrics" >"$result_prefix-metrics.txt"
+  curl -fsS "http://127.0.0.1:$OPERATIONS_PORT/api/metrics" >"$result_prefix-metrics.txt"
   if [[ "$out" == *"Non-2xx or 3xx responses:"* || "$out" == *"Socket errors:"* ]]; then
     echo "perf-gate: unsuccessful load run for $path" >&2
     echo "$out" >&2
@@ -160,9 +160,9 @@ else
     >"$RUNDIR/gateway.log" 2>&1 &
 fi
 PIDS+=($!)
-wait_for_http "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/health" "${PIDS[1]}"
+wait_for_http "http://127.0.0.1:$OPERATIONS_PORT/api/health" "${PIDS[1]}"
 
-health_body="$(curl -fsS "http://127.0.0.1:$OPERATIONS_PORT/.well-known/rilgate/api/health")"
+health_body="$(curl -fsS "http://127.0.0.1:$OPERATIONS_PORT/api/health")"
 node --input-type=module -e 'if (JSON.parse(process.argv[1]).status !== "ok") process.exit(1)' "$health_body"
 challenge_body="$(curl -fsS -H "User-Agent: $BROWSER_UA" "http://127.0.0.1:$PORT/protected")"
 if ! node --input-type=module -e 'const match = process.argv[1].match(/<script type="application\/json" id="pow-bootstrap">([\s\S]*?)<\/script>/); if (!match || !JSON.parse(match[1]).presentation_token) process.exit(1)' "$challenge_body"; then
@@ -178,7 +178,7 @@ check_upstream "http://127.0.0.1:$PORT/public"
 log_bytes_before="$(stat -c%s "$RUNDIR/gateway.log" 2>/dev/null || stat -f%z "$RUNDIR/gateway.log" 2>/dev/null || echo 0)"
 
 upstream_result="$(measure_latency /public rilgate-perf-gate/1.0 "" "$UPSTREAM_PORT")"
-health_result="$(measure_latency /.well-known/rilgate/api/health rilgate-perf-gate/1.0 "" "$OPERATIONS_PORT")"
+health_result="$(measure_latency /api/health rilgate-perf-gate/1.0 "" "$OPERATIONS_PORT")"
 challenge_result="$(measure_latency /protected "$BROWSER_UA")"
 authenticated_result="$(measure_latency /protected "$BROWSER_UA" "$auth_cookie")"
 allowed_result="$(measure_latency /public rilgate-perf-gate/1.0)"

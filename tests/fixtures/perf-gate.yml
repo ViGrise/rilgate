@@ -1,9 +1,9 @@
 server:
   listen: "${FIXTURE_LISTEN}"
-  metrics_enabled: true
   decision_log: off
   operations:
     listen: "${FIXTURE_OPERATIONS_LISTEN}"
+    metrics: true
   upstream:
     url: "${FIXTURE_UPSTREAM_URL}"
 security:

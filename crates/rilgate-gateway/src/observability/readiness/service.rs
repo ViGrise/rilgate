@@ -14,7 +14,7 @@ pub async fn check(state: &AppState) -> Response {
   };
   let url = url::Url::parse(&state.cfg.upstream.url).expect("validated upstream URL");
   let needs_pool = state.cfg.pow.selects_randomx();
-  let timeout = state.cfg.server.readiness_timeout;
+  let timeout = state.cfg.server.operations_readiness_timeout;
   let connect = |host: String, port| async move {
     tokio::time::timeout(
       timeout,
