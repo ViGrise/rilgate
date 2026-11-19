@@ -222,11 +222,12 @@ impl State {
     }
     text.into_bytes()
   }
+  /// Answers an operations path below `server.operations.base_path`.
   fn operations(&self, path: &str) -> Response<Full<Bytes>> {
     match path {
-      "/api/live" => response(StatusCode::OK, "{}"),
-      "/api/ready" => self.ready(),
-      "/api/metrics" if self.metrics_enabled => Response::builder()
+      "/live" => response(StatusCode::OK, "{}"),
+      "/ready" => self.ready(),
+      "/metrics" if self.metrics_enabled => Response::builder()
         .header("content-type", "text/plain; version=0.0.4")
         .header("cache-control", "no-store")
         .body(Full::new(Bytes::from(self.metrics())))
@@ -306,7 +307,7 @@ pub async fn run(config: VerifierConfig) -> Result<()> {
   let state = State::new(
     Arc::new(LocalHasher::new(config.serve.queue, config.idle_timeout)),
     config.serve.queue,
-    config.metrics_enabled,
+    config.metrics,
   );
   let listener = crate::cli::serve::bind_all(&[config.listen])?.remove(0);
   let operations = crate::cli::serve::bind_all(&config.operations)?;
@@ -317,7 +318,8 @@ pub async fn run(config: VerifierConfig) -> Result<()> {
   for listener in operations {
     tracing::info!("Starting verifier operations on {}", listener.local_addr()?);
     let state = state.clone();
-    operations_tasks.spawn(async move { operations_loop(listener, state).await });
+    let base_path = config.operations_base_path.clone();
+    operations_tasks.spawn(async move { operations_loop(listener, state, base_path).await });
   }
   tracing::info!("Starting RandomX verifier on {}", listener.local_addr()?);
   let stopped = crate::shutdown::shutdown_signal();
@@ -373,7 +375,8 @@ pub async fn run(config: VerifierConfig) -> Result<()> {
   while operations_tasks.join_next().await.is_some() {}
   Ok(())
 }
-async fn operations_loop(listener: TcpListener, state: Arc<State>) {
+async fn operations_loop(listener: TcpListener, state: Arc<State>, base_path: String) {
+  let base_path: Arc<str> = base_path.into();
   let connections = Arc::new(Semaphore::new(16));
   let mut tasks = tokio::task::JoinSet::new();
   loop {
@@ -383,13 +386,18 @@ async fn operations_loop(listener: TcpListener, state: Arc<State>) {
       continue;
     };
     let state = state.clone();
+    let base_path = base_path.clone();
     tasks.spawn(async move {
       let _permit = permit;
       let service = service_fn(move |request: Request<Incoming>| {
-        let response = if request.method() == http::Method::GET {
-          state.operations(request.uri().path())
-        } else {
-          response(StatusCode::NOT_FOUND, "{}")
+        let path = request
+          .uri()
+          .path()
+          .strip_prefix(&*base_path)
+          .filter(|suffix| suffix.starts_with('/'));
+        let response = match path {
+          Some(path) if request.method() == http::Method::GET => state.operations(path),
+          _ => response(StatusCode::NOT_FOUND, "{}"),
         };
         async { Ok::<_, Infallible>(response) }
       });

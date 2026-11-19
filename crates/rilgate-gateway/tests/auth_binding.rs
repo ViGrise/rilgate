@@ -36,7 +36,7 @@ async fn fixture(binding: AuthBinding, trust_peer: bool) -> Fixture {
   let mut cfg = common::config();
   let config = Arc::get_mut(&mut cfg).unwrap();
   config.upstream.url = format!("http://{}", listener.local_addr().unwrap());
-  config.server.metrics_enabled = true;
+  config.server.operations_metrics = true;
   config.pow.auth_binding = binding;
   if trust_peer {
     config.server.trusted_proxies =
@@ -183,7 +183,7 @@ impl Fixture {
     let text = self
       .client
       .get(format!(
-        "http://{}/.well-known/test-pow/api/metrics",
+        "http://{}/api/metrics",
         self._gateway.operations_address()
       ))
       .send()

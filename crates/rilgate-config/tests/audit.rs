@@ -86,9 +86,9 @@ fn public_operations_listeners_warn_in_production() {
 
 #[test]
 fn enabled_metrics_without_operations_listener_warn() {
-  let text = server("  metrics_enabled: true\n");
+  let text = server("  operations:\n    metrics: true\n");
   assert_eq!(warnings(&text), ["metrics-unreachable"]);
-  let reachable = server("  metrics_enabled: true\n  operations:\n    listen: 127.0.0.1:9090\n");
+  let reachable = server("  operations:\n    metrics: true\n    listen: 127.0.0.1:9090\n");
   assert!(warnings(&reachable).is_empty());
 }
 
@@ -124,12 +124,12 @@ fn production_warns_about_disabled_quotas_watching_and_long_access() {
 
 #[test]
 fn findings_display_their_identifier() {
-  let finding = resolve(&server("  metrics_enabled: true\n"))
+  let finding = resolve(&server("  operations:\n    metrics: true\n"))
     .unwrap()
     .warnings()
     .remove(0);
   let text = finding.to_string();
-  assert!(text.starts_with("server.metrics_enabled:"), "{text}");
+  assert!(text.starts_with("server.operations.metrics:"), "{text}");
   assert!(text.ends_with("[metrics-unreachable]"), "{text}");
 }
 

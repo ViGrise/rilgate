@@ -22,8 +22,6 @@ pub struct Server {
   )]
   pub client_ip_header: Option<String>,
   pub decision_log: crate::runtime::DecisionLog,
-  pub metrics_enabled: bool,
-  pub readiness_timeout: Time,
   pub request_timeout: Time,
 }
 impl Default for Server {
@@ -42,17 +40,29 @@ impl Default for Server {
       trusted_proxies: vec![],
       client_ip_header: None,
       decision_log: Default::default(),
-      metrics_enabled: false,
-      readiness_timeout: Time::seconds(2),
       request_timeout: Time::seconds(30),
     }
   }
 }
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Operations {
   pub reload: bool,
   pub listen: Listen,
+  pub base_path: String,
+  pub metrics: bool,
+  pub readiness_timeout: Time,
+}
+impl Default for Operations {
+  fn default() -> Self {
+    Self {
+      reload: false,
+      listen: Listen::default(),
+      base_path: "/api".into(),
+      metrics: false,
+      readiness_timeout: Time::seconds(2),
+    }
+  }
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]

@@ -205,7 +205,7 @@ async fn real_pool_challenge_and_upstream() -> Result<()> {
   );
   if let Ok(operations) = std::env::var("RILGATE_E2E_OPERATIONS_URL") {
     let text = client
-      .get(format!("{operations}{prefix}/api/metrics"))
+      .get(format!("{operations}/api/metrics"))
       .send()
       .await?
       .text()

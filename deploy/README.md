@@ -45,8 +45,8 @@ mounted configuration. The default configuration and the production template ser
 health and readiness on the operations listener at `127.0.0.1:9090`. The production
 template also enables metrics. Compose moves it to `0.0.0.0:9090` inside the
 container and publishes it on host loopback for Prometheus. The image healthcheck probes
-`127.0.0.1:9090` under the default web namespace. If a mounted configuration changes the
-operations address or namespace, override the healthcheck.
+`http://127.0.0.1:9090/api/ready`. If a mounted configuration changes
+`server.operations.listen` or `server.operations.base_path`, override the healthcheck.
 
 The Debian and RPM packages and the systemd-sysext image install their own unit,
 `deploy/packages/rilgate.service`. See [Linux packages](../docs/installation.md#linux-packages).
@@ -74,7 +74,6 @@ API and upstream application WebSockets.
 
 The nginx example contains only an HTTP listener. It enforces per-client request and
 connection quotas at the edge. Caddy does not add a shared quota service.
-Both examples block public operational endpoints.
 
 See [production operations](../docs/production.md) for monitoring examples, capacity settings, key
 rotation, token replay semantics, release checks and rollback. Run `scripts/test/container.sh IMAGE` to check

@@ -14,6 +14,9 @@ pub enum DecisionLog {
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
   pub operations_reload: bool,
+  pub operations_base_path: String,
+  pub operations_metrics: bool,
+  pub operations_readiness_timeout: std::time::Duration,
   pub watch_config: bool,
   pub max_connections: usize,
   pub max_connections_per_client: usize,
@@ -24,8 +27,6 @@ pub struct ServerConfig {
   pub trusted_proxies: Vec<IpNet>,
   pub client_ip_header: Option<http::HeaderName>,
   pub decision_log: DecisionLog,
-  pub metrics_enabled: bool,
-  pub readiness_timeout: std::time::Duration,
   pub request_timeout: std::time::Duration,
 }
 
@@ -34,6 +35,9 @@ impl Default for ServerConfig {
     let defaults = crate::schema::server::Server::default();
     Self {
       operations_reload: defaults.operations.reload,
+      operations_base_path: defaults.operations.base_path,
+      operations_metrics: defaults.operations.metrics,
+      operations_readiness_timeout: defaults.operations.readiness_timeout.0,
       watch_config: defaults.watch_config,
       max_connections: defaults.max_connections,
       max_connections_per_client: defaults.max_connections_per_client,
@@ -44,8 +48,6 @@ impl Default for ServerConfig {
       trusted_proxies: vec![],
       client_ip_header: None,
       decision_log: defaults.decision_log,
-      metrics_enabled: defaults.metrics_enabled,
-      readiness_timeout: defaults.readiness_timeout.0,
       request_timeout: defaults.request_timeout.0,
     }
   }
@@ -79,10 +81,24 @@ impl ServerConfig {
       (1..=1024).contains(&self.h2_max_streams),
       "server.h2_max_streams must be between 1 and 1024"
     );
+    let base_path = &self.operations_base_path;
     anyhow::ensure!(
-      (!self.readiness_timeout.is_zero()
-        && self.readiness_timeout <= std::time::Duration::from_secs(30)),
-      "server.readiness_timeout must be positive and at most 30s"
+      (base_path.is_empty() || base_path.starts_with('/'))
+        && !base_path.ends_with('/')
+        && !base_path
+          .split('/')
+          .any(|segment| segment == "." || segment == "..")
+        && !base_path.chars().any(|c| c.is_control()
+          || matches!(
+            c,
+            '"' | '\'' | '<' | '>' | '\\' | '?' | '#' | '{' | '}' | '%' | ' '
+          )),
+      "server.operations.base_path must be empty or a safe URL path that starts with / and has no trailing slash"
+    );
+    anyhow::ensure!(
+      (!self.operations_readiness_timeout.is_zero()
+        && self.operations_readiness_timeout <= std::time::Duration::from_secs(30)),
+      "server.operations.readiness_timeout must be positive and at most 30s"
     );
     anyhow::ensure!(
       (std::time::Duration::from_secs(1)..=std::time::Duration::from_secs(600))

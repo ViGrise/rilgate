@@ -70,6 +70,9 @@ impl Document {
   pub(super) fn resolve_server(&self) -> Result<ServerConfig> {
     Ok(ServerConfig {
       operations_reload: self.server.operations.reload,
+      operations_base_path: self.server.operations.base_path.clone(),
+      operations_metrics: self.server.operations.metrics,
+      operations_readiness_timeout: self.server.operations.readiness_timeout.0,
       watch_config: self.server.watch_config,
       max_connections: self.server.max_connections,
       max_connections_per_client: self.server.max_connections_per_client,
@@ -96,8 +99,6 @@ impl Document {
         .transpose()
         .context("server.client_ip_header: expected an HTTP header name")?,
       decision_log: self.server.decision_log,
-      metrics_enabled: self.server.metrics_enabled,
-      readiness_timeout: self.server.readiness_timeout.0,
       request_timeout: self.server.request_timeout.0,
     })
   }

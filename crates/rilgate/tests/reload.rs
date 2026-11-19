@@ -240,7 +240,7 @@ impl ReloadFixture {
     stream
       .set_read_timeout(Some(Duration::from_secs(10)))
       .unwrap();
-    write!(stream, "{method} /.well-known/rilgate/reload HTTP/1.1\r\nhost: reload.test\r\nconnection: close\r\ncontent-length: 0\r\n{headers}\r\n").unwrap();
+    write!(stream, "{method} /api/reload HTTP/1.1\r\nhost: reload.test\r\nconnection: close\r\ncontent-length: 0\r\n{headers}\r\n").unwrap();
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
     response

@@ -1,6 +1,7 @@
 use http::{HeaderValue, Method};
 
-/// A gateway-owned endpoint below `site.base_path`.
+/// A gateway-owned endpoint. Public listeners resolve endpoints below `site.base_path`;
+/// operations listeners resolve them below `server.operations.base_path`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Endpoint {
   Reload,
@@ -22,22 +23,10 @@ pub(crate) enum Endpoint {
   Static,
 }
 
-/// The listener that serves an endpoint. Other listeners answer 404.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Exposure {
-  Public,
-  Operations,
-}
-
 impl Endpoint {
-  /// Maps a path below `site.base_path` to its endpoint.
-  pub(crate) fn from_path(path: &str) -> Option<Self> {
+  /// Maps a path below `site.base_path` to its public endpoint.
+  pub(crate) fn from_public_path(path: &str) -> Option<Self> {
     Some(match path {
-      "/reload" => Self::Reload,
-      "/api/live" => Self::Live,
-      "/api/health" => Self::Health,
-      "/api/ready" => Self::Ready,
-      "/api/metrics" => Self::Metrics,
       "/challenge" => Self::ChallengePage,
       "/api/client-config" => Self::ClientConfig,
       "/api/challenge" => Self::Challenge,
@@ -54,13 +43,16 @@ impl Endpoint {
     })
   }
 
-  pub(crate) fn exposure(self) -> Exposure {
-    match self {
-      Self::Reload | Self::Live | Self::Health | Self::Ready | Self::Metrics => {
-        Exposure::Operations
-      }
-      _ => Exposure::Public,
-    }
+  /// Maps a path below `server.operations.base_path` to its operations endpoint.
+  pub(crate) fn from_operations_path(path: &str) -> Option<Self> {
+    Some(match path {
+      "/reload" => Self::Reload,
+      "/live" => Self::Live,
+      "/health" => Self::Health,
+      "/ready" => Self::Ready,
+      "/metrics" => Self::Metrics,
+      _ => return None,
+    })
   }
 
   /// Proof endpoints need a resolved client address and pass the proof rate limit.

@@ -15,10 +15,6 @@ The default prefix derives from [`site.brand_id`](configuration.md#site), giving
 these paths for `rilgate`:
 
 ```text
-/.well-known/rilgate/api/health
-/.well-known/rilgate/api/live
-/.well-known/rilgate/api/ready
-/.well-known/rilgate/api/metrics
 /.well-known/rilgate/api/client-config
 /.well-known/rilgate/api/challenge
 /.well-known/rilgate/api/verify
@@ -36,12 +32,11 @@ these paths for `rilgate`:
 The challenge page loads the assembled classic `challenge.bundle.js`. Individual script routes
 remain available. `/api/client-config` lists each algorithm with its `verification`
 value, `gateway` or `pool_share`. See [verification modes](pow.md#verification-modes).
-`/api/health`, `/api/live`, `/api/ready` and `/api/metrics` are served only on
-operations listeners.
-
-Public listeners return 404 for them. Operations listeners return 404 for every other
-route. With the default empty `server.operations.listen` list, operational routes are disabled and are
-served nowhere. Metrics still need `server.metrics_enabled: true`.
+Operational routes such as `/api/health`, `/api/live`, `/api/ready` and `/api/metrics`
+are served only on operations listeners, below `server.operations.base_path` instead of
+`site.base_path`. Operations listeners return 404 for every other route. With the default
+empty `server.operations.listen` list, operational routes are served nowhere. See
+[loading and validation](configuration.md#loading-and-validation).
 
 A browser that opens a public API URL as a page receives `303 See Other` to the same-host
 page in its `Referer`, or to `/`. The application page then shows a challenge when it needs

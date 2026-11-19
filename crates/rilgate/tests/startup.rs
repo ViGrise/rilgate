@@ -231,20 +231,21 @@ fn configuration_show_is_valid_yaml_and_redacts_expanded_secrets() {
 
 #[test]
 fn configuration_warnings_are_reported_and_fail_strict_checks() {
-  let contents = "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  metrics_enabled: true\nsecurity:\n  secret: \"${RILGATE_SECURITY_SECRET}\"\n";
+  let contents = "server:\n  upstream:\n    url: http://127.0.0.1:3000\n  operations:\n    metrics: true\nsecurity:\n  secret: \"${RILGATE_SECURITY_SECRET}\"\n";
   let variables = [("RILGATE_SECURITY_SECRET", SECRET)];
   let result = command(contents, &["config", "check"], &variables);
   let stderr = String::from_utf8_lossy(&result.stderr);
   assert!(result.status.success(), "{stderr}");
   assert!(
-    stderr.contains("warning: server.metrics_enabled:") && stderr.contains("[metrics-unreachable]"),
+    stderr.contains("warning: server.operations.metrics:")
+      && stderr.contains("[metrics-unreachable]"),
     "{stderr}"
   );
   let strict = command(contents, &["config", "check", "--strict"], &variables);
   let stderr = String::from_utf8_lossy(&strict.stderr);
   assert!(!strict.status.success(), "{stderr}");
   assert!(stderr.contains("1 warning"), "{stderr}");
-  let clean = contents.replace("  metrics_enabled: true\n", "");
+  let clean = contents.replace("  operations:\n    metrics: true\n", "");
   assert!(
     command(&clean, &["config", "check", "--strict"], &variables)
       .status
@@ -401,7 +402,7 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
       "2h",
       "--server-trusted-proxies",
       "10.0.0.0/8,192.0.2.1/32",
-      "--server-metrics-enabled",
+      "--server-operations-metrics",
     ],
   );
   assert!(
@@ -414,7 +415,7 @@ fn flags_override_variables_which_override_yaml_with_schema_types() {
   assert_eq!(value["server"]["operations"]["listen"][0], "127.0.0.1:9092");
   assert_eq!(value["server"]["operations"]["listen"][1], "[::1]:9093");
   assert_eq!(value["server"]["max_connections"], 20);
-  assert_eq!(value["server"]["metrics_enabled"], true);
+  assert_eq!(value["server"]["operations"]["metrics"], true);
   assert_eq!(value["server"]["trusted_proxies"][1], "192.0.2.1/32");
   assert_eq!(value["security"]["auth"]["ttl"], "2h");
   assert_eq!(
@@ -630,7 +631,8 @@ fn environment_references_follow_schema_types_without_coercing_literal_yaml() {
   let source = r#"
 server:
   max_connections: "${CONNECTIONS}"
-  metrics_enabled: "${METRICS}"
+  operations:
+    metrics: "${METRICS}"
   upstream:
     url: http://127.0.0.1:3000
     timeout:
@@ -670,7 +672,7 @@ policy:
   );
   let value: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&result.stdout).unwrap();
   assert_eq!(value["server"]["max_connections"], 123);
-  assert_eq!(value["server"]["metrics_enabled"], true);
+  assert_eq!(value["server"]["operations"]["metrics"], true);
   assert_eq!(value["server"]["upstream"]["timeout"]["connect"], "300ms");
   assert_eq!(value["policy"]["score"]["initial"], -10);
   for source in [

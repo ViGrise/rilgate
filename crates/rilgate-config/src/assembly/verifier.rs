@@ -11,7 +11,8 @@ pub struct VerifierConfig {
   pub serve: Serve,
   pub listen: SocketAddr,
   pub operations: Vec<SocketAddr>,
-  pub metrics_enabled: bool,
+  pub operations_base_path: String,
+  pub metrics: bool,
   pub idle_timeout: Duration,
 }
 impl VerifierConfig {
@@ -39,11 +40,11 @@ impl VerifierConfig {
         }
       }
     }
-    if self.metrics_enabled && self.operations.is_empty() {
+    if self.metrics && self.operations.is_empty() {
       findings.push(Finding {
         id: "metrics-unreachable",
         severity: Severity::Warning,
-        message: "server.metrics_enabled: server.operations.listen is empty".into(),
+        message: "server.operations.metrics: server.operations.listen is empty".into(),
       });
     }
     findings
@@ -102,7 +103,8 @@ impl Document {
       serve,
       listen,
       operations,
-      metrics_enabled: self.server.metrics_enabled,
+      operations_base_path: self.server.operations.base_path.clone(),
+      metrics: self.server.operations.metrics,
       idle_timeout: randomx.cache.idle_timeout.0,
     })
   }
@@ -113,8 +115,9 @@ impl Document {
     };
     subset.pow.algorithms.randomx.cache = self.pow.algorithms.randomx.cache.clone();
     subset.pow.algorithms.randomx.serve = self.pow.algorithms.randomx.serve.clone();
-    subset.server.operations = self.server.operations.clone();
-    subset.server.metrics_enabled = self.server.metrics_enabled;
+    subset.server.operations.listen = self.server.operations.listen.clone();
+    subset.server.operations.base_path = self.server.operations.base_path.clone();
+    subset.server.operations.metrics = self.server.operations.metrics;
     let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&subset.display(defaults)?)?;
     let mut result = serde_yaml_ng::Mapping::new();
     for name in ["environment", "pow", "server"] {
@@ -137,10 +140,12 @@ impl Document {
       let mut pow = serde_yaml_ng::Mapping::new();
       pow.insert("algorithms".into(), algorithms.into());
       result.insert("pow".into(), pow.into());
-      let mut server = serde_yaml_ng::Mapping::new();
-      for key in ["operations", "metrics_enabled"] {
-        server.insert(key.into(), full["server"][key].clone());
+      let mut operations = serde_yaml_ng::Mapping::new();
+      for key in ["listen", "base_path", "metrics"] {
+        operations.insert(key.into(), full["server"]["operations"][key].clone());
       }
+      let mut server = serde_yaml_ng::Mapping::new();
+      server.insert("operations".into(), operations.into());
       result.insert("server".into(), server.into());
     }
     Ok(serde_yaml_ng::to_string(&result)?)

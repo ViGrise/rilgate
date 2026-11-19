@@ -330,12 +330,12 @@ fn audit_verifier(config: &Configuration, production: bool, findings: &mut Vec<F
 }
 
 fn audit_metrics(config: &Configuration, findings: &mut Vec<Finding>) {
-  if config.server.metrics_enabled && config.operations_listen_addresses.is_empty() {
+  if config.server.operations_metrics && config.operations_listen_addresses.is_empty() {
     report(
       findings,
       "metrics-unreachable",
       Severity::Warning,
-      "server.metrics_enabled: metrics are served only on server.operations.listen, which is empty"
+      "server.operations.metrics: metrics are served only on server.operations.listen, which is empty"
         .into(),
     );
   }
