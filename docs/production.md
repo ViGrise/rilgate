@@ -43,7 +43,7 @@ host loopback.
 Production cookies need HTTPS.
 
 Remote IP and ASN set feeds are fetched in the background, never on the request path.
-Allow outbound HTTPS to each configured feed host, including `check.torproject.org` for Tor exits
+Allow outbound HTTPS to each configured feed host, including `check.torproject.org` and `onionoo.torproject.org` for Tor exits
 and `raw.githubusercontent.com` for the X4BNet ASN example.
 Readiness reports `asn_sets` alongside `ip_sets` and requires each remote set to load once.
 ASN metrics are `rilgate_asn_set_entries`, `rilgate_asn_set_stale`,

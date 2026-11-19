@@ -90,7 +90,9 @@ policy:
 | `allow-go-get.yml` | Allows `GET` requests from the Go client with `go-get=1`. Any client can forge both, so include it only on sites that serve Go modules. |
 | `allow-private-networks.yml` | Allows private, shared, loopback and link-local addresses. Behind a proxy, it needs `server.trusted_proxies`; otherwise every request matches. |
 | `challenge-bots.yml` | Challenges empty or bot/tool-like User-Agents with Fast difficulty 1. |
-| `tor-exit.yml` | Adds 20 for membership in the operator-defined `tor-exits` IP set. |
+| `tor-exit.yml` | Adds 20 for membership in the `tor-exits` IP set of IPv4 exit addresses. |
+| `tor-exit-v6.yml` | Adds 20 for membership in the `tor-exits-v6` IP set of IPv6 relay addresses. |
+| `tor-exit-cloudflare.yml` | Adds 20 for `Cf-Ipcountry: T1`, which Cloudflare sets for Tor clients. Requires Cloudflare in front of Rilgate and the proxy that connects to Rilgate in `server.trusted_proxies`. |
 | `challenge-all.yml` | Terminal catchall challenge with Fast difficulty 2. Place it last. |
 | `deny-ai-crawlers.yml` | Denies recognized AI-affiliated agents, AI scrapers, training and search crawlers, and user-triggered AI clients. |
 | `deny-headless-browsers.yml` | Denies recognized headless User-Agents and Lightpanda client hints. |
@@ -107,22 +109,24 @@ challenging application traffic regardless of User-Agent. Built-in references
 always select embedded content. Use an explicit local include path for an
 operator-maintained copy.
 
-The Tor exit rule requires this set:
+The Tor exit rules use the sets in `builtin:signals/tor-ip-sets.yml`. `tor-exits` reads
+the IPv4 exit list of the Tor Project. That list has no IPv6 addresses, so `tor-exits-v6`
+reads the IPv6 onion routing addresses of running exit relays from Onionoo. A relay can
+exit from a different address, so `tor-exits-v6` can miss some IPv6 Tor traffic.
 
 ```yaml
 signals:
-  ip_sets:
-    tor-exits:
-      url: https://check.torproject.org/torbulkexitlist
-      format: list_text
-      refresh: 1h
-      max_stale: 1d
+  ip_sets: !include builtin:signals/tor-ip-sets.yml
 policy:
   rules:
     - !include builtin:rules/tor-exit.yml
+    - !include builtin:rules/tor-exit-v6.yml
 ```
 
-Its score of 20 combines with 10 from `client-score.yml` to reach the 30 tier.
+Behind Cloudflare, `tor-exit-cloudflare.yml` covers IPv4 and IPv6 Tor clients and needs no
+set. Each rule adds 20, so a request that matches two of them gets 40. Behind Cloudflare,
+use `tor-exit-cloudflare.yml` alone. A score of 20 combines with 10 from `client-score.yml`
+to reach the 30 tier.
 
 Each verified crawler rule checks the client network as well as the claimed
 identity. Feed rules allow a request only when its User-Agent matches the crawler

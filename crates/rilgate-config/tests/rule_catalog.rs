@@ -287,17 +287,49 @@ fn merged_builtin_policy_keeps_crawler_rules_and_overrides_the_fallback() {
 }
 
 #[test]
-fn tor_exit_rule_scores_members_of_the_tor_set() {
-  let document = rilgate_config::loader::parse("signals:\n  ip_sets:\n    tor-exits: {cidrs: [192.0.2.0/24]}\npolicy:\n  rules:\n    - !include builtin:rules/tor-exit.yml\n").unwrap();
-  let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
-    signals: document.signals.clone(),
-    policy: document.policy,
-  })
-  .unwrap();
-  for (ip, expected) in [("192.0.2.10", 20), ("198.51.100.10", 0)] {
-    let headers = http::HeaderMap::new();
+fn tor_exit_rules_score_each_source() {
+  for (rule, ip, country, trusted_peer, expected) in [
+    ("tor-exit.yml", "192.0.2.10", None, false, 20),
+    ("tor-exit.yml", "198.51.100.10", None, false, 0),
+    ("tor-exit-v6.yml", "2001:db8::10", None, false, 20),
+    ("tor-exit-v6.yml", "2001:db9::10", None, false, 0),
+    (
+      "tor-exit-cloudflare.yml",
+      "198.51.100.10",
+      Some("T1"),
+      true,
+      20,
+    ),
+    (
+      "tor-exit-cloudflare.yml",
+      "198.51.100.10",
+      Some("T1"),
+      false,
+      0,
+    ),
+    (
+      "tor-exit-cloudflare.yml",
+      "198.51.100.10",
+      Some("NL"),
+      true,
+      0,
+    ),
+  ] {
+    let document = rilgate_config::loader::parse(&format!(
+      "signals:\n  ip_sets:\n    tor-exits: {{cidrs: [192.0.2.0/24]}}\n    tor-exits-v6: {{cidrs: [2001:db8::/32]}}\npolicy:\n  rules:\n    - !include builtin:rules/{rule}\n"
+    ))
+    .unwrap();
+    let engine = PolicyEngine::from_definition(&rilgate_policy::PolicyDocument {
+      signals: document.signals.clone(),
+      policy: document.policy,
+    })
+    .unwrap();
+    let mut headers = http::HeaderMap::new();
+    if let Some(country) = country {
+      headers.insert("cf-ipcountry", country.parse().unwrap());
+    }
     let request = Request {
-      trusted_peer: false,
+      trusted_peer,
       host: "example.test",
       headers: &headers,
       path: "/",
@@ -306,7 +338,11 @@ fn tor_exit_rule_scores_members_of_the_tor_set() {
       query: &rilgate_policy::conditions::Query::default(),
       lookups: &rilgate_policy::Lookups::NONE,
     };
-    assert_eq!(engine.evaluate_context(&request, 0).weight, expected);
+    assert_eq!(
+      engine.evaluate_context(&request, 0).weight,
+      expected,
+      "{rule} {ip} {country:?} trusted={trusted_peer}"
+    );
   }
 }
 
@@ -503,7 +539,7 @@ fn every_catalog_rule_compiles() {
   for entry in std::fs::read_dir(directory).unwrap() {
     let file = entry.unwrap().file_name().into_string().unwrap();
     let source = format!(
-      "{}    tor-exits: {{cidrs: [192.0.2.0/24]}}\n  geoip:\n    asn: {{path: /unused/asn.mmdb}}\npolicy:\n  rules:\n    - !include builtin:rules/{file}\n",
+      "{}    tor-exits: {{cidrs: [192.0.2.0/24]}}\n    tor-exits-v6: {{cidrs: [2001:db8::/32]}}\n  geoip:\n    asn: {{path: /unused/asn.mmdb}}\npolicy:\n  rules:\n    - !include builtin:rules/{file}\n",
       local_sets(&names)
     );
     let document = rilgate_config::loader::parse(&source).unwrap();

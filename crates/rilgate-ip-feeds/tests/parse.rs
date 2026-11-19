@@ -156,3 +156,21 @@ fn extracted_values_over_the_limit_are_rejected() {
     .contains("more than 65536 values")
   );
 }
+
+#[test]
+fn builtin_tor_sets_read_their_feed_formats() {
+  let source = std::fs::read_to_string(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../config/signals/tor-ip-sets.yml"
+  ))
+  .unwrap();
+  let sets: std::collections::BTreeMap<String, rilgate_policy::policy::schema::IpSetDefinition> =
+    serde_yaml_ng::from_str(&source).unwrap();
+  let format = |name: &str| sets[name].format.clone().unwrap();
+  let onionoo = br#"{"relays":[{"or_addresses":["192.0.2.1:9001","[2001:db8::1]:443"]}]}"#;
+  let ranges = parse_ip(&format("tor-exits-v6"), onionoo).unwrap();
+  assert!(ranges.contains("2001:db8::1".parse().unwrap()));
+  assert!(!ranges.contains("192.0.2.1".parse().unwrap()));
+  let ranges = parse_ip(&format("tor-exits"), b"192.0.2.1\n").unwrap();
+  assert!(ranges.contains("192.0.2.1".parse().unwrap()));
+}
