@@ -54,21 +54,13 @@ flowchart TD
     Cookie -->|Reload original URL| Browser
 ```
 
-Without a valid access cookie, protected GET and HEAD requests receive challenge HTML at
-the requested URL. Other protected methods return `401`. The client can retry
-after authentication. Internal APIs and static resources live under `site.base_path`, which
-defaults to `/.well-known/<brand_id>` from [`site.brand_id`](docs/configuration.md#site),
-with `rilgate` as the default identifier.
-
-HashWX provides local CPU work with generated WASM and an interpreted verifier.
-It needs no pool. Its difficulty defaults target about 2 seconds on a mid-range phone.
-See [the HashWX example](config/examples/hashwx.yml).
-
-Fast proofs run in a browser worker. RandomX uses roughly 256 MiB per worker for its
-cache, plus scratchpads and runtime memory. It requires Worker, WebAssembly and BigInt.
-SIMD is optional. See [RandomX throughput](docs/pow.md#randomx-throughput). Both RandomX
-modes get work from a Stratum pool. See
-[when every pool is unavailable](docs/pow.md#when-every-pool-is-unavailable) for the fallback.
+Rilgate examines each request with the request policy. The policy sends the request to
+the upstream application, shows a denied page, or asks for a challenge. A challenged
+request with a valid access cookie goes to the upstream application. Without a valid
+cookie, a browser GET or HEAD request receives the challenge page at the requested URL.
+Other methods receive `401`, and a request that asks for JSON receives `403` with a JSON
+body. The browser completes the challenge and Rilgate verifies the proof.
+Rilgate then issues an access cookie, and the browser reloads the original URL.
 
 See [gateway behavior](docs/gateway.md) and [proof of work](docs/pow.md) for protocol, host
 binding, lifetime and enforcement details.

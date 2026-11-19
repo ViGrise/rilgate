@@ -28,7 +28,7 @@ for attempt in $(seq 1 60); do
   if [[ "$attempt" == 60 ]]; then docker logs "$name"; exit 1; fi
   sleep 1
 done
-docker exec "$name" /app/rilgate --config /app/config/rilgate.yml config check >/dev/null
+docker exec "$name" rilgate config check >/dev/null
 for agent in curl Mozilla ''; do
   page="$(docker exec "$name" curl -fsS -A "$agent" http://127.0.0.1:8080/protected)"
   [[ "$page" == *'id="pow-bootstrap"'*'"presentation_token":"'* ]]

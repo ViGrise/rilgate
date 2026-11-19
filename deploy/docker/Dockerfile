@@ -91,6 +91,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /app/rilgate-release /app/rilgate
+RUN ln -s /app/rilgate /usr/local/bin/rilgate
 COPY --from=builder /app/LICENSE /app/LICENSE
 COPY config/rilgate.yml /app/config/rilgate.yml
 
@@ -118,6 +119,7 @@ RUN apk upgrade --no-cache \
 
 WORKDIR /app
 COPY --from=musl-builder /app/rilgate-release /app/rilgate
+RUN ln -s /app/rilgate /usr/local/bin/rilgate
 COPY --from=musl-builder /app/LICENSE /app/LICENSE
 COPY config/rilgate.yml /app/config/rilgate.yml
 

@@ -135,6 +135,13 @@ docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
 
 `latest` uses Alpine. `latest-debian` uses Debian.
 
+Both images link `rilgate` into `/usr/local/bin`. A command in the container finds
+`config/rilgate.yml` from the working directory `/app`:
+
+```bash
+docker exec rilgate rilgate config check
+```
+
 With Docker Compose:
 
 ```yaml
