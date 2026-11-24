@@ -26,8 +26,12 @@ fuzz_target!(|input: Input| {
     return;
   }
   let signed = sign_json(&value, &input.key, purpose).unwrap();
-  if input.token != signed {
-    assert!(verify_json::<serde_json::Value>(&input.token, &input.key, purpose).is_err());
+  // The fuzzer can reuse a token that the same key signed for another value. Any token that
+  // verifies must be exactly the token that signing its own payload produces.
+  if let Ok(decoded) =
+    verify_json::<Box<serde_json::value::RawValue>>(&input.token, &input.key, purpose)
+  {
+    assert_eq!(sign_json(&decoded, &input.key, purpose).unwrap(), input.token);
   }
   // The token keeps the payload bytes. The comparison uses the raw payload text, because a JSON
   // number that is larger than an integer type parses into a float that can change its last bit.
