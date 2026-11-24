@@ -108,7 +108,7 @@ flate2 = "1.1"
 tar = "0.4"
 
 http = "1"
-url = "2"
+url = "2.5.9"
 
 arc-swap = "1"
 fastrand = "2"
