@@ -492,11 +492,26 @@ releases that revision:
 7. `scripts/release/notes.sh` writes the body of the GitHub Release. The body links to
    the release notes and the upgrade guide on the platform docs, and it shows the install
    and verify commands. It lists the commits since the previous release (the previous
-   stable release for a stable tag), grouped by Conventional Commit type and sorted by
-   scope, and it shows the author and pull request of each commit. A commit with `!`
-   after its type, or with a `BREAKING CHANGE:` footer, goes under "Breaking changes"
-   and adds a note at the top that links to the upgrade guide. The body ends with the
-   first-time contributors that GitHub reports.
+   stable release for a stable tag), grouped and sorted by scope, and it shows the
+   author and pull request of each commit. Each commit goes in the first of these
+   groups that matches it:
+
+   | Group | Commits |
+   | --- | --- |
+   | Security fixes | Pull request label `security` |
+   | Breaking changes | `!` after the type, or a `BREAKING CHANGE:` footer |
+   | Deprecations | Pull request label `deprecation` |
+   | Performance | Pull request label `performance` |
+   | Dependency updates | Pull request label `dependencies` |
+   | Features | Type `feat` |
+   | Fixes | Type `fix` |
+   | Documentation | Type `docs` |
+   | Other changes | All other commits |
+
+   Add the label to the pull request before you push the tag. The `change_groups` list
+   in the script holds these groups. A breaking change also adds a note at the top that
+   links to the upgrade guide. The body ends with the first-time contributors that
+   GitHub reports.
 
 A pull request with the `release-build` label runs the release builds and keeps the
 files as workflow artifacts. It publishes no image and no release. The Linux amd64 and
